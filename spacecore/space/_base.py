@@ -1,15 +1,15 @@
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 from dataclasses import dataclass
 from typing import Any, Tuple
 
-from ..backend import BackendContext
+from .._contextual import ContextBound
 from ..types import DenseArray
 
 
 @dataclass
-class Space(ABC):
+class Space(ContextBound):
     """
     Abstract Space.
 
@@ -19,7 +19,6 @@ class Space(ABC):
     Solvers should use only this API.
     """
 
-    ctx: BackendContext
     shape: Tuple[int, ...]  # Canonical dense shape of an element in this space
 
     @abstractmethod
