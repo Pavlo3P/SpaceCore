@@ -1,33 +1,27 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from typing import Any, Tuple
 
 from ._base import Space
 from ..types import DenseArray
+from ..backend import Context
 
 
-@dataclass
-class DenseVectorSpace(Space):
+class VectorSpace(Space):
     """
-    Dense vector space R^n or C^n.
+    Dense vector space R^{n1, ..., nK} or C^{n1, ..., nK}.
 
     Elements:
-      - backend-native dense arrays (NumPy or JAX)
-      - canonical shape is (n,)
+      - backend-native dense arrays;
+      - canonical shape is (n1, ..., nK).
 
     Geometry:
       - Euclidean / ℓ2 inner product
             ⟨x, y⟩ = vdot(x, y).
     """
 
-    shape: Tuple[int, ...] = field(init=False)
-    n: int
-
-    def __post_init__(self):
-        if self.n <= 0:
-            raise ValueError("n must be positive.")
-        self.shape = (self.n,)
+    def __init__(self, shape: Tuple[int, ...], ctx: Context | str | None = None) -> None:
+        super(VectorSpace, self).__init__(shape, ctx)
 
     def _check_member(self, x: Any) -> None:
         X = self.ctx.assert_dense(x)
@@ -35,7 +29,7 @@ class DenseVectorSpace(Space):
             raise TypeError(f"Expected shape {self.shape}, got {getattr(X, 'shape', None)}")
 
     def zeros(self) -> DenseArray:
-        return self.ctx.ops.zeros(self.shape, dtype=self.ctx.dtype)
+        return self.ops.zeros(self.shape, dtype=self.dtype)
 
     def add(self, x: Any, y: Any) -> DenseArray:
         self.check_member(x)
@@ -49,8 +43,7 @@ class DenseVectorSpace(Space):
     def inner(self, x: Any, y: Any) -> Any:
         self.check_member(x)
         self.check_member(y)
-        ops = self.ctx.ops
-        return ops.vdot(x, y)
+        return self.ops.vdot(x, y)
 
     def eigh(self, x: Any, k: int = None) -> Any:
         raise TypeError(
@@ -63,4 +56,4 @@ class DenseVectorSpace(Space):
 
     def unflatten(self, v: DenseArray) -> DenseArray:
         V = self.ctx.assert_dense(v)
-        return self.ctx.ops.reshape(V, self.shape)
+        return self.ops.reshape(V, self.shape)

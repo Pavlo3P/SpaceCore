@@ -2,10 +2,10 @@ from dataclasses import dataclass
 from typing import Any
 
 from ._ops import BackendOps
-from ..types import DenseArray, SparseArray, DType
+from ..types import DenseArray, SparseArray, DType, ArrayLike
 
 @dataclass
-class BackendContext:
+class Context:
     ops: BackendOps
     allow_sparse: bool = True
     dtype: DType | None = None
@@ -34,3 +34,14 @@ class BackendContext:
 
     def asarray(self, x: Any) -> DenseArray:
         return self.ops.asarray(x, dtype=self.dtype)
+
+    def assparse(self, x: Any) -> SparseArray:
+        return self.ops.assparse(x, dtype=self.dtype)
+
+    def convert(self, x: Any) -> ArrayLike:
+        if self.ops.is_dense(x):
+            return self.asarray(x)
+        elif self.ops.is_sparse(x):
+            return self.assparse(x)
+        else:
+            raise NotImplementedError

@@ -1,3 +1,3 @@
-from typing import Any, TypeAlias
+from typing import Any, TypeAlias, Type
 
-DType: TypeAlias = Any
+DType: TypeAlias = Type[Any]

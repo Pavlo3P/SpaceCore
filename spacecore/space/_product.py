@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any, Tuple, List
+from typing import Any, Tuple, List, Sequence
 
 from ._base import Space
-from ..backend import BackendContext
 from ..types import DenseArray
+
+from .._contextual.manager import ctx_manager
 
 
 def _prod_int(shape: Tuple[int, ...]) -> int:
@@ -15,7 +15,6 @@ def _prod_int(shape: Tuple[int, ...]) -> int:
     return int(p)
 
 
-@dataclass
 class ProductSpace(Space):
     """
     Cartesian product space X = X1 × ... × Xk.
@@ -31,52 +30,33 @@ class ProductSpace(Space):
       - `eigh` has no canonical meaning here and raises by default.
     """
 
-    ctx: BackendContext = field(init=False)
-    shape: Tuple[int, ...] = field(init=False)
-
-    spaces: Tuple[Space, ...] = field(default_factory=tuple)
-
-    _dims: Tuple[int, ...] = field(init=False, repr=False)
-    _offsets: Tuple[int, ...] = field(init=False, repr=False)
-
-    def __post_init__(self) -> None:
-        if not isinstance(self.spaces, tuple):
-            self.spaces = tuple(self.spaces)
-
-        if len(self.spaces) == 0:
+    def __init__(self, spaces: Tuple[Space, ...]) -> None:
+        if len(spaces) == 0:
             raise ValueError("ProductSpace requires at least one subspace.")
 
-        # Enforce a single backend context / ops family
-        ctx0 = self.spaces[0].ctx
-        ops0 = ctx0.ops
+        ctx0 = ctx_manager.default_ctx
+        uniform_ctx_spaces = []
+        for i, sp in enumerate(spaces):
+            sp = sp.convert(ctx0)
+            uniform_ctx_spaces.append(sp)
 
-        for i, s in enumerate(self.spaces[1:], start=1):
-            if s.ctx.ops.family != ops0.family:
-                raise ValueError(
-                    f"Backend family mismatch in ProductSpace: "
-                    f"spaces[0]={ops0.family} but spaces[{i}]={s.ctx.ops.family}"
-                )
-            if s.ctx.ops is not ops0:
-                raise ValueError(
-                    "All subspaces must share the same BackendOps instance (ctx.ops). "
-                )
-
-        object.__setattr__(self, "ctx", ctx0)
-
+        self.spaces = uniform_ctx_spaces
         dims = tuple(_prod_int(s.shape) for s in self.spaces)
         offsets: List[int] = [0]
         for d in dims:
             offsets.append(offsets[-1] + d)
 
-        object.__setattr__(self, "_dims", dims)
-        object.__setattr__(self, "_offsets", tuple(offsets))  # length k+1
-        object.__setattr__(self, "shape", (offsets[-1],))
+        self._dims = dims
+        self._offsets = tuple(offsets)
+        shape = (offsets[-1],)
+
+        super(ProductSpace, self).__init__(shape)
 
     @property
     def arity(self) -> int:
         return len(self.spaces)
 
-    def _check_member(self, x: Any) -> None:
+    def _check_member(self, x: Sequence[Any]) -> None:
         if not isinstance(x, tuple):
             raise TypeError(f"ProductSpace element must be a tuple, got {type(x).__name__}")
         if len(x) != self.arity:
@@ -143,4 +123,3 @@ class ProductSpace(Space):
             xs.append(s.unflatten(vi))
 
         return tuple(xs)
-

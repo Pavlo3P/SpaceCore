@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, Sequence, Tuple, Callable, TypeVar, Optional
+from typing import Any, Sequence, Tuple, Callable, Optional, Type
 
 from ._family import BackendFamily
 from ..types import DenseArray, SparseArray, DType, ArrayLike, Index, T, X, Y, R, Carry
@@ -17,18 +17,38 @@ class BackendOps(ABC):
         optional keyword parameters (e.g., `order=`, `out=`, `where=`, `like=`, ...).
     """
 
-    family: BackendFamily
+    family: BackendFamily | str
+
+    def __eq__(self, other: Any) -> bool:
+        if isinstance(other, BackendOps):
+            return self.family == other.family
+        return False
+
+    @property
+    @abstractmethod
+    def dense_array(self) -> Type[Any]:
+        ...
+
+    @property
+    @abstractmethod
+    def sparse_array(self) -> Tuple[Type[Any], ...] | None:
+        ...
 
     @abstractmethod
     def sanitize_dtype(self, dtype: DType | None) -> DType | None:
         ...
 
-    @abstractmethod
     def is_dense(self, x: Any) -> bool:
-        ...
+        return isinstance(x, self.dense_array)
+
+    def is_sparse(self, x: Any) -> bool:
+        return self.sparse_array is not None and isinstance(x, self.sparse_array)
+
+    def is_array(self, x: Any) -> bool:
+        return self.is_dense(x) or self.is_sparse(x)
 
     @abstractmethod
-    def is_sparse(self, x: Any) -> bool:
+    def get_dtype(self, x: Any) -> DType:
         ...
 
     @property
@@ -58,6 +78,10 @@ class BackendOps(ABC):
 
     @abstractmethod
     def asarray(self, x: Any, dtype: DType | None = None) -> DenseArray:
+        ...
+
+    @abstractmethod
+    def assparse(self, x: Any, dtype: DType | None = None) -> SparseArray:
         ...
 
     @abstractmethod
@@ -189,8 +213,8 @@ class BackendOps(ABC):
         ...
 
     @abstractmethod
-    def logsumexp(self, a: DenseArray, axis: int | Sequence[int] | None = None, b: DenseArray = None,
-                  keepdims: bool = False, return_sign: bool = False) -> DenseArray:
+    def logsumexp(self, a: DenseArray, axis: int | Sequence[int] | None = None, b: DenseArray | None = None,
+                  keepdims: bool = False, return_sign: bool = False) -> DenseArray | Tuple[DenseArray, DenseArray]:
         ...
 
     @abstractmethod
@@ -210,7 +234,7 @@ class BackendOps(ABC):
         ...
 
     @abstractmethod
-    def concatenate(self, arrays: Sequence[DenseArray], axis: int = 0, dtype: DType = None) -> DenseArray:
+    def concatenate(self, arrays: Sequence[DenseArray], axis: int = 0, dtype: DType | None = None) -> DenseArray:
         ...
 
     @abstractmethod
@@ -218,7 +242,7 @@ class BackendOps(ABC):
             self,
             x: DenseArray,
             index: Index,
-            values: DenseArray,
+            values: ArrayLike,
             *,
             copy: bool = True,
     ) -> DenseArray:
@@ -295,4 +319,25 @@ class BackendOps(ABC):
             false_fun: Callable[[T], R],
             *operands: Any,
     ) -> R:
+        ...
+
+    @abstractmethod
+    def allclose(
+            self,
+            a: DenseArray,
+            b: DenseArray,
+            rtol: float = 1e-5,
+            atol: float = 1e-8,
+            equal_nan: bool = False,
+    ) -> bool:
+        ...
+
+    @abstractmethod
+    def allclose_sparse(
+            self,
+            a: SparseArray,
+            b: SparseArray,
+            rtol: float = 1e-5,
+            atol: float = 1e-8,
+    ) -> bool:
         ...

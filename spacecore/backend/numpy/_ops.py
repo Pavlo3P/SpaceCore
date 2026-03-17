@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Sequence, Tuple, Literal, Callable, Optional
+from typing import Any, Sequence, Tuple, Literal, Callable, Optional, Type
 import inspect
 
 from .._family import BackendFamily
@@ -9,6 +9,9 @@ from ...types import DenseArray, SparseArray, DType, Index, X, T, Y, R, Carry
 
 
 class NumpyOps(BackendOps):
+    import numpy as np
+    import scipy as sp
+    
     """
     BackendOps implementation for the NumPy ecosystem.
 
@@ -25,71 +28,59 @@ class NumpyOps(BackendOps):
         when passed, must be "cpu" (or None). See NumPy docs for each function.
     """
 
-    def __init__(self) -> None:
-        import numpy as np
+    @property
+    def dense_array(self) -> Type[Any]:
+        return self.np.ndarray
 
-        self._np: Any = np
-        self._sp: Any = None
+    @property
+    def sparse_array(self) -> Tuple[Type[Any], ...]:
+        sparse = self.sp.sparse
+        types: list[type[Any]] = []
+        if hasattr(sparse, "spmatrix"):
+            types.append(sparse.spmatrix)
+        if hasattr(sparse, "sparray"):
+            types.append(sparse.sparray)
+        return tuple(types)
+
+
+    def __init__(self) -> None:
         self.family = BackendFamily.NUMPY
-        self._reshape_supports_copy = "copy" in inspect.signature(np.reshape).parameters
+        self._reshape_supports_copy = "copy" in inspect.signature(self.np.reshape).parameters
 
     def sanitize_dtype(self, dtype: DType | None) -> DType | None:
         """Normalize dtype to a NumPy dtype object. See: numpy.dtype."""
 
         if dtype is None:
             return None
-        return self._np.dtype(dtype)
+        return self.np.dtype(dtype)
 
-    def _maybe_scipy(self) -> Any:
-        """Lazy import for scipy.sparse. Returns module or None."""
-
-        if self._sp is not None:
-            return self._sp
-        try:
-            import scipy as sp  # local import (lazy)
-        except Exception:
-            sp = None
-        self._sp = sp
-        return sp
-
-    def _require_scipy(self) -> Any:
-        sp = self._maybe_scipy()
-        if sp is None:
-            raise ImportError(
-                "SciPy is required for sparse operations and logsumexp under the NumPy backend (install `scipy`)."
-            )
-        return sp
-
-    def is_dense(self, x: Any) -> bool:
-        """Return True iff `x` is a NumPy ndarray. See: numpy.ndarray."""
-
-        return isinstance(x, self._np.ndarray)
-
-    def is_sparse(self, x: Any) -> bool:
-        """Return True iff `x` is a SciPy sparse array or sparse matrix. See: scipy.sparse.issparse."""
-
-        sp = self._maybe_scipy()
-        return False if sp is None else sp.sparse.issparse(x)
+    def get_dtype(self, x: Any) -> DType:
+        if self.is_dense(x):
+            return x.dtype
+        elif self.is_sparse(x):
+            return x.dtype
+        else:
+            raise TypeError(f'Expected Numpy ndarray or SciPy sparse array, got {type(x)}.')
 
     @property
     def inf(self):
-        return self._np.array(self._np.inf)
+        return self.np.array(self.np.inf)
 
     @property
     def nan(self):
-        return self._np.array(self._np.nan)
+        return self.np.array(self.np.nan)
 
     @property
     def pi(self):
-        return self._np.array(self._np.pi)
+        return self.np.array(self.np.pi)
 
     @property
     def e(self):
-        return self._np.array(self._np.e)
+        return self.np.array(self.np.e)
 
     @property
     def eps(self):
-        return self._np.array(self._np.finfo(self._np.float64).eps)
+        return self.np.array(self.np.finfo(self.np.float64).eps)
 
     def asarray(
         self,
@@ -107,7 +98,7 @@ class NumpyOps(BackendOps):
         Signature mirrors:
           numpy.asarray(a, dtype=None, order=None, *, device=None, copy=None, like=None)
         """
-        return self._np.asarray(
+        return self.np.asarray(
             a,
             dtype=dtype,
             order=order,
@@ -115,6 +106,32 @@ class NumpyOps(BackendOps):
             copy=copy,
             like=like,
         )
+
+    def assparse(self, x: Any, *, format: Literal["csr", "csc", "coo"] = "csr", dtype: DType | None = None) -> SparseArray:
+        sparse = self.sp.sparse
+
+        if self.is_sparse(x):
+            if format == "csr":
+                return x.tocsr()
+            if format == "csc":
+                return x.tocsc()
+            if format == "coo":
+                return x.tocoo()
+            raise ValueError(f"Unknown sparse format: {format!r}")
+
+        x_arr = self.asarray(x)
+
+        if x_arr.ndim != 2:
+            raise ValueError("NumPy/SciPy sparse conversion currently expects a 2D array.")
+
+        if format == "csr":
+            return sparse.csr_matrix(x_arr)
+        if format == "csc":
+            return sparse.csc_matrix(x_arr)
+        if format == "coo":
+            return sparse.coo_matrix(x_arr)
+
+        raise ValueError(f"Unknown sparse format: {format!r}")
 
     def empty(
         self,
@@ -133,7 +150,7 @@ class NumpyOps(BackendOps):
           numpy.empty(shape, dtype=float, order='C', *, device=None, like=None)
         """
 
-        return self._np.empty(
+        return self.np.empty(
             shape,
             dtype=dtype,
             order=order,
@@ -157,7 +174,7 @@ class NumpyOps(BackendOps):
         Signature mirrors:
           numpy.zeros(shape, dtype=None, order='C', *, device=None, like=None)
         """
-        return self._np.zeros(
+        return self.np.zeros(
             shape,
             dtype=dtype,
             order=order,
@@ -181,7 +198,7 @@ class NumpyOps(BackendOps):
         Signature mirrors:
           numpy.ones(shape, dtype=None, order='C', *, device=None, like=None)
         """
-        return self._np.ones(
+        return self.np.ones(
             shape,
             dtype=dtype,
             order=order,
@@ -197,7 +214,7 @@ class NumpyOps(BackendOps):
                device: str | None = None,
                like: DenseArray | None = None,
                ) -> DenseArray:
-        return self._np.arange(
+        return self.np.arange(
             start,
             stop,
             step,
@@ -223,7 +240,7 @@ class NumpyOps(BackendOps):
         Signature mirrors:
           numpy.full(shape, fill_value, dtype=None, order='C', *, device=None, like=None)
         """
-        return self._np.full(
+        return self.np.full(
             shape,
             fill_value,
             dtype=dtype,
@@ -250,7 +267,7 @@ class NumpyOps(BackendOps):
         Signature mirrors:
           numpy.eye(N, M=None, k=0, dtype=float, order='C', *, device=None, like=None)
         """
-        return self._np.eye(
+        return self.np.eye(
             N,
             M=M,
             k=k,
@@ -262,7 +279,7 @@ class NumpyOps(BackendOps):
 
     def ravel(self, a: DenseArray, order: Literal["C", "F", "A", "K"] = "C") -> DenseArray:
         """Return a contiguous flattened array. See: numpy.ravel."""
-        return self._np.ravel(a, order=order)
+        return self.np.ravel(a, order=order)
 
     def reshape(
         self,
@@ -273,14 +290,14 @@ class NumpyOps(BackendOps):
     ) -> DenseArray:
         """Give a new shape to an array without changing its data. See: numpy.reshape."""
         if self._reshape_supports_copy:
-            return self._np.reshape(a, shape, order=order, copy=copy)
+            return self.np.reshape(a, shape, order=order, copy=copy)
         if copy:
-            return self._np.array(a, copy=True).reshape(shape, order=order)
-        return self._np.reshape(a, shape, order=order)
+            return self.np.array(a, copy=True).reshape(shape, order=order)
+        return self.np.reshape(a, shape, order=order)
 
     def transpose(self, a: DenseArray, axes: Sequence[int] | None = None) -> DenseArray:
         """Permute the dimensions of an array. See: numpy.transpose."""
-        return self._np.transpose(a, axes=axes)
+        return self.np.transpose(a, axes=axes)
 
     def stack(
         self,
@@ -297,7 +314,7 @@ class NumpyOps(BackendOps):
         Signature mirrors (NumPy >= 1.24):
           numpy.stack(arrays, axis=0, out=None, *, dtype=None, casting='same_kind')
         """
-        return self._np.stack(arrays, axis=axis, out=out, dtype=dtype, casting=casting)
+        return self.np.stack(arrays, axis=axis, out=out, dtype=dtype, casting=casting)
 
     def conj(
         self,
@@ -312,7 +329,7 @@ class NumpyOps(BackendOps):
         subok: bool = True,
     ) -> DenseArray:
         """Return the complex conjugate, element-wise. See: numpy.conjugate / numpy.conj."""
-        return self._np.conj(
+        return self.np.conj(
             x,
             out=out,
             where=where,
@@ -335,7 +352,7 @@ class NumpyOps(BackendOps):
         subok: bool = True,
     ) -> DenseArray:
         """Compute the absolute value element-wise. See: numpy.absolute / numpy.abs."""
-        return self._np.abs(
+        return self.np.abs(
             x,
             out=out,
             where=where,
@@ -358,7 +375,7 @@ class NumpyOps(BackendOps):
         subok: bool = True,
     ) -> DenseArray:
         """Return an element-wise indication of the sign. See: numpy.sign."""
-        return self._np.sign(
+        return self.np.sign(
             x,
             out=out,
             where=where,
@@ -381,7 +398,7 @@ class NumpyOps(BackendOps):
         subok: bool = True,
     ) -> DenseArray:
         """Return the non-negative square-root element-wise. See: numpy.sqrt."""
-        return self._np.sqrt(
+        return self.np.sqrt(
             x,
             out=out,
             where=where,
@@ -393,11 +410,11 @@ class NumpyOps(BackendOps):
 
     def real(self, x: DenseArray) -> DenseArray:
         """Return the real part of the complex argument. See: numpy.real."""
-        return self._np.real(x)
+        return self.np.real(x)
 
     def imag(self, x: DenseArray) -> DenseArray:
         """Return the imaginary part of the complex argument. See: numpy.imag."""
-        return self._np.imag(x)
+        return self.np.imag(x)
 
     def sum(
         self,
@@ -410,7 +427,7 @@ class NumpyOps(BackendOps):
         where: DenseArray | bool = True,
     ) -> DenseArray:
         """Sum of array elements over a given axis. See: numpy.sum."""
-        return self._np.sum(
+        return self.np.sum(
             a,
             axis=axis,
             dtype=dtype,
@@ -431,7 +448,7 @@ class NumpyOps(BackendOps):
         where: DenseArray | bool = True,
     ) -> DenseArray:
         """Product of array elements over a given axis. See: numpy.prod."""
-        return self._np.prod(
+        return self.np.prod(
             a,
             axis=axis,
             dtype=dtype,
@@ -454,7 +471,7 @@ class NumpyOps(BackendOps):
         Return the sum along diagonals of the array.
         Works for N-D arrays via `axis1`/`axis2`. See: numpy.trace.
         """
-        return self._np.trace(
+        return self.np.trace(
             a,
             offset=offset,
             axis1=axis1,
@@ -473,7 +490,7 @@ class NumpyOps(BackendOps):
         stable: bool | None = None,
     ) -> DenseArray:
         """Return indices that would sort an array. See: numpy.argsort."""
-        return self._np.argsort(a, axis=axis, kind=kind, order=order, stable=stable)
+        return self.np.argsort(a, axis=axis, kind=kind, order=order, stable=stable)
 
     def sort(
         self,
@@ -485,7 +502,7 @@ class NumpyOps(BackendOps):
         stable: bool | None = None,
     ) -> DenseArray:
         """Return a sorted copy of an array. See: numpy.sort."""
-        return self._np.sort(a, axis=axis, kind=kind, order=order, stable=stable)
+        return self.np.sort(a, axis=axis, kind=kind, order=order, stable=stable)
 
     def argmin(
         self,
@@ -496,7 +513,7 @@ class NumpyOps(BackendOps):
         keepdims: bool = False,
     ) -> DenseArray:
         """Return indices of the minimum values along an axis. See: numpy.argmin."""
-        return self._np.argmin(a, axis=axis, out=out, keepdims=keepdims)
+        return self.np.argmin(a, axis=axis, out=out, keepdims=keepdims)
 
     def argmax(
         self,
@@ -507,11 +524,11 @@ class NumpyOps(BackendOps):
         keepdims: bool = False,
     ) -> DenseArray:
         """Return indices of the maximum values along an axis. See: numpy.argmax."""
-        return self._np.argmax(a, axis=axis, out=out, keepdims=keepdims)
+        return self.np.argmax(a, axis=axis, out=out, keepdims=keepdims)
 
     def vdot(self, a: DenseArray, b: DenseArray) -> DenseArray:
         """Return the dot product of two vectors. See: numpy.vdot."""
-        return self._np.vdot(a, b)
+        return self.np.vdot(a, b)
 
     def matmul(
         self,
@@ -529,7 +546,7 @@ class NumpyOps(BackendOps):
         Matrix product of two arrays (supports batched matmul semantics).
         See: numpy.matmul.
         """
-        return self._np.matmul(
+        return self.np.matmul(
             a,
             b,
             out=out,
@@ -550,7 +567,6 @@ class NumpyOps(BackendOps):
           - scipy.sparse.issparse
           - SciPy sparse `@` multiplication
         """
-        self._require_scipy()
         if not self.is_sparse(a):
             raise TypeError("sparse_matmul expects `a` to be a SciPy sparse matrix/array.")
         if not self.is_dense(b):
@@ -559,7 +575,7 @@ class NumpyOps(BackendOps):
 
     def kron(self, a: DenseArray, b: DenseArray) -> DenseArray:
         """Kronecker product of two arrays. See: numpy.kron."""
-        return self._np.kron(a, b)
+        return self.np.kron(a, b)
 
     def einsum(
         self,
@@ -572,7 +588,7 @@ class NumpyOps(BackendOps):
         optimize: bool | str | Sequence[Any] = False,
     ) -> DenseArray:
         """Evaluate the Einstein summation convention. See: numpy.einsum."""
-        return self._np.einsum(
+        return self.np.einsum(
             subscripts,
             *operands,
             out=out,
@@ -593,13 +609,13 @@ class NumpyOps(BackendOps):
         """
         if self.is_sparse(a):
             raise TypeError("eigh requires a dense array; sparse input is not supported.")
-        return self._np.linalg.eigh(a, UPLO=UPLO)
+        return self.np.linalg.eigh(a, UPLO=UPLO)
 
     def logsumexp(self, a: DenseArray, axis: int | Sequence[int] | None = None, b: DenseArray | None = None,
                   keepdims: bool = False, return_sign: bool = False) -> DenseArray | Tuple[DenseArray, DenseArray]:
         """ See: scipy.special.logsumexp. """
-        sp = self._require_scipy()
-        return sp.special.logsumexp(a, axis=axis, b=b, keepdims=keepdims, return_sign=return_sign)
+        sp = self._sp
+        return self.sp.special.logsumexp(a, axis=axis, b=b, keepdims=keepdims, return_sign=return_sign)
 
     def exp(
         self,
@@ -614,7 +630,7 @@ class NumpyOps(BackendOps):
         subok: bool = True,
     ) -> DenseArray:
         """See: numpy.exp. """
-        return self._np.exp(
+        return self.np.exp(
             x,
             out=out,
             where=where,
@@ -637,7 +653,7 @@ class NumpyOps(BackendOps):
             subok: bool = True,
     ) -> DenseArray:
         """See: numpy.log. """
-        return self._np.log(
+        return self.np.log(
             x,
             out=out,
             where=where,
@@ -661,7 +677,7 @@ class NumpyOps(BackendOps):
             subok: bool = True,
     ) -> DenseArray:
         """See: numpy.maximum. """
-        return self._np.maximum(
+        return self.np.maximum(
             x,
             y,
             out=out,
@@ -686,7 +702,7 @@ class NumpyOps(BackendOps):
         subok: bool = True,
     ) -> DenseArray:
         """See: numpy.minimum. """
-        return self._np.minimum(
+        return self.np.minimum(
             x,
             y,
             out=out,
@@ -699,7 +715,7 @@ class NumpyOps(BackendOps):
 
     def where(self, condition: DenseArray | bool, x: DenseArray, y: DenseArray) -> DenseArray:
         """ See: numpy.where. """
-        return self._np.where(condition, x, y)
+        return self.np.where(condition, x, y)
 
     def concatenate(
         self,
@@ -714,7 +730,7 @@ class NumpyOps(BackendOps):
         Signature mirrors (NumPy >= 1.24):
           numpy.concatenate(arrays, axis=0, out=None, *, dtype=None, casting='same_kind')
         """
-        return self._np.concatenate(arrays, axis=axis, out=out, dtype=dtype, casting=casting)
+        return self.np.concatenate(arrays, axis=axis, out=out, dtype=dtype, casting=casting)
 
     def index_set(self, x: DenseArray, index: Index, values: DenseArray, *, copy: bool = True):
         if copy:
@@ -727,7 +743,7 @@ class NumpyOps(BackendOps):
 
     def ix_(self, *args: Any) -> Any:
         """ See: numpy.ix_. """
-        return self._np.ix_(*args)
+        return self.np.ix_(*args)
 
     def fori_loop(
             self,
@@ -809,11 +825,11 @@ class NumpyOps(BackendOps):
             return ()
 
         def _stack_leaves(*leaves: Any) -> Any:
-            # Prefer np.stack when possible; fallback to array() if stacking fails.
+            # Prefer self.np.stack when possible; fallback to array() if stacking fails.
             try:
-                return self._np.stack(leaves, axis=0)
+                return self.np.stack(leaves, axis=0)
             except Exception:
-                return self._np.array(leaves)
+                return self.np.array(leaves)
 
         # Reduce by structure: stack corresponding leaves across time
         return self._tree_multimap(_stack_leaves, *ys_list)
@@ -893,5 +909,47 @@ class NumpyOps(BackendOps):
             copy: bool = True,
     ) -> DenseArray:
         y = x.copy() if copy else x
-        self._np.add.at(y, index, values)
+        self.np.add.at(y, index, values)
         return y
+
+    def allclose(
+        self,
+        a: DenseArray,
+        b: DenseArray,
+        rtol: float = 1e-5,
+        atol: float = 1e-8,
+        equal_nan: bool = False,
+    ) -> bool:
+        return self.np.allclose(a, b, rtol=rtol, atol=atol, equal_nan=equal_nan)
+
+    def allclose_sparse(
+        self,
+        a: SparseArray,
+        b: SparseArray,
+        rtol: float = 1e-5,
+        atol: float = 1e-8,
+    ) -> bool:
+        if not self.is_sparse(a) or not self.is_sparse(b):
+            raise TypeError("allclose_sparse expects two sparse arrays.")
+
+        a = a.tocsr()
+        b = b.tocsr()
+
+        if a.shape != b.shape:
+            return False
+
+        diff = (a - b).tocsr()
+
+        if diff.nnz == 0:
+            return True
+
+        a_abs = abs(a).tocsr()
+        b_abs = abs(b).tocsr()
+        scale = self.sp.sparse.csr_matrix.maximum(a_abs, b_abs)
+
+        # tolerance_ij = atol + rtol * max(|a_ij|, |b_ij|)
+        tol = scale.multiply(rtol)
+        tol.data += atol
+
+        bad = abs(diff) > tol
+        return bad.nnz == 0

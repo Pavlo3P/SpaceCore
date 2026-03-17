@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 from abc import abstractmethod
-from dataclasses import dataclass
 from typing import Any, Tuple
 
+from ..backend import Context
 from .._contextual import ContextBound
 from ..types import DenseArray
 
 
-@dataclass
 class Space(ContextBound):
     """
     Abstract Space.
@@ -19,7 +18,14 @@ class Space(ContextBound):
     Solvers should use only this API.
     """
 
-    shape: Tuple[int, ...]  # Canonical dense shape of an element in this space
+    def __init__(self, shape: Tuple[int, ...], ctx: Context | str | None = None) -> None:
+        super().__init__(ctx)
+        self.shape = shape
+
+    def __eq__(self, other: Any) -> bool:
+        if isinstance(other, Space):
+            return self.ctx == other.ctx and self.shape == other.shape
+        return False
 
     @abstractmethod
     def _check_member(self, x: Any) -> None:
@@ -80,3 +86,7 @@ class Space(ContextBound):
     def unflatten(self, v: DenseArray) -> Any:
         """Inverse of flatten; returns an element in the requested representation."""
         raise NotImplementedError
+
+    def _convert(self, new_ctx: Context) -> Space:
+        self.ctx = new_ctx
+        return self
