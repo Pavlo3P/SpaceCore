@@ -1,6 +1,6 @@
-from enum import Enum, auto
+from enum import StrEnum, auto
 
 
-class BackendFamily(Enum):
+class BackendFamily(StrEnum):
     NUMPY = auto()
     JAX = auto()

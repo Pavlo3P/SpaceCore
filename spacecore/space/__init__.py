@@ -1,11 +1,11 @@
 from ._base import Space
-from ._herm_mtx import DenseHermitianMatrixSpace
-from ._vector import DenseVectorSpace
+from ._herm import HermitianSpace
+from ._vector import VectorSpace
 from ._product import ProductSpace
 
 __all__ = [
     "Space",
-    "DenseHermitianMatrixSpace",
-    "DenseVectorSpace",
+    "HermitianSpace",
+    "VectorSpace",
     "ProductSpace",
 ]

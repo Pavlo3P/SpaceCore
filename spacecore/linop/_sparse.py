@@ -1,17 +1,15 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any
 from math import prod
+from typing import Any
 
-from ._base import LinOp
+from ._base import LinOp, Domain, Codomain
 from ..types import DenseArray, SparseArray
-from ..backend import jax_pytree_class
+from ..backend import jax_pytree_class, Context
 
 
 @jax_pytree_class
-@dataclass(slots=True)
-class SparseArrayLinOp(LinOp):
+class SparseLinOp(LinOp):
     """
     Sparse linear operator implementing the tensor map A : dom -> cod where
     conceptually A has shape cod.shape + dom.shape, but stored as a 2D sparse matrix:
@@ -22,19 +20,22 @@ class SparseArrayLinOp(LinOp):
     rapply: x = A^* ⋅ y  (contract over cod axes)
     """
 
-    A: SparseArray
+    def __init__(self,
+                 A: SparseArray,
+                 dom: Domain,
+                 cod: Codomain,
+                 ctx: Context | str | None = None
+                 ) -> None:
+        ctx = self._resolve_ctx_priority(ctx, dom, cod)
+        ctx.assert_sparse(A)  # Check if A is sparse array of ctx
 
-    def __post_init__(self) -> None:
-        self._check_backends()
-        ctx = self.dom.ctx
+        super(SparseLinOp, self).__init__(dom, cod, ctx)
 
-        A = ctx.assert_sparse(self.A)
-        object.__setattr__(self, "A", A)
-
-        # Shape validation
         expected = tuple(self.cod.shape) + tuple(self.dom.shape)
         if tuple(A.shape) != expected:
             raise TypeError(f"Expected A.shape == cod.shape + dom.shape == {expected}, got {A.shape}")
+
+        self.A = A  # No dtype conversion
 
     def apply(self, x: DenseArray) -> DenseArray:
         """
@@ -74,6 +75,14 @@ class SparseArrayLinOp(LinOp):
         x = self.dom.unflatten(x1)
         return x
 
+    def __eq__(self, x: Any) -> bool:
+        if type(x) is type(self):
+            return (self.dom == x.dom
+                and self.cod == x.cod
+                and self.ops.allclose_sparse(self.A, x.A)
+            )
+        return False
+
     def tree_flatten(self):
         aux = (self.dom, self.cod)
         children = (self.A,)
@@ -84,3 +93,9 @@ class SparseArrayLinOp(LinOp):
         dom, cod = aux
         A = children[0]
         return cls(dom, cod, A)
+
+    def _convert(self, new_ctx: Context | str | None = None) -> SparseLinOp:
+        new_dom = self.dom.convert(new_ctx)
+        new_cod = self.cod.convert(new_ctx)
+        new_A = new_ctx.assparse(self.A)
+        return SparseLinOp(new_A, new_dom, new_cod, new_ctx)
