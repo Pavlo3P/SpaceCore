@@ -94,7 +94,7 @@ class SparseLinOp(LinOp):
         A = children[0]
         return cls(dom, cod, A)
 
-    def _convert(self, new_ctx: Context | str | None = None) -> SparseLinOp:
+    def _convert(self, new_ctx: Context) -> SparseLinOp:
         new_dom = self.dom.convert(new_ctx)
         new_cod = self.cod.convert(new_ctx)
         new_A = new_ctx.assparse(self.A)

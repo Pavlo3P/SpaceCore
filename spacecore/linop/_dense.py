@@ -92,7 +92,7 @@ class DenseLinOp(LinOp[VectorSpace, VectorSpace]):
         A = children[0]
         return cls(A, dom, cod)
 
-    def _convert(self, new_ctx: Context | str | None = None) -> DenseLinOp:
+    def _convert(self, new_ctx: Context) -> DenseLinOp:
         new_dom = self.dom.convert(new_ctx)
         new_cod = self.cod.convert(new_ctx)
         new_A = new_ctx.asarray(self.A)
