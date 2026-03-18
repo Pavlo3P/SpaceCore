@@ -4,6 +4,7 @@ from typing import Any, Tuple
 
 from ._base import ProductLinOp
 from .._base import LinOp
+from ... import Context
 from ...space import ProductSpace
 from ...backend import jax_pytree_class
 
@@ -41,10 +42,16 @@ class BlockDiagonalLinOp(ProductLinOp[ProductSpace, ProductSpace]):
         return tuple(A.rapply(yi) for A, yi in zip(self.parts, y))
 
     @classmethod
-    def from_operators(cls, ops: Tuple[LinOp, ...]) -> BlockDiagonalLinOp:
-        if not ops:
-            raise ValueError("Ops must be non-empty.")
+    def from_operators(cls, parts: Tuple[LinOp, ...]) -> BlockDiagonalLinOp:
+        if not parts:
+            raise ValueError("Parts must be non-empty.")
 
-        dom = ProductSpace(tuple(op.dom for op in ops))
-        cod = ProductSpace(tuple(op.cod for op in ops))
-        return cls(dom, cod, ops)
+        dom = ProductSpace(tuple(op.dom for op in parts))
+        cod = ProductSpace(tuple(op.cod for op in parts))
+        return cls(dom, cod, parts)
+
+    def _convert(self, new_ctx: Context) -> BlockDiagonalLinOp:
+        new_dom = self.dom.convert(new_ctx)
+        new_cod = self.cod.convert(new_ctx)
+        new_parts = [op.convert(new_ctx) for op in self.parts]
+        return BlockDiagonalLinOp(new_dom, new_cod, new_parts)

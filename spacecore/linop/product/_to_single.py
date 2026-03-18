@@ -5,7 +5,7 @@ from typing import Any, Tuple
 from ._base import ProductLinOp
 from .._base import LinOp, Codomain
 from ...space import ProductSpace
-from ...backend import jax_pytree_class
+from ...backend import jax_pytree_class, Context
 
 
 @jax_pytree_class
@@ -55,3 +55,9 @@ class SumToSingleLinOp(ProductLinOp[ProductSpace, Codomain]):
         cod = parts[0].cod
 
         return cls(dom, cod, parts)
+
+    def _convert(self, new_ctx: Context) -> SumToSingleLinOp:
+        new_dom = self.dom.convert(new_ctx)
+        new_cod = self.cod.convert(new_ctx)
+        new_parts = [op.convert(new_ctx) for op in self.parts]
+        return SumToSingleLinOp(new_dom, new_cod, new_parts)

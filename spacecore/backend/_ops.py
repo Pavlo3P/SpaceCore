@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, Sequence, Tuple, Callable, Optional, Type
+from typing import Any, Sequence, Tuple, Callable, Optional, Type, ClassVar
 
 from ._family import BackendFamily
 from ..types import DenseArray, SparseArray, DType, ArrayLike, Index, T, X, Y, R, Carry
@@ -17,7 +17,16 @@ class BackendOps(ABC):
         optional keyword parameters (e.g., `order=`, `out=`, `where=`, `like=`, ...).
     """
 
-    family: BackendFamily | str
+    _family: ClassVar[str]
+    _allow_sparse: ClassVar[bool]
+
+    @property
+    def family(self) -> str:
+        return type(self)._family
+
+    @property
+    def allow_sparse(self) -> bool:
+        return self._allow_sparse
 
     def __eq__(self, other: Any) -> bool:
         if isinstance(other, BackendOps):
@@ -35,7 +44,7 @@ class BackendOps(ABC):
         ...
 
     @abstractmethod
-    def sanitize_dtype(self, dtype: DType | None) -> DType | None:
+    def sanitize_dtype(self, dtype: DType | None) -> DType:
         ...
 
     def is_dense(self, x: Any) -> bool:
@@ -341,3 +350,6 @@ class BackendOps(ABC):
             atol: float = 1e-8,
     ) -> bool:
         ...
+
+    def __repr__(self):
+        return f"{type(self).__name__}"

@@ -25,8 +25,12 @@ class VectorSpace(Space):
 
     def _check_member(self, x: Any) -> None:
         X = self.ctx.assert_dense(x)
-        if tuple(getattr(X, "shape", ())) != self.shape:
-            raise TypeError(f"Expected shape {self.shape}, got {getattr(X, 'shape', None)}")
+        maybe_shape = tuple(getattr(X, "shape", ()))
+        if maybe_shape != self.shape:
+            raise TypeError(f"Expected shape {self.shape}, got {maybe_shape}")
+        maybe_dtype = getattr(X, "dtype", None)
+        if maybe_dtype != self.dtype:
+            raise TypeError(f"Expected dtype {self.dtype}, got {maybe_dtype}")
 
     def zeros(self) -> DenseArray:
         return self.ops.zeros(self.shape, dtype=self.dtype)
@@ -50,10 +54,13 @@ class VectorSpace(Space):
             f"{type(self).__name__}.eigh is not defined for vector spaces."
         )
 
-    def flatten(self, x: Any) -> DenseArray:
-        self.check_member(x)
-        return x
+    def flatten(self, X: DenseArray) -> DenseArray:
+        self.check_member(X)
+        return self.ops.ravel(X)
 
     def unflatten(self, v: DenseArray) -> DenseArray:
         V = self.ctx.assert_dense(v)
         return self.ops.reshape(V, self.shape)
+
+    def _convert(self, new_ctx: Context) -> VectorSpace:
+        return VectorSpace(self.shape, new_ctx)

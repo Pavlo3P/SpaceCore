@@ -4,6 +4,7 @@ from typing import Any, Tuple, List, Sequence
 
 from ._base import Space
 from ..types import DenseArray
+from ..backend import Context
 
 from .._contextual.manager import ctx_manager
 
@@ -30,18 +31,20 @@ class ProductSpace(Space):
       - `eigh` has no canonical meaning here and raises by default.
     """
 
-    def __init__(self, spaces: Tuple[Space, ...]) -> None:
+    def _convert(self, new_ctx: Context) -> Space:
+        new_spaces = []
+        for sp in self.spaces:
+            new_spaces.append(sp.convert(new_ctx))
+        return ProductSpace(tuple(new_spaces), new_ctx)
+
+    def __init__(self, spaces: Tuple[Space, ...], ctx: Context | str | None = None) -> None:
         if len(spaces) == 0:
             raise ValueError("ProductSpace requires at least one subspace.")
 
-        ctx0 = ctx_manager.default_ctx
-        uniform_ctx_spaces = []
-        for i, sp in enumerate(spaces):
-            sp = sp.convert(ctx0)
-            uniform_ctx_spaces.append(sp)
+        spaces = self._validate_spaces(spaces)
+        ctx = ctx_manager.resolve_context_priority(ctx, *spaces)
 
-        self.spaces = uniform_ctx_spaces
-        dims = tuple(_prod_int(s.shape) for s in self.spaces)
+        dims = tuple(_prod_int(s.shape) for s in spaces)
         offsets: List[int] = [0]
         for d in dims:
             offsets.append(offsets[-1] + d)
@@ -50,7 +53,21 @@ class ProductSpace(Space):
         self._offsets = tuple(offsets)
         shape = (offsets[-1],)
 
-        super(ProductSpace, self).__init__(shape)
+        super(ProductSpace, self).__init__(shape, ctx)
+        uniform_spaces = tuple(sp.convert(self.ctx) for sp in spaces)
+        self.spaces = uniform_spaces
+
+    def _validate_spaces(self, spaces: Any) -> Tuple[Space, ...]:
+        if isinstance(spaces, Sequence):
+            spaces = tuple(spaces)
+            for i, sp in enumerate(spaces):
+                if isinstance(sp, Space):
+                    continue
+                else:
+                    raise TypeError(f"ProductSpace requires a sequence of spaces, got {type(sp)!r} at index {i}.")
+            return spaces
+        else:
+            raise TypeError(f"ProductSpace requires a sequence of spaces, got {type(spaces)!r}.")
 
     @property
     def arity(self) -> int:

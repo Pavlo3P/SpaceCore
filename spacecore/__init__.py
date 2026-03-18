@@ -3,7 +3,7 @@ from .linop import DenseLinOp, SparseLinOp, BlockDiagonalLinOp, SumToSingleLinOp
 from .space import VectorSpace, HermitianSpace, Space, ProductSpace
 from .types import DenseArray, SparseArray, ArrayLike
 
-from _contextual.manager import set_context, register_ops
+from ._contextual.manager import set_context, get_context, register_ops
 
 __all__ = [
     "Context",
@@ -29,5 +29,6 @@ __all__ = [
     "ArrayLike",
 
     "set_context",
+    "get_context",
     "register_ops",
 ]

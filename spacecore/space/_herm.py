@@ -37,7 +37,10 @@ class HermitianSpace(VectorSpace):
 
     def __eq__(self, other: Any) -> bool:
         if isinstance(other, HermitianSpace):
-           return super(HermitianSpace, self).__eq__(other)
+           return (super(HermitianSpace, self).__eq__(other)
+                   and self.atol == other.atol
+                   and self.rtol == other.rtol
+                   and self.enforce_herm == other.enforce_herm)
         return False
 
     @property
@@ -45,12 +48,9 @@ class HermitianSpace(VectorSpace):
         return self.shape[0]
 
     def _check_member(self, x: Any) -> None:
-        X = self.ctx.assert_dense(x)
+        super()._check_member(x)
 
-        if tuple(X.shape) != self.shape:
-            raise TypeError(f"Expected shape {self.shape}, got {X.shape}")
-
-        if not self.is_hermitian(X):
+        if not self.is_hermitian(x):
             raise TypeError("Matrix is not Hermitian (within the specified tolerances).")
 
     def is_hermitian(self, X: DenseArray) -> bool:
@@ -82,15 +82,11 @@ class HermitianSpace(VectorSpace):
 
     def symmetrize(self, X: DenseArray) -> DenseArray:
         """Project onto the Hermitian cone: (X + X^H)/2."""
-        return (X + self.ops.conj(X).T) * 0.5
+        return (X + X.T.conj()) * 0.5
 
     def eigh(self, X: DenseArray, k: int = None) -> Tuple[DenseArray, DenseArray]:
         self.check_member(X)
         return self.ops.eigh(X)
-
-    def flatten(self, X: DenseArray) -> DenseArray:
-        self.check_member(X)
-        return self.ops.ravel(X)
 
     def unflatten(self, v: DenseArray) -> DenseArray:
         vv = self.ctx.assert_dense(v)
@@ -101,7 +97,7 @@ class HermitianSpace(VectorSpace):
         self.check_member(X)
         evals, evecs = self.ops.eigh(X)
         evals = self.ops.maximum(evals, 0.)
-        return self.dense_from_eig_decomp(evals, evecs)
+        return self.eig_to_dense(evals, evecs)
 
     def eig_to_dense(self, evals: DenseArray, evecs: DenseArray) -> DenseArray:
         self.ctx.assert_dense(evals)
@@ -109,3 +105,6 @@ class HermitianSpace(VectorSpace):
         X = (evecs * evals) @ evecs.T.conj()
         self.check_member(X)
         return X
+
+    def _convert(self, new_ctx: Context) -> HermitianSpace:
+        return HermitianSpace(self.n, self.atol, self.rtol, self.enforce_herm, new_ctx)

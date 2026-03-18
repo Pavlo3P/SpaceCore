@@ -2,15 +2,14 @@ from __future__ import annotations
 
 from typing import Any, Sequence, Literal, Tuple, Callable, Optional, Type
 import inspect
+from warnings import warn
 
 from .._family import BackendFamily
 from .._ops import BackendOps
 from ..numpy import NumpyOps
-from ..._contextual.manager import register_ops
 from ...types import DenseArray, ArrayLike, SparseArray, DType, Index, X, T, Y, R, Carry
 
 
-@register_ops
 class JaxOps(BackendOps):
     """
     BackendOps implementation for the JAX ecosystem.
@@ -35,6 +34,9 @@ class JaxOps(BackendOps):
     import jax.numpy as jnp
     import jax.experimental.sparse as jsparse
 
+    _family = BackendFamily.jax.value.lower()
+    _allow_sparse = True
+
     def __init__(self) -> None:
         self._reshape_supports_copy = "copy" in inspect.signature(self.jnp.reshape).parameters
         self._reshape_supports_out_sharding = "out_sharding" in inspect.signature(self.jnp.reshape).parameters
@@ -42,9 +44,8 @@ class JaxOps(BackendOps):
         self._zeros_supports_out_sharding = "out_sharding" in inspect.signature(self.jnp.zeros).parameters
         self._empty_supports_out_sharding = "out_sharding" in inspect.signature(self.jnp.empty).parameters
 
-        self.family = BackendFamily.JAX
 
-    def sanitize_dtype(self, dtype: DType | None) -> DType | None:
+    def sanitize_dtype(self, dtype: DType | None) -> DType:
         """
         Normalize and validate dtype for JAX.
 
@@ -55,8 +56,16 @@ class JaxOps(BackendOps):
           - dtype must NOT be implicitly canonicalized under current JAX config
             (e.g., float64 -> float32 when jax_enable_x64=False).
         """
+        x64_enabled = bool(self.jax.config.read("jax_enable_x64"))
         if dtype is None:
-            return None
+            if not x64_enabled:
+                warn(
+                    "jax_enable_x64 is set to False, so default JAX dtype is set to float32. "
+                    "If you need float64, run `jax.config.update('jax_enable_x64', True)`.",
+                    UserWarning
+                )
+                return self.jnp.float32
+            return self.jnp.float64
 
         try:
             dt = self.jnp.dtype(dtype)
@@ -74,7 +83,6 @@ class JaxOps(BackendOps):
         # Forbid implicit coercion under current JAX configuration
         dt_canon = self.jax.dtypes.canonicalize_dtype(dt)
         if dt_canon != dt:
-            x64_enabled = bool(self.jax.config.read("jax_enable_x64"))
             raise TypeError(
                 f"Dtype {dt} is not permitted under current JAX configuration: "
                 f"it would be canonicalized to {dt_canon}. "

@@ -7,6 +7,7 @@ from ._base import LinOp, Domain, Codomain
 from ..space import VectorSpace
 from ..types import DenseArray
 from ..backend import jax_pytree_class, Context
+from .._contextual.manager import ctx_manager
 
 
 @jax_pytree_class
@@ -26,7 +27,7 @@ class DenseLinOp(LinOp[VectorSpace, VectorSpace]):
                  cod: Codomain | None = None,
                  ctx: Context | str | None = None
                  ) -> None:
-        ctx = self._resolve_ctx_priority(ctx, dom, cod)
+        ctx = ctx_manager.resolve_context_priority(ctx, dom, cod)
         ctx.assert_dense(A)  # Check if A is ndarray of ctx
 
         if cod is None:
@@ -82,17 +83,17 @@ class DenseLinOp(LinOp[VectorSpace, VectorSpace]):
         return False
 
     def tree_flatten(self):
-        aux = (self.dom, self.cod)
+        aux = (self.dom, self.cod, self.ctx)
         children = (self.A,)
         return children, aux
 
     @classmethod
     def tree_unflatten(cls, aux, children):
-        dom, cod = aux
+        dom, cod, ctx = aux
         A = children[0]
-        return cls(A, dom, cod)
+        return cls(A, dom, cod, ctx)
 
-    def _convert(self, new_ctx: Context | str | None = None) -> DenseLinOp:
+    def _convert(self, new_ctx: Context) -> DenseLinOp:
         new_dom = self.dom.convert(new_ctx)
         new_cod = self.cod.convert(new_ctx)
         new_A = new_ctx.asarray(self.A)
