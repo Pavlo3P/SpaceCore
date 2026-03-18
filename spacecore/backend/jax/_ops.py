@@ -6,11 +6,9 @@ import inspect
 from .._family import BackendFamily
 from .._ops import BackendOps
 from ..numpy import NumpyOps
-from ..._contextual.manager import register_ops
 from ...types import DenseArray, ArrayLike, SparseArray, DType, Index, X, T, Y, R, Carry
 
 
-@register_ops
 class JaxOps(BackendOps):
     """
     BackendOps implementation for the JAX ecosystem.

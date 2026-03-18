@@ -1,23 +1,30 @@
 from __future__ import annotations
 
-from typing import Any, Protocol, TypeAlias, runtime_checkable, Self
+from typing import Protocol, Tuple, runtime_checkable, Any, Self, TypeAlias
 
 from ._dtype import DType
 
-
-Shape: TypeAlias = tuple[int, ...]
+Shape: TypeAlias = Tuple[int, ...]
 
 
 @runtime_checkable
-class DenseArray(Protocol):
+class ArrayLike(Protocol):
     @property
     def shape(self) -> Shape: ...
     @property
-    def ndim(self) -> int: ...
-    @property
     def dtype(self) -> DType: ...
+    def conj(self) -> Self: ...
     @property
     def T(self) -> Self: ...
+
+
+class SparseArray(ArrayLike, Protocol):
+    def reshape(self, shape: Shape) -> Self: ...
+
+
+class DenseArray(ArrayLike, Protocol):
+    @property
+    def ndim(self) -> int: ...
     @property
     def real(self) -> Self: ...
     @property

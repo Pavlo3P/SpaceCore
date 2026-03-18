@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from typing import Dict, Any, Iterable, Tuple
+from typing import Dict, Any, Iterable, Tuple, Type
 from enum import StrEnum, auto
 from warnings import warn
 
 from ..types import DType
-from ..backend import Context, NumpyOps, BackendFamily, BackendOps
+from ..backend import Context, NumpyOps, JaxOps, BackendFamily, BackendOps
 
 
 class ContextPolicy(StrEnum):
@@ -42,15 +42,16 @@ class Contextual:
     _resolution_policy: ContextPolicy
 
     _default_policy: ContextPolicy = ContextPolicy.warning
-    _default_dtype: float
+    _default_dtype: DType = float
     _default_sparse: bool = True
     _default_enable_checks: bool = False
 
-    def __init__(self, resolution_policy: str = None) -> None:
+    def __init__(self, resolution_policy: str | ContextPolicy | None = None) -> None:
         self.default_ctx = Context(NumpyOps(), self._default_sparse, self._default_dtype, self._default_enable_checks)
 
         self._available_ops = {
-            BackendFamily.NUMPY.name: NumpyOps,
+            BackendFamily.NUMPY.name.lower(): NumpyOps,
+            BackendFamily.JAX.name.lower(): JaxOps,
         }
 
         self.resolution_policy = resolution_policy
@@ -61,6 +62,7 @@ class Contextual:
         if isinstance(ctx, Context):
             return ctx
         if isinstance(ctx, str):
+            ctx = ctx.lower()
             ops = self.get_ops(ctx)
             return self.ctx_from_ops(ops)
         else:
@@ -92,9 +94,10 @@ class Contextual:
         return self._resolution_policy
 
     @resolution_policy.setter
-    def resolution_policy(self, policy: str) -> None:
+    def resolution_policy(self, policy: str | None = ContextPolicy.warning.value) -> None:
         if policy is None:
             self._resolution_policy = self._default_policy
+            return
 
         try:
             self._resolution_policy = (
@@ -111,14 +114,18 @@ class Contextual:
 
     def get_ops(self, name: str) -> BackendOps:
         if name not in self._available_ops:
-            raise UnknownBackendError(f"Unknown backend: {name!r}.")
+            allowed = ", ".join(k for k in self.available_ops.keys())
+            raise UnknownBackendError(
+                f"Unknown backend: {name!r}. "
+                f"Expected one of: {allowed}"
+            )
         return self._available_ops[name]()
 
     @property
     def available_ops(self) -> Dict[str, type(BackendOps)]:
         return self._available_ops
 
-    def register_ops(self, ops: BackendOps) -> BackendOps:
+    def register_ops(self, ops: Type[BackendOps]) -> BackendOps:
         if isinstance(ops, BackendOps):
             if ops.family in self.available_ops.keys():
                 raise ContextConflictError(f'BackendOps {ops.family} is already registered.')
@@ -175,7 +182,7 @@ class Contextual:
     def are_compatible_dtypes(self, *dtypes: Iterable[DType]) -> bool:
         return True
 
-    def are_compatible_ops(self, *ops: Iterable[BackendOps]) -> bool:
+    def are_compatible_ops(self, *ops: BackendOps) -> bool:
         first = ops[0]
         return all(op.family == first.family for op in ops)
 
