@@ -29,6 +29,7 @@ class NumpyOps(BackendOps):
     """
 
     _family = BackendFamily.numpy.value.lower()
+    _allow_sparse = True
 
     @property
     def dense_array(self) -> Type[Any]:
@@ -48,7 +49,7 @@ class NumpyOps(BackendOps):
     def __init__(self) -> None:
         self._reshape_supports_copy = "copy" in inspect.signature(self.np.reshape).parameters
 
-    def sanitize_dtype(self, dtype: DType | None) -> DType | None:
+    def sanitize_dtype(self, dtype: DType | None) -> DType:
         """Normalize dtype to a NumPy dtype object. See: numpy.dtype."""
 
         if dtype is None:

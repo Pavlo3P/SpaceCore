@@ -18,10 +18,15 @@ class BackendOps(ABC):
     """
 
     _family: ClassVar[str]
+    _allow_sparse: ClassVar[bool]
 
     @property
     def family(self) -> str:
         return type(self)._family
+
+    @property
+    def allow_sparse(self) -> bool:
+        return self._allow_sparse
 
     def __eq__(self, other: Any) -> bool:
         if isinstance(other, BackendOps):
@@ -39,7 +44,7 @@ class BackendOps(ABC):
         ...
 
     @abstractmethod
-    def sanitize_dtype(self, dtype: DType | None) -> DType | None:
+    def sanitize_dtype(self, dtype: DType | None) -> DType:
         ...
 
     def is_dense(self, x: Any) -> bool:

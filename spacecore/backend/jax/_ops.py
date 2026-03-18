@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Sequence, Literal, Tuple, Callable, Optional, Type
 import inspect
+from warnings import warn
 
 from .._family import BackendFamily
 from .._ops import BackendOps
@@ -34,6 +35,7 @@ class JaxOps(BackendOps):
     import jax.experimental.sparse as jsparse
 
     _family = BackendFamily.jax.value.lower()
+    _allow_sparse = True
 
     def __init__(self) -> None:
         self._reshape_supports_copy = "copy" in inspect.signature(self.jnp.reshape).parameters
@@ -43,7 +45,7 @@ class JaxOps(BackendOps):
         self._empty_supports_out_sharding = "out_sharding" in inspect.signature(self.jnp.empty).parameters
 
 
-    def sanitize_dtype(self, dtype: DType | None) -> DType | None:
+    def sanitize_dtype(self, dtype: DType | None) -> DType:
         """
         Normalize and validate dtype for JAX.
 
@@ -56,7 +58,14 @@ class JaxOps(BackendOps):
         """
         x64_enabled = bool(self.jax.config.read("jax_enable_x64"))
         if dtype is None:
-            return self.jnp.float64 if x64_enabled else self.jnp.float32
+            if not x64_enabled:
+                warn(
+                    "jax_enable_x64 is set to False, so default JAX dtype is set to float32. "
+                    "If you need float64, run `jax.config.update('jax_enable_x64', True)`.",
+                    UserWarning
+                )
+                return self.jnp.float32
+            return self.jnp.float64
 
         try:
             dt = self.jnp.dtype(dtype)
