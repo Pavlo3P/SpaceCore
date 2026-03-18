@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC
-from typing import Any
+from typing import Self
 
 from ..backend import Context, BackendOps
 from ..types import DType
@@ -10,7 +10,7 @@ from .manager import ctx_manager
 class ContextBound(ABC):
     def __init__(self, ctx: Context | str | None = None):
         ctx = ctx_manager.normalize_context(ctx)
-        self.ctx = ctx
+        self._ctx = ctx
 
     @property
     def ops(self) -> BackendOps:
@@ -24,14 +24,11 @@ class ContextBound(ABC):
     def ctx(self) -> Context:
         return self._ctx
 
-    @ctx.setter
-    def ctx(self, ctx: Context | str | None = None) -> None:
-        ctx = ctx_manager.normalize_context(ctx)
-        self._ctx = ctx
-
-    def _convert(self, new_ctx: Context) -> ContextBound:
+    def _convert(self, new_ctx: Context) -> Self:
         raise NotImplementedError()
 
-    def convert(self, new_ctx: Context | str | None = None) -> Any:
+    def convert(self, new_ctx: Context | str | None = None) -> Self:
         _, new_ctx = ctx_manager.enforce_convert_policy(self, new_ctx)
+        if new_ctx == self.ctx:
+            return self
         return self._convert(new_ctx)

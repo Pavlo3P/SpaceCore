@@ -1,10 +1,11 @@
 from ..backend import Context, BackendOps
 from .contextual import Contextual
+from ..backend import BackendFamily
 
 
 ctx_manager = Contextual()
 
-def set_context(ctx: Context | str | None = None) -> None:
+def set_context(ctx: Context | BackendFamily | str | None = None) -> None:
     ctx_manager.default_ctx = ctx
 
 def get_context():
