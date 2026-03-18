@@ -26,9 +26,7 @@ class ProductLinOp(LinOp[Domain, Codomain]):
 
         super().__init__(dom, cod, ctx)
 
-        hom_parts = [op.convert(self.ctx) for op in parts]
-        self.parts = tuple(hom_parts)
-
+        self.parts = tuple(op.convert(self.ctx) for op in parts)
         self._check_layout()
 
     @abstractmethod
@@ -54,10 +52,10 @@ class ProductLinOp(LinOp[Domain, Codomain]):
 
     def tree_flatten(self):
         children = self.parts
-        aux = (self.dom, self.cod)
+        aux = (self.dom, self.cod, self.ctx)
         return children, aux
 
     @classmethod
     def tree_unflatten(cls, aux, children):
-        dom, cod = aux
-        return cls(dom, cod, tuple(children))
+        dom, cod, ctx = aux
+        return cls(dom, cod, tuple(children), ctx)

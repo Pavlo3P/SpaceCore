@@ -6,6 +6,7 @@ from typing import Any
 from ._base import LinOp, Domain, Codomain
 from ..types import DenseArray, SparseArray
 from ..backend import jax_pytree_class, Context
+from .._contextual.manager import ctx_manager
 
 
 @jax_pytree_class
@@ -26,14 +27,14 @@ class SparseLinOp(LinOp):
                  cod: Codomain,
                  ctx: Context | str | None = None
                  ) -> None:
-        ctx = self._resolve_ctx_priority(ctx, dom, cod)
+        ctx = ctx_manager.resolve_context_priority(ctx, dom, cod)
         ctx.assert_sparse(A)  # Check if A is sparse array of ctx
 
         super(SparseLinOp, self).__init__(dom, cod, ctx)
 
-        expected = tuple(self.cod.shape) + tuple(self.dom.shape)
+        expected = (prod(self.cod.shape), prod(self.dom.shape))
         if tuple(A.shape) != expected:
-            raise TypeError(f"Expected A.shape == cod.shape + dom.shape == {expected}, got {A.shape}")
+            raise TypeError(f"Expected A.shape == (prod(cod.shape), prod(dom.shape)) == {expected}, got {A.shape}")
 
         self.A = A  # No dtype conversion
 
@@ -46,12 +47,10 @@ class SparseLinOp(LinOp):
         ctx = self.dom.ctx
         self.assert_domain(x)
 
-        m = prod(self.cod.shape)
         n = prod(self.dom.shape)
 
-        A = self.A.reshape((m, n))
         x1 = x.reshape((n,))
-        y1 = ctx.ops.sparse_matmul(A, x1)   # (m,)
+        y1 = ctx.ops.sparse_matmul(self.A, x1)   # (m,)
         y = self.cod.unflatten(y1)
         return y
 
@@ -65,12 +64,10 @@ class SparseLinOp(LinOp):
         self.assert_codomain(y)
 
         m = prod(self.cod.shape)
-        n = prod(self.dom.shape)
 
         y1 = y.reshape((m,))
 
-        AT = self.A.reshape((m, n)).T
-        x1 = ctx.ops.sparse_matmul(AT, y1.conj()).conj()
+        x1 = ctx.ops.sparse_matmul(self.A.T, y1.conj()).conj()
 
         x = self.dom.unflatten(x1)
         return x
@@ -84,15 +81,15 @@ class SparseLinOp(LinOp):
         return False
 
     def tree_flatten(self):
-        aux = (self.dom, self.cod)
+        aux = (self.dom, self.cod, self.ctx)
         children = (self.A,)
         return children, aux
 
     @classmethod
     def tree_unflatten(cls, aux, children):
-        dom, cod = aux
+        dom, cod, ctx = aux
         A = children[0]
-        return cls(dom, cod, A)
+        return cls(A, dom, cod, ctx)
 
     def _convert(self, new_ctx: Context) -> SparseLinOp:
         new_dom = self.dom.convert(new_ctx)

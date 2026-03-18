@@ -29,6 +29,4 @@ class ContextBound(ABC):
 
     def convert(self, new_ctx: Context | str | None = None) -> Self:
         _, new_ctx = ctx_manager.enforce_convert_policy(self, new_ctx)
-        if new_ctx == self.ctx:
-            return self
         return self._convert(new_ctx)

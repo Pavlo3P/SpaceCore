@@ -350,3 +350,6 @@ class BackendOps(ABC):
             atol: float = 1e-8,
     ) -> bool:
         ...
+
+    def __repr__(self):
+        return f"{type(self).__name__}"

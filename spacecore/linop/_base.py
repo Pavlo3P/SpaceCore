@@ -7,6 +7,7 @@ from typing import Any, Generic, TypeVar, Tuple
 from ..space import Space
 from ..backend import Context
 from .._contextual import ContextBound
+from .._contextual.manager import ctx_manager
 
 Domain = TypeVar('Domain', bound=Space)
 Codomain = TypeVar('Codomain', bound=Space)
@@ -26,33 +27,11 @@ class LinOp(ContextBound, Generic[Domain, Codomain]):
     """
 
     def __init__(self, dom: Domain, cod: Codomain, ctx: Context | str | None = None):
-        ctx = self._resolve_ctx_priority(ctx, dom, cod)
+        ctx = ctx_manager.resolve_context_priority(ctx, dom, cod)
         super(LinOp, self).__init__(ctx)
 
-        dom, cod = self._homogenize(dom, cod)
-
-        self.dom = dom
-        self.cod = cod
-
-    def _resolve_ctx_priority(self,
-                               explicit_ctx: Context | str | None = None,
-                               dom: Domain | None = None,
-                               cod: Domain | None = None,
-                               ) -> Context | str | None:
-        """
-        If explicitly passed ctx is None, prioritize domain ctx.
-        If codomain_ctx is None, return None, so ContextBound initializes currently default ctx.
-        """
-        if explicit_ctx is None:
-            if dom is None:
-                if cod is None:
-                    return None
-                return cod.ctx
-            return dom.ctx
-        return explicit_ctx
-
-    def _homogenize(self, s1: Space, s2: Space) -> Tuple[Domain, Codomain]:
-        return s1.convert(self.ctx), s2.convert(self.ctx)
+        self.dom = dom.convert(self.ctx)
+        self.cod = cod.convert(self.ctx)
 
     @abstractmethod
     def apply(self, x: Any) -> Any:
