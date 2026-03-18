@@ -52,5 +52,5 @@ class Context:
 
     def __eq__(self, other: Any) -> bool:
         if isinstance(other, Context):
-            return self.ops == other.ops
+            return self.ops == other.ops and self.enable_checks == other.enable_checks
         return False
