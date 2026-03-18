@@ -28,6 +28,8 @@ class NumpyOps(BackendOps):
         when passed, must be "cpu" (or None). See NumPy docs for each function.
     """
 
+    _family = BackendFamily.numpy.value.lower()
+
     @property
     def dense_array(self) -> Type[Any]:
         return self.np.ndarray
@@ -44,14 +46,13 @@ class NumpyOps(BackendOps):
 
 
     def __init__(self) -> None:
-        self.family = BackendFamily.NUMPY
         self._reshape_supports_copy = "copy" in inspect.signature(self.np.reshape).parameters
 
     def sanitize_dtype(self, dtype: DType | None) -> DType | None:
         """Normalize dtype to a NumPy dtype object. See: numpy.dtype."""
 
         if dtype is None:
-            return None
+            return self.np.float64
         return self.np.dtype(dtype)
 
     def get_dtype(self, x: Any) -> DType:

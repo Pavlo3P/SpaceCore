@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, Sequence, Tuple, Callable, Optional, Type
+from typing import Any, Sequence, Tuple, Callable, Optional, Type, ClassVar
 
 from ._family import BackendFamily
 from ..types import DenseArray, SparseArray, DType, ArrayLike, Index, T, X, Y, R, Carry
@@ -17,7 +17,11 @@ class BackendOps(ABC):
         optional keyword parameters (e.g., `order=`, `out=`, `where=`, `like=`, ...).
     """
 
-    family: BackendFamily | str
+    _family: ClassVar[str]
+
+    @property
+    def family(self) -> str:
+        return type(self)._family
 
     def __eq__(self, other: Any) -> bool:
         if isinstance(other, BackendOps):
