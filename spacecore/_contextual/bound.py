@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from abc import ABC
 from typing import Any
 
@@ -23,10 +25,11 @@ class ContextBound(ABC):
         return self._ctx
 
     @ctx.setter
-    def ctx(self, ctx: Context) -> None:
+    def ctx(self, ctx: Context | str | None = None) -> None:
+        ctx = ctx_manager.normalize_context(ctx)
         self._ctx = ctx
 
-    def _convert(self, new_ctx: Context | str | None = None) -> Any:
+    def _convert(self, new_ctx: Context) -> ContextBound:
         raise NotImplementedError()
 
     def convert(self, new_ctx: Context | str | None = None) -> Any:
