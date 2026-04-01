@@ -3,7 +3,12 @@ from .linop import DenseLinOp, SparseLinOp, BlockDiagonalLinOp, SumToSingleLinOp
 from .space import VectorSpace, HermitianSpace, Space, ProductSpace
 from .types import DenseArray, SparseArray, ArrayLike
 
-from ._contextual.manager import set_context, get_context, register_ops
+from ._contextual.manager import (
+    set_context, get_context,
+    register_ops,
+    set_resolution_policy, set_dtype_resolution_policy,
+    get_resolution_policy, get_dtype_resolution_policy
+)
 
 __all__ = [
     "Context",
@@ -31,4 +36,8 @@ __all__ = [
     "set_context",
     "get_context",
     "register_ops",
+    "set_resolution_policy",
+    "set_dtype_resolution_policy",
+    "get_resolution_policy",
+    "get_dtype_resolution_policy",
 ]
