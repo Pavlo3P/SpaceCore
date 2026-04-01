@@ -15,7 +15,7 @@ class ContextPolicy(StrEnum):
 
 class DtypePreservePolicy(StrEnum):
     keep_native = auto()
-    use_default = auto()
+    convert = auto()
 
 
 class ContextError(RuntimeError):
@@ -46,7 +46,7 @@ class Contextual:
     _resolution_policy: ContextPolicy
 
     _default_policy: ContextPolicy = ContextPolicy.warning
-    _default_dtype_resolution_policy: DtypePreservePolicy = DtypePreservePolicy.use_default
+    _default_dtype_resolution_policy: DtypePreservePolicy = DtypePreservePolicy.keep_native
     _default_dtype: DType | None = None
     _default_enable_checks: bool = False
 
@@ -54,9 +54,10 @@ class Contextual:
                  resolution_policy: str | ContextPolicy | None = None,
                  dtype_resolution_policy: str | DtypePreservePolicy | None = None
                  ) -> None:
+        ops = NumpyOps()
         self.default_ctx = Context(
-            ops=NumpyOps(),
-            dtype=self._default_dtype,
+            ops=ops,
+            dtype=ops.sanitize_dtype(self._default_dtype),
             enable_checks=self._default_enable_checks
         )
 
@@ -72,7 +73,11 @@ class Contextual:
         if ctx is None:
             return self.default_ctx
         if isinstance(ctx, Context):
-            return ctx
+            return Context(
+                ops=ctx.ops,
+                dtype=ctx.ops.sanitize_dtype(ctx.dtype),
+                enable_checks=ctx.enable_checks
+            )
         if isinstance(ctx, (str, BackendFamily)):
             ctx = self._backend_key(ctx)
             ops = self.get_ops(ctx)
@@ -84,7 +89,7 @@ class Contextual:
         if isinstance(base, Context):
             return Context(
                 ops=ctx.ops,
-                dtype=base.dtype,
+                dtype=ctx.ops.sanitize_dtype(base.dtype),
                 enable_checks=ctx.enable_checks,
             )
         return self.default_ctx
@@ -101,7 +106,7 @@ class Contextual:
                 return self.ctx_from_ops(
                     ops=ops,
                     dtype=base.dtype,
-                    enable_checks=base.enable_checks,
+                    enable_checks=self._default_enable_checks,
                 )
             else:
                 raise TypeError(f'Expected Context, BackendFamily, str, or None, got {type(ctx)}.')
@@ -109,8 +114,7 @@ class Contextual:
             return self.normalize_context(ctx)
 
     def ctx_from_ops(self, ops: BackendOps, dtype: DType | None = None, enable_checks: bool | None = None) -> Context:
-        if dtype is None:
-            dtype = self._default_dtype
+        dtype = ops.sanitize_dtype(dtype)
         if enable_checks is None:
             enable_checks = self._default_enable_checks
         return Context(ops=ops,
@@ -154,7 +158,7 @@ class Contextual:
         return self._dtype_resolution_policy
 
     @dtype_resolution_policy.setter
-    def dtype_resolution_policy(self, policy: str | None = DtypePreservePolicy.use_default.value) -> None:
+    def dtype_resolution_policy(self, policy: str | None = DtypePreservePolicy.keep_native.value) -> None:
         if policy is None:
             self._dtype_resolution_policy = self._default_dtype_resolution_policy
             return
@@ -303,7 +307,7 @@ class Contextual:
         Policy:
         - explicit context always wins
         - inferred contexts must be family-compatible
-        - if inferred dtypes differ, resulting dtype is None
+        - if inferred dtypes differ, take the most general of them
         """
         if priority_ctx is not None:
             return self.normalize_context(priority_ctx)
@@ -317,11 +321,20 @@ class Contextual:
             raise ValueError(f"Incompatible inferred contexts: {fams!r}")
 
         first = inferred[0]
-        dtypes = {ctx.dtype for ctx in inferred}
-        dtype = next(iter(dtypes)) if len(dtypes) == 1 else None
+        ops = type(first.ops)()
+        dtype = self._join_dtypes(ops, *(ctx.dtype for ctx in inferred))
 
-        return Context(
-            ops=type(first.ops)(),
+        return self.ctx_from_ops(
+            ops=ops,
             dtype=dtype,
             enable_checks=all(ctx.enable_checks for ctx in inferred),
         )
+
+    def _join_dtypes(self, ops: BackendOps, *dtypes: DType | None) -> DType | None:
+        clean = [ops.sanitize_dtype(dt) for dt in dtypes if dt is not None]
+        if not clean:
+            return ops.sanitize_dtype(None)
+
+        np_ops = NumpyOps()
+        joined = np_ops.np.result_type(*clean)
+        return ops.sanitize_dtype(joined)

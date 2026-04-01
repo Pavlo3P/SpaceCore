@@ -3,7 +3,7 @@ from __future__ import annotations
 from abc import ABC
 from typing import Self
 
-from ..backend import Context, BackendOps
+from ..backend import Context, BackendOps, BackendFamily
 from ..types import DType
 from .manager import ctx_manager
 
@@ -27,6 +27,6 @@ class ContextBound(ABC):
     def _convert(self, new_ctx: Context) -> Self:
         raise NotImplementedError()
 
-    def convert(self, new_ctx: Context | str | None = None) -> Self:
+    def convert(self, new_ctx: Context | BackendFamily | str | None = None) -> Self:
         _, new_ctx = ctx_manager.enforce_convert_policy(self, new_ctx)
         return self._convert(new_ctx)

@@ -19,22 +19,16 @@ class Context:
         object.__setattr__(self, "dtype", sanitized)
 
     def assert_dense(self, x: Any) -> DenseArray:
-        if self.enable_checks:
-            if not self.ops.is_dense(x):
-                raise TypeError(f"Expected dense array for {self.ops.family}, got {type(x).__name__}")
-            return x
-        else:
-            return x
+        if not self.ops.is_dense(x):
+            raise TypeError(f"Expected dense array for {self.ops.family}, got {type(x).__name__}")
+        return x
 
     def assert_sparse(self, x: Any) -> SparseArray:
-        if self.enable_checks:
-            if not self.ops.allow_sparse:
-                raise TypeError("Sparse objects are disallowed by this backend.")
-            if not self.ops.is_sparse(x):
-                raise TypeError(f"Expected sparse array for {self.ops.family}, got {type(x).__name__}")
-            return x
-        else:
-            return x
+        if not self.ops.allow_sparse:
+            raise TypeError("Sparse objects are disallowed by this backend.")
+        if not self.ops.is_sparse(x):
+            raise TypeError(f"Expected sparse array for {self.ops.family}, got {type(x).__name__}")
+        return x
 
     def asarray(self, x: Any) -> DenseArray:
         return self.ops.asarray(x, dtype=self.dtype)
@@ -52,5 +46,5 @@ class Context:
 
     def __eq__(self, other: Any) -> bool:
         if isinstance(other, Context):
-            return self.ops == other.ops
+            return self.ops == other.ops and self.enable_checks == other.enable_checks
         return False

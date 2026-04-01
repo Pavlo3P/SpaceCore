@@ -88,5 +88,4 @@ class Space(ContextBound):
         raise NotImplementedError
 
     def _convert(self, new_ctx: Context) -> Space:
-        self.ctx = new_ctx
-        return self
+        raise NotImplementedError()
