@@ -69,10 +69,24 @@ class Contextual:
         self.resolution_policy = resolution_policy
         self.dtype_resolution_policy = dtype_resolution_policy
 
-    def normalize_context(self, ctx: Context | BackendFamily | str | None = None) -> Context:
+    def normalize_context(self,
+                          ctx: Context | BackendFamily | str | None = None,
+                          dtype: Any = None,
+                          enable_checks: bool | None = None
+                          ) -> Context:
         if ctx is None:
+            if dtype is not None or enable_checks is not None:
+                warn(
+                    'Provided context is None, dtype and enable_checks parameters are ignored.',
+                    UserWarning,
+                )
             return self.default_ctx
         if isinstance(ctx, Context):
+            if dtype is not None or enable_checks is not None:
+                warn(
+                    'Provided concrete context, dtype and enable_checks parameters are ignored.',
+                    UserWarning,
+                )
             return Context(
                 ops=ctx.ops,
                 dtype=ctx.ops.sanitize_dtype(ctx.dtype),
@@ -81,7 +95,7 @@ class Contextual:
         if isinstance(ctx, (str, BackendFamily)):
             ctx = self._backend_key(ctx)
             ops = self.get_ops(ctx)
-            return self.ctx_from_ops(ops)
+            return self.ctx_from_ops(ops, dtype=dtype, enable_checks=enable_checks)
         else:
             raise TypeError(f'Expected Context, BackendFamily, str, or None, got {type(ctx)}.')
 
