@@ -24,6 +24,9 @@ With JAX support:
 pip install "spacecore[jax]"
 ```
 
+* `spacecore[jax]`: installs optional JAX support.
+* GPU users should install the appropriate CUDA-enabled JAX build first, following the official JAX installation guide.
+
 ## Main concepts
 
 ### `Context`
