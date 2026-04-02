@@ -57,6 +57,7 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-extend-exclude = [
-  "*.ipynb",
-]
+
+[tool.ruff.lint.per-file-ignores]
+"tutorials/*.ipynb" = ["E741"]
+"tests/*.py" = ["E701"]
