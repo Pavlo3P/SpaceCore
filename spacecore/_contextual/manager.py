@@ -1,3 +1,5 @@
+from typing import Any
+
 from ..backend import Context, BackendOps
 from .contextual import Contextual, ContextPolicy, DtypePreservePolicy
 from ..backend import BackendFamily
@@ -6,7 +8,12 @@ from ..backend import BackendFamily
 ctx_manager = Contextual()
 
 
-def set_context(ctx: Context | BackendFamily | str | None = None) -> None:
+def set_context(
+        ctx: Context | BackendFamily | str | None = None,
+        dtype: Any = None,
+        enable_checks: bool | None = None
+) -> None:
+    ctx = ctx_manager.normalize_context(ctx, dtype=dtype, enable_checks=enable_checks)
     ctx_manager.default_ctx = ctx
 
 
@@ -22,8 +29,8 @@ def set_resolution_policy(policy: ContextPolicy | str | None = None) -> None:
     ctx_manager.resolution_policy = policy
 
 
-def get_resolution_policy() -> ContextPolicy:
-    return ctx_manager.resolution_policy
+def get_resolution_policy() -> str:
+    return ctx_manager.resolution_policy.value
 
 
 def set_dtype_resolution_policy(
@@ -32,5 +39,5 @@ def set_dtype_resolution_policy(
     ctx_manager.dtype_resolution_policy = policy
 
 
-def get_dtype_resolution_policy() -> DtypePreservePolicy:
-    return ctx_manager.dtype_resolution_policy
+def get_dtype_resolution_policy() -> str:
+    return ctx_manager.dtype_resolution_policy.value
