@@ -31,6 +31,9 @@ def test_dense_linop_bad_shape_raises():
 
 def test_empty_product_linops_raise():
     sc = importlib.import_module("spacecore")
-    with pytest.raises(Exception): sc.BlockDiagonalLinOp.from_operators(())
-    with pytest.raises(Exception): sc.StackedLinOp.from_operators(())
-    with pytest.raises(Exception): sc.SumToSingleLinOp.from_operators(())
+    with pytest.raises(Exception):
+        sc.BlockDiagonalLinOp.from_operators(())
+    with pytest.raises(Exception):
+        sc.StackedLinOp.from_operators(())
+    with pytest.raises(Exception):
+        sc.SumToSingleLinOp.from_operators(())

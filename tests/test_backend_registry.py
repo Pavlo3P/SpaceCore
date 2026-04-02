@@ -75,11 +75,17 @@ def test_register_ops_adds_backend():
             while cond_fun(val): val=body_fun(val)
             return val
         def scan(self, f, init, xs, **kwargs):
-            carry=init; ys=[]
-            for x in xs: carry, y = f(carry, x); ys.append(y)
+            carry=init
+            ys=[]
+            for x in xs:
+                carry, y = f(carry, x)
+                ys.append(y)
             return carry, np.array(ys)
         def cond(self, pred, true_fun, false_fun, *operands): return true_fun(*operands) if pred else false_fun(*operands)
-        def index_add(self, x, index, values, copy=True): y=np.array(x, copy=True); y[index]+=values; return y
+        def index_add(self, x, index, values, copy=True):
+            y=np.array(x, copy=True)
+            y[index]+=values
+            return y
         def allclose(self, a, b, **kwargs): return np.allclose(a, b, **kwargs)
         def allclose_sparse(self, a, b, **kwargs): return False
     sc.register_ops(DummyOps)
