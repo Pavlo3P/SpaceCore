@@ -59,7 +59,12 @@ def test_register_ops_adds_backend():
         def real(self, x): return np.real(x)
         def imag(self, x): return np.imag(x)
         def sign(self, x): return np.sign(x)
-        def index_set(self, x, index, values, copy=True): y = np.array(x, copy=True); y[index]=values; return y
+
+        def index_set(self, x, index, values, copy=True):
+            y = np.array(x, copy=True)
+            y[index] = values
+            return y
+
         def ix_(self, *args): return np.ix_(*args)
         def fori_loop(self, lower, upper, body_fun, init_val, **kwargs):
             val = init_val
