@@ -1,1 +1,1 @@
-from ._ops import NumpyOps
+from ._ops import NumpyOps as NumpyOps

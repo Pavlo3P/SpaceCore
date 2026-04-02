@@ -616,7 +616,6 @@ class NumpyOps(BackendOps):
     def logsumexp(self, a: DenseArray, axis: int | Sequence[int] | None = None, b: DenseArray | None = None,
                   keepdims: bool = False, return_sign: bool = False) -> DenseArray | Tuple[DenseArray, DenseArray]:
         """ See: scipy.special.logsumexp. """
-        sp = self._sp
         return self.sp.special.logsumexp(a, axis=axis, b=b, keepdims=keepdims, return_sign=return_sign)
 
     def exp(

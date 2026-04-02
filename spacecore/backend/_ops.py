@@ -3,7 +3,6 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any, Sequence, Tuple, Callable, Optional, Type, ClassVar
 
-from ._family import BackendFamily
 from ..types import DenseArray, SparseArray, DType, ArrayLike, Index, T, X, Y, R, Carry
 
 
