@@ -1,4 +1,4 @@
-__version__ = "0.1.2"
+__version__ = "0.1.3"
 
 
 from .backend import Context, BackendOps, JaxOps, NumpyOps, jax_pytree_class
@@ -6,6 +6,7 @@ from .linop import DenseLinOp, SparseLinOp, BlockDiagonalLinOp, SumToSingleLinOp
 from .space import VectorSpace, HermitianSpace, Space, ProductSpace
 from .types import DenseArray, SparseArray, ArrayLike
 
+from ._contextual import ContextBound
 from ._contextual.manager import (
     set_context, get_context,
     register_ops,
@@ -37,6 +38,7 @@ __all__ = [
     "SparseArray",
     "ArrayLike",
 
+    "ContextBound",
     "set_context",
     "get_context",
     "register_ops",
