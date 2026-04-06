@@ -71,12 +71,12 @@ class VectorSpace(Space):
         except Exception:
             # optional fallback if backend has vectorize/map
             y = self.ops.vectorize(f)(x)
+        if self.ctx.enable_checks:
+            if y.shape != x.shape:
+                raise ValueError("Function application changed shape.")
         return y
 
     def apply(self, x: DenseArray, f: Callable[[DenseArray], DenseArray]) -> DenseArray:
         self.check_member(x)
         y = self._apply_entrywise(x, f)
-        if self.ctx.enable_checks:
-            if y.shape != self.shape:
-                raise ValueError("Function application changed shape.")
         return y
