@@ -21,6 +21,7 @@ __all__ = [
     "jax_pytree_class",
     "NumpyOps",
 
+    "LinOp",
     "DenseLinOp",
     "SparseLinOp",
     "BlockDiagonalLinOp",
