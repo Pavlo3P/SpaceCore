@@ -2,7 +2,7 @@ __version__ = "0.1.1"
 
 
 from .backend import Context, BackendOps, JaxOps, NumpyOps, jax_pytree_class
-from .linop import DenseLinOp, SparseLinOp, BlockDiagonalLinOp, SumToSingleLinOp, StackedLinOp
+from .linop import DenseLinOp, SparseLinOp, BlockDiagonalLinOp, SumToSingleLinOp, StackedLinOp, LinOp
 from .space import VectorSpace, HermitianSpace, Space, ProductSpace
 from .types import DenseArray, SparseArray, ArrayLike
 

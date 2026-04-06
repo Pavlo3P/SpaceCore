@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import abstractmethod
-from typing import Any, Tuple
+from typing import Any, Tuple, Callable
 
 from ..backend import Context
 from .._contextual import ContextBound
@@ -89,3 +89,8 @@ class Space(ContextBound):
 
     def _convert(self, new_ctx: Context) -> Space:
         raise NotImplementedError()
+
+    def apply(self, x: Any, f: Callable) -> Any:
+        raise NotImplementedError(
+            f"{type(self).__name__} does not define functional application."
+        )

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Tuple, List, Sequence
+from typing import Any, Tuple, List, Sequence, Callable
 
 from ._base import Space
 from ..types import DenseArray
@@ -140,3 +140,7 @@ class ProductSpace(Space):
             xs.append(s.unflatten(vi))
 
         return tuple(xs)
+
+    def apply(self, x: Tuple[Any, ...], f: Callable[[Any], Any]) -> Tuple[Any, ...]:
+        self.check_member(x)
+        return tuple(s.apply(xi, f) for s, xi in zip(self.spaces, x))

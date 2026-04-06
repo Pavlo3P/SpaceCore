@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Tuple
+from typing import Any, Tuple, Callable
 
 from ._vector import VectorSpace
 from ..types import DenseArray
@@ -53,15 +53,15 @@ class HermitianSpace(VectorSpace):
         if not self.is_hermitian(x):
             raise TypeError("Matrix is not Hermitian (within the specified tolerances).")
 
-    def is_hermitian(self, X: DenseArray) -> bool:
+    def is_hermitian(self, x: DenseArray) -> bool:
         ops = self.ctx.ops
-        Xh = ops.conj(X).T
-        diff = X - Xh
+        xh = ops.conj(x).T
+        diff = x - xh
 
         # Validation is typically done outside jit, so it is OK to reduce via
         # backend's .max when available (NumPy/JAX arrays have it).
         adiff = ops.abs(diff)
-        aX = ops.abs(X)
+        aX = ops.abs(x)
 
         # max(abs(diff)) <= atol + rtol*max(abs(X))
         max_adiff = adiff.max()
@@ -80,22 +80,22 @@ class HermitianSpace(VectorSpace):
         thresh = float(self.atol) + float(self.rtol) * max_aX_f
         return max_adiff_f <= thresh
 
-    def symmetrize(self, X: DenseArray) -> DenseArray:
+    def symmetrize(self, x: DenseArray) -> DenseArray:
         """Project onto the Hermitian cone: (X + X^H)/2."""
-        return (X + X.T.conj()) * 0.5
+        return (x + x.T.conj()) * 0.5
 
-    def eigh(self, X: DenseArray, k: int = None) -> Tuple[DenseArray, DenseArray]:
-        self.check_member(X)
-        return self.ops.eigh(X)
+    def eigh(self, x: DenseArray, k: int = None) -> Tuple[DenseArray, DenseArray]:
+        self.check_member(x)
+        return self.ops.eigh(x)
 
     def unflatten(self, v: DenseArray) -> DenseArray:
         vv = self.ctx.assert_dense(v)
         X = self.ops.reshape(vv, self.shape)
         return self.symmetrize(X)
 
-    def psd_proj(self, X: DenseArray) -> DenseArray:
-        self.check_member(X)
-        evals, evecs = self.ops.eigh(X)
+    def psd_proj(self, x: DenseArray) -> DenseArray:
+        self.check_member(x)
+        evals, evecs = self.ops.eigh(x)
         evals = self.ops.maximum(evals, 0.)
         return self.eig_to_dense(evals, evecs)
 
@@ -108,3 +108,10 @@ class HermitianSpace(VectorSpace):
 
     def _convert(self, new_ctx: Context) -> HermitianSpace:
         return HermitianSpace(self.n, self.atol, self.rtol, self.enforce_herm, new_ctx)
+
+    def apply(self, x: DenseArray, f: Callable[[DenseArray], DenseArray]) -> DenseArray:
+        self.check_member(x)
+        evals, evecs = self.eigh(x)
+        fevals = self._apply_entrywise(evals, f)
+
+        return self.eig_to_dense(fevals, evecs)
