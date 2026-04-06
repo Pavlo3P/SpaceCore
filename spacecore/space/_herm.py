@@ -110,6 +110,59 @@ class HermitianSpace(VectorSpace):
         return HermitianSpace(self.n, self.atol, self.rtol, self.enforce_herm, new_ctx)
 
     def apply(self, x: DenseArray, f: Callable[[DenseArray], DenseArray]) -> DenseArray:
+        """
+        Apply a scalar function to a Hermitian matrix via spectral calculus.
+
+        For a Hermitian matrix
+        $$
+        X \in \mathbb{H}^n,
+        $$
+        with eigendecomposition
+        $$
+        X = U \operatorname{diag}(\lambda) U^*,
+        $$
+        this method returns
+        $$
+        f(X) = U \operatorname{diag}(f(\lambda)) U^*,
+        $$
+        where ``f`` is applied entrywise to the eigenvalue vector
+        $$
+        \lambda \in \mathbb{R}^n.
+        $$
+
+        Parameters
+        ----------
+        x:
+            Hermitian matrix in this space. Must have shape ``(n, n)`` and
+            satisfy the Hermitian membership conditions of the space.
+        f:
+            Callable applied to the eigenvalues of ``x``. It should accept a
+            dense backend array of eigenvalues and return an array of the same
+            shape.
+
+        Returns
+        -------
+        DenseArray
+            The Hermitian matrix obtained by spectral application of ``f`` to
+            ``x``.
+
+        Raises
+        ------
+        TypeError
+            If ``x`` is not a valid Hermitian element of this space.
+
+        Notes
+        -----
+        This is not an entrywise matrix transformation. The function is applied
+        to the spectrum of ``x``, not to its matrix entries.
+
+        In particular, if
+        $$
+        X = U \operatorname{diag}(\lambda) U^*,
+        $$
+        then the eigenvectors are preserved and only the eigenvalues are
+        transformed.
+        """
         self.check_member(x)
         evals, evecs = self.eigh(x)
         fevals = self._apply_entrywise(evals, f)

@@ -142,5 +142,51 @@ class ProductSpace(Space):
         return tuple(xs)
 
     def apply(self, x: Tuple[Any, ...], f: Callable[[Any], Any]) -> Tuple[Any, ...]:
+        """
+        Apply a function to each component of a product-space element.
+
+        For a product space
+        $$
+        X = X_1 \times \cdots \times X_m,
+        $$
+        and an element
+        $$
+        x = (x_1,\dots,x_m), \qquad x_i \in X_i,
+        $$
+        this method returns
+        $$
+        f(x) := \bigl(f_{X_1}(x_1), \dots, f_{X_m}(x_m)\bigr),
+        $$
+        where ``f_{X_i}`` denotes application according to the logic of the
+        corresponding component space ``X_i``.
+
+        Parameters
+        ----------
+        x:
+            Tuple representing an element of this product space. Its length must
+            equal the arity of the product space, and each component must be a
+            valid member of the corresponding factor space.
+        f:
+            Callable to apply to each component. The meaning of application is
+            delegated to each component space via ``spaces[i].apply``.
+
+        Returns
+        -------
+        tuple[Any, ...]
+            Tuple of transformed components, one for each factor space.
+
+        Raises
+        ------
+        TypeError
+            If ``x`` is not a valid product-space element.
+        ValueError
+            If ``x`` has the wrong tuple length.
+
+        Notes
+        -----
+        This method does not define a new joint functional calculus on the
+        product space. It applies the existing functional calculus of each
+        factor space independently, component by component.
+        """
         self.check_member(x)
         return tuple(s.apply(xi, f) for s, xi in zip(self.spaces, x))

@@ -77,6 +77,48 @@ class VectorSpace(Space):
         return y
 
     def apply(self, x: DenseArray, f: Callable[[DenseArray], DenseArray]) -> DenseArray:
+        """
+        Apply a scalar function to a vector-space element entrywise.
+
+        For a space element
+        $$
+        x \in \mathbb{K}^{n_1 \times \cdots \times n_k},
+        $$
+        this method returns the element
+        $$
+        y = f(x)
+        $$
+        obtained by applying ``f`` coordinatewise to the entries of ``x``.
+
+        Parameters
+        ----------
+        x:
+            Element of this vector space. Must have shape ``self.shape`` and
+            dtype compatible with this space.
+        f:
+            Callable representing an entrywise transformation. It is expected
+            to act elementwise on backend arrays, or to be compatible with the
+            backend vectorization fallback.
+
+        Returns
+        -------
+        DenseArray
+            The transformed element, with the same shape as ``x``.
+
+        Raises
+        ------
+        TypeError
+            If ``x`` is not a valid member of this space.
+        ValueError
+            If the result of the application does not preserve the shape of the
+            space element.
+
+        Notes
+        -----
+        This is the canonical functional calculus for ``VectorSpace``:
+        application is performed entrywise in the distinguished coordinate
+        representation.
+        """
         self.check_member(x)
         y = self._apply_entrywise(x, f)
         return y
