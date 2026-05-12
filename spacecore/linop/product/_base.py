@@ -27,6 +27,9 @@ class ProductLinOp(LinOp[Domain, Codomain]):
         super().__init__(dom, cod, ctx)
 
         self.parts = tuple(op.convert(self.ctx) for op in parts)
+        self._num_parts = len(self.parts)
+        self._apply_parts = tuple(getattr(op, "_apply_unchecked", op.apply) for op in self.parts)
+        self._rapply_parts = tuple(getattr(op, "_rapply_unchecked", op.rapply) for op in self.parts)
         self._check_layout()
 
     @abstractmethod

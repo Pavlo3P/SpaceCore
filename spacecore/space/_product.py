@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Tuple, List, Sequence, Callable
 
 from ._base import Space
+from ._vector import VectorSpace
 from ..types import DenseArray
 from ..backend import Context
 
@@ -51,11 +52,32 @@ class ProductSpace(Space):
 
         self._dims = dims
         self._offsets = tuple(offsets)
+        self._slices = tuple(slice(offsets[i], offsets[i + 1]) for i in range(len(dims)))
         shape = (offsets[-1],)
 
         super(ProductSpace, self).__init__(shape, ctx)
         uniform_spaces = tuple(sp.convert(self.ctx) for sp in spaces)
         self.spaces = uniform_spaces
+        self._arity = len(uniform_spaces)
+        self._vector_fast_path = all(type(sp) is VectorSpace for sp in uniform_spaces)
+        self._component_shapes = tuple(sp.shape for sp in uniform_spaces)
+        self._component_is_flat = tuple(
+            shape == (dim,) for shape, dim in zip(self._component_shapes, self._dims)
+        )
+        raw_array_ops = getattr(self.ctx.ops, "np", None)
+        if raw_array_ops is None:
+            raw_array_ops = getattr(self.ctx.ops, "jnp", None)
+        self._concatenate = (
+            raw_array_ops.concatenate if raw_array_ops is not None else self.ctx.ops.concatenate
+        )
+        if self._arity >= 1:
+            self._slice0 = self._slices[0]
+            self._shape0 = self._component_shapes[0]
+            self._is_flat0 = self._component_is_flat[0]
+        if self._arity >= 2:
+            self._slice1 = self._slices[1]
+            self._shape1 = self._component_shapes[1]
+            self._is_flat1 = self._component_is_flat[1]
 
     def _validate_spaces(self, spaces: Any) -> Tuple[Space, ...]:
         if isinstance(spaces, Sequence):
@@ -71,7 +93,7 @@ class ProductSpace(Space):
 
     @property
     def arity(self) -> int:
-        return len(self.spaces)
+        return self._arity
 
     def _check_member(self, x: Sequence[Any]) -> None:
         if not isinstance(x, tuple):
@@ -115,28 +137,63 @@ class ProductSpace(Space):
         )
 
     def flatten(self, x: Tuple[Any, ...]) -> DenseArray:
-        self.check_member(x)
+        if self._enable_checks:
+            self._check_member(x)
+
+        if self._vector_fast_path:
+            if self._arity == 1:
+                return x[0] if self._component_is_flat[0] else x[0].reshape((-1,))
+            if self._arity == 2:
+                x0 = x[0] if self._is_flat0 else x[0].reshape((-1,))
+                x1 = x[1] if self._is_flat1 else x[1].reshape((-1,))
+                return self._concatenate((x0, x1), axis=0)
+            parts = tuple(
+                xi if is_flat else xi.reshape((-1,))
+                for xi, is_flat in zip(x, self._component_is_flat)
+            )
+            return self._concatenate(parts, axis=0)
 
         parts = []
         for s, xi in zip(self.spaces, x):
             vi = s.flatten(xi)
-            vi = self.ctx.assert_dense(vi)
-            parts.append(self.ctx.ops.ravel(vi))
+            if self._enable_checks:
+                vi = self.ctx.assert_dense(vi)
+            parts.append(vi)
 
         if len(parts) == 1:
             return parts[0]
 
-        return self.ctx.ops.concatenate(parts, axis=0)
+        return self._concatenate(parts, axis=0)
 
     def unflatten(self, v: DenseArray) -> Tuple[Any, ...]:
-        v = self.ctx.assert_dense(v)
-        v1 = self.ctx.ops.ravel(v)
+        if self._enable_checks:
+            v = self.ctx.assert_dense(v)
+            v1 = v if tuple(getattr(v, "shape", ())) == self.shape else v.reshape((-1,))
+        else:
+            v1 = v
+
+        if self._vector_fast_path:
+            if self._arity == 1:
+                x0 = v1[self._slice0]
+                return (x0 if self._is_flat0 else x0.reshape(self._shape0),)
+            if self._arity == 2:
+                x0 = v1[self._slice0]
+                x1 = v1[self._slice1]
+                if not self._is_flat0:
+                    x0 = x0.reshape(self._shape0)
+                if not self._is_flat1:
+                    x1 = x1.reshape(self._shape1)
+                return x0, x1
+            return tuple(
+                v1[slc] if is_flat else v1[slc].reshape(shape)
+                for slc, shape, is_flat in zip(
+                    self._slices, self._component_shapes, self._component_is_flat
+                )
+            )
 
         xs: List[Any] = []
-        for i, s in enumerate(self.spaces):
-            a = self._offsets[i]
-            b = self._offsets[i + 1]
-            vi = v1[a:b]
+        for s, slc in zip(self.spaces, self._slices):
+            vi = v1[slc]
             xs.append(s.unflatten(vi))
 
         return tuple(xs)
@@ -188,5 +245,8 @@ class ProductSpace(Space):
         product space. It applies the existing functional calculus of each
         factor space independently, component by component.
         """
-        self.check_member(x)
+        if self._enable_checks:
+            self._check_member(x)
+        if self._arity == 2:
+            return self.spaces[0].apply(x[0], f), self.spaces[1].apply(x[1], f)
         return tuple(s.apply(xi, f) for s, xi in zip(self.spaces, x))

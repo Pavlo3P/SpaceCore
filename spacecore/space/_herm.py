@@ -89,8 +89,8 @@ class HermitianSpace(VectorSpace):
         return self.ops.eigh(x)
 
     def unflatten(self, v: DenseArray) -> DenseArray:
-        vv = self.ctx.assert_dense(v)
-        X = self.ops.reshape(vv, self.shape)
+        vv = self.ctx.assert_dense(v) if self._enable_checks else v
+        X = vv.reshape(self.shape)
         return self.symmetrize(X)
 
     def psd_proj(self, x: DenseArray) -> DenseArray:
@@ -163,7 +163,8 @@ class HermitianSpace(VectorSpace):
         then the eigenvectors are preserved and only the eigenvalues are
         transformed.
         """
-        self.check_member(x)
+        if self._enable_checks:
+            self._check_member(x)
         evals, evecs = self.eigh(x)
         fevals = self._apply_entrywise(evals, f)
 

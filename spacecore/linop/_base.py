@@ -31,6 +31,7 @@ class LinOp(ContextBound, Generic[Domain, Codomain]):
 
         self.dom = dom.convert(self.ctx)
         self.cod = cod.convert(self.ctx)
+        self._enable_checks = self.ctx.enable_checks
 
     @abstractmethod
     def apply(self, x: Any) -> Any:

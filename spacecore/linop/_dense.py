@@ -41,21 +41,30 @@ class DenseLinOp(LinOp[VectorSpace, VectorSpace]):
             raise TypeError(f"Expected A.shape == cod.shape + dom.shape == {expected}, got {A.shape}")
 
         self.A = A  # No dtype conversion
+        self._cod_size = prod(self.cod.shape)
+        self._dom_size = prod(self.dom.shape)
+        self._matrix_shape = (self._cod_size, self._dom_size)
+        self._A2 = self.A.reshape(self._matrix_shape)
+        self._A2H = self._A2.T.conj() if getattr(self.A.dtype, "kind", None) == "c" else self._A2.T
+        self._dom_is_flat = tuple(self.dom.shape) == (self._dom_size,)
+        self._cod_is_flat = tuple(self.cod.shape) == (self._cod_size,)
+        self._dom_vector_fast_path = type(self.dom) is VectorSpace
+        self._cod_vector_fast_path = type(self.cod) is VectorSpace
 
     def apply(self, x: DenseArray) -> DenseArray:
         """
         Forward action: y = A ⋅ x with y in cod.shape.
         """
-        self.assert_domain(x)
+        if self._enable_checks:
+            self.dom.check_member(x)
+        return self._apply_unchecked(x)
 
-        m = prod(self.cod.shape)
-        n = prod(self.dom.shape)
-
-        A = self.A.reshape((m, n))
-        x1 = x.reshape((n,))
-        y1 = A @ x1
-        y  = self.cod.unflatten(y1)
-        return y
+    def _apply_unchecked(self, x: DenseArray) -> DenseArray:
+        x1 = x if self._dom_is_flat else x.reshape((self._dom_size,))
+        y1 = self._A2 @ x1
+        if self._cod_vector_fast_path:
+            return y1 if self._cod_is_flat else y1.reshape(self.cod.shape)
+        return self.cod.unflatten(y1)
 
     def rapply(self, y: DenseArray) -> DenseArray:
         """
@@ -63,16 +72,16 @@ class DenseLinOp(LinOp[VectorSpace, VectorSpace]):
 
         For complex A, uses conjugate-transpose of the 2D reshaped matrix.
         """
-        self.assert_codomain(y)
+        if self._enable_checks:
+            self.cod.check_member(y)
+        return self._rapply_unchecked(y)
 
-        m = prod(self.cod.shape)
-        n = prod(self.dom.shape)
-
-        A2 = self.A.reshape((m, n))
-        y1 = y.reshape((m,))
-        x1 = A2.T.conj() @ y1
-        x  = self.dom.unflatten(x1)
-        return x
+    def _rapply_unchecked(self, y: DenseArray) -> DenseArray:
+        y1 = y if self._cod_is_flat else y.reshape((self._cod_size,))
+        x1 = self._A2H @ y1
+        if self._dom_vector_fast_path:
+            return x1 if self._dom_is_flat else x1.reshape(self.dom.shape)
+        return self.dom.unflatten(x1)
 
     def __eq__(self, x: Any) -> bool:
         if type(x) is type(self):
