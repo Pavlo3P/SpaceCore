@@ -59,6 +59,34 @@ class BackendOps(ABC):
     def get_dtype(self, x: Any) -> DType:
         ...
 
+    @abstractmethod
+    def shape(self, x: Any) -> tuple[int, ...]:
+        """
+        Return the shape tuple for an array-like object.
+
+        Shape metadata is expected to be backend-static for normal arrays. Backends
+        with tracing or dynamic-shape modes may return symbolic dimension objects;
+        callers should avoid relying on Python-side shape values inside traced code.
+        """
+
+    @abstractmethod
+    def ndim(self, x: Any) -> int:
+        """
+        Return the number of dimensions of an array-like object.
+
+        This is metadata only and does not copy data. For traced backends, the value
+        must be available from the abstract array shape.
+        """
+
+    @abstractmethod
+    def size(self, x: Any) -> int:
+        """
+        Return the total number of logical elements in an array-like object.
+
+        Sparse backends should report logical dense size, not stored element count.
+        Dynamic-shape backends may expose non-plain Python integers.
+        """
+
     @property
     @abstractmethod
     def inf(self) -> DenseArray:
@@ -89,6 +117,15 @@ class BackendOps(ABC):
         ...
 
     @abstractmethod
+    def astype(self, x: DenseArray, dtype: DType) -> DenseArray:
+        """
+        Return `x` converted to `dtype`.
+
+        Dtype availability, promotion, and precision are backend-dependent. JAX may
+        canonicalize or reject dtypes according to its global configuration and device.
+        """
+
+    @abstractmethod
     def assparse(self, x: Any, dtype: DType | None = None) -> SparseArray:
         ...
 
@@ -103,6 +140,31 @@ class BackendOps(ABC):
     @abstractmethod
     def ones(self, shape: Tuple[int, ...], dtype: DType | None = None) -> DenseArray:
         ...
+
+    @abstractmethod
+    def zeros_like(self, x: DenseArray, dtype: DType | None = None) -> DenseArray:
+        """
+        Return an array of zeros with the shape and dtype of `x` unless `dtype` is provided.
+
+        Device placement and sharding follow backend defaults for like-constructors.
+        """
+
+    @abstractmethod
+    def ones_like(self, x: DenseArray, dtype: DType | None = None) -> DenseArray:
+        """
+        Return an array of ones with the shape and dtype of `x` unless `dtype` is provided.
+
+        Device placement and sharding follow backend defaults for like-constructors.
+        """
+
+    @abstractmethod
+    def full_like(self, x: DenseArray, value: Any, dtype: DType | None = None) -> DenseArray:
+        """
+        Return an array filled with `value` and shaped like `x`.
+
+        Dtype inference and scalar promotion are backend-dependent, especially for
+        mixed Python scalar and array inputs.
+        """
 
     @abstractmethod
     def arange(self, start: int, stop: int | None = None, step: int | None = None, dtype: DType | None = None) -> DenseArray:
@@ -127,6 +189,47 @@ class BackendOps(ABC):
     @abstractmethod
     def transpose(self, x: DenseArray, axes: Sequence[int] | None = None) -> DenseArray:
         ...
+
+    @abstractmethod
+    def broadcast_to(self, x: DenseArray, shape: Tuple[int, ...]) -> DenseArray:
+        """
+        Broadcast `x` to `shape` without changing values.
+
+        The returned array may be a view, a lazy/traced value, or an immutable array
+        depending on the backend; callers must not rely on writeability.
+        """
+
+    @abstractmethod
+    def expand_dims(self, x: DenseArray, axis: int | Sequence[int]) -> DenseArray:
+        """
+        Insert one or more length-one axes at `axis`.
+
+        Axis validation follows the backend implementation. JAX requires axis values
+        to be static under JIT.
+        """
+
+    @abstractmethod
+    def squeeze(self, x: DenseArray, axis: int | Sequence[int] | None = None) -> DenseArray:
+        """
+        Remove length-one axes from `x`.
+
+        If `axis` is provided, backends raise when a selected axis is not length one.
+        JAX requires axis values to be static under JIT.
+        """
+
+    @abstractmethod
+    def moveaxis(
+        self,
+        x: DenseArray,
+        source: int | Sequence[int],
+        destination: int | Sequence[int],
+    ) -> DenseArray:
+        """
+        Move axes from `source` positions to `destination` positions.
+
+        Axis arguments are metadata and may need to be Python-static for tracing
+        backends such as JAX.
+        """
 
     @abstractmethod
     def stack(self, arrays: Sequence[DenseArray], axis: int = 0) -> DenseArray:
@@ -165,6 +268,48 @@ class BackendOps(ABC):
         dtype: DType | None = None,
     ) -> DenseArray:
         ...
+
+    @abstractmethod
+    def mean(
+        self,
+        x: DenseArray,
+        axis: int | Sequence[int] | None = None,
+        keepdims: bool = False,
+    ) -> DenseArray:
+        """
+        Compute the arithmetic mean over `axis`.
+
+        Accumulator dtype, integer promotion, and NaN handling follow the backend.
+        JAX requires reduction axes to be static under JIT.
+        """
+
+    @abstractmethod
+    def min(
+        self,
+        x: DenseArray,
+        axis: int | Sequence[int] | None = None,
+        keepdims: bool = False,
+    ) -> DenseArray:
+        """
+        Compute the minimum values over `axis`.
+
+        Empty reductions, NaN ordering, and dtype promotion follow the backend.
+        JAX requires reduction axes to be static under JIT.
+        """
+
+    @abstractmethod
+    def max(
+        self,
+        x: DenseArray,
+        axis: int | Sequence[int] | None = None,
+        keepdims: bool = False,
+    ) -> DenseArray:
+        """
+        Compute the maximum values over `axis`.
+
+        Empty reductions, NaN ordering, and dtype promotion follow the backend.
+        JAX requires reduction axes to be static under JIT.
+        """
 
     @abstractmethod
     def prod(
@@ -221,6 +366,57 @@ class BackendOps(ABC):
         ...
 
     @abstractmethod
+    def norm(
+        self,
+        x: DenseArray,
+        ord: int | str | None = None,
+        axis: int | Sequence[int] | None = None,
+        keepdims: bool = False,
+    ) -> DenseArray:
+        """
+        Compute a vector or matrix norm.
+
+        Supported `ord` values and dtype precision follow the backend linear algebra
+        implementation. JAX requires `ord` and `axis` to be static under JIT.
+        """
+
+    @abstractmethod
+    def solve(self, A: DenseArray, b: DenseArray) -> DenseArray:
+        """
+        Solve a dense linear system `A @ x = b`.
+
+        Singular-matrix behavior, batching support, and numerical precision are
+        backend-dependent. Sparse inputs are outside this portable contract.
+        """
+
+    @abstractmethod
+    def eigvalsh(self, A: DenseArray) -> DenseArray:
+        """
+        Return eigenvalues of a Hermitian or symmetric dense matrix.
+
+        Backends may differ in UPLO defaults, symmetrization details, batching support,
+        and floating-point precision.
+        """
+
+    @abstractmethod
+    def svd(self, A: DenseArray, full_matrices: bool = True) -> tuple[DenseArray, DenseArray, DenseArray]:
+        """
+        Compute the singular value decomposition of a dense array.
+
+        The portable contract returns `(u, s, vh)` with `compute_uv=True`. Sign choices,
+        rank-deficient behavior, and precision are backend-dependent.
+        """
+
+    @abstractmethod
+    def cholesky(self, A: DenseArray) -> DenseArray:
+        """
+        Compute a Cholesky factor of a Hermitian positive-definite dense matrix.
+
+        The portable contract returns the lower-triangular factor. Failure modes for
+        non-positive-definite input are backend-dependent.
+        """
+
+    @abstractmethod
     def logsumexp(self, a: DenseArray, axis: int | Sequence[int] | None = None, b: DenseArray | None = None,
                   keepdims: bool = False, return_sign: bool = False) -> DenseArray | Tuple[DenseArray, DenseArray]:
         ...
@@ -242,8 +438,94 @@ class BackendOps(ABC):
         ...
 
     @abstractmethod
+    def minimum(self, x: ArrayLike, y: ArrayLike) -> DenseArray:
+        """
+        Return the elementwise minimum of `x` and `y`.
+
+        Broadcasting, scalar promotion, signed-zero handling, and NaN behavior follow
+        the concrete backend.
+        """
+
+    @abstractmethod
+    def clip(self, x: DenseArray, a_min: ArrayLike, a_max: ArrayLike) -> DenseArray:
+        """
+        Clip values in `x` to the inclusive interval [`a_min`, `a_max`].
+
+        Broadcasting, dtype promotion, and behavior when bounds contain NaN follow the
+        backend. Mutating `out` variants are not part of the portable signature.
+        """
+
+    @abstractmethod
+    def isfinite(self, x: DenseArray) -> DenseArray:
+        """
+        Return a boolean array indicating finite values.
+
+        Complex inputs are finite only when both real and imaginary parts are finite.
+        Backend dtype support follows the concrete array library.
+        """
+
+    @abstractmethod
+    def isnan(self, x: DenseArray) -> DenseArray:
+        """
+        Return a boolean array indicating NaN values.
+
+        Complex-input behavior follows the backend library. Integer and boolean inputs
+        typically return all-false arrays.
+        """
+
+    @abstractmethod
     def concatenate(self, arrays: Sequence[DenseArray], axis: int = 0, dtype: DType | None = None) -> DenseArray:
         ...
+
+    @abstractmethod
+    def take(
+        self,
+        x: DenseArray,
+        indices: DenseArray,
+        axis: int | None = None,
+    ) -> DenseArray:
+        """
+        Take elements from `x` at integer `indices` along `axis`.
+
+        Out-of-bounds handling differs across backends; the portable contract assumes
+        valid indices. JAX requires `axis` to be static under JIT.
+        """
+
+    @abstractmethod
+    def diag(self, x: DenseArray) -> DenseArray:
+        """
+        Extract a diagonal from a 2-D array or construct a diagonal matrix from a 1-D array.
+
+        Offset variants are intentionally outside the portable signature. Backend
+        behavior for higher-dimensional inputs may differ.
+        """
+
+    @abstractmethod
+    def diagonal(self, x: DenseArray) -> DenseArray:
+        """
+        Return the main diagonal using the backend's default diagonal axes.
+
+        Axis and offset variants are intentionally outside the portable signature.
+        Returned mutability/view semantics are backend-dependent.
+        """
+
+    @abstractmethod
+    def tril(self, x: DenseArray) -> DenseArray:
+        """
+        Return the lower triangle of an array with entries above the main diagonal zeroed.
+
+        Offset variants are intentionally outside the portable signature. Dtype and
+        zero-fill behavior follow the backend.
+        """
+
+    @abstractmethod
+    def triu(self, x: DenseArray) -> DenseArray:
+        """
+        Return the upper triangle of an array with entries below the main diagonal zeroed.
+
+        Offset variants are intentionally outside the portable signature. Dtype and
+        zero-fill behavior follow the backend.
+        """
 
     @abstractmethod
     def index_set(

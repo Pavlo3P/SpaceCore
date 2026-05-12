@@ -64,6 +64,32 @@ class NumpyOps(BackendOps):
         else:
             raise TypeError(f'Expected Numpy ndarray or SciPy sparse array, got {type(x)}.')
 
+    def shape(self, x: Any) -> tuple[int, ...]:
+        """
+        Return `x.shape` as a tuple.
+
+        NumPy/SciPy expose eager Python shape metadata. For SciPy sparse arrays this
+        reports logical dense shape, not stored entries.
+        """
+        return tuple(x.shape)
+
+    def ndim(self, x: Any) -> int:
+        """
+        Return the number of dimensions of `x`.
+
+        NumPy arrays and SciPy sparse arrays expose eager Python metadata.
+        """
+        return int(x.ndim)
+
+    def size(self, x: Any) -> int:
+        """
+        Return the logical dense element count of `x`.
+
+        SciPy sparse `.size` may reflect stored data for some sparse classes, so this
+        method computes the product of the logical shape.
+        """
+        return int(self.np.prod(self.shape(x), dtype=self.np.intp))
+
     @property
     def inf(self):
         return self.np.array(self.np.inf)
@@ -108,6 +134,23 @@ class NumpyOps(BackendOps):
             copy=copy,
             like=like,
         )
+
+    def astype(
+        self,
+        x: DenseArray,
+        dtype: DType,
+        order: Literal["C", "F", "A", "K"] = "K",
+        casting: Literal["no", "equiv", "safe", "same_kind", "unsafe"] = "unsafe",
+        subok: bool = True,
+        copy: bool = True,
+    ) -> DenseArray:
+        """
+        Copy `x` cast to `dtype`. See: numpy.ndarray.astype.
+
+        NumPy dtype promotion and casting safety are controlled by `casting`; device
+        placement is always host CPU for NumPy arrays.
+        """
+        return x.astype(dtype, order=order, casting=casting, subok=subok, copy=copy)
 
     def assparse(self, x: Any, *, format: Literal["csr", "csc", "coo"] = "csr", dtype: DType | None = None) -> SparseArray:
         sparse = self.sp.sparse
@@ -208,6 +251,54 @@ class NumpyOps(BackendOps):
             like=like,
         )
 
+    def zeros_like(
+        self,
+        x: DenseArray,
+        dtype: DType | None = None,
+        order: Literal["C", "F", "A", "K"] = "K",
+        subok: bool = True,
+        shape: int | Tuple[int, ...] | None = None,
+    ) -> DenseArray:
+        """
+        Return an array of zeros with shape and dtype like `x`. See: numpy.zeros_like.
+
+        NumPy may preserve subclasses when `subok=True`; the portable API should not
+        rely on subclass-specific behavior.
+        """
+        return self.np.zeros_like(x, dtype=dtype, order=order, subok=subok, shape=shape)
+
+    def ones_like(
+        self,
+        x: DenseArray,
+        dtype: DType | None = None,
+        order: Literal["C", "F", "A", "K"] = "K",
+        subok: bool = True,
+        shape: int | Tuple[int, ...] | None = None,
+    ) -> DenseArray:
+        """
+        Return an array of ones with shape and dtype like `x`. See: numpy.ones_like.
+
+        NumPy may preserve subclasses when `subok=True`; dtype inference follows
+        NumPy scalar promotion rules.
+        """
+        return self.np.ones_like(x, dtype=dtype, order=order, subok=subok, shape=shape)
+
+    def full_like(
+        self,
+        x: DenseArray,
+        value: Any,
+        dtype: DType | None = None,
+        order: Literal["C", "F", "A", "K"] = "K",
+        subok: bool = True,
+        shape: int | Tuple[int, ...] | None = None,
+    ) -> DenseArray:
+        """
+        Return an array filled with `value` and shaped like `x`. See: numpy.full_like.
+
+        NumPy determines the result dtype from `x`, `value`, and explicit `dtype`.
+        """
+        return self.np.full_like(x, value, dtype=dtype, order=order, subok=subok, shape=shape)
+
     def arange(self,
                start: int, stop: int | None = None,
                step: int | None = None,
@@ -300,6 +391,45 @@ class NumpyOps(BackendOps):
     def transpose(self, a: DenseArray, axes: Sequence[int] | None = None) -> DenseArray:
         """Permute the dimensions of an array. See: numpy.transpose."""
         return self.np.transpose(a, axes=axes)
+
+    def broadcast_to(
+        self,
+        x: DenseArray,
+        shape: int | Tuple[int, ...],
+        subok: bool = False,
+    ) -> DenseArray:
+        """
+        Broadcast `x` to `shape`. See: numpy.broadcast_to.
+
+        NumPy usually returns a readonly view; callers must not assume mutability.
+        """
+        return self.np.broadcast_to(x, shape, subok=subok)
+
+    def expand_dims(self, x: DenseArray, axis: int | Sequence[int]) -> DenseArray:
+        """Insert new axes into `x`. See: numpy.expand_dims."""
+        return self.np.expand_dims(x, axis=axis)
+
+    def squeeze(self, x: DenseArray, axis: int | Sequence[int] | None = None) -> DenseArray:
+        """
+        Remove length-one axes from `x`. See: numpy.squeeze.
+
+        NumPy may return a view; mutability aliases the original array when it does.
+        """
+        return self.np.squeeze(x, axis=axis)
+
+    def moveaxis(
+        self,
+        x: DenseArray,
+        source: int | Sequence[int],
+        destination: int | Sequence[int],
+    ) -> DenseArray:
+        """
+        Move axes to new positions. See: numpy.moveaxis.
+
+        NumPy returns a view when possible, so callers should avoid relying on copy
+        or mutability behavior in portable code.
+        """
+        return self.np.moveaxis(x, source=source, destination=destination)
 
     def stack(
         self,
@@ -438,6 +568,55 @@ class NumpyOps(BackendOps):
             initial=initial,
             where=where,
         )
+
+    def mean(
+        self,
+        a: DenseArray,
+        axis: int | Sequence[int] | None = None,
+        dtype: DType | None = None,
+        out: DenseArray | None = None,
+        keepdims: bool = False,
+        where: DenseArray | bool = True,
+    ) -> DenseArray:
+        """
+        Compute the arithmetic mean over an axis. See: numpy.mean.
+
+        NumPy chooses accumulator dtype according to NumPy reduction rules unless
+        `dtype` is supplied.
+        """
+        return self.np.mean(a, axis=axis, dtype=dtype, out=out, keepdims=keepdims, where=where)
+
+    def min(
+        self,
+        a: DenseArray,
+        axis: int | Sequence[int] | None = None,
+        out: DenseArray | None = None,
+        keepdims: bool = False,
+        initial: DenseArray | None = None,
+        where: DenseArray | bool = True,
+    ) -> DenseArray:
+        """
+        Compute minimum values over an axis. See: numpy.min.
+
+        Empty reductions, `initial`, `where`, and NaN behavior follow NumPy semantics.
+        """
+        return self.np.min(a, axis=axis, out=out, keepdims=keepdims, initial=initial, where=where)
+
+    def max(
+        self,
+        a: DenseArray,
+        axis: int | Sequence[int] | None = None,
+        out: DenseArray | None = None,
+        keepdims: bool = False,
+        initial: DenseArray | None = None,
+        where: DenseArray | bool = True,
+    ) -> DenseArray:
+        """
+        Compute maximum values over an axis. See: numpy.max.
+
+        Empty reductions, `initial`, `where`, and NaN behavior follow NumPy semantics.
+        """
+        return self.np.max(a, axis=axis, out=out, keepdims=keepdims, initial=initial, where=where)
 
     def prod(
         self,
@@ -613,6 +792,64 @@ class NumpyOps(BackendOps):
             raise TypeError("eigh requires a dense array; sparse input is not supported.")
         return self.np.linalg.eigh(a, UPLO=UPLO)
 
+    def norm(
+        self,
+        x: DenseArray,
+        ord: int | str | None = None,
+        axis: int | Sequence[int] | None = None,
+        keepdims: bool = False,
+    ) -> DenseArray:
+        """
+        Compute a vector or matrix norm. See: numpy.linalg.norm.
+
+        Supported `ord` values and return dtype follow NumPy's linear algebra rules.
+        """
+        return self.np.linalg.norm(x, ord=ord, axis=axis, keepdims=keepdims)
+
+    def solve(self, A: DenseArray, b: DenseArray) -> DenseArray:
+        """
+        Solve a dense linear system. See: numpy.linalg.solve.
+
+        NumPy raises `LinAlgError` for singular input and uses host CPU LAPACK routines.
+        """
+        return self.np.linalg.solve(A, b)
+
+    def eigvalsh(self, A: DenseArray, UPLO: Literal["L", "U"] = "L") -> DenseArray:
+        """
+        Return Hermitian/symmetric eigenvalues. See: numpy.linalg.eigvalsh.
+
+        NumPy uses the selected triangle via `UPLO`; batching and precision follow NumPy.
+        """
+        return self.np.linalg.eigvalsh(A, UPLO=UPLO)
+
+    def svd(
+        self,
+        A: DenseArray,
+        full_matrices: bool = True,
+        compute_uv: bool = True,
+        hermitian: bool = False,
+    ) -> DenseArray | Tuple[DenseArray, DenseArray, DenseArray]:
+        """
+        Compute singular value decomposition. See: numpy.linalg.svd.
+
+        The portable path uses `compute_uv=True`; when `compute_uv=False`, NumPy returns
+        only singular values and that is a NumPy-specific extension here.
+        """
+        return self.np.linalg.svd(
+            A,
+            full_matrices=full_matrices,
+            compute_uv=compute_uv,
+            hermitian=hermitian,
+        )
+
+    def cholesky(self, A: DenseArray) -> DenseArray:
+        """
+        Compute the lower Cholesky factor. See: numpy.linalg.cholesky.
+
+        NumPy raises `LinAlgError` when the input is not positive definite.
+        """
+        return self.np.linalg.cholesky(A)
+
     def logsumexp(self, a: DenseArray, axis: int | Sequence[int] | None = None, b: DenseArray | None = None,
                   keepdims: bool = False, return_sign: bool = False) -> DenseArray | Tuple[DenseArray, DenseArray]:
         """ See: scipy.special.logsumexp. """
@@ -714,6 +951,78 @@ class NumpyOps(BackendOps):
             subok=subok,
         )
 
+    def clip(
+        self,
+        x: DenseArray,
+        a_min: DenseArray,
+        a_max: DenseArray,
+        out: DenseArray | None = None,
+        **kwargs: Any,
+    ) -> DenseArray:
+        """
+        Clip values to an interval. See: numpy.clip.
+
+        Broadcasting, dtype promotion, and optional NumPy-only keyword behavior follow
+        NumPy. Portable code should pass only `x`, `a_min`, and `a_max`.
+        """
+        return self.np.clip(x, a_min, a_max, out=out, **kwargs)
+
+    def isfinite(
+        self,
+        x: DenseArray,
+        /,
+        out: DenseArray | None = None,
+        *,
+        where: DenseArray | bool = True,
+        casting: Literal["no", "equiv", "safe", "same_kind", "unsafe"] = "same_kind",
+        order: Literal["C", "F", "A", "K"] = "K",
+        dtype: DType | None = None,
+        subok: bool = True,
+    ) -> DenseArray:
+        """
+        Test elementwise finiteness. See: numpy.isfinite.
+
+        NumPy supports ufunc keywords such as `where` and `out`; these are not part of
+        the backend-neutral contract.
+        """
+        return self.np.isfinite(
+            x,
+            out=out,
+            where=where,
+            casting=casting,
+            order=order,
+            dtype=dtype,
+            subok=subok,
+        )
+
+    def isnan(
+        self,
+        x: DenseArray,
+        /,
+        out: DenseArray | None = None,
+        *,
+        where: DenseArray | bool = True,
+        casting: Literal["no", "equiv", "safe", "same_kind", "unsafe"] = "same_kind",
+        order: Literal["C", "F", "A", "K"] = "K",
+        dtype: DType | None = None,
+        subok: bool = True,
+    ) -> DenseArray:
+        """
+        Test elementwise NaN values. See: numpy.isnan.
+
+        NumPy supports ufunc keywords such as `where` and `out`; these are not part of
+        the backend-neutral contract.
+        """
+        return self.np.isnan(
+            x,
+            out=out,
+            where=where,
+            casting=casting,
+            order=order,
+            dtype=dtype,
+            subok=subok,
+        )
+
     def where(self, condition: DenseArray | bool, x: DenseArray, y: DenseArray) -> DenseArray:
         """ See: numpy.where. """
         return self.np.where(condition, x, y)
@@ -732,6 +1041,60 @@ class NumpyOps(BackendOps):
           numpy.concatenate(arrays, axis=0, out=None, *, dtype=None, casting='same_kind')
         """
         return self.np.concatenate(arrays, axis=axis, out=out, dtype=dtype, casting=casting)
+
+    def take(
+        self,
+        x: DenseArray,
+        indices: DenseArray,
+        axis: int | None = None,
+        out: DenseArray | None = None,
+        mode: Literal["raise", "wrap", "clip"] = "raise",
+    ) -> DenseArray:
+        """
+        Take elements by integer index. See: numpy.take.
+
+        Portable code should pass valid indices because out-of-bounds modes differ
+        from JAX defaults.
+        """
+        return self.np.take(x, indices, axis=axis, out=out, mode=mode)
+
+    def diag(self, x: DenseArray, k: int = 0) -> DenseArray:
+        """
+        Extract or construct a diagonal. See: numpy.diag.
+
+        The portable signature uses the main diagonal; `k` is a NumPy-compatible extension.
+        """
+        return self.np.diag(x, k=k)
+
+    def diagonal(
+        self,
+        x: DenseArray,
+        offset: int = 0,
+        axis1: int = 0,
+        axis2: int = 1,
+    ) -> DenseArray:
+        """
+        Return selected diagonals. See: numpy.diagonal.
+
+        NumPy may return a view. Portable code should not rely on mutability or aliasing.
+        """
+        return self.np.diagonal(x, offset=offset, axis1=axis1, axis2=axis2)
+
+    def tril(self, x: DenseArray, k: int = 0) -> DenseArray:
+        """
+        Return the lower triangle of `x`. See: numpy.tril.
+
+        Entries above the selected diagonal are filled with zero of the result dtype.
+        """
+        return self.np.tril(x, k=k)
+
+    def triu(self, x: DenseArray, k: int = 0) -> DenseArray:
+        """
+        Return the upper triangle of `x`. See: numpy.triu.
+
+        Entries below the selected diagonal are filled with zero of the result dtype.
+        """
+        return self.np.triu(x, k=k)
 
     def index_set(self, x: DenseArray, index: Index, values: DenseArray, *, copy: bool = True):
         if copy:
