@@ -21,10 +21,34 @@ class BackendOps(ABC):
 
     @property
     def family(self) -> str:
+        """
+        Generic backend-agnostic wrapper to backend family identifier.
+
+        Input:
+            None.
+
+        Output:
+            String naming the concrete backend family.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
+        """
         return type(self)._family
 
     @property
     def allow_sparse(self) -> bool:
+        """
+        Generic backend-agnostic wrapper to sparse-array support flag.
+
+        Input:
+            None.
+
+        Output:
+            Boolean indicating whether this backend supports sparse arrays.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
+        """
         return self._allow_sparse
 
     def __eq__(self, other: Any) -> bool:
@@ -35,195 +59,533 @@ class BackendOps(ABC):
     @property
     @abstractmethod
     def dense_array(self) -> Type[Any]:
+        """
+        Generic backend-agnostic wrapper to dense array type.
+
+        Input:
+            None.
+
+        Output:
+            Concrete dense array class accepted by this backend.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
+        """
         ...
 
     @property
     @abstractmethod
     def sparse_array(self) -> Tuple[Type[Any], ...] | None:
+        """
+        Generic backend-agnostic wrapper to sparse array type tuple.
+
+        Input:
+            None.
+
+        Output:
+            Concrete sparse array classes accepted by this backend, or None.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
+        """
         ...
 
     @abstractmethod
     def sanitize_dtype(self, dtype: DType | None) -> DType:
+        """
+        Generic backend-agnostic wrapper to normalize a dtype specifier.
+
+        Input:
+            dtype: Optional dtype requested by SpaceCore or the caller.
+
+        Output:
+            Backend dtype object accepted by array constructors.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
+        """
         ...
 
     def is_dense(self, x: Any) -> bool:
+        """
+        Generic backend-agnostic wrapper to test for a dense backend array.
+
+        Input:
+            x: Object to test.
+
+        Output:
+            True when x is an instance of the backend dense array type.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
+        """
         return isinstance(x, self.dense_array)
 
     def is_sparse(self, x: Any) -> bool:
+        """
+        Generic backend-agnostic wrapper to test for a sparse backend array.
+
+        Input:
+            x: Object to test.
+
+        Output:
+            True when x is an instance of a backend sparse array type.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
+        """
         return self.sparse_array is not None and isinstance(x, self.sparse_array)
 
     def is_array(self, x: Any) -> bool:
+        """
+        Generic backend-agnostic wrapper to test for any backend array.
+
+        Input:
+            x: Object to test.
+
+        Output:
+            True when x is dense or sparse for this backend.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
+        """
         return self.is_dense(x) or self.is_sparse(x)
 
     @abstractmethod
     def get_dtype(self, x: Any) -> DType:
+        """
+        Generic backend-agnostic wrapper to return an array dtype.
+
+        Input:
+            x: Dense or sparse backend array.
+
+        Output:
+            Backend dtype associated with x.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
+        """
         ...
 
     @abstractmethod
     def shape(self, x: Any) -> tuple[int, ...]:
         """
-        Return the shape tuple for an array-like object.
+        Generic backend-agnostic wrapper to return array shape metadata.
 
-        Shape metadata is expected to be backend-static for normal arrays. Backends
-        with tracing or dynamic-shape modes may return symbolic dimension objects;
-        callers should avoid relying on Python-side shape values inside traced code.
+        Input:
+            x: Dense or sparse backend array.
+
+        Output:
+            Tuple describing the logical shape of x.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
         """
 
     @abstractmethod
     def ndim(self, x: Any) -> int:
         """
-        Return the number of dimensions of an array-like object.
+        Generic backend-agnostic wrapper to return array rank metadata.
 
-        This is metadata only and does not copy data. For traced backends, the value
-        must be available from the abstract array shape.
+        Input:
+            x: Dense or sparse backend array.
+
+        Output:
+            Number of dimensions in x.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
         """
 
     @abstractmethod
     def size(self, x: Any) -> int:
         """
-        Return the total number of logical elements in an array-like object.
+        Generic backend-agnostic wrapper to return logical element count.
 
-        Sparse backends should report logical dense size, not stored element count.
-        Dynamic-shape backends may expose non-plain Python integers.
+        Input:
+            x: Dense or sparse backend array.
+
+        Output:
+            Total number of logical dense elements.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
         """
 
     @property
     @abstractmethod
     def inf(self) -> DenseArray:
-        """Positive infinity (backend scalar)."""
+        """
+        Generic backend-agnostic wrapper to positive infinity scalar.
+
+        Input:
+            None.
+
+        Output:
+            Backend scalar representing positive infinity.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
+        """
 
     @property
     @abstractmethod
     def nan(self) -> DenseArray:
-        """NaN (backend scalar)."""
+        """
+        Generic backend-agnostic wrapper to access a NaN scalar.
+
+        Input:
+            None.
+
+        Output:
+            Backend scalar representing NaN.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
+        """
 
     @property
     @abstractmethod
     def pi(self) -> DenseArray:
-        """π as backend scalar."""
+        """
+        Generic backend-agnostic wrapper to pi scalar.
+
+        Input:
+            None.
+
+        Output:
+            Backend scalar representing pi.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
+        """
 
     @property
     @abstractmethod
     def e(self) -> DenseArray:
-        """Euler's number as backend scalar."""
+        """
+        Generic backend-agnostic wrapper to access Euler's number scalar.
+
+        Input:
+            None.
+
+        Output:
+            Backend scalar representing Euler's number.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
+        """
 
     @property
     @abstractmethod
     def eps(self) -> DenseArray:
-        """Machine epsilon for default float dtype."""
+        """
+        Generic backend-agnostic wrapper to machine epsilon scalar.
+
+        Input:
+            None.
+
+        Output:
+            Backend scalar for float64 machine epsilon.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
+        """
 
     @abstractmethod
     def asarray(self, x: Any, dtype: DType | None = None) -> DenseArray:
+        """
+        Generic backend-agnostic wrapper to convert input to a dense array.
+
+        Input:
+            x/a: Array-like input and optional dtype or backend conversion parameters.
+
+        Output:
+            Dense backend array.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
+        """
         ...
 
     @abstractmethod
     def astype(self, x: DenseArray, dtype: DType) -> DenseArray:
         """
-        Return `x` converted to `dtype`.
+        Generic backend-agnostic wrapper to cast an array to a dtype.
 
-        Dtype availability, promotion, and precision are backend-dependent. JAX may
-        canonicalize or reject dtypes according to its global configuration and device.
+        Input:
+            x: Dense backend array; dtype: target dtype and optional casting controls.
+
+        Output:
+            Dense backend array with the requested dtype.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
         """
 
     @abstractmethod
     def assparse(self, x: Any, dtype: DType | None = None) -> SparseArray:
+        """
+        Generic backend-agnostic wrapper to convert input to a sparse array.
+
+        Input:
+            x: Dense, sparse, or array-like input plus sparse-format options.
+
+        Output:
+            Sparse backend array.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
+        """
         ...
 
     @abstractmethod
     def empty(self, shape: Tuple[int, ...], dtype: DType | None = None) -> DenseArray:
+        """
+        Generic backend-agnostic wrapper to create an uninitialized dense array.
+
+        Input:
+            shape: Output shape; dtype and placement options are backend-specific.
+
+        Output:
+            Dense backend array with uninitialized values.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
+        """
         ...
 
     @abstractmethod
     def zeros(self, shape: Tuple[int, ...], dtype: DType | None = None) -> DenseArray:
+        """
+        Generic backend-agnostic wrapper to create a zero-filled dense array.
+
+        Input:
+            shape: Output shape; dtype and placement options are backend-specific.
+
+        Output:
+            Dense backend array filled with zeros.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
+        """
         ...
 
     @abstractmethod
     def ones(self, shape: Tuple[int, ...], dtype: DType | None = None) -> DenseArray:
+        """
+        Generic backend-agnostic wrapper to create a one-filled dense array.
+
+        Input:
+            shape: Output shape; dtype and placement options are backend-specific.
+
+        Output:
+            Dense backend array filled with ones.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
+        """
         ...
 
     @abstractmethod
     def zeros_like(self, x: DenseArray, dtype: DType | None = None) -> DenseArray:
         """
-        Return an array of zeros with the shape and dtype of `x` unless `dtype` is provided.
+        Generic backend-agnostic wrapper to create zeros shaped like another array.
 
-        Device placement and sharding follow backend defaults for like-constructors.
+        Input:
+            x: Prototype dense array; dtype, shape, and placement options are backend-specific.
+
+        Output:
+            Dense backend array of zeros.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
         """
 
     @abstractmethod
     def ones_like(self, x: DenseArray, dtype: DType | None = None) -> DenseArray:
         """
-        Return an array of ones with the shape and dtype of `x` unless `dtype` is provided.
+        Generic backend-agnostic wrapper to create ones shaped like another array.
 
-        Device placement and sharding follow backend defaults for like-constructors.
+        Input:
+            x: Prototype dense array; dtype, shape, and placement options are backend-specific.
+
+        Output:
+            Dense backend array of ones.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
         """
 
     @abstractmethod
     def full_like(self, x: DenseArray, value: Any, dtype: DType | None = None) -> DenseArray:
         """
-        Return an array filled with `value` and shaped like `x`.
+        Generic backend-agnostic wrapper to create filled values shaped like another array.
 
-        Dtype inference and scalar promotion are backend-dependent, especially for
-        mixed Python scalar and array inputs.
+        Input:
+            x: Prototype dense array; value/fill_value and dtype options are backend-specific.
+
+        Output:
+            Dense backend array filled with the requested value.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
         """
 
     @abstractmethod
     def arange(self, start: int, stop: int | None = None, step: int | None = None, dtype: DType | None = None) -> DenseArray:
+        """
+        Generic backend-agnostic wrapper to create evenly spaced integer-range values.
+
+        Input:
+            start, stop, step: Range parameters; dtype and placement options are backend-specific.
+
+        Output:
+            One-dimensional dense backend array.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
+        """
         ...
 
     @abstractmethod
     def full(self, shape: Tuple[int, ...], fill_value: Any, dtype: DType | None = None) -> DenseArray:
+        """
+        Generic backend-agnostic wrapper to create a filled dense array.
+
+        Input:
+            shape: Output shape; fill_value and dtype options are backend-specific.
+
+        Output:
+            Dense backend array filled with fill_value.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
+        """
         ...
 
     @abstractmethod
     def eye(self, n: int, m: int | None = None, dtype: DType | None = None) -> DenseArray:
+        """
+        Generic backend-agnostic wrapper to create a dense identity-like matrix.
+
+        Input:
+            n and optional m: Matrix dimensions; dtype and placement options are backend-specific.
+
+        Output:
+            Two-dimensional dense backend array.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
+        """
         ...
 
     @abstractmethod
     def ravel(self, x: DenseArray) -> DenseArray:
+        """
+        Generic backend-agnostic wrapper to flatten an array.
+
+        Input:
+            x: Dense backend array plus optional order parameters.
+
+        Output:
+            One-dimensional dense backend array view or copy.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
+        """
         ...
 
     @abstractmethod
     def reshape(self, x: DenseArray, shape: Tuple[int, ...] | int) -> DenseArray:
+        """
+        Generic backend-agnostic wrapper to reshape an array.
+
+        Input:
+            x: Dense backend array; shape: New shape plus backend-specific options.
+
+        Output:
+            Dense backend array with the requested shape.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
+        """
         ...
 
     @abstractmethod
     def transpose(self, x: DenseArray, axes: Sequence[int] | None = None) -> DenseArray:
+        """
+        Generic backend-agnostic wrapper to permute array axes.
+
+        Input:
+            x: Dense backend array; axes: Optional axis order.
+
+        Output:
+            Dense backend array with permuted axes.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
+        """
         ...
 
     @abstractmethod
     def swapaxes(self, x: DenseArray, axis1: int, axis2: int) -> DenseArray:
         """
-        Interchange two axes of an array.
+        Generic backend-agnostic wrapper to interchange two axes.
 
-        Axis arguments are metadata and may need to be Python-static for tracing
-        backends such as JAX.
+        Input:
+            x: Dense backend array; axis1 and axis2: Axes to swap.
+
+        Output:
+            Dense backend array with the two axes exchanged.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
         """
 
     @abstractmethod
     def broadcast_to(self, x: DenseArray, shape: Tuple[int, ...]) -> DenseArray:
         """
-        Broadcast `x` to `shape` without changing values.
+        Generic backend-agnostic wrapper to broadcast an array to a shape.
 
-        The returned array may be a view, a lazy/traced value, or an immutable array
-        depending on the backend; callers must not rely on writeability.
+        Input:
+            x: Dense backend array; shape: Target broadcast shape.
+
+        Output:
+            Dense backend array with broadcast shape.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
         """
 
     @abstractmethod
     def expand_dims(self, x: DenseArray, axis: int | Sequence[int]) -> DenseArray:
         """
-        Insert one or more length-one axes at `axis`.
+        Generic backend-agnostic wrapper to insert length-one axes.
 
-        Axis validation follows the backend implementation. JAX requires axis values
-        to be static under JIT.
+        Input:
+            x: Dense backend array; axis: Position or positions to insert.
+
+        Output:
+            Dense backend array with expanded rank.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
         """
 
     @abstractmethod
     def squeeze(self, x: DenseArray, axis: int | Sequence[int] | None = None) -> DenseArray:
         """
-        Remove length-one axes from `x`.
+        Generic backend-agnostic wrapper to remove length-one axes.
 
-        If `axis` is provided, backends raise when a selected axis is not length one.
-        JAX requires axis values to be static under JIT.
+        Input:
+            x: Dense backend array; axis: Optional axes to squeeze.
+
+        Output:
+            Dense backend array with selected singleton dimensions removed.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
         """
 
     @abstractmethod
@@ -234,38 +596,128 @@ class BackendOps(ABC):
         destination: int | Sequence[int],
     ) -> DenseArray:
         """
-        Move axes from `source` positions to `destination` positions.
+        Generic backend-agnostic wrapper to move axes to new positions.
 
-        Axis arguments are metadata and may need to be Python-static for tracing
-        backends such as JAX.
+        Input:
+            x: Dense backend array; source and destination: Axis positions.
+
+        Output:
+            Dense backend array with moved axes.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
         """
 
     @abstractmethod
     def stack(self, arrays: Sequence[DenseArray], axis: int = 0) -> DenseArray:
+        """
+        Generic backend-agnostic wrapper to stack arrays along a new axis.
+
+        Input:
+            arrays: Sequence of dense backend arrays; axis: New axis position.
+
+        Output:
+            Dense backend array containing stacked inputs.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
+        """
         ...
 
     @abstractmethod
     def conj(self, x: DenseArray) -> DenseArray:
+        """
+        Generic backend-agnostic wrapper to compute complex conjugates.
+
+        Input:
+            x: Dense backend array.
+
+        Output:
+            Dense backend array with conjugated values.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
+        """
         ...
 
     @abstractmethod
     def real(self, x: DenseArray) -> DenseArray:
+        """
+        Generic backend-agnostic wrapper to extract real components.
+
+        Input:
+            x: Dense backend array.
+
+        Output:
+            Dense backend array containing real components.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
+        """
         ...
 
     @abstractmethod
     def imag(self, x: DenseArray) -> DenseArray:
+        """
+        Generic backend-agnostic wrapper to extract imaginary components.
+
+        Input:
+            x: Dense backend array.
+
+        Output:
+            Dense backend array containing imaginary components.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
+        """
         ...
 
     @abstractmethod
     def abs(self, x: DenseArray) -> DenseArray:
+        """
+        Generic backend-agnostic wrapper to compute absolute values.
+
+        Input:
+            x: Dense backend array.
+
+        Output:
+            Dense backend array of absolute values.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
+        """
         ...
 
     @abstractmethod
     def sign(self, x: DenseArray) -> DenseArray:
+        """
+        Generic backend-agnostic wrapper to compute signs elementwise.
+
+        Input:
+            x: Dense backend array.
+
+        Output:
+            Dense backend array of signs.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
+        """
         ...
 
     @abstractmethod
     def sqrt(self, x: DenseArray) -> DenseArray:
+        """
+        Generic backend-agnostic wrapper to compute square roots elementwise.
+
+        Input:
+            x: Dense backend array.
+
+        Output:
+            Dense backend array of square roots.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
+        """
         ...
 
     @abstractmethod
@@ -276,6 +728,18 @@ class BackendOps(ABC):
         keepdims: bool = False,
         dtype: DType | None = None,
     ) -> DenseArray:
+        """
+        Generic backend-agnostic wrapper to reduce by summation.
+
+        Input:
+            x: Dense backend array; axis, keepdims, and dtype control the reduction.
+
+        Output:
+            Dense backend array or scalar containing sums.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
+        """
         ...
 
     @abstractmethod
@@ -286,10 +750,16 @@ class BackendOps(ABC):
         keepdims: bool = False,
     ) -> DenseArray:
         """
-        Compute the arithmetic mean over `axis`.
+        Generic backend-agnostic wrapper to reduce by arithmetic mean.
 
-        Accumulator dtype, integer promotion, and NaN handling follow the backend.
-        JAX requires reduction axes to be static under JIT.
+        Input:
+            x: Dense backend array; axis and keepdims control the reduction.
+
+        Output:
+            Dense backend array or scalar containing means.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
         """
 
     @abstractmethod
@@ -300,10 +770,16 @@ class BackendOps(ABC):
         keepdims: bool = False,
     ) -> DenseArray:
         """
-        Compute the minimum values over `axis`.
+        Generic backend-agnostic wrapper to reduce by minimum.
 
-        Empty reductions, NaN ordering, and dtype promotion follow the backend.
-        JAX requires reduction axes to be static under JIT.
+        Input:
+            x: Dense backend array; axis and keepdims control the reduction.
+
+        Output:
+            Dense backend array or scalar containing minima.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
         """
 
     @abstractmethod
@@ -314,10 +790,16 @@ class BackendOps(ABC):
         keepdims: bool = False,
     ) -> DenseArray:
         """
-        Compute the maximum values over `axis`.
+        Generic backend-agnostic wrapper to reduce by maximum.
 
-        Empty reductions, NaN ordering, and dtype promotion follow the backend.
-        JAX requires reduction axes to be static under JIT.
+        Input:
+            x: Dense backend array; axis and keepdims control the reduction.
+
+        Output:
+            Dense backend array or scalar containing maxima.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
         """
 
     @abstractmethod
@@ -328,50 +810,194 @@ class BackendOps(ABC):
         keepdims: bool = False,
         dtype: DType | None = None,
     ) -> DenseArray:
+        """
+        Generic backend-agnostic wrapper to reduce by product.
+
+        Input:
+            x: Dense backend array; axis, keepdims, and dtype control the reduction.
+
+        Output:
+            Dense backend array or scalar containing products.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
+        """
         ...
 
     @abstractmethod
     def trace(self, x: DenseArray) -> DenseArray:
+        """
+        Generic backend-agnostic wrapper to sum diagonal entries.
+
+        Input:
+            x: Dense backend array plus optional diagonal and axis controls.
+
+        Output:
+            Dense backend array or scalar containing trace values.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
+        """
         ...
 
     @abstractmethod
     def argsort(self, x: DenseArray, axis: int = -1) -> DenseArray:
+        """
+        Generic backend-agnostic wrapper to return sorting indices.
+
+        Input:
+            x: Dense backend array; axis and ordering options are backend-specific.
+
+        Output:
+            Dense integer backend array of indices.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
+        """
         ...
 
     @abstractmethod
     def sort(self, x: DenseArray, axis: int = -1) -> DenseArray:
+        """
+        Generic backend-agnostic wrapper to sort values.
+
+        Input:
+            x: Dense backend array; axis and ordering options are backend-specific.
+
+        Output:
+            Dense backend array with sorted values.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
+        """
         ...
 
     @abstractmethod
     def argmin(self, x: DenseArray, axis: int | None = None, keepdims: bool = False) -> DenseArray:
+        """
+        Generic backend-agnostic wrapper to return indices of minimum values.
+
+        Input:
+            x: Dense backend array; axis and keepdims control the reduction.
+
+        Output:
+            Dense integer backend array or scalar of indices.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
+        """
         ...
 
     @abstractmethod
     def argmax(self, x: DenseArray, axis: int | None = None, keepdims: bool = False) -> DenseArray:
+        """
+        Generic backend-agnostic wrapper to return indices of maximum values.
+
+        Input:
+            x: Dense backend array; axis and keepdims control the reduction.
+
+        Output:
+            Dense integer backend array or scalar of indices.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
+        """
         ...
 
     @abstractmethod
     def vdot(self, x: DenseArray, y: DenseArray) -> DenseArray:
+        """
+        Generic backend-agnostic wrapper to compute a conjugating vector dot product.
+
+        Input:
+            x, y: Dense backend arrays accepted by the backend vdot operation.
+
+        Output:
+            Backend scalar or dense array containing the dot product.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
+        """
         ...
 
     @abstractmethod
     def matmul(self, a: DenseArray, b: DenseArray) -> DenseArray:
+        """
+        Generic backend-agnostic wrapper to compute matrix products.
+
+        Input:
+            a, b: Dense backend arrays with matrix-multiplication-compatible shapes.
+
+        Output:
+            Dense backend array containing the product.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
+        """
         ...
 
     @abstractmethod
     def sparse_matmul(self, a: SparseArray, b: DenseArray) -> DenseArray:
+        """
+        Generic backend-agnostic wrapper to multiply sparse and dense arrays.
+
+        Input:
+            a: Sparse backend array; b: Dense backend array.
+
+        Output:
+            Dense backend array containing the product.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
+        """
         ...
 
     @abstractmethod
     def kron(self, a: DenseArray, b: DenseArray) -> DenseArray:
+        """
+        Generic backend-agnostic wrapper to compute a Kronecker product.
+
+        Input:
+            a, b: Dense backend arrays.
+
+        Output:
+            Dense backend array containing the Kronecker product.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
+        """
         ...
 
     @abstractmethod
     def einsum(self, subscripts: str, *operands: DenseArray) -> DenseArray:
+        """
+        Generic backend-agnostic wrapper to evaluate an Einstein summation expression.
+
+        Input:
+            subscripts: Einstein summation string; operands: Dense backend arrays.
+
+        Output:
+            Dense backend array containing the contraction result.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
+        """
         ...
 
     @abstractmethod
     def eigh(self, x: DenseArray) -> tuple[DenseArray, DenseArray]:
+        """
+        Generic backend-agnostic wrapper to compute Hermitian eigenpairs.
+
+        Input:
+            x: Dense Hermitian or symmetric backend array.
+
+        Output:
+            Tuple of dense backend arrays containing eigenvalues and eigenvectors.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
+        """
         ...
 
     @abstractmethod
@@ -383,107 +1009,233 @@ class BackendOps(ABC):
         keepdims: bool = False,
     ) -> DenseArray:
         """
-        Compute a vector or matrix norm.
+        Generic backend-agnostic wrapper to compute vector or matrix norms.
 
-        Supported `ord` values and dtype precision follow the backend linear algebra
-        implementation. JAX requires `ord` and `axis` to be static under JIT.
+        Input:
+            x: Dense backend array; ord, axis, and keepdims select the norm.
+
+        Output:
+            Dense backend array or scalar containing norm values.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
         """
 
     @abstractmethod
     def solve(self, A: DenseArray, b: DenseArray) -> DenseArray:
         """
-        Solve a dense linear system `A @ x = b`.
+        Generic backend-agnostic wrapper to solve dense linear systems.
 
-        Singular-matrix behavior, batching support, and numerical precision are
-        backend-dependent. Sparse inputs are outside this portable contract.
+        Input:
+            A: Dense coefficient array; b: Dense right-hand side array.
+
+        Output:
+            Dense backend array solving A @ x = b.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
         """
 
     @abstractmethod
     def eigvalsh(self, A: DenseArray) -> DenseArray:
         """
-        Return eigenvalues of a Hermitian or symmetric dense matrix.
+        Generic backend-agnostic wrapper to compute Hermitian eigenvalues.
 
-        Backends may differ in UPLO defaults, symmetrization details, batching support,
-        and floating-point precision.
+        Input:
+            A: Dense Hermitian or symmetric backend array.
+
+        Output:
+            Dense backend array containing eigenvalues.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
         """
 
     @abstractmethod
     def svd(self, A: DenseArray, full_matrices: bool = True) -> tuple[DenseArray, DenseArray, DenseArray]:
         """
-        Compute the singular value decomposition of a dense array.
+        Generic backend-agnostic wrapper to compute singular value decompositions.
 
-        The portable contract returns `(u, s, vh)` with `compute_uv=True`. Sign choices,
-        rank-deficient behavior, and precision are backend-dependent.
+        Input:
+            A: Dense backend array plus SVD options.
+
+        Output:
+            Dense backend arrays containing singular vectors and/or singular values.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
         """
 
     @abstractmethod
     def cholesky(self, A: DenseArray) -> DenseArray:
         """
-        Compute a Cholesky factor of a Hermitian positive-definite dense matrix.
+        Generic backend-agnostic wrapper to compute Cholesky factors.
 
-        The portable contract returns the lower-triangular factor. Failure modes for
-        non-positive-definite input are backend-dependent.
+        Input:
+            A: Dense Hermitian positive-definite backend array.
+
+        Output:
+            Dense backend array containing a triangular factor.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
         """
 
     @abstractmethod
     def logsumexp(self, a: DenseArray, axis: int | Sequence[int] | None = None, b: DenseArray | None = None,
                   keepdims: bool = False, return_sign: bool = False) -> DenseArray | Tuple[DenseArray, DenseArray]:
+        """
+        Generic backend-agnostic wrapper to compute a stable log-sum-exp reduction.
+
+        Input:
+            a: Dense backend array; axis, weights, and sign options control the reduction.
+
+        Output:
+            Dense backend array or tuple containing log-sum-exp results.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
+        """
         ...
 
     @abstractmethod
     def exp(self, x: DenseArray) -> DenseArray:
+        """
+        Generic backend-agnostic wrapper to compute exponentials elementwise.
+
+        Input:
+            x: Dense backend array.
+
+        Output:
+            Dense backend array of exponentials.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
+        """
         ...
 
     @abstractmethod
     def log(self, x: DenseArray) -> DenseArray:
+        """
+        Generic backend-agnostic wrapper to compute natural logarithms elementwise.
+
+        Input:
+            x: Dense backend array.
+
+        Output:
+            Dense backend array of logarithms.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
+        """
         ...
 
     @abstractmethod
     def where(self, condition: DenseArray | bool, x: ArrayLike, y: ArrayLike) -> DenseArray:
+        """
+        Generic backend-agnostic wrapper to select values by condition.
+
+        Input:
+            condition: Boolean array or scalar; x and y: Values to choose between.
+
+        Output:
+            Dense backend array containing selected values.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
+        """
         ...
 
     @abstractmethod
     def maximum(self, x: ArrayLike, y: ArrayLike) -> DenseArray:
+        """
+        Generic backend-agnostic wrapper to compute elementwise maxima.
+
+        Input:
+            x, y: Arrays or scalars accepted by backend broadcasting.
+
+        Output:
+            Dense backend array containing maxima.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
+        """
         ...
 
     @abstractmethod
     def minimum(self, x: ArrayLike, y: ArrayLike) -> DenseArray:
         """
-        Return the elementwise minimum of `x` and `y`.
+        Generic backend-agnostic wrapper to compute elementwise minima.
 
-        Broadcasting, scalar promotion, signed-zero handling, and NaN behavior follow
-        the concrete backend.
+        Input:
+            x, y: Arrays or scalars accepted by backend broadcasting.
+
+        Output:
+            Dense backend array containing minima.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
         """
 
     @abstractmethod
     def clip(self, x: DenseArray, a_min: ArrayLike, a_max: ArrayLike) -> DenseArray:
         """
-        Clip values in `x` to the inclusive interval [`a_min`, `a_max`].
+        Generic backend-agnostic wrapper to clip values into an interval.
 
-        Broadcasting, dtype promotion, and behavior when bounds contain NaN follow the
-        backend. Mutating `out` variants are not part of the portable signature.
+        Input:
+            x: Dense backend array; a_min and a_max: Broadcastable bounds.
+
+        Output:
+            Dense backend array with clipped values.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
         """
 
     @abstractmethod
     def isfinite(self, x: DenseArray) -> DenseArray:
         """
-        Return a boolean array indicating finite values.
+        Generic backend-agnostic wrapper to test finiteness elementwise.
 
-        Complex inputs are finite only when both real and imaginary parts are finite.
-        Backend dtype support follows the concrete array library.
+        Input:
+            x: Dense backend array.
+
+        Output:
+            Boolean dense backend array.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
         """
 
     @abstractmethod
     def isnan(self, x: DenseArray) -> DenseArray:
         """
-        Return a boolean array indicating NaN values.
+        Generic backend-agnostic wrapper to test NaN values elementwise.
 
-        Complex-input behavior follows the backend library. Integer and boolean inputs
-        typically return all-false arrays.
+        Input:
+            x: Dense backend array.
+
+        Output:
+            Boolean dense backend array.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
         """
 
     @abstractmethod
     def concatenate(self, arrays: Sequence[DenseArray], axis: int = 0, dtype: DType | None = None) -> DenseArray:
+        """
+        Generic backend-agnostic wrapper to join arrays along an existing axis.
+
+        Input:
+            arrays: Sequence of dense backend arrays; axis and dtype options are backend-specific.
+
+        Output:
+            Dense backend array containing concatenated inputs.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
+        """
         ...
 
     @abstractmethod
@@ -494,46 +1246,76 @@ class BackendOps(ABC):
         axis: int | None = None,
     ) -> DenseArray:
         """
-        Take elements from `x` at integer `indices` along `axis`.
+        Generic backend-agnostic wrapper to take values by integer indices.
 
-        Out-of-bounds handling differs across backends; the portable contract assumes
-        valid indices. JAX requires `axis` to be static under JIT.
+        Input:
+            x: Dense backend array; indices: Integer indices; axis and mode options are backend-specific.
+
+        Output:
+            Dense backend array containing selected values.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
         """
 
     @abstractmethod
     def diag(self, x: DenseArray) -> DenseArray:
         """
-        Extract a diagonal from a 2-D array or construct a diagonal matrix from a 1-D array.
+        Generic backend-agnostic wrapper to extract or build a diagonal.
 
-        Offset variants are intentionally outside the portable signature. Backend
-        behavior for higher-dimensional inputs may differ.
+        Input:
+            x: Dense backend array and optional diagonal offset.
+
+        Output:
+            Dense backend array containing a diagonal view/copy or matrix.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
         """
 
     @abstractmethod
     def diagonal(self, x: DenseArray) -> DenseArray:
         """
-        Return the main diagonal using the backend's default diagonal axes.
+        Generic backend-agnostic wrapper to return selected diagonals.
 
-        Axis and offset variants are intentionally outside the portable signature.
-        Returned mutability/view semantics are backend-dependent.
+        Input:
+            x: Dense backend array plus offset and axis controls.
+
+        Output:
+            Dense backend array containing selected diagonals.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
         """
 
     @abstractmethod
     def tril(self, x: DenseArray) -> DenseArray:
         """
-        Return the lower triangle of an array with entries above the main diagonal zeroed.
+        Generic backend-agnostic wrapper to return lower-triangular values.
 
-        Offset variants are intentionally outside the portable signature. Dtype and
-        zero-fill behavior follow the backend.
+        Input:
+            x: Dense backend array and optional diagonal offset.
+
+        Output:
+            Dense backend array with upper entries zeroed.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
         """
 
     @abstractmethod
     def triu(self, x: DenseArray) -> DenseArray:
         """
-        Return the upper triangle of an array with entries below the main diagonal zeroed.
+        Generic backend-agnostic wrapper to return upper-triangular values.
 
-        Offset variants are intentionally outside the portable signature. Dtype and
-        zero-fill behavior follow the backend.
+        Input:
+            x: Dense backend array and optional diagonal offset.
+
+        Output:
+            Dense backend array with lower entries zeroed.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
         """
 
     @abstractmethod
@@ -546,14 +1328,16 @@ class BackendOps(ABC):
             copy: bool = True,
     ) -> DenseArray:
         """
-        Set `values` at `index` in `x`.
+        Generic backend-agnostic wrapper to set indexed values.
 
-        If copy=True:
-            Return a new array y with y[index] = values and y != x.
+        Input:
+            x: Dense backend array; index: Selection; values: Replacement values; copy controls mutation policy.
 
-        If copy=False:
-            Mutate x in-place if the backend supports it.
-            If the backend does NOT support mutation, raise NotImplementedError.
+        Output:
+            Dense backend array with indexed values set.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
         """
 
     @abstractmethod
@@ -565,10 +1349,34 @@ class BackendOps(ABC):
             *,
             copy: bool = True,
     ) -> DenseArray:
+        """
+        Generic backend-agnostic wrapper to add into indexed values.
+
+        Input:
+            x: Dense backend array; index: Selection; values: Values to add; copy controls mutation policy.
+
+        Output:
+            Dense backend array with indexed values incremented.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
+        """
         ...
 
     @abstractmethod
     def ix_(self, *args: Any) -> Any:
+        """
+        Generic backend-agnostic wrapper to build open mesh index arrays.
+
+        Input:
+            args: One-dimensional index arrays or sequences.
+
+        Output:
+            Tuple of dense backend arrays usable for open-mesh indexing.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
+        """
         ...
 
     @abstractmethod
@@ -580,7 +1388,16 @@ class BackendOps(ABC):
             init_val: T,
     ) -> T:
         """
-        Signature matches jax.lax.fori_loop(lower, upper, body_fun, init_val).
+        Generic backend-agnostic wrapper to run a counted loop primitive.
+
+        Input:
+            lower, upper: Loop bounds; body_fun: Loop body; init_val: Initial carry value.
+
+        Output:
+            Final carry value after loop execution.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
         """
 
     @abstractmethod
@@ -591,7 +1408,16 @@ class BackendOps(ABC):
             init_val: T,
     ) -> T:
         """
-        Signature matches jax.lax.while_loop(cond_fun, body_fun, init_val).
+        Generic backend-agnostic wrapper to run a while-loop primitive.
+
+        Input:
+            cond_fun: Loop condition; body_fun: Loop body; init_val: Initial carry value.
+
+        Output:
+            Final carry value after loop execution.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
         """
 
     @abstractmethod
@@ -605,9 +1431,16 @@ class BackendOps(ABC):
             unroll: int = 1,
     ) -> Tuple[Carry, Y]:
         """
-        Signature matches jax.lax.scan(f, init, xs, length=None, reverse=False, unroll=1).
-        Note: in JAX, `xs` is a pytree with a leading axis; `ys` matches `xs` structure
-        (per-step outputs stacked along the leading axis).
+        Generic backend-agnostic wrapper to run a scan primitive.
+
+        Input:
+            f: Scan body; init: Initial carry; xs: Per-step inputs plus scan options.
+
+        Output:
+            Tuple of final carry and stacked outputs.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
         """
 
     @abstractmethod
@@ -618,6 +1451,18 @@ class BackendOps(ABC):
             false_fun: Callable[[T], R],
             *operands: Any,
     ) -> R:
+        """
+        Generic backend-agnostic wrapper to run conditional branch selection.
+
+        Input:
+            pred: Predicate; true_fun and false_fun: Branch functions; operands: Branch inputs.
+
+        Output:
+            Result returned by the selected branch.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
+        """
         ...
 
     @abstractmethod
@@ -629,6 +1474,18 @@ class BackendOps(ABC):
             atol: float = 1e-8,
             equal_nan: bool = False,
     ) -> bool:
+        """
+        Generic backend-agnostic wrapper to compare dense arrays elementwise within tolerances.
+
+        Input:
+            a, b: Dense backend arrays; rtol, atol, and equal_nan configure comparison.
+
+        Output:
+            Boolean indicating whether arrays are close.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
+        """
         ...
 
     @abstractmethod
@@ -639,6 +1496,18 @@ class BackendOps(ABC):
             rtol: float = 1e-5,
             atol: float = 1e-8,
     ) -> bool:
+        """
+        Generic backend-agnostic wrapper to compare sparse arrays elementwise within tolerances.
+
+        Input:
+            a, b: Sparse backend arrays; rtol and atol configure comparison.
+
+        Output:
+            Boolean indicating whether sparse arrays are close.
+
+        This declaration only specifies the portable SpaceCore interface.
+        See the concrete backend implementation for backend-specific behavior.
+        """
         ...
 
     def __repr__(self):

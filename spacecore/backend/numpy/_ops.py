@@ -11,7 +11,7 @@ from ...types import DenseArray, SparseArray, DType, Index, X, T, Y, R, Carry
 class NumpyOps(BackendOps):
     import numpy as np
     import scipy as sp
-    
+
     """
     BackendOps implementation for the NumPy ecosystem.
 
@@ -33,10 +33,34 @@ class NumpyOps(BackendOps):
 
     @property
     def dense_array(self) -> Type[Any]:
+        """
+        Dense array type using NumPy.
+
+        Input:
+            None.
+
+        Output:
+            Concrete dense array class accepted by this backend.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html
+        """
         return self.np.ndarray
 
     @property
     def sparse_array(self) -> Tuple[Type[Any], ...]:
+        """
+        Sparse array type tuple using SciPy.
+
+        Input:
+            None.
+
+        Output:
+            Concrete sparse array classes accepted by this backend, or None.
+
+        See:
+            https://docs.scipy.org/doc/scipy/reference/sparse.html
+        """
         sparse = self.sp.sparse
         types: list[type[Any]] = []
         if hasattr(sparse, "spmatrix"):
@@ -50,13 +74,36 @@ class NumpyOps(BackendOps):
         self._reshape_supports_copy = "copy" in inspect.signature(self.np.reshape).parameters
 
     def sanitize_dtype(self, dtype: DType | None) -> DType:
-        """Normalize dtype to a NumPy dtype object. See: numpy.dtype."""
+        """
+        Normalize a dtype specifier using NumPy.
+
+        Input:
+            dtype: Optional dtype requested by SpaceCore or the caller.
+
+        Output:
+            Backend dtype object accepted by array constructors.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.dtype.html
+        """
 
         if dtype is None:
             return self.np.float64
         return self.np.dtype(dtype)
 
     def get_dtype(self, x: Any) -> DType:
+        """
+        Return an array dtype using NumPy.
+
+        Input:
+            x: Dense or sparse backend array.
+
+        Output:
+            Backend dtype associated with x.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.ndarray.dtype.html
+        """
         if self.is_dense(x):
             return x.dtype
         elif self.is_sparse(x):
@@ -66,48 +113,130 @@ class NumpyOps(BackendOps):
 
     def shape(self, x: Any) -> tuple[int, ...]:
         """
-        Return `x.shape` as a tuple.
+        Return array shape metadata using NumPy.
 
-        NumPy/SciPy expose eager Python shape metadata. For SciPy sparse arrays this
-        reports logical dense shape, not stored entries.
+        Input:
+            x: Dense or sparse backend array.
+
+        Output:
+            Tuple describing the logical shape of x.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.ndarray.shape.html
         """
         return tuple(x.shape)
 
     def ndim(self, x: Any) -> int:
         """
-        Return the number of dimensions of `x`.
+        Return array rank metadata using NumPy.
 
-        NumPy arrays and SciPy sparse arrays expose eager Python metadata.
+        Input:
+            x: Dense or sparse backend array.
+
+        Output:
+            Number of dimensions in x.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.ndarray.ndim.html
         """
         return int(x.ndim)
 
     def size(self, x: Any) -> int:
         """
-        Return the logical dense element count of `x`.
+        Return logical element count using NumPy.
 
-        SciPy sparse `.size` may reflect stored data for some sparse classes, so this
-        method computes the product of the logical shape.
+        Input:
+            x: Dense or sparse backend array.
+
+        Output:
+            Total number of logical dense elements.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.ndarray.size.html
+
+        Backend-specific notes:
+            SciPy sparse inputs are reported by logical dense size, not stored entries.
         """
         return int(self.np.prod(self.shape(x), dtype=self.np.intp))
 
     @property
     def inf(self):
+        """
+        Positive infinity scalar using NumPy.
+
+        Input:
+            None.
+
+        Output:
+            Backend scalar representing positive infinity.
+
+        See:
+            https://numpy.org/doc/stable/reference/constants.html
+        """
         return self.np.array(self.np.inf)
 
     @property
     def nan(self):
+        """
+        NaN scalar using NumPy.
+
+        Input:
+            None.
+
+        Output:
+            Backend scalar representing NaN.
+
+        See:
+            https://numpy.org/doc/stable/reference/constants.html
+        """
         return self.np.array(self.np.nan)
 
     @property
     def pi(self):
+        """
+        Pi scalar using NumPy.
+
+        Input:
+            None.
+
+        Output:
+            Backend scalar representing pi.
+
+        See:
+            https://numpy.org/doc/stable/reference/constants.html
+        """
         return self.np.array(self.np.pi)
 
     @property
     def e(self):
+        """
+        Euler number scalar using NumPy.
+
+        Input:
+            None.
+
+        Output:
+            Backend scalar representing Euler's number.
+
+        See:
+            https://numpy.org/doc/stable/reference/constants.html
+        """
         return self.np.array(self.np.e)
 
     @property
     def eps(self):
+        """
+        Machine epsilon scalar using NumPy.
+
+        Input:
+            None.
+
+        Output:
+            Backend scalar for float64 machine epsilon.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.finfo.html
+        """
         return self.np.array(self.np.finfo(self.np.float64).eps)
 
     def asarray(
@@ -121,10 +250,16 @@ class NumpyOps(BackendOps):
         like: DenseArray | None = None,
     ) -> DenseArray:
         """
-        Convert the input to an array. See: numpy.asarray.
+        Convert input to a dense array using NumPy.
 
-        Signature mirrors:
-          numpy.asarray(a, dtype=None, order=None, *, device=None, copy=None, like=None)
+        Input:
+            x/a: Array-like input and optional dtype or backend conversion parameters.
+
+        Output:
+            Dense backend array.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.asarray.html
         """
         return self.np.asarray(
             a,
@@ -145,14 +280,35 @@ class NumpyOps(BackendOps):
         copy: bool = True,
     ) -> DenseArray:
         """
-        Copy `x` cast to `dtype`. See: numpy.ndarray.astype.
+        Cast an array to a dtype using NumPy.
 
-        NumPy dtype promotion and casting safety are controlled by `casting`; device
-        placement is always host CPU for NumPy arrays.
+        Input:
+            x: Dense backend array; dtype: target dtype and optional casting controls.
+
+        Output:
+            Dense backend array with the requested dtype.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.ndarray.astype.html
         """
         return x.astype(dtype, order=order, casting=casting, subok=subok, copy=copy)
 
     def assparse(self, x: Any, *, format: Literal["csr", "csc", "coo"] = "csr", dtype: DType | None = None) -> SparseArray:
+        """
+        Convert input to a sparse array using SciPy.
+
+        Input:
+            x: Dense, sparse, or array-like input plus sparse-format options.
+
+        Output:
+            Sparse backend array.
+
+        See:
+            https://docs.scipy.org/doc/scipy/reference/sparse.html
+
+        Backend-specific notes:
+            SpaceCore currently converts dense inputs to 2-D SciPy sparse matrices in the requested format.
+        """
         sparse = self.sp.sparse
 
         if self.is_sparse(x):
@@ -188,11 +344,16 @@ class NumpyOps(BackendOps):
         like: DenseArray | None = None,
     ) -> DenseArray:
         """
-        Return a new array of given shape and type, without initializing entries.
-        See: numpy.empty.
+        Create an uninitialized dense array using NumPy.
 
-        Signature mirrors:
-          numpy.empty(shape, dtype=float, order='C', *, device=None, like=None)
+        Input:
+            shape: Output shape; dtype and placement options are backend-specific.
+
+        Output:
+            Dense backend array with uninitialized values.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.empty.html
         """
 
         return self.np.empty(
@@ -213,11 +374,16 @@ class NumpyOps(BackendOps):
             like: DenseArray | None = None,
     ) -> DenseArray:
         """
-        Return a new array of given shape and type, filled with zeros.
-        See: numpy.zeros.
+        Create a zero-filled dense array using NumPy.
 
-        Signature mirrors:
-          numpy.zeros(shape, dtype=None, order='C', *, device=None, like=None)
+        Input:
+            shape: Output shape; dtype and placement options are backend-specific.
+
+        Output:
+            Dense backend array filled with zeros.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.zeros.html
         """
         return self.np.zeros(
             shape,
@@ -237,11 +403,16 @@ class NumpyOps(BackendOps):
         like: DenseArray | None = None,
     ) -> DenseArray:
         """
-        Return a new array of given shape and type, filled with ones.
-        See: numpy.ones.
+        Create a one-filled dense array using NumPy.
 
-        Signature mirrors:
-          numpy.ones(shape, dtype=None, order='C', *, device=None, like=None)
+        Input:
+            shape: Output shape; dtype and placement options are backend-specific.
+
+        Output:
+            Dense backend array filled with ones.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.ones.html
         """
         return self.np.ones(
             shape,
@@ -260,10 +431,16 @@ class NumpyOps(BackendOps):
         shape: int | Tuple[int, ...] | None = None,
     ) -> DenseArray:
         """
-        Return an array of zeros with shape and dtype like `x`. See: numpy.zeros_like.
+        Create zeros shaped like another array using NumPy.
 
-        NumPy may preserve subclasses when `subok=True`; the portable API should not
-        rely on subclass-specific behavior.
+        Input:
+            x: Prototype dense array; dtype, shape, and placement options are backend-specific.
+
+        Output:
+            Dense backend array of zeros.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.zeros_like.html
         """
         return self.np.zeros_like(x, dtype=dtype, order=order, subok=subok, shape=shape)
 
@@ -276,10 +453,16 @@ class NumpyOps(BackendOps):
         shape: int | Tuple[int, ...] | None = None,
     ) -> DenseArray:
         """
-        Return an array of ones with shape and dtype like `x`. See: numpy.ones_like.
+        Create ones shaped like another array using NumPy.
 
-        NumPy may preserve subclasses when `subok=True`; dtype inference follows
-        NumPy scalar promotion rules.
+        Input:
+            x: Prototype dense array; dtype, shape, and placement options are backend-specific.
+
+        Output:
+            Dense backend array of ones.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.ones_like.html
         """
         return self.np.ones_like(x, dtype=dtype, order=order, subok=subok, shape=shape)
 
@@ -293,9 +476,16 @@ class NumpyOps(BackendOps):
         shape: int | Tuple[int, ...] | None = None,
     ) -> DenseArray:
         """
-        Return an array filled with `value` and shaped like `x`. See: numpy.full_like.
+        Create filled values shaped like another array using NumPy.
 
-        NumPy determines the result dtype from `x`, `value`, and explicit `dtype`.
+        Input:
+            x: Prototype dense array; value/fill_value and dtype options are backend-specific.
+
+        Output:
+            Dense backend array filled with the requested value.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.full_like.html
         """
         return self.np.full_like(x, value, dtype=dtype, order=order, subok=subok, shape=shape)
 
@@ -307,6 +497,18 @@ class NumpyOps(BackendOps):
                device: str | None = None,
                like: DenseArray | None = None,
                ) -> DenseArray:
+        """
+        Create evenly spaced integer-range values using NumPy.
+
+        Input:
+            start, stop, step: Range parameters; dtype and placement options are backend-specific.
+
+        Output:
+            One-dimensional dense backend array.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.arange.html
+        """
         return self.np.arange(
             start,
             stop,
@@ -327,11 +529,16 @@ class NumpyOps(BackendOps):
         like: DenseArray | None = None,
     ) -> DenseArray:
         """
-        Return a new array of given shape and type, filled with `fill_value`.
-        See: numpy.full.
+        Create a filled dense array using NumPy.
 
-        Signature mirrors:
-          numpy.full(shape, fill_value, dtype=None, order='C', *, device=None, like=None)
+        Input:
+            shape: Output shape; fill_value and dtype options are backend-specific.
+
+        Output:
+            Dense backend array filled with fill_value.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.full.html
         """
         return self.np.full(
             shape,
@@ -354,11 +561,16 @@ class NumpyOps(BackendOps):
         like: DenseArray | None = None,
     ) -> DenseArray:
         """
-        Return a 2-D array with ones on the diagonal and zeros elsewhere.
-        See: numpy.eye.
+        Create a dense identity-like matrix using NumPy.
 
-        Signature mirrors:
-          numpy.eye(N, M=None, k=0, dtype=float, order='C', *, device=None, like=None)
+        Input:
+            n and optional m: Matrix dimensions; dtype and placement options are backend-specific.
+
+        Output:
+            Two-dimensional dense backend array.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.eye.html
         """
         return self.np.eye(
             N,
@@ -371,7 +583,18 @@ class NumpyOps(BackendOps):
         )
 
     def ravel(self, a: DenseArray, order: Literal["C", "F", "A", "K"] = "C") -> DenseArray:
-        """Return a contiguous flattened array. See: numpy.ravel."""
+        """
+        Flatten an array using NumPy.
+
+        Input:
+            x: Dense backend array plus optional order parameters.
+
+        Output:
+            One-dimensional dense backend array view or copy.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.ravel.html
+        """
         return self.np.ravel(a, order=order)
 
     def reshape(
@@ -381,7 +604,18 @@ class NumpyOps(BackendOps):
         order: Literal["C", "F", "A", "K"] = "C",
         copy: bool | None = None,
     ) -> DenseArray:
-        """Give a new shape to an array without changing its data. See: numpy.reshape."""
+        """
+        Reshape an array using NumPy.
+
+        Input:
+            x: Dense backend array; shape: New shape plus backend-specific options.
+
+        Output:
+            Dense backend array with the requested shape.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.reshape.html
+        """
         if self._reshape_supports_copy:
             return self.np.reshape(a, shape, order=order, copy=copy)
         if copy:
@@ -389,11 +623,33 @@ class NumpyOps(BackendOps):
         return self.np.reshape(a, shape, order=order)
 
     def transpose(self, a: DenseArray, axes: Sequence[int] | None = None) -> DenseArray:
-        """Permute the dimensions of an array. See: numpy.transpose."""
+        """
+        Permute array axes using NumPy.
+
+        Input:
+            x: Dense backend array; axes: Optional axis order.
+
+        Output:
+            Dense backend array with permuted axes.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.transpose.html
+        """
         return self.np.transpose(a, axes=axes)
 
     def swapaxes(self, a: DenseArray, axis1: int, axis2: int) -> DenseArray:
-        """Interchange two axes of an array. See: numpy.swapaxes."""
+        """
+        Interchange two axes using NumPy.
+
+        Input:
+            x: Dense backend array; axis1 and axis2: Axes to swap.
+
+        Output:
+            Dense backend array with the two axes exchanged.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.swapaxes.html
+        """
         return self.np.swapaxes(a, axis1, axis2)
 
     def broadcast_to(
@@ -403,21 +659,46 @@ class NumpyOps(BackendOps):
         subok: bool = False,
     ) -> DenseArray:
         """
-        Broadcast `x` to `shape`. See: numpy.broadcast_to.
+        Broadcast an array to a shape using NumPy.
 
-        NumPy usually returns a readonly view; callers must not assume mutability.
+        Input:
+            x: Dense backend array; shape: Target broadcast shape.
+
+        Output:
+            Dense backend array with broadcast shape.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.broadcast_to.html
         """
         return self.np.broadcast_to(x, shape, subok=subok)
 
     def expand_dims(self, x: DenseArray, axis: int | Sequence[int]) -> DenseArray:
-        """Insert new axes into `x`. See: numpy.expand_dims."""
+        """
+        Insert length-one axes using NumPy.
+
+        Input:
+            x: Dense backend array; axis: Position or positions to insert.
+
+        Output:
+            Dense backend array with expanded rank.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.expand_dims.html
+        """
         return self.np.expand_dims(x, axis=axis)
 
     def squeeze(self, x: DenseArray, axis: int | Sequence[int] | None = None) -> DenseArray:
         """
-        Remove length-one axes from `x`. See: numpy.squeeze.
+        Remove length-one axes using NumPy.
 
-        NumPy may return a view; mutability aliases the original array when it does.
+        Input:
+            x: Dense backend array; axis: Optional axes to squeeze.
+
+        Output:
+            Dense backend array with selected singleton dimensions removed.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.squeeze.html
         """
         return self.np.squeeze(x, axis=axis)
 
@@ -428,10 +709,16 @@ class NumpyOps(BackendOps):
         destination: int | Sequence[int],
     ) -> DenseArray:
         """
-        Move axes to new positions. See: numpy.moveaxis.
+        Move axes to new positions using NumPy.
 
-        NumPy returns a view when possible, so callers should avoid relying on copy
-        or mutability behavior in portable code.
+        Input:
+            x: Dense backend array; source and destination: Axis positions.
+
+        Output:
+            Dense backend array with moved axes.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.moveaxis.html
         """
         return self.np.moveaxis(x, source=source, destination=destination)
 
@@ -445,10 +732,16 @@ class NumpyOps(BackendOps):
         casting: Literal["no", "equiv", "safe", "same_kind", "unsafe"] = "same_kind",
     ) -> DenseArray:
         """
-        Join a sequence of arrays along a new axis. See: numpy.stack.
+        Stack arrays along a new axis using NumPy.
 
-        Signature mirrors (NumPy >= 1.24):
-          numpy.stack(arrays, axis=0, out=None, *, dtype=None, casting='same_kind')
+        Input:
+            arrays: Sequence of dense backend arrays; axis: New axis position.
+
+        Output:
+            Dense backend array containing stacked inputs.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.stack.html
         """
         return self.np.stack(arrays, axis=axis, out=out, dtype=dtype, casting=casting)
 
@@ -464,7 +757,18 @@ class NumpyOps(BackendOps):
         dtype: DType | None = None,
         subok: bool = True,
     ) -> DenseArray:
-        """Return the complex conjugate, element-wise. See: numpy.conjugate / numpy.conj."""
+        """
+        Compute complex conjugates using NumPy.
+
+        Input:
+            x: Dense backend array.
+
+        Output:
+            Dense backend array with conjugated values.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.conj.html
+        """
         return self.np.conj(
             x,
             out=out,
@@ -487,7 +791,18 @@ class NumpyOps(BackendOps):
         dtype: DType | None = None,
         subok: bool = True,
     ) -> DenseArray:
-        """Compute the absolute value element-wise. See: numpy.absolute / numpy.abs."""
+        """
+        Compute absolute values using NumPy.
+
+        Input:
+            x: Dense backend array.
+
+        Output:
+            Dense backend array of absolute values.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.abs.html
+        """
         return self.np.abs(
             x,
             out=out,
@@ -510,7 +825,18 @@ class NumpyOps(BackendOps):
         dtype: DType | None = None,
         subok: bool = True,
     ) -> DenseArray:
-        """Return an element-wise indication of the sign. See: numpy.sign."""
+        """
+        Compute signs elementwise using NumPy.
+
+        Input:
+            x: Dense backend array.
+
+        Output:
+            Dense backend array of signs.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.sign.html
+        """
         return self.np.sign(
             x,
             out=out,
@@ -533,7 +859,18 @@ class NumpyOps(BackendOps):
         dtype: DType | None = None,
         subok: bool = True,
     ) -> DenseArray:
-        """Return the non-negative square-root element-wise. See: numpy.sqrt."""
+        """
+        Compute square roots elementwise using NumPy.
+
+        Input:
+            x: Dense backend array.
+
+        Output:
+            Dense backend array of square roots.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.sqrt.html
+        """
         return self.np.sqrt(
             x,
             out=out,
@@ -545,11 +882,33 @@ class NumpyOps(BackendOps):
         )
 
     def real(self, x: DenseArray) -> DenseArray:
-        """Return the real part of the complex argument. See: numpy.real."""
+        """
+        Extract real components using NumPy.
+
+        Input:
+            x: Dense backend array.
+
+        Output:
+            Dense backend array containing real components.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.real.html
+        """
         return self.np.real(x)
 
     def imag(self, x: DenseArray) -> DenseArray:
-        """Return the imaginary part of the complex argument. See: numpy.imag."""
+        """
+        Extract imaginary components using NumPy.
+
+        Input:
+            x: Dense backend array.
+
+        Output:
+            Dense backend array containing imaginary components.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.imag.html
+        """
         return self.np.imag(x)
 
     def sum(
@@ -562,7 +921,18 @@ class NumpyOps(BackendOps):
         initial: DenseArray | None = None,
         where: DenseArray | bool = True,
     ) -> DenseArray:
-        """Sum of array elements over a given axis. See: numpy.sum."""
+        """
+        Reduce by summation using NumPy.
+
+        Input:
+            x: Dense backend array; axis, keepdims, and dtype control the reduction.
+
+        Output:
+            Dense backend array or scalar containing sums.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.sum.html
+        """
         return self.np.sum(
             a,
             axis=axis,
@@ -583,10 +953,16 @@ class NumpyOps(BackendOps):
         where: DenseArray | bool = True,
     ) -> DenseArray:
         """
-        Compute the arithmetic mean over an axis. See: numpy.mean.
+        Reduce by arithmetic mean using NumPy.
 
-        NumPy chooses accumulator dtype according to NumPy reduction rules unless
-        `dtype` is supplied.
+        Input:
+            x: Dense backend array; axis and keepdims control the reduction.
+
+        Output:
+            Dense backend array or scalar containing means.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.mean.html
         """
         return self.np.mean(a, axis=axis, dtype=dtype, out=out, keepdims=keepdims, where=where)
 
@@ -600,9 +976,16 @@ class NumpyOps(BackendOps):
         where: DenseArray | bool = True,
     ) -> DenseArray:
         """
-        Compute minimum values over an axis. See: numpy.min.
+        Reduce by minimum using NumPy.
 
-        Empty reductions, `initial`, `where`, and NaN behavior follow NumPy semantics.
+        Input:
+            x: Dense backend array; axis and keepdims control the reduction.
+
+        Output:
+            Dense backend array or scalar containing minima.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.min.html
         """
         return self.np.min(a, axis=axis, out=out, keepdims=keepdims, initial=initial, where=where)
 
@@ -616,9 +999,16 @@ class NumpyOps(BackendOps):
         where: DenseArray | bool = True,
     ) -> DenseArray:
         """
-        Compute maximum values over an axis. See: numpy.max.
+        Reduce by maximum using NumPy.
 
-        Empty reductions, `initial`, `where`, and NaN behavior follow NumPy semantics.
+        Input:
+            x: Dense backend array; axis and keepdims control the reduction.
+
+        Output:
+            Dense backend array or scalar containing maxima.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.max.html
         """
         return self.np.max(a, axis=axis, out=out, keepdims=keepdims, initial=initial, where=where)
 
@@ -632,7 +1022,18 @@ class NumpyOps(BackendOps):
         initial: DenseArray | None = None,
         where: DenseArray | bool = True,
     ) -> DenseArray:
-        """Product of array elements over a given axis. See: numpy.prod."""
+        """
+        Reduce by product using NumPy.
+
+        Input:
+            x: Dense backend array; axis, keepdims, and dtype control the reduction.
+
+        Output:
+            Dense backend array or scalar containing products.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.prod.html
+        """
         return self.np.prod(
             a,
             axis=axis,
@@ -653,8 +1054,16 @@ class NumpyOps(BackendOps):
         out: DenseArray | None = None,
     ) -> DenseArray:
         """
-        Return the sum along diagonals of the array.
-        Works for N-D arrays via `axis1`/`axis2`. See: numpy.trace.
+        Sum diagonal entries using NumPy.
+
+        Input:
+            x: Dense backend array plus optional diagonal and axis controls.
+
+        Output:
+            Dense backend array or scalar containing trace values.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.trace.html
         """
         return self.np.trace(
             a,
@@ -674,7 +1083,18 @@ class NumpyOps(BackendOps):
         *,
         stable: bool | None = None,
     ) -> DenseArray:
-        """Return indices that would sort an array. See: numpy.argsort."""
+        """
+        Return sorting indices using NumPy.
+
+        Input:
+            x: Dense backend array; axis and ordering options are backend-specific.
+
+        Output:
+            Dense integer backend array of indices.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.argsort.html
+        """
         return self.np.argsort(a, axis=axis, kind=kind, order=order, stable=stable)
 
     def sort(
@@ -686,7 +1106,18 @@ class NumpyOps(BackendOps):
         *,
         stable: bool | None = None,
     ) -> DenseArray:
-        """Return a sorted copy of an array. See: numpy.sort."""
+        """
+        Sort values using NumPy.
+
+        Input:
+            x: Dense backend array; axis and ordering options are backend-specific.
+
+        Output:
+            Dense backend array with sorted values.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.sort.html
+        """
         return self.np.sort(a, axis=axis, kind=kind, order=order, stable=stable)
 
     def argmin(
@@ -697,7 +1128,18 @@ class NumpyOps(BackendOps):
         *,
         keepdims: bool = False,
     ) -> DenseArray:
-        """Return indices of the minimum values along an axis. See: numpy.argmin."""
+        """
+        Return indices of minimum values using NumPy.
+
+        Input:
+            x: Dense backend array; axis and keepdims control the reduction.
+
+        Output:
+            Dense integer backend array or scalar of indices.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.argmin.html
+        """
         return self.np.argmin(a, axis=axis, out=out, keepdims=keepdims)
 
     def argmax(
@@ -708,11 +1150,33 @@ class NumpyOps(BackendOps):
         *,
         keepdims: bool = False,
     ) -> DenseArray:
-        """Return indices of the maximum values along an axis. See: numpy.argmax."""
+        """
+        Return indices of maximum values using NumPy.
+
+        Input:
+            x: Dense backend array; axis and keepdims control the reduction.
+
+        Output:
+            Dense integer backend array or scalar of indices.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.argmax.html
+        """
         return self.np.argmax(a, axis=axis, out=out, keepdims=keepdims)
 
     def vdot(self, a: DenseArray, b: DenseArray) -> DenseArray:
-        """Return the dot product of two vectors. See: numpy.vdot."""
+        """
+        Compute a conjugating vector dot product using NumPy.
+
+        Input:
+            x, y: Dense backend arrays accepted by the backend vdot operation.
+
+        Output:
+            Backend scalar or dense array containing the dot product.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.vdot.html
+        """
         return self.np.vdot(a, b)
 
     def matmul(
@@ -728,8 +1192,16 @@ class NumpyOps(BackendOps):
         subok: bool = True,
     ) -> DenseArray:
         """
-        Matrix product of two arrays (supports batched matmul semantics).
-        See: numpy.matmul.
+        Compute matrix products using NumPy.
+
+        Input:
+            a, b: Dense backend arrays with matrix-multiplication-compatible shapes.
+
+        Output:
+            Dense backend array containing the product.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.matmul.html
         """
         return self.np.matmul(
             a,
@@ -743,14 +1215,19 @@ class NumpyOps(BackendOps):
 
     def sparse_matmul(self, a: SparseArray, b: DenseArray) -> DenseArray:
         """
-        Multiply a SciPy sparse matrix/array `a` by a NumPy dense array `b`.
+        Multiply sparse and dense arrays using SciPy.
 
-        Notes:
-          - SciPy sparse objects are 2-D; this method follows SciPy's `@` rules.
+        Input:
+            a: Sparse backend array; b: Dense backend array.
+
+        Output:
+            Dense backend array containing the product.
 
         See:
-          - scipy.sparse.issparse
-          - SciPy sparse `@` multiplication
+            https://docs.scipy.org/doc/scipy/reference/sparse.html
+
+        Backend-specific notes:
+            Uses SciPy sparse multiplication before returning a dense NumPy result when applicable.
         """
         if not self.is_sparse(a):
             raise TypeError("sparse_matmul expects `a` to be a SciPy sparse matrix/array.")
@@ -759,7 +1236,18 @@ class NumpyOps(BackendOps):
         return a @ b
 
     def kron(self, a: DenseArray, b: DenseArray) -> DenseArray:
-        """Kronecker product of two arrays. See: numpy.kron."""
+        """
+        Compute a Kronecker product using NumPy.
+
+        Input:
+            a, b: Dense backend arrays.
+
+        Output:
+            Dense backend array containing the Kronecker product.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.kron.html
+        """
         return self.np.kron(a, b)
 
     def einsum(
@@ -772,7 +1260,18 @@ class NumpyOps(BackendOps):
         casting: Literal["no", "equiv", "safe", "same_kind", "unsafe"] = "safe",
         optimize: bool | str | Sequence[Any] = False,
     ) -> DenseArray:
-        """Evaluate the Einstein summation convention. See: numpy.einsum."""
+        """
+        Evaluate an Einstein summation expression using NumPy.
+
+        Input:
+            subscripts: Einstein summation string; operands: Dense backend arrays.
+
+        Output:
+            Dense backend array containing the contraction result.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.einsum.html
+        """
         return self.np.einsum(
             subscripts,
             *operands,
@@ -785,12 +1284,16 @@ class NumpyOps(BackendOps):
 
     def eigh(self, a: DenseArray, UPLO: Literal["L", "U"] = "L") -> Tuple[DenseArray, DenseArray]:
         """
-        Return eigenvalues and eigenvectors of a Hermitian/symmetric array.
+        Compute Hermitian eigenpairs using NumPy.
 
-        Notes:
-          - Supports stacked inputs of shape (..., M, M).
+        Input:
+            x: Dense Hermitian or symmetric backend array.
 
-        See: numpy.linalg.eigh.
+        Output:
+            Tuple of dense backend arrays containing eigenvalues and eigenvectors.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.linalg.eigh.html
         """
         if self.is_sparse(a):
             raise TypeError("eigh requires a dense array; sparse input is not supported.")
@@ -804,25 +1307,46 @@ class NumpyOps(BackendOps):
         keepdims: bool = False,
     ) -> DenseArray:
         """
-        Compute a vector or matrix norm. See: numpy.linalg.norm.
+        Compute vector or matrix norms using NumPy.
 
-        Supported `ord` values and return dtype follow NumPy's linear algebra rules.
+        Input:
+            x: Dense backend array; ord, axis, and keepdims select the norm.
+
+        Output:
+            Dense backend array or scalar containing norm values.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.linalg.norm.html
         """
         return self.np.linalg.norm(x, ord=ord, axis=axis, keepdims=keepdims)
 
     def solve(self, A: DenseArray, b: DenseArray) -> DenseArray:
         """
-        Solve a dense linear system. See: numpy.linalg.solve.
+        Solve dense linear systems using NumPy.
 
-        NumPy raises `LinAlgError` for singular input and uses host CPU LAPACK routines.
+        Input:
+            A: Dense coefficient array; b: Dense right-hand side array.
+
+        Output:
+            Dense backend array solving A @ x = b.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.linalg.solve.html
         """
         return self.np.linalg.solve(A, b)
 
     def eigvalsh(self, A: DenseArray, UPLO: Literal["L", "U"] = "L") -> DenseArray:
         """
-        Return Hermitian/symmetric eigenvalues. See: numpy.linalg.eigvalsh.
+        Compute Hermitian eigenvalues using NumPy.
 
-        NumPy uses the selected triangle via `UPLO`; batching and precision follow NumPy.
+        Input:
+            A: Dense Hermitian or symmetric backend array.
+
+        Output:
+            Dense backend array containing eigenvalues.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.linalg.eigvalsh.html
         """
         return self.np.linalg.eigvalsh(A, UPLO=UPLO)
 
@@ -834,10 +1358,16 @@ class NumpyOps(BackendOps):
         hermitian: bool = False,
     ) -> DenseArray | Tuple[DenseArray, DenseArray, DenseArray]:
         """
-        Compute singular value decomposition. See: numpy.linalg.svd.
+        Compute singular value decompositions using NumPy.
 
-        The portable path uses `compute_uv=True`; when `compute_uv=False`, NumPy returns
-        only singular values and that is a NumPy-specific extension here.
+        Input:
+            A: Dense backend array plus SVD options.
+
+        Output:
+            Dense backend arrays containing singular vectors and/or singular values.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.linalg.svd.html
         """
         return self.np.linalg.svd(
             A,
@@ -848,15 +1378,33 @@ class NumpyOps(BackendOps):
 
     def cholesky(self, A: DenseArray) -> DenseArray:
         """
-        Compute the lower Cholesky factor. See: numpy.linalg.cholesky.
+        Compute Cholesky factors using NumPy.
 
-        NumPy raises `LinAlgError` when the input is not positive definite.
+        Input:
+            A: Dense Hermitian positive-definite backend array.
+
+        Output:
+            Dense backend array containing a triangular factor.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.linalg.cholesky.html
         """
         return self.np.linalg.cholesky(A)
 
     def logsumexp(self, a: DenseArray, axis: int | Sequence[int] | None = None, b: DenseArray | None = None,
                   keepdims: bool = False, return_sign: bool = False) -> DenseArray | Tuple[DenseArray, DenseArray]:
-        """ See: scipy.special.logsumexp. """
+        """
+        Compute a stable log-sum-exp reduction using SciPy.
+
+        Input:
+            a: Dense backend array; axis, weights, and sign options control the reduction.
+
+        Output:
+            Dense backend array or tuple containing log-sum-exp results.
+
+        See:
+            https://docs.scipy.org/doc/scipy/reference/generated/scipy.special.logsumexp.html
+        """
         return self.sp.special.logsumexp(a, axis=axis, b=b, keepdims=keepdims, return_sign=return_sign)
 
     def exp(
@@ -871,7 +1419,18 @@ class NumpyOps(BackendOps):
         dtype: DType | None = None,
         subok: bool = True,
     ) -> DenseArray:
-        """See: numpy.exp. """
+        """
+        Compute exponentials elementwise using NumPy.
+
+        Input:
+            x: Dense backend array.
+
+        Output:
+            Dense backend array of exponentials.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.exp.html
+        """
         return self.np.exp(
             x,
             out=out,
@@ -894,7 +1453,18 @@ class NumpyOps(BackendOps):
             dtype: DType | None = None,
             subok: bool = True,
     ) -> DenseArray:
-        """See: numpy.log. """
+        """
+        Compute natural logarithms elementwise using NumPy.
+
+        Input:
+            x: Dense backend array.
+
+        Output:
+            Dense backend array of logarithms.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.log.html
+        """
         return self.np.log(
             x,
             out=out,
@@ -918,7 +1488,18 @@ class NumpyOps(BackendOps):
             dtype: DType | None = None,
             subok: bool = True,
     ) -> DenseArray:
-        """See: numpy.maximum. """
+        """
+        Compute elementwise maxima using NumPy.
+
+        Input:
+            x, y: Arrays or scalars accepted by backend broadcasting.
+
+        Output:
+            Dense backend array containing maxima.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.maximum.html
+        """
         return self.np.maximum(
             x,
             y,
@@ -943,7 +1524,18 @@ class NumpyOps(BackendOps):
         dtype: DType | None = None,
         subok: bool = True,
     ) -> DenseArray:
-        """See: numpy.minimum. """
+        """
+        Compute elementwise minima using NumPy.
+
+        Input:
+            x, y: Arrays or scalars accepted by backend broadcasting.
+
+        Output:
+            Dense backend array containing minima.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.minimum.html
+        """
         return self.np.minimum(
             x,
             y,
@@ -964,10 +1556,16 @@ class NumpyOps(BackendOps):
         **kwargs: Any,
     ) -> DenseArray:
         """
-        Clip values to an interval. See: numpy.clip.
+        Clip values into an interval using NumPy.
 
-        Broadcasting, dtype promotion, and optional NumPy-only keyword behavior follow
-        NumPy. Portable code should pass only `x`, `a_min`, and `a_max`.
+        Input:
+            x: Dense backend array; a_min and a_max: Broadcastable bounds.
+
+        Output:
+            Dense backend array with clipped values.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.clip.html
         """
         return self.np.clip(x, a_min, a_max, out=out, **kwargs)
 
@@ -984,10 +1582,16 @@ class NumpyOps(BackendOps):
         subok: bool = True,
     ) -> DenseArray:
         """
-        Test elementwise finiteness. See: numpy.isfinite.
+        Test finiteness elementwise using NumPy.
 
-        NumPy supports ufunc keywords such as `where` and `out`; these are not part of
-        the backend-neutral contract.
+        Input:
+            x: Dense backend array.
+
+        Output:
+            Boolean dense backend array.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.isfinite.html
         """
         return self.np.isfinite(
             x,
@@ -1012,10 +1616,16 @@ class NumpyOps(BackendOps):
         subok: bool = True,
     ) -> DenseArray:
         """
-        Test elementwise NaN values. See: numpy.isnan.
+        Test NaN values elementwise using NumPy.
 
-        NumPy supports ufunc keywords such as `where` and `out`; these are not part of
-        the backend-neutral contract.
+        Input:
+            x: Dense backend array.
+
+        Output:
+            Boolean dense backend array.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.isnan.html
         """
         return self.np.isnan(
             x,
@@ -1028,7 +1638,18 @@ class NumpyOps(BackendOps):
         )
 
     def where(self, condition: DenseArray | bool, x: DenseArray, y: DenseArray) -> DenseArray:
-        """ See: numpy.where. """
+        """
+        Select values by condition using NumPy.
+
+        Input:
+            condition: Boolean array or scalar; x and y: Values to choose between.
+
+        Output:
+            Dense backend array containing selected values.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.where.html
+        """
         return self.np.where(condition, x, y)
 
     def concatenate(
@@ -1041,8 +1662,16 @@ class NumpyOps(BackendOps):
         casting: Literal["no", "equiv", "safe", "same_kind", "unsafe"] = "same_kind",
     ) -> DenseArray:
         """
-        Signature mirrors (NumPy >= 1.24):
-          numpy.concatenate(arrays, axis=0, out=None, *, dtype=None, casting='same_kind')
+        Join arrays along an existing axis using NumPy.
+
+        Input:
+            arrays: Sequence of dense backend arrays; axis and dtype options are backend-specific.
+
+        Output:
+            Dense backend array containing concatenated inputs.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.concatenate.html
         """
         return self.np.concatenate(arrays, axis=axis, out=out, dtype=dtype, casting=casting)
 
@@ -1055,18 +1684,31 @@ class NumpyOps(BackendOps):
         mode: Literal["raise", "wrap", "clip"] = "raise",
     ) -> DenseArray:
         """
-        Take elements by integer index. See: numpy.take.
+        Take values by integer indices using NumPy.
 
-        Portable code should pass valid indices because out-of-bounds modes differ
-        from JAX defaults.
+        Input:
+            x: Dense backend array; indices: Integer indices; axis and mode options are backend-specific.
+
+        Output:
+            Dense backend array containing selected values.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.take.html
         """
         return self.np.take(x, indices, axis=axis, out=out, mode=mode)
 
     def diag(self, x: DenseArray, k: int = 0) -> DenseArray:
         """
-        Extract or construct a diagonal. See: numpy.diag.
+        Extract or build a diagonal using NumPy.
 
-        The portable signature uses the main diagonal; `k` is a NumPy-compatible extension.
+        Input:
+            x: Dense backend array and optional diagonal offset.
+
+        Output:
+            Dense backend array containing a diagonal view/copy or matrix.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.diag.html
         """
         return self.np.diag(x, k=k)
 
@@ -1078,29 +1720,65 @@ class NumpyOps(BackendOps):
         axis2: int = 1,
     ) -> DenseArray:
         """
-        Return selected diagonals. See: numpy.diagonal.
+        Return selected diagonals using NumPy.
 
-        NumPy may return a view. Portable code should not rely on mutability or aliasing.
+        Input:
+            x: Dense backend array plus offset and axis controls.
+
+        Output:
+            Dense backend array containing selected diagonals.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.diagonal.html
         """
         return self.np.diagonal(x, offset=offset, axis1=axis1, axis2=axis2)
 
     def tril(self, x: DenseArray, k: int = 0) -> DenseArray:
         """
-        Return the lower triangle of `x`. See: numpy.tril.
+        Return lower-triangular values using NumPy.
 
-        Entries above the selected diagonal are filled with zero of the result dtype.
+        Input:
+            x: Dense backend array and optional diagonal offset.
+
+        Output:
+            Dense backend array with upper entries zeroed.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.tril.html
         """
         return self.np.tril(x, k=k)
 
     def triu(self, x: DenseArray, k: int = 0) -> DenseArray:
         """
-        Return the upper triangle of `x`. See: numpy.triu.
+        Return upper-triangular values using NumPy.
 
-        Entries below the selected diagonal are filled with zero of the result dtype.
+        Input:
+            x: Dense backend array and optional diagonal offset.
+
+        Output:
+            Dense backend array with lower entries zeroed.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.triu.html
         """
         return self.np.triu(x, k=k)
 
     def index_set(self, x: DenseArray, index: Index, values: DenseArray, *, copy: bool = True):
+        """
+        Set indexed values using NumPy.
+
+        Input:
+            x: Dense backend array; index: Selection; values: Replacement values; copy controls mutation policy.
+
+        Output:
+            Dense backend array with indexed values set.
+
+        See:
+            https://numpy.org/doc/stable/user/basics.indexing.html
+
+        Backend-specific notes:
+            With copy=True this copies before assignment; with copy=False it mutates the input array.
+        """
         if copy:
             y = x.copy()
             y[index] = values
@@ -1110,7 +1788,18 @@ class NumpyOps(BackendOps):
             return x
 
     def ix_(self, *args: Any) -> Any:
-        """ See: numpy.ix_. """
+        """
+        Build open mesh index arrays using NumPy.
+
+        Input:
+            args: One-dimensional index arrays or sequences.
+
+        Output:
+            Tuple of dense backend arrays usable for open-mesh indexing.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.ix_.html
+        """
         return self.np.ix_(*args)
 
     def fori_loop(
@@ -1120,7 +1809,21 @@ class NumpyOps(BackendOps):
             body_fun: Callable[[int, T], T],
             init_val: T,
     ) -> T:
-        """NumPy implementation of jax.lax.fori_loop."""
+        """
+        Run a counted loop primitive using NumPy.
+
+        Input:
+            lower, upper: Loop bounds; body_fun: Loop body; init_val: Initial carry value.
+
+        Output:
+            Final carry value after loop execution.
+
+        See:
+            https://docs.jax.dev/en/latest/_autosummary/jax.lax.fori_loop.html
+
+        Backend-specific notes:
+            NumPy executes this eagerly as a Python for-loop, without JAX tracing semantics.
+        """
         val = init_val
         for i in range(int(lower), int(upper)):
             val = body_fun(i, val)
@@ -1132,7 +1835,21 @@ class NumpyOps(BackendOps):
             body_fun: Callable[[T], T],
             init_val: T,
     ) -> T:
-        """NumPy implementation of jax.lax.while_loop."""
+        """
+        Run a while-loop primitive using NumPy.
+
+        Input:
+            cond_fun: Loop condition; body_fun: Loop body; init_val: Initial carry value.
+
+        Output:
+            Final carry value after loop execution.
+
+        See:
+            https://docs.jax.dev/en/latest/_autosummary/jax.lax.while_loop.html
+
+        Backend-specific notes:
+            NumPy executes this eagerly as a Python while-loop, without JAX tracing semantics.
+        """
         val = init_val
         while bool(cond_fun(val)):
             val = body_fun(val)
@@ -1212,12 +1929,19 @@ class NumpyOps(BackendOps):
             unroll: int = 1,
     ) -> Tuple[Carry, Y]:
         """
-        NumPy implementation of jax.lax.scan.
+        Run a scan primitive using NumPy.
 
-        Notes:
-          - Supports xs as a pytree (dict/list/tuple nesting) of arrays with a leading axis.
-          - If xs is None, you must provide `length`, and x passed to f is None each step.
-          - `unroll` is accepted for API parity; it does not change semantics here.
+        Input:
+            f: Scan body; init: Initial carry; xs: Per-step inputs plus scan options.
+
+        Output:
+            Tuple of final carry and stacked outputs.
+
+        See:
+            https://docs.jax.dev/en/latest/_autosummary/jax.lax.scan.html
+
+        Backend-specific notes:
+            NumPy executes this eagerly and accepts unroll only for API parity.
         """
         carry = init
 
@@ -1266,6 +1990,21 @@ class NumpyOps(BackendOps):
             *operands: Any,
     ) -> R:
         # Eager branch selection (NumPy has no tracing semantics)
+        """
+        Run conditional branch selection using NumPy.
+
+        Input:
+            pred: Predicate; true_fun and false_fun: Branch functions; operands: Branch inputs.
+
+        Output:
+            Result returned by the selected branch.
+
+        See:
+            https://docs.jax.dev/en/latest/_autosummary/jax.lax.cond.html
+
+        Backend-specific notes:
+            NumPy chooses the branch eagerly with Python truth-value conversion.
+        """
         return true_fun(*operands) if bool(pred) else false_fun(*operands)
 
     def index_add(
@@ -1276,6 +2015,21 @@ class NumpyOps(BackendOps):
             *,
             copy: bool = True,
     ) -> DenseArray:
+        """
+        Add into indexed values using NumPy.
+
+        Input:
+            x: Dense backend array; index: Selection; values: Values to add; copy controls mutation policy.
+
+        Output:
+            Dense backend array with indexed values incremented.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.ufunc.at.html
+
+        Backend-specific notes:
+            Uses numpy.add.at so repeated indices accumulate in NumPy order.
+        """
         y = x.copy() if copy else x
         self.np.add.at(y, index, values)
         return y
@@ -1288,6 +2042,18 @@ class NumpyOps(BackendOps):
         atol: float = 1e-8,
         equal_nan: bool = False,
     ) -> bool:
+        """
+        Compare dense arrays elementwise within tolerances using NumPy.
+
+        Input:
+            a, b: Dense backend arrays; rtol, atol, and equal_nan configure comparison.
+
+        Output:
+            Boolean indicating whether arrays are close.
+
+        See:
+            https://numpy.org/doc/stable/reference/generated/numpy.allclose.html
+        """
         return self.np.allclose(a, b, rtol=rtol, atol=atol, equal_nan=equal_nan)
 
     def allclose_sparse(
@@ -1297,6 +2063,21 @@ class NumpyOps(BackendOps):
         rtol: float = 1e-5,
         atol: float = 1e-8,
     ) -> bool:
+        """
+        Compare sparse arrays elementwise within tolerances using SciPy.
+
+        Input:
+            a, b: Sparse backend arrays; rtol and atol configure comparison.
+
+        Output:
+            Boolean indicating whether sparse arrays are close.
+
+        See:
+            https://docs.scipy.org/doc/scipy/reference/sparse.html
+
+        Backend-specific notes:
+            Sparse inputs are converted to CSR and compared by logical sparse difference.
+        """
         if not self.is_sparse(a) or not self.is_sparse(b):
             raise TypeError("allclose_sparse expects two sparse arrays.")
 
