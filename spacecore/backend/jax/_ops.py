@@ -43,6 +43,9 @@ class JaxOps(BackendOps):
         self._ravel_supports_out_sharding = "out_sharding" in inspect.signature(self.jnp.ravel).parameters
         self._zeros_supports_out_sharding = "out_sharding" in inspect.signature(self.jnp.zeros).parameters
         self._empty_supports_out_sharding = "out_sharding" in inspect.signature(self.jnp.empty).parameters
+        self._zeros_like_supports_out_sharding = "out_sharding" in inspect.signature(self.jnp.zeros_like).parameters
+        self._ones_like_supports_out_sharding = "out_sharding" in inspect.signature(self.jnp.ones_like).parameters
+        self._broadcast_to_supports_out_sharding = "out_sharding" in inspect.signature(self.jnp.broadcast_to).parameters
 
 
     def sanitize_dtype(self, dtype: DType | None) -> DType:
@@ -99,6 +102,35 @@ class JaxOps(BackendOps):
         else:
             raise TypeError(f'Expected Jax ndarray or BCOO/BCSR, got {type(x)}.')
 
+    def shape(self, x: Any) -> tuple[int, ...]:
+        """
+        Return `x.shape` as a tuple.
+
+        JAX shape metadata is available without transferring data. Under JIT or
+        shape-polymorphic tracing, dimensions may need to remain static for Python use.
+        """
+        return tuple(x.shape)
+
+    def ndim(self, x: Any) -> int:
+        """
+        Return the number of dimensions of `x`.
+
+        This is abstract-array metadata in JAX and does not materialize array values.
+        """
+        return int(x.ndim)
+
+    def size(self, x: Any) -> int:
+        """
+        Return the logical dense element count of `x`.
+
+        Sparse JAX arrays report logical shape here. Shape-polymorphic dimensions may
+        not be usable as concrete Python integers inside traced code.
+        """
+        result = 1
+        for dim in self.shape(x):
+            result *= dim
+        return result
+
     @property
     def dense_array(self) -> Type[Any]:
         return self.jax.Array
@@ -138,6 +170,16 @@ class JaxOps(BackendOps):
     ) -> DenseArray:
         """See: `jax.numpy.asarray`."""
         return self.jnp.asarray(a, dtype=dtype, order=order, copy=copy, device=device)
+
+    def astype(self, x: DenseArray, dtype: DType, copy: bool = True) -> DenseArray:
+        """
+        Copy `x` cast to `dtype`. See: `jax.Array.astype`.
+
+        JAX arrays are immutable; `copy` is accepted for API parity, but JAX may return
+        the original value when no conversion is required. Dtype canonicalization follows
+        the active JAX configuration and device support.
+        """
+        return x.astype(dtype, copy=copy)
 
     def assparse(
             self,
@@ -218,7 +260,9 @@ class JaxOps(BackendOps):
             out_sharding: Any | None = None,
     ) -> DenseArray:
         """See: `jax.numpy.zeros`."""
-        return self.jnp.zeros(shape, dtype=dtype, device=device, out_sharding=out_sharding)
+        if self._zeros_supports_out_sharding:
+            return self.jnp.zeros(shape, dtype=dtype, device=device, out_sharding=out_sharding)
+        return self.jnp.zeros(shape, dtype=dtype, device=device)
 
     def ones(
         self,
@@ -230,6 +274,63 @@ class JaxOps(BackendOps):
     ) -> DenseArray:
         """See: `jax.numpy.ones`."""
         return self.jnp.ones(shape, dtype=dtype, device=device, out_sharding=out_sharding)
+
+    def zeros_like(
+        self,
+        x: DenseArray,
+        dtype: DType | None = None,
+        shape: Any = None,
+        *,
+        device: Any | None = None,
+        out_sharding: Any | None = None,
+    ) -> DenseArray:
+        """
+        Return zeros with shape and dtype like `x`. See: `jax.numpy.zeros_like`.
+
+        JAX arrays are immutable and placement follows `device`/`out_sharding` when
+        supported by the installed JAX version.
+        """
+        kwargs: dict[str, Any] = {"dtype": dtype, "shape": shape, "device": device}
+        if self._zeros_like_supports_out_sharding:
+            kwargs["out_sharding"] = out_sharding
+        return self.jnp.zeros_like(x, **kwargs)
+
+    def ones_like(
+        self,
+        x: DenseArray,
+        dtype: DType | None = None,
+        shape: Any = None,
+        *,
+        device: Any | None = None,
+        out_sharding: Any | None = None,
+    ) -> DenseArray:
+        """
+        Return ones with shape and dtype like `x`. See: `jax.numpy.ones_like`.
+
+        JAX dtype canonicalization and placement follow the active configuration and
+        optional `device`/`out_sharding` support.
+        """
+        kwargs: dict[str, Any] = {"dtype": dtype, "shape": shape, "device": device}
+        if self._ones_like_supports_out_sharding:
+            kwargs["out_sharding"] = out_sharding
+        return self.jnp.ones_like(x, **kwargs)
+
+    def full_like(
+        self,
+        x: DenseArray,
+        value: Any,
+        dtype: DType | None = None,
+        shape: Any = None,
+        *,
+        device: Any | None = None,
+    ) -> DenseArray:
+        """
+        Return values filled with `value` and shaped like `x`. See: `jax.numpy.full_like`.
+
+        Scalar promotion and dtype canonicalization follow JAX rules. JAX arrays are
+        immutable; the result may be placed with `device` when supported.
+        """
+        return self.jnp.full_like(x, value, dtype=dtype, shape=shape, device=device)
 
     def arange(self,
                start: int,
@@ -310,6 +411,52 @@ class JaxOps(BackendOps):
         """See: `jax.numpy.transpose`."""
         return self.jnp.transpose(x, axes=axes)
 
+    def broadcast_to(
+        self,
+        x: DenseArray,
+        shape: int | Tuple[int, ...],
+        *,
+        out_sharding: Any | None = None,
+    ) -> DenseArray:
+        """
+        Broadcast `x` to `shape`. See: `jax.numpy.broadcast_to`.
+
+        The result is immutable and shape must be trace-static under JIT. `out_sharding`
+        is passed only on JAX versions that support it.
+        """
+        if self._broadcast_to_supports_out_sharding:
+            return self.jnp.broadcast_to(x, shape, out_sharding=out_sharding)
+        return self.jnp.broadcast_to(x, shape)
+
+    def expand_dims(self, x: DenseArray, axis: int | Sequence[int]) -> DenseArray:
+        """
+        Insert new axes into `x`. See: `jax.numpy.expand_dims`.
+
+        Axis values must be static when used under JIT.
+        """
+        return self.jnp.expand_dims(x, axis=axis)
+
+    def squeeze(self, x: DenseArray, axis: int | Sequence[int] | None = None) -> DenseArray:
+        """
+        Remove length-one axes from `x`. See: `jax.numpy.squeeze`.
+
+        Axis values must be static when used under JIT. The result is immutable.
+        """
+        return self.jnp.squeeze(x, axis=axis)
+
+    def moveaxis(
+        self,
+        x: DenseArray,
+        source: int | Sequence[int],
+        destination: int | Sequence[int],
+    ) -> DenseArray:
+        """
+        Move axes to new positions. See: `jax.numpy.moveaxis`.
+
+        Axis values must be static when used under JIT. The result is immutable.
+        """
+        return self.jnp.moveaxis(x, source=source, destination=destination)
+
     def stack(
         self,
         arrays: Sequence[DenseArray],
@@ -366,6 +513,58 @@ class JaxOps(BackendOps):
             where=where,
             promote_integers=promote_integers,
         )
+
+    def mean(
+        self,
+        a: DenseArray,
+        axis: int | Sequence[int] | None = None,
+        dtype: DType | None = None,
+        out: None = None,
+        keepdims: bool = False,
+        *,
+        where: DenseArray | None = None,
+    ) -> DenseArray:
+        """
+        Compute the arithmetic mean over an axis. See: `jax.numpy.mean`.
+
+        Axis values are static under JIT. Dtype promotion and `where` semantics follow
+        JAX and may differ from NumPy when x64 is disabled.
+        """
+        return self.jnp.mean(a, axis=axis, dtype=dtype, out=out, keepdims=keepdims, where=where)
+
+    def min(
+        self,
+        a: DenseArray,
+        axis: int | Sequence[int] | None = None,
+        out: None = None,
+        keepdims: bool = False,
+        initial: DenseArray | None = None,
+        where: DenseArray | None = None,
+    ) -> DenseArray:
+        """
+        Compute minimum values over an axis. See: `jax.numpy.min`.
+
+        Axis values are static under JIT. Empty reductions, `initial`, `where`, and NaN
+        behavior follow JAX semantics.
+        """
+        return self.jnp.min(a, axis=axis, out=out, keepdims=keepdims, initial=initial, where=where)
+
+    def max(
+        self,
+        a: DenseArray,
+        axis: int | Sequence[int] | None = None,
+        out: None = None,
+        keepdims: bool = False,
+        initial: DenseArray | None = None,
+        where: DenseArray | None = None,
+    ) -> DenseArray:
+        """
+        Compute maximum values over an axis. See: `jax.numpy.max`.
+
+        Axis values are static under JIT. Empty reductions, `initial`, `where`, and NaN
+        behavior follow JAX semantics.
+        """
+        return self.jnp.max(a, axis=axis, out=out, keepdims=keepdims, initial=initial, where=where)
 
     def prod(
         self,
@@ -530,6 +729,82 @@ class JaxOps(BackendOps):
             raise TypeError("eigh requires a dense array; sparse input is not supported.")
         return self.jnp.linalg.eigh(x, UPLO=UPLO, symmetrize_input=symmetrize_input)
 
+    def norm(
+        self,
+        x: DenseArray,
+        ord: int | str | None = None,
+        axis: int | Sequence[int] | None = None,
+        keepdims: bool = False,
+    ) -> DenseArray:
+        """
+        Compute a vector or matrix norm. See: `jax.numpy.linalg.norm`.
+
+        `ord` and `axis` must be static under JIT. Precision and supported norms follow
+        JAX's linear algebra implementation.
+        """
+        return self.jnp.linalg.norm(x, ord=ord, axis=axis, keepdims=keepdims)
+
+    def solve(self, A: DenseArray, b: DenseArray) -> DenseArray:
+        """
+        Solve a dense linear system. See: `jax.numpy.linalg.solve`.
+
+        JAX arrays are immutable and execution may be asynchronous/device-backed.
+        Singular-input behavior and precision follow JAX.
+        """
+        return self.jnp.linalg.solve(A, b)
+
+    def eigvalsh(
+        self,
+        A: DenseArray,
+        UPLO: Literal["L", "U"] = "L",
+        *,
+        symmetrize_input: bool = True,
+    ) -> DenseArray:
+        """
+        Return Hermitian/symmetric eigenvalues. See: `jax.numpy.linalg.eigvalsh`.
+
+        JAX can symmetrize input for stable autodiff; set `symmetrize_input=False` only
+        when relying on JAX-specific behavior.
+        """
+        return self.jnp.linalg.eigvalsh(A, UPLO=UPLO, symmetrize_input=symmetrize_input)
+
+    def svd(
+        self,
+        A: DenseArray,
+        full_matrices: bool = True,
+        compute_uv: bool = True,
+        hermitian: bool = False,
+        subset_by_index: tuple[int, int] | None = None,
+    ) -> DenseArray | Tuple[DenseArray, DenseArray, DenseArray]:
+        """
+        Compute singular value decomposition. See: `jax.numpy.linalg.svd`.
+
+        The portable path uses `compute_uv=True`. Sign choices, precision, static-shape
+        requirements, and device execution follow JAX.
+        """
+        return self.jnp.linalg.svd(
+            A,
+            full_matrices=full_matrices,
+            compute_uv=compute_uv,
+            hermitian=hermitian,
+            subset_by_index=subset_by_index,
+        )
+
+    def cholesky(
+        self,
+        A: DenseArray,
+        *,
+        upper: bool = False,
+        symmetrize_input: bool = True,
+    ) -> DenseArray:
+        """
+        Compute a Cholesky factor. See: `jax.numpy.linalg.cholesky`.
+
+        The portable path returns the lower factor (`upper=False`). JAX may symmetrize
+        input for autodiff stability and returns immutable device-backed arrays.
+        """
+        return self.jnp.linalg.cholesky(A, upper=upper, symmetrize_input=symmetrize_input)
+
     def logsumexp(self, a: DenseArray, axis: int | Sequence[int] | None = None, b: DenseArray | None = None, keepdims: bool = False,
                   return_sign: bool = False, where: DenseArray | None = None) -> DenseArray | Tuple[DenseArray, DenseArray]:
         """ See: jax.scipy.special.logsumexp. """
@@ -551,6 +826,31 @@ class JaxOps(BackendOps):
         """See: `jax.numpy.minimum`."""
         return self.jnp.minimum(x, y)
 
+    def clip(self, x: DenseArray, a_min: DenseArray, a_max: DenseArray) -> DenseArray:
+        """
+        Clip values to an interval. See: `jax.numpy.clip`.
+
+        Broadcasting and dtype promotion follow JAX. Deprecated NumPy-compatible names
+        are intentionally not exposed in the portable signature.
+        """
+        return self.jnp.clip(x, a_min, a_max)
+
+    def isfinite(self, x: DenseArray) -> DenseArray:
+        """
+        Test elementwise finiteness. See: `jax.numpy.isfinite`.
+
+        The result is an immutable boolean JAX array and stays on the active device.
+        """
+        return self.jnp.isfinite(x)
+
+    def isnan(self, x: DenseArray) -> DenseArray:
+        """
+        Test elementwise NaN values. See: `jax.numpy.isnan`.
+
+        The result is an immutable boolean JAX array and stays on the active device.
+        """
+        return self.jnp.isnan(x)
+
     def where(self, condition: DenseArray | bool, x: DenseArray | None = None, y: DenseArray | None = None, *,
               size: int | None = None, fill_value: DenseArray | None = None) -> DenseArray:
         """See: `jax.numpy.where`."""
@@ -559,6 +859,72 @@ class JaxOps(BackendOps):
     def concatenate(self, arrays: Sequence[DenseArray], axis: int = 0, dtype: DType | None = None) -> DenseArray:
         """See: `jax.numpy.concatenate`."""
         return self.jnp.concatenate(arrays, axis=axis, dtype=dtype)
+
+    def take(
+        self,
+        x: DenseArray,
+        indices: DenseArray,
+        axis: int | None = None,
+        out: None = None,
+        mode: str | None = None,
+        unique_indices: bool = False,
+        indices_are_sorted: bool = False,
+        fill_value: Any | None = None,
+    ) -> DenseArray:
+        """
+        Take elements by integer index. See: `jax.numpy.take`.
+
+        Portable code should pass valid indices because JAX out-of-bounds defaults can
+        differ from NumPy. `axis` and mode flags must be static under JIT.
+        """
+        return self.jnp.take(
+            x,
+            indices,
+            axis=axis,
+            out=out,
+            mode=mode,
+            unique_indices=unique_indices,
+            indices_are_sorted=indices_are_sorted,
+            fill_value=fill_value,
+        )
+
+    def diag(self, x: DenseArray, k: int = 0) -> DenseArray:
+        """
+        Extract or construct a diagonal. See: `jax.numpy.diag`.
+
+        The result is immutable; `k` must be static under JIT.
+        """
+        return self.jnp.diag(x, k=k)
+
+    def diagonal(
+        self,
+        x: DenseArray,
+        offset: int = 0,
+        axis1: int = 0,
+        axis2: int = 1,
+    ) -> DenseArray:
+        """
+        Return selected diagonals. See: `jax.numpy.diagonal`.
+
+        Axis and offset values must be static under JIT. The result is immutable.
+        """
+        return self.jnp.diagonal(x, offset=offset, axis1=axis1, axis2=axis2)
+
+    def tril(self, x: DenseArray, k: int = 0) -> DenseArray:
+        """
+        Return the lower triangle of `x`. See: `jax.numpy.tril`.
+
+        `k` must be static under JIT and the result is immutable.
+        """
+        return self.jnp.tril(x, k=k)
+
+    def triu(self, x: DenseArray, k: int = 0) -> DenseArray:
+        """
+        Return the upper triangle of `x`. See: `jax.numpy.triu`.
+
+        `k` must be static under JIT and the result is immutable.
+        """
+        return self.jnp.triu(x, k=k)
 
     def index_set(self, x: DenseArray, index: Index, values: ArrayLike, *, copy: bool = True):
         if not copy:
