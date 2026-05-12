@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Tuple, List, Sequence, Callable
 
 from ._base import Space
+from ._checks import ProductComponentCheck, ProductStructureCheck
 from ._vector import VectorSpace
 from ..types import DenseArray
 from ..backend import Context
@@ -37,6 +38,9 @@ class ProductSpace(Space):
         for sp in self.spaces:
             new_spaces.append(sp.convert(new_ctx))
         return ProductSpace(tuple(new_spaces), new_ctx)
+
+    def _local_checks(self):
+        return ProductStructureCheck(), ProductComponentCheck()
 
     def __init__(self, spaces: Tuple[Space, ...], ctx: Context | str | None = None) -> None:
         if len(spaces) == 0:
@@ -95,18 +99,6 @@ class ProductSpace(Space):
     def arity(self) -> int:
         return self._arity
 
-    def _check_member(self, x: Sequence[Any]) -> None:
-        if not isinstance(x, tuple):
-            raise TypeError(f"ProductSpace element must be a tuple, got {type(x).__name__}")
-        if len(x) != self.arity:
-            raise ValueError(f"Expected tuple of length {self.arity}, got {len(x)}")
-
-        for i, (si, xi) in enumerate(zip(self.spaces, x)):
-            try:
-                si.check_member(xi)
-            except Exception as e:
-                raise type(e)(f"Invalid component {i} for spaces[{i}] ({type(si).__name__}): {e}") from e
-
     def zeros(self) -> Tuple[Any, ...]:
         return tuple(s.zeros() for s in self.spaces)
 
@@ -137,8 +129,7 @@ class ProductSpace(Space):
         )
 
     def flatten(self, x: Tuple[Any, ...]) -> DenseArray:
-        if self._enable_checks:
-            self._check_member(x)
+        self.check_member(x)
 
         if self._vector_fast_path:
             if self._arity == 1:
@@ -245,8 +236,7 @@ class ProductSpace(Space):
         product space. It applies the existing functional calculus of each
         factor space independently, component by component.
         """
-        if self._enable_checks:
-            self._check_member(x)
+        self.check_member(x)
         if self._arity == 2:
             return self.spaces[0].apply(x[0], f), self.spaces[1].apply(x[1], f)
         return tuple(s.apply(xi, f) for s, xi in zip(self.spaces, x))

@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from abc import abstractmethod
-from typing import Any, Tuple, Callable
+from typing import Any, Callable, ClassVar, Tuple
 
 from ..backend import Context
 from .._contextual import ContextBound
 from ..types import DenseArray
+from ._checks import SpaceCheck
 
 
 class Space(ContextBound):
@@ -18,6 +19,8 @@ class Space(ContextBound):
     Solvers should use only this API.
     """
 
+    checks: ClassVar[tuple[SpaceCheck, ...]] = ()
+
     def __init__(self, shape: Tuple[int, ...], ctx: Context | str | None = None) -> None:
         super().__init__(ctx)
         self.shape = shape
@@ -28,7 +31,15 @@ class Space(ContextBound):
             return self.ctx == other.ctx and self.shape == other.shape
         return False
 
-    @abstractmethod
+    def member_checks(self) -> tuple[SpaceCheck, ...]:
+        checks: list[SpaceCheck] = []
+        for klass in reversed(type(self).__mro__):
+            checks.extend(klass.__dict__.get("checks", ()))
+            local_checks = klass.__dict__.get("_local_checks")
+            if local_checks is not None:
+                checks.extend(local_checks(self))
+        return tuple(checks)
+
     def _check_member(self, x: Any) -> None:
         """
         Raise if `x` is not a valid element of this space.
@@ -39,6 +50,8 @@ class Space(ContextBound):
           - representation is supported
           - shape/structure constraints (Hermitian, block sizes, etc.)
         """
+        for check in self.member_checks():
+            check(self, x)
 
     def check_member(self, x: Any) -> None:
         if self._enable_checks:

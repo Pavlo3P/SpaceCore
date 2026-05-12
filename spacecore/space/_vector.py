@@ -4,6 +4,7 @@ from math import prod
 from typing import Any, Tuple, Callable
 
 from ._base import Space
+from ._checks import BackendCheck, DTypeCheck, ShapeCheck
 from ..types import DenseArray
 from ..backend import Context
 
@@ -26,14 +27,8 @@ class VectorSpace(Space):
         self._size = prod(self.shape)
         self._is_flat_shape = self.shape == (self._size,)
 
-    def _check_member(self, x: Any) -> None:
-        X = self.ctx.assert_dense(x)
-        maybe_shape = tuple(getattr(X, "shape", ()))
-        if maybe_shape != self.shape:
-            raise TypeError(f"Expected shape {self.shape}, got {maybe_shape}")
-        maybe_dtype = getattr(X, "dtype", None)
-        if maybe_dtype != self.dtype:
-            raise TypeError(f"Expected dtype {self.dtype}, got {maybe_dtype}")
+    def _local_checks(self):
+        return BackendCheck(), ShapeCheck(), DTypeCheck()
 
     def zeros(self) -> DenseArray:
         return self.ops.zeros(self.shape, dtype=self.dtype)
@@ -58,8 +53,7 @@ class VectorSpace(Space):
         )
 
     def flatten(self, X: DenseArray) -> DenseArray:
-        if self._enable_checks:
-            self._check_member(X)
+        self.check_member(X)
         return X if self._is_flat_shape else X.reshape((-1,))
 
     def unflatten(self, v: DenseArray) -> DenseArray:
@@ -123,7 +117,6 @@ class VectorSpace(Space):
         application is performed entrywise in the distinguished coordinate
         representation.
         """
-        if self._enable_checks:
-            self._check_member(x)
+        self.check_member(x)
         y = self._apply_entrywise(x, f)
         return y

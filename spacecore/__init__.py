@@ -3,7 +3,21 @@ __version__ = "0.1.3"
 
 from .backend import Context, BackendOps, JaxOps, NumpyOps, jax_pytree_class
 from .linop import DenseLinOp, SparseLinOp, BlockDiagonalLinOp, SumToSingleLinOp, StackedLinOp, LinOp
-from .space import VectorSpace, HermitianSpace, Space, ProductSpace
+from .space import (
+    BackendCheck,
+    DTypeCheck,
+    HermitianCheck,
+    ProductComponentCheck,
+    ProductSpace,
+    ProductStructureCheck,
+    ShapeCheck,
+    Space,
+    SpaceCheck,
+    SpaceValidationError,
+    SquareMatrixCheck,
+    VectorSpace,
+    HermitianSpace,
+)
 from .types import DenseArray, SparseArray, ArrayLike
 
 from ._contextual import ContextBound
@@ -29,10 +43,19 @@ __all__ = [
     "SumToSingleLinOp",
     "StackedLinOp",
 
+    "BackendCheck",
+    "DTypeCheck",
+    "HermitianCheck",
+    "ProductComponentCheck",
+    "ProductStructureCheck",
+    "ShapeCheck",
     "VectorSpace",
     "HermitianSpace",
     "ProductSpace",
     "Space",
+    "SpaceCheck",
+    "SpaceValidationError",
+    "SquareMatrixCheck",
 
     "DenseArray",
     "SparseArray",
