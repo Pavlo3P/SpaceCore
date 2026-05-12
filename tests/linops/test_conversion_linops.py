@@ -1,6 +1,6 @@
 import importlib
 import numpy as np
-from ._helpers import has_jax, jax_real_dtype, to_numpy
+from tests._helpers import has_jax, jax_real_dtype, to_numpy
 
 
 def test_dense_linop_conversion_preserves_action():

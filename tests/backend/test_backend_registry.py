@@ -30,6 +30,7 @@ def test_register_ops_adds_backend():
         def reshape(self, x, shape): return np.reshape(x, shape)
         def ravel(self, x): return np.ravel(x)
         def transpose(self, x, axes=None): return np.transpose(x, axes=axes)
+        def swapaxes(self, x, axis1, axis2): return np.swapaxes(x, axis1, axis2)
         def conj(self, x): return np.conj(x)
         def sum(self, x, axis=None, **kwargs): return np.sum(x, axis=axis)
         def prod(self, x, axis=None, **kwargs): return np.prod(x, axis=axis)

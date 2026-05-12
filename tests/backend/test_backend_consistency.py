@@ -1,7 +1,7 @@
 import importlib
 import numpy as np
 import pytest
-from ._helpers import has_jax, jax_real_dtype, to_numpy
+from tests._helpers import has_jax, jax_real_dtype, to_numpy
 
 pytestmark = pytest.mark.skipif(not has_jax(), reason="jax is not installed")
 
@@ -59,6 +59,7 @@ def test_numpy_and_jax_agree_on_new_metadata_and_shape_ops():
         to_numpy(jx_ops.squeeze(jx_ops.expand_dims(x_jx, 0), axis=0)),
     )
     assert np.allclose(to_numpy(np_ops.moveaxis(x_np, 0, 1)), to_numpy(jx_ops.moveaxis(x_jx, 0, 1)))
+    assert np.allclose(to_numpy(np_ops.swapaxes(x_np, 0, 1)), to_numpy(jx_ops.swapaxes(x_jx, 0, 1)))
 
 
 def test_numpy_and_jax_agree_on_new_reductions_and_elementwise_ops():

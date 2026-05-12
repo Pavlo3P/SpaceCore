@@ -1,6 +1,6 @@
 import importlib
 import numpy as np
-from ._helpers import to_numpy
+from tests._helpers import to_numpy
 
 
 def test_block_diagonal_apply_and_rapply():
