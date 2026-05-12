@@ -191,6 +191,15 @@ class BackendOps(ABC):
         ...
 
     @abstractmethod
+    def swapaxes(self, x: DenseArray, axis1: int, axis2: int) -> DenseArray:
+        """
+        Interchange two axes of an array.
+
+        Axis arguments are metadata and may need to be Python-static for tracing
+        backends such as JAX.
+        """
+
+    @abstractmethod
     def broadcast_to(self, x: DenseArray, shape: Tuple[int, ...]) -> DenseArray:
         """
         Broadcast `x` to `shape` without changing values.

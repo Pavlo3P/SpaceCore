@@ -392,6 +392,10 @@ class NumpyOps(BackendOps):
         """Permute the dimensions of an array. See: numpy.transpose."""
         return self.np.transpose(a, axes=axes)
 
+    def swapaxes(self, a: DenseArray, axis1: int, axis2: int) -> DenseArray:
+        """Interchange two axes of an array. See: numpy.swapaxes."""
+        return self.np.swapaxes(a, axis1, axis2)
+
     def broadcast_to(
         self,
         x: DenseArray,

@@ -1,6 +1,6 @@
 import importlib
 import numpy as np
-from ._helpers import has_jax, jax_real_dtype
+from tests._helpers import has_jax, jax_real_dtype
 
 
 def test_numpy_context_creation():

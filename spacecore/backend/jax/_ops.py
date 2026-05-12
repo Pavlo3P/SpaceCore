@@ -411,6 +411,10 @@ class JaxOps(BackendOps):
         """See: `jax.numpy.transpose`."""
         return self.jnp.transpose(x, axes=axes)
 
+    def swapaxes(self, x: DenseArray, axis1: int, axis2: int) -> DenseArray:
+        """See: `jax.numpy.swapaxes`."""
+        return self.jnp.swapaxes(x, axis1, axis2)
+
     def broadcast_to(
         self,
         x: DenseArray,

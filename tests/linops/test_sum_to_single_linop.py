@@ -1,6 +1,6 @@
 import importlib
 import numpy as np
-from ._helpers import to_numpy
+from tests._helpers import to_numpy
 
 
 def test_sum_to_single_apply_and_rapply():

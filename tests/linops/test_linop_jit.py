@@ -5,7 +5,7 @@ import pytest
 
 import spacecore as sc
 
-from ._helpers import jax_real_dtype, to_numpy
+from tests._helpers import jax_real_dtype, to_numpy
 
 
 pytestmark = pytest.mark.skipif(

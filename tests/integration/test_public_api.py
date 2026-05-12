@@ -1,5 +1,5 @@
 import importlib
-from ._helpers import has_jax
+from tests._helpers import has_jax
 
 
 def test___all___contains_importable_names():

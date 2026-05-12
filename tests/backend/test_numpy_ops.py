@@ -26,3 +26,14 @@ def test_numpy_ops_shape_ops():
     y = ops.reshape(x, (2,3))
     assert y.shape == (2,3)
     assert np.allclose(ops.ravel(y), np.arange(6))
+
+
+def test_numpy_ops_swapaxes():
+    sc = importlib.import_module("spacecore")
+    ops = sc.NumpyOps()
+    x = ops.reshape(ops.arange(24), (2, 3, 4))
+
+    y = ops.swapaxes(x, 0, 2)
+
+    assert y.shape == (4, 3, 2)
+    assert np.allclose(y, np.swapaxes(np.arange(24).reshape(2, 3, 4), 0, 2))

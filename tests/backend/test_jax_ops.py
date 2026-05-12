@@ -1,7 +1,7 @@
 import importlib
 import numpy as np
 import pytest
-from ._helpers import has_jax, jax_real_dtype
+from tests._helpers import has_jax, jax_real_dtype
 
 pytestmark = pytest.mark.skipif(not has_jax(), reason="jax is not installed")
 
@@ -30,3 +30,14 @@ def test_jax_ops_shape_ops():
     x = ops.arange(6, dtype=jax_real_dtype())
     y = ops.reshape(x, (2,3))
     assert y.shape == (2,3)
+
+
+def test_jax_ops_swapaxes():
+    sc = importlib.import_module("spacecore")
+    ops = sc.JaxOps()
+    x = ops.reshape(ops.arange(24, dtype=jax_real_dtype()), (2, 3, 4))
+
+    y = ops.swapaxes(x, 0, 2)
+
+    assert y.shape == (4, 3, 2)
+    assert np.allclose(np.asarray(y), np.swapaxes(np.arange(24).reshape(2, 3, 4), 0, 2))

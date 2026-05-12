@@ -1,6 +1,6 @@
 import importlib
 import numpy as np
-from ._helpers import has_jax, jax_real_dtype, prod
+from tests._helpers import has_jax, jax_real_dtype, prod
 
 
 def test_product_space_construction_and_shape():
