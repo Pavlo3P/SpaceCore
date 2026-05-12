@@ -23,6 +23,16 @@ def test_product_conversion_preserves_component_shapes():
     assert [sp.shape for sp in Q.spaces] == [(2,2),(3,)]
 
 
+def test_space_conversion_to_same_effective_context_returns_self():
+    sc = importlib.import_module("spacecore")
+    ctx = sc.Context(sc.NumpyOps(), dtype=np.float32)
+    X = sc.VectorSpace((3,), ctx)
+    P = sc.ProductSpace((X, sc.VectorSpace((2,), ctx)), ctx)
+
+    assert X.convert(ctx) is X
+    assert P.convert(ctx) is P
+
+
 def test_space_conversion_to_jax_if_supported():
     if not has_jax():
         return

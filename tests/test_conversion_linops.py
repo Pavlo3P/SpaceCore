@@ -28,6 +28,16 @@ def test_product_linop_conversion_same_backend_preserves_action():
     assert np.allclose(to_numpy(y[0]), [50.,110.])
 
 
+def test_linop_conversion_to_same_effective_context_returns_self():
+    sc = importlib.import_module("spacecore")
+    ctx = sc.Context(sc.NumpyOps(), dtype=np.float32)
+    X = sc.VectorSpace((2,), ctx)
+    Y = sc.VectorSpace((3,), ctx)
+    op = sc.DenseLinOp(ctx.asarray([[1.,2.],[3.,4.],[5.,6.]]), X, Y, ctx)
+
+    assert op.convert(ctx) is op
+
+
 def test_linop_conversion_to_jax_if_supported():
     if not has_jax():
         return

@@ -21,6 +21,7 @@ class Space(ContextBound):
     def __init__(self, shape: Tuple[int, ...], ctx: Context | str | None = None) -> None:
         super().__init__(ctx)
         self.shape = shape
+        self._enable_checks = self.ctx.enable_checks
 
     def __eq__(self, other: Any) -> bool:
         if isinstance(other, Space):
@@ -40,7 +41,7 @@ class Space(ContextBound):
         """
 
     def check_member(self, x: Any) -> None:
-        if self.ctx.enable_checks:
+        if self._enable_checks:
             self._check_member(x)
 
     @abstractmethod

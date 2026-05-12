@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from math import prod
 from typing import Any, Tuple, Callable
 
 from ._base import Space
@@ -22,6 +23,8 @@ class VectorSpace(Space):
 
     def __init__(self, shape: Tuple[int, ...], ctx: Context | str | None = None) -> None:
         super(VectorSpace, self).__init__(shape, ctx)
+        self._size = prod(self.shape)
+        self._is_flat_shape = self.shape == (self._size,)
 
     def _check_member(self, x: Any) -> None:
         X = self.ctx.assert_dense(x)
@@ -55,12 +58,13 @@ class VectorSpace(Space):
         )
 
     def flatten(self, X: DenseArray) -> DenseArray:
-        self.check_member(X)
-        return self.ops.ravel(X)
+        if self._enable_checks:
+            self._check_member(X)
+        return X if self._is_flat_shape else X.reshape((-1,))
 
     def unflatten(self, v: DenseArray) -> DenseArray:
-        V = self.ctx.assert_dense(v)
-        return self.ops.reshape(V, self.shape)
+        V = self.ctx.assert_dense(v) if self._enable_checks else v
+        return V if self._is_flat_shape else V.reshape(self.shape)
 
     def _convert(self, new_ctx: Context) -> VectorSpace:
         return VectorSpace(self.shape, new_ctx)
@@ -71,7 +75,7 @@ class VectorSpace(Space):
         except Exception:
             # optional fallback if backend has vectorize/map
             y = self.ops.vectorize(f)(x)
-        if self.ctx.enable_checks:
+        if self._enable_checks:
             if y.shape != x.shape:
                 raise ValueError("Function application changed shape.")
         return y
@@ -119,6 +123,7 @@ class VectorSpace(Space):
         application is performed entrywise in the distinguished coordinate
         representation.
         """
-        self.check_member(x)
+        if self._enable_checks:
+            self._check_member(x)
         y = self._apply_entrywise(x, f)
         return y

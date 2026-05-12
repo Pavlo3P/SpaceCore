@@ -4,7 +4,7 @@ from typing import Any, Tuple
 
 from ._base import ProductLinOp
 from .._base import LinOp, Domain
-from ...space import ProductSpace
+from ...space import ProductSpace, VectorSpace
 from ...backend import jax_pytree_class, Context
 
 
@@ -35,15 +35,24 @@ class StackedLinOp(ProductLinOp[Domain, ProductSpace]):
                 raise TypeError(f"Component op {i} must map dom -> cod.spaces[{i}].")
 
     def apply(self, x: Any) -> Any:
-        self.assert_domain(x)
-        return tuple(A.apply(x) for A in self.parts)
+        if self._enable_checks:
+            self.dom.check_member(x)
+        if self._num_parts == 2:
+            return self._apply_parts[0](x), self._apply_parts[1](x)
+        return tuple(apply(x) for apply in self._apply_parts)
 
     def rapply(self, y: Any) -> Any:
-        self.assert_codomain(y)
+        if self._enable_checks:
+            self.cod.check_member(y)
+        if self._num_parts == 2:
+            x0 = self._rapply_parts[0](y[0])
+            x1 = self._rapply_parts[1](y[1])
+            return x0 + x1 if type(self.dom) is VectorSpace else self.dom.add(x0, x1)
         acc = None
-        for A, yi in zip(self.parts, y):
-            xi = A.rapply(yi)
-            acc = xi if acc is None else self.dom.add(xi, acc)
+        use_direct_add = type(self.dom) is VectorSpace
+        for rapply, yi in zip(self._rapply_parts, y):
+            xi = rapply(yi)
+            acc = xi if acc is None else (acc + xi if use_direct_add else self.dom.add(xi, acc))
         return acc
 
     @classmethod

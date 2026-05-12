@@ -34,12 +34,18 @@ class BlockDiagonalLinOp(ProductLinOp[ProductSpace, ProductSpace]):
                 raise TypeError(f"Component op {i} has incompatible dom/cod spaces.")
 
     def apply(self, x: Any) -> Any:
-        self.assert_domain(x)
-        return tuple(A.apply(xi) for A, xi in zip(self.parts, x))
+        if self._enable_checks:
+            self.dom.check_member(x)
+        if self._num_parts == 2:
+            return self._apply_parts[0](x[0]), self._apply_parts[1](x[1])
+        return tuple(apply(xi) for apply, xi in zip(self._apply_parts, x))
 
     def rapply(self, y: Any) -> Any:
-        self.assert_codomain(y)
-        return tuple(A.rapply(yi) for A, yi in zip(self.parts, y))
+        if self._enable_checks:
+            self.cod.check_member(y)
+        if self._num_parts == 2:
+            return self._rapply_parts[0](y[0]), self._rapply_parts[1](y[1])
+        return tuple(rapply(yi) for rapply, yi in zip(self._rapply_parts, y))
 
     @classmethod
     def from_operators(cls, parts: Tuple[LinOp, ...]) -> BlockDiagonalLinOp:

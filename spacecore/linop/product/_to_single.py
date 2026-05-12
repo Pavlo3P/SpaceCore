@@ -4,7 +4,7 @@ from typing import Any, Tuple
 
 from ._base import ProductLinOp
 from .._base import LinOp, Codomain
-from ...space import ProductSpace
+from ...space import ProductSpace, VectorSpace
 from ...backend import jax_pytree_class, Context
 
 
@@ -35,16 +35,25 @@ class SumToSingleLinOp(ProductLinOp[ProductSpace, Codomain]):
                 raise TypeError(f"Component op {i} must map dom.spaces[{i}] -> cod.")
 
     def apply(self, x: Any) -> Any:
-        self.assert_domain(x)
+        if self._enable_checks:
+            self.dom.check_member(x)
+        if self._num_parts == 2:
+            y0 = self._apply_parts[0](x[0])
+            y1 = self._apply_parts[1](x[1])
+            return y0 + y1 if type(self.cod) is VectorSpace else self.cod.add(y0, y1)
         acc = None
-        for A, xi in zip(self.parts, x):
-            yi = A.apply(xi)
-            acc = yi if acc is None else self.cod.add(yi, acc)
+        use_direct_add = type(self.cod) is VectorSpace
+        for apply, xi in zip(self._apply_parts, x):
+            yi = apply(xi)
+            acc = yi if acc is None else (acc + yi if use_direct_add else self.cod.add(yi, acc))
         return acc
 
     def rapply(self, y: Any) -> Any:
-        self.assert_codomain(y)
-        return tuple(A.rapply(y) for A in self.parts)
+        if self._enable_checks:
+            self.cod.check_member(y)
+        if self._num_parts == 2:
+            return self._rapply_parts[0](y), self._rapply_parts[1](y)
+        return tuple(rapply(y) for rapply in self._rapply_parts)
 
     @classmethod
     def from_operators(cls, parts: Tuple[LinOp, ...]) -> SumToSingleLinOp:

@@ -4,6 +4,7 @@ from math import prod
 from typing import Any
 
 from ._base import LinOp, Domain, Codomain
+from ..space import VectorSpace
 from ..types import DenseArray, SparseArray
 from ..backend import jax_pytree_class, Context
 from .._contextual.manager import ctx_manager
@@ -37,6 +38,15 @@ class SparseLinOp(LinOp):
             raise TypeError(f"Expected A.shape == (prod(cod.shape), prod(dom.shape)) == {expected}, got {A.shape}")
 
         self.A = A  # No dtype conversion
+        self._cod_size = expected[0]
+        self._dom_size = expected[1]
+        self._A_is_complex = getattr(self.A.dtype, "kind", None) == "c"
+        self._AT = self.A.T
+        self._AH = self._AT.conj() if self._A_is_complex else self._AT
+        self._dom_is_flat = tuple(self.dom.shape) == (self._dom_size,)
+        self._cod_is_flat = tuple(self.cod.shape) == (self._cod_size,)
+        self._dom_vector_fast_path = type(self.dom) is VectorSpace
+        self._cod_vector_fast_path = type(self.cod) is VectorSpace
 
     def apply(self, x: DenseArray) -> DenseArray:
         """
@@ -44,15 +54,16 @@ class SparseLinOp(LinOp):
 
         x must have shape dom.shape (dense).
         """
-        ctx = self.dom.ctx
-        self.assert_domain(x)
+        if self._enable_checks:
+            self.dom.check_member(x)
+        return self._apply_unchecked(x)
 
-        n = prod(self.dom.shape)
-
-        x1 = x.reshape((n,))
-        y1 = ctx.ops.sparse_matmul(self.A, x1)   # (m,)
-        y = self.cod.unflatten(y1)
-        return y
+    def _apply_unchecked(self, x: DenseArray) -> DenseArray:
+        x1 = x if self._dom_is_flat else x.reshape((self._dom_size,))
+        y1 = self.A @ x1   # (m,)
+        if self._cod_vector_fast_path:
+            return y1 if self._cod_is_flat else y1.reshape(self.cod.shape)
+        return self.cod.unflatten(y1)
 
     def rapply(self, y: DenseArray) -> DenseArray:
         """
@@ -60,17 +71,17 @@ class SparseLinOp(LinOp):
 
         y must have shape cod.shape (dense).
         """
-        ctx = self.dom.ctx
-        self.assert_codomain(y)
+        if self._enable_checks:
+            self.cod.check_member(y)
+        return self._rapply_unchecked(y)
 
-        m = prod(self.cod.shape)
+    def _rapply_unchecked(self, y: DenseArray) -> DenseArray:
+        y1 = y if self._cod_is_flat else y.reshape((self._cod_size,))
+        x1 = self._AH @ y1
 
-        y1 = y.reshape((m,))
-
-        x1 = ctx.ops.sparse_matmul(self.A.T, y1.conj()).conj()
-
-        x = self.dom.unflatten(x1)
-        return x
+        if self._dom_vector_fast_path:
+            return x1 if self._dom_is_flat else x1.reshape(self.dom.shape)
+        return self.dom.unflatten(x1)
 
     def __eq__(self, x: Any) -> bool:
         if type(x) is type(self):
