@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Tuple, Callable
 
+from ._checks import HermitianCheck, SquareMatrixCheck
 from ._vector import VectorSpace
 from ..types import DenseArray
 from ..backend import Context
@@ -47,38 +48,22 @@ class HermitianSpace(VectorSpace):
     def n(self) -> int:
         return self.shape[0]
 
-    def _check_member(self, x: Any) -> None:
-        super()._check_member(x)
-
-        if not self.is_hermitian(x):
-            raise TypeError("Matrix is not Hermitian (within the specified tolerances).")
+    def _local_checks(self):
+        return (
+            SquareMatrixCheck(),
+            HermitianCheck(
+                atol=self.atol,
+                rtol=self.rtol,
+                enforce=self.enforce_herm,
+            ),
+        )
 
     def is_hermitian(self, x: DenseArray) -> bool:
-        ops = self.ctx.ops
-        xh = ops.conj(x).T
-        diff = x - xh
-
-        # Validation is typically done outside jit, so it is OK to reduce via
-        # backend's .max when available (NumPy/JAX arrays have it).
-        adiff = ops.abs(diff)
-        aX = ops.abs(x)
-
-        # max(abs(diff)) <= atol + rtol*max(abs(X))
-        max_adiff = adiff.max()
-        max_aX = aX.max()
-
-        # Convert 0-d arrays to Python scalars if needed
-        def _as_float(v):
-            try:
-                return float(v)
-            except TypeError:
-                return float(v.item())
-
-        max_adiff_f = _as_float(max_adiff)
-        max_aX_f = _as_float(max_aX)
-
-        thresh = float(self.atol) + float(self.rtol) * max_aX_f
-        return max_adiff_f <= thresh
+        return HermitianCheck(
+            atol=self.atol,
+            rtol=self.rtol,
+            enforce=self.enforce_herm,
+        ).is_valid(self, x)
 
     def symmetrize(self, x: DenseArray) -> DenseArray:
         """Project onto the Hermitian cone: (X + X^H)/2."""
@@ -163,9 +148,8 @@ class HermitianSpace(VectorSpace):
         then the eigenvectors are preserved and only the eigenvalues are
         transformed.
         """
-        if self._enable_checks:
-            self._check_member(x)
-        evals, evecs = self.eigh(x)
+        self.check_member(x)
+        evals, evecs = self.ops.eigh(x)
         fevals = self._apply_entrywise(evals, f)
 
         return self.eig_to_dense(fevals, evecs)
