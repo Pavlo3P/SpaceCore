@@ -15,13 +15,11 @@ class LinOp(ContextBound, Generic[Domain, Codomain]):
     """
     Minimal linear operator (morphism) between two spaces.
 
-    This class is intentionally small:
-      - no matrix semantics
-      - no arithmetic
-      - no storage assumptions
+    This class is intentionally small. It defines no matrix semantics,
+    arithmetic, or storage assumptions.
 
     Its sole purpose is to represent a linear map
-        A : dom -> cod
+    ``A : dom -> cod``
     with access to both forward and adjoint actions.
     """
 

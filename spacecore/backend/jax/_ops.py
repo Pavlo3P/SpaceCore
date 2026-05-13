@@ -14,22 +14,46 @@ class JaxOps(BackendOps):
     """
     BackendOps implementation for the JAX ecosystem.
 
-    Dense arrays:
-      - jax.Array
+    This backend uses JAX for dense array operations and JAX experimental
+    sparse arrays for sparse operations.
 
-    Sparse arrays:
-      - jax.experimental.sparse.BCOO / BCSR
+    Dense arrays
+        jax.Array
 
-    Each method mirrors the corresponding JAX public API signature and delegates
-    to `jax.numpy` / `jax.numpy.linalg` / `jax.experimental.sparse`.
+    Sparse arrays
+        jax.experimental.sparse.BCOO
+        jax.experimental.sparse.BCSR
 
-    Notes:
-      - Some parameters are documented as "unused by JAX" (e.g. `out` for argmin/argmax);
-        these are still accepted to match the JAX signature and keep call sites uniform.
-      - Array-creation routines often accept `device` and/or `out_sharding` for explicit
-        placement/sharding.
+    Methods
+        Most methods mirror the corresponding JAX public API signatures and
+        delegate to `jax.numpy`, `jax.numpy.linalg`, `jax.scipy`, or
+        `jax.experimental.sparse`. Backend-specific behavior, tracing rules,
+        dtype canonicalization, device placement, sharding, and error modes
+        therefore follow JAX semantics.
+
+    Backend handles
+      - jax : module
+            JAX module stored on the class and available through instances as
+            `ops.jax`. Advanced users may use it when SpaceCore's portable API
+            does not expose a required JAX feature.
+
+      - jnp : module
+            `jax.numpy` module stored on the class and available through
+            instances as `ops.jnp`.
+
+      - jsparse : module
+            `jax.experimental.sparse` module stored on the class and available
+            through instances as `ops.jsparse`.
+
+    Notes
+        Code intended to remain backend-portable should prefer `BackendOps`
+        methods. Direct use of `ops.jax`, `ops.jnp`, or `ops.jsparse` is an
+        explicit JAX-specific escape hatch.
+
+        Some parameters are accepted for JAX signature compatibility even when
+        JAX ignores them. Array-creation routines may expose `device` and
+        `out_sharding` for explicit placement or sharding.
     """
-
     import jax
     import jax.numpy as jnp
     import jax.experimental.sparse as jsparse
@@ -175,10 +199,7 @@ class JaxOps(BackendOps):
         """
         Dense array type using JAX.
 
-        Input:
-            None.
-
-        Output:
+        Returns:
             Concrete dense array class accepted by this backend.
 
         See:
@@ -191,10 +212,7 @@ class JaxOps(BackendOps):
         """
         Sparse array type tuple using JAX.
 
-        Input:
-            None.
-
-        Output:
+        Returns:
             Concrete sparse array classes accepted by this backend, or None.
 
         See:
@@ -207,10 +225,7 @@ class JaxOps(BackendOps):
         """
         Positive infinity scalar using JAX.
 
-        Input:
-            None.
-
-        Output:
+        Returns:
             Backend scalar representing positive infinity.
 
         See:
@@ -1673,7 +1688,7 @@ class JaxOps(BackendOps):
             Tuple of dense backend arrays usable for open-mesh indexing.
 
         See:
-            https://docs.jax.dev/en/latest/_autosummary/jax.numpy.ix_.html
+            https://docs.jax.dev/en/latest/_autosummary/jax.numpy.ix\\_.html
         """
         return self.jnp.ix_(*args)
 

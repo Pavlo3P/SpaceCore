@@ -16,7 +16,7 @@ Base install:
 
 ```bash
 pip install spacecore
-````
+```
 
 With JAX support:
 
@@ -89,7 +89,30 @@ The public API may still evolve.
 
 ## Tutorials
 
-See the `tutorials/` directory for usage examples and design guidance.
+See the Sphinx documentation under `docs/source/` for tutorials, design notes,
+and API reference.
+
+## Documentation
+
+The documentation website is built with Sphinx from `docs/source`.
+
+Install the documentation dependencies:
+
+```bash
+pip install -e ".[docs]"
+```
+
+Build the local HTML documentation:
+
+```bash
+sphinx-build -b html docs/source docs/build/html
+```
+
+GitHub Pages deployment is handled by `.github/workflows/docs.yml`. The workflow
+builds the same `docs/source` tree into `docs/build/html`, uploads it as a Pages
+artifact, and deploys it through GitHub Actions on pushes to `main` or `master`
+or by manual workflow dispatch. Configure GitHub Pages to use **GitHub Actions**
+as the source before the first deployment.
 
 ## License
 

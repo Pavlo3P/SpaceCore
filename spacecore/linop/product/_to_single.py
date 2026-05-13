@@ -16,9 +16,9 @@ class SumToSingleLinOp(ProductLinOp[ProductSpace, Codomain]):
     dom = X1 × ... × Xk
     cod = Y
 
-    ops[i] : Xi -> Y
-    apply(x)  = sum_i ops[i](x_i)
-    rapply(y) = (ops[i]^*(y))_i
+    ``ops[i] : Xi -> Y``
+    ``apply(x)  = sum_i ops[i](x_i)``
+    ``rapply(y) = (ops[i]^*(y))_i``
     """
 
     def _check_layout(self) -> None:
