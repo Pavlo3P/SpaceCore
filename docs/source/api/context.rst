@@ -9,6 +9,7 @@ Context objects and helpers control backend, dtype, and validation behavior.
    spacecore.backend.Context
    spacecore.set_context
    spacecore.get_context
+   spacecore.resolve_context_priority
    spacecore.register_ops
    spacecore.set_resolution_policy
    spacecore.set_dtype_resolution_policy
@@ -27,6 +28,7 @@ Context helpers
 
 .. autofunction:: spacecore.set_context
 .. autofunction:: spacecore.get_context
+.. autofunction:: spacecore.resolve_context_priority
 .. autofunction:: spacecore.register_ops
 .. autofunction:: spacecore.set_resolution_policy
 .. autofunction:: spacecore.get_resolution_policy

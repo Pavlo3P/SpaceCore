@@ -1,4 +1,4 @@
-__version__ = "0.1.3"
+__version__ = "0.1.4"
 
 
 from .backend import Context, BackendOps, JaxOps, NumpyOps, jax_pytree_class
@@ -27,6 +27,7 @@ from .types import DenseArray, SparseArray, ArrayLike
 from ._contextual import ContextBound
 from ._contextual.manager import (
     set_context, get_context,
+    resolve_context_priority,
     register_ops,
     set_resolution_policy, set_dtype_resolution_policy,
     get_resolution_policy, get_dtype_resolution_policy
@@ -68,6 +69,7 @@ __all__ = [
     "ContextBound",
     "set_context",
     "get_context",
+    "resolve_context_priority",
     "register_ops",
     "set_resolution_policy",
     "set_dtype_resolution_policy",

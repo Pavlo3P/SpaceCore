@@ -16,6 +16,22 @@ def test_explicit_context_has_priority():
         sc.set_context(original)
 
 
+def test_public_resolve_context_priority_wrapper():
+    sc = importlib.import_module("spacecore")
+    original = sc.get_context()
+    default = sc.Context(sc.NumpyOps(), dtype=np.float64, enable_checks=True)
+    inferred = sc.Context(sc.NumpyOps(), dtype=np.float32, enable_checks=False)
+    explicit = sc.Context(sc.NumpyOps(), dtype=np.float64, enable_checks=False)
+    try:
+        sc.set_context(default)
+        X = sc.VectorSpace((3,), ctx=inferred)
+
+        assert sc.resolve_context_priority(None, X) == inferred
+        assert sc.resolve_context_priority(explicit, X) == explicit
+    finally:
+        sc.set_context(original)
+
+
 def test_default_context_used_when_none_given():
     sc = importlib.import_module("spacecore")
     original = sc.get_context()

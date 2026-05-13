@@ -155,6 +155,36 @@ is the logical conjunction of source flags:
    =
    \bigwedge_i \texttt{ctx}_i.\texttt{enable\_checks}.
 
+Resolving contexts directly
+---------------------------
+
+Most users get context resolution automatically through constructors such as
+``VectorSpace(...)``, ``ProductSpace(...)``, and ``DenseLinOp(...)``. When an
+algorithm needs to resolve a context before constructing an object, use the
+public helper ``resolve_context_priority``:
+
+.. code-block:: python
+
+   import spacecore as sc
+
+   X = sc.VectorSpace((3,), ctx="numpy")
+   ctx = sc.resolve_context_priority(None, X)
+
+   assert ctx == X.ctx
+
+The first argument is the explicit priority context. If it is not ``None``, it
+wins over inferred contexts:
+
+.. code-block:: python
+
+   explicit = sc.Context(sc.NumpyOps(), dtype="float64", enable_checks=False)
+   ctx = sc.resolve_context_priority(explicit, X)
+
+   assert ctx == explicit
+
+This helper is the supported public entry point for context-priority resolution.
+Do not access the internal context manager singleton from user code.
+
 Practical rule
 --------------
 

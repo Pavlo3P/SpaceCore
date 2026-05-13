@@ -11,6 +11,7 @@ The documentation has three layers:
 * :doc:`tutorials/index` explain the main ideas with examples.
 * :doc:`design/index` describes the policies and design choices behind the API.
 * :doc:`api/index` provides explicit object-level API reference pages.
+* :doc:`release_notes` records user-visible changes by release.
 
 Core model
 ----------
@@ -53,3 +54,4 @@ Quick example
    tutorials/index
    design/index
    api/index
+   release_notes

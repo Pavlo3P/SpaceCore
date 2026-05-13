@@ -1,5 +1,11 @@
 import importlib
+import tomllib
+from pathlib import Path
+
 from tests._helpers import has_jax, has_torch
+
+
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def test___all___contains_importable_names():
@@ -16,7 +22,7 @@ def test_expected_names_are_exported():
         "BlockDiagonalLinOp", "StackedLinOp", "SumToSingleLinOp",
         "VectorSpace", "HermitianSpace", "ProductSpace", "Space",
         "DenseArray", "SparseArray", "ArrayLike",
-        "set_context", "get_context", "register_ops",
+        "set_context", "get_context", "resolve_context_priority", "register_ops",
         "set_resolution_policy", "set_dtype_resolution_policy",
         "get_resolution_policy", "get_dtype_resolution_policy",
     }
@@ -42,3 +48,10 @@ def test_top_level_objects_match_source_modules():
     assert sc.VectorSpace is space.VectorSpace
     assert sc.DenseLinOp is linop.DenseLinOp
     assert sc.get_context is manager.get_context
+    assert sc.resolve_context_priority is manager.resolve_context_priority
+
+
+def test_package_version_matches_project_metadata():
+    sc = importlib.import_module("spacecore")
+    metadata = tomllib.loads((ROOT / "pyproject.toml").read_text())
+    assert sc.__version__ == metadata["project"]["version"]

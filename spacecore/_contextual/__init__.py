@@ -2,6 +2,7 @@ from .bound import ContextBound as ContextBound
 from .manager import (
     ctx_manager as ctx_manager,
     set_context as set_context,
+    resolve_context_priority as resolve_context_priority,
     register_ops as register_ops,
     set_resolution_policy as set_resolution_policy,
     set_dtype_resolution_policy as set_dtype_resolution_policy,

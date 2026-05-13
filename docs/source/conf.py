@@ -2,14 +2,18 @@ from __future__ import annotations
 
 import os
 import sys
+import tomllib
 from datetime import date
+from pathlib import Path
 
 sys.path.insert(0, os.path.abspath("../.."))
 
 project = "SpaceCore"
 author = "Pavlo Pelikh"
 copyright = f"{date.today().year}, {author}"
-release = "0.1.3"
+release = tomllib.loads((Path(__file__).resolve().parents[2] / "pyproject.toml").read_text())[
+    "project"
+]["version"]
 
 extensions = [
     "sphinx.ext.autodoc",

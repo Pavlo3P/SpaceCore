@@ -45,6 +45,11 @@ A `Context` specifies how objects are represented, in particular:
 * dtype
 * validation/conversion behavior
 
+Constructors resolve contexts in priority order: explicit `ctx=...`, then
+contexts inferred from inputs, then the global default context. Advanced code
+that needs this resolution step directly can call
+`spacecore.resolve_context_priority(...)`.
+
 ### `Space`
 
 A `Space` describes the structure of objects space, for example:
@@ -111,7 +116,7 @@ The public API may still evolve.
 ## Tutorials
 
 See the Sphinx documentation under `docs/source/` for tutorials, design notes,
-and API reference.
+API reference, and release notes.
 
 ## Documentation
 

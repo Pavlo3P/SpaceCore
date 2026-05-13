@@ -52,6 +52,37 @@ def get_context() -> Context:
     return ctx_manager.default_ctx
 
 
+def resolve_context_priority(
+        priority_ctx: Context | BackendFamily | str | None = None,
+        *other_ctx: object,
+) -> Context:
+    """
+    Resolve the context assigned to a newly created object.
+
+    Parameters
+    ----------
+    priority_ctx:
+        Explicit context supplied by the caller. If this is not ``None``, it
+        wins over every inferred context.
+    *other_ctx:
+        Objects that may carry a ``ctx`` attribute or be backend-native arrays.
+        These are used for context inference when no explicit context is
+        supplied.
+
+    Returns
+    -------
+    Context
+        The resolved context.
+
+    Notes
+    -----
+    This is the public entry point for SpaceCore's context-priority resolution.
+    User code should call this function instead of accessing the internal
+    context manager singleton.
+    """
+    return ctx_manager.resolve_context_priority(priority_ctx, *other_ctx)
+
+
 def register_ops(ops: type[BackendOps]) -> type[BackendOps]:
     """
     Register a backend operations implementation.

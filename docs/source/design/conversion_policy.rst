@@ -51,13 +51,19 @@ fixed order:
 3. A common context can be inferred only when all context-carrying inputs use
    the same backend family.
 4. The inferred context uses the shared backend and the most general dtype among
-   the inferred dtypes. Other context parameters use their default values.
+   the inferred dtypes. The inferred ``enable_checks`` flag is enabled only if
+   all inferred contexts have checks enabled.
 5. If no context can be inferred, use the global default context set by
    ``spacecore.set_context()``.
 
 Once the context is resolved, it is assigned to the new object. Inputs that
 carry their own contexts are adapted to the backend of the resolved context.
 Their dtype is handled separately by the dtype policy.
+
+User code can apply this same priority rule through
+``spacecore.resolve_context_priority(priority_ctx, *objects)``. The helper is
+the public entry point for context-priority resolution; the internal context
+manager singleton is not part of the user-facing API.
 
 Policy modes
 ------------

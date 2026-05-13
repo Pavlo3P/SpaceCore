@@ -1,4 +1,5 @@
 import importlib
+import inspect
 
 import numpy as np
 import pytest
@@ -21,6 +22,41 @@ def test_torch_ops_basic_array_creation_and_conversion():
     assert y.dtype == torch.float64
     assert ops.is_dense(x)
     assert not ops.is_sparse(x)
+
+
+def test_torch_ops_signatures_extend_backendops_and_torch_kwargs():
+    sc = importlib.import_module("spacecore")
+
+    for name, base in sc.BackendOps.__dict__.items():
+        if name.startswith("_") or isinstance(base, property) or not callable(base):
+            continue
+        if not hasattr(sc.TorchOps, name):
+            continue
+
+        base_params = [param for param in inspect.signature(base).parameters if param != "self"]
+        torch_params = inspect.signature(getattr(sc.TorchOps, name)).parameters
+
+        assert set(base_params).issubset(torch_params)
+
+    expected_torch_kwargs = {
+        "empty": {"out", "layout", "device", "requires_grad", "pin_memory", "memory_format"},
+        "zeros": {"out", "layout", "device", "requires_grad"},
+        "zeros_like": {"layout", "device", "requires_grad", "memory_format"},
+        "arange": {"out", "layout", "device", "requires_grad"},
+        "sum": {"out"},
+        "matmul": {"out"},
+        "sparse_matmul": {"reduce"},
+        "eigh": {"UPLO", "out"},
+        "norm": {"dtype", "out"},
+        "solve": {"left", "out"},
+        "svd": {"driver", "out"},
+        "cholesky": {"upper", "out"},
+        "where": {"out"},
+        "concatenate": {"out"},
+    }
+    for name, params in expected_torch_kwargs.items():
+        signature_params = inspect.signature(getattr(sc.TorchOps, name)).parameters
+        assert params.issubset(signature_params)
 
 
 def test_torch_ops_agree_with_numpy_on_dense_math():
