@@ -1,12 +1,13 @@
 Tutorials
 =========
 
-These pages are the Sphinx versions of the introductory notebooks
-``tutorials/1_BackendOps.ipynb`` through ``tutorials/5_Conversion_Policy.ipynb``.
-They explain the core abstractions before the API reference: backend execution,
-contexts, spaces, linear operators, and conversion policy.
+These pages are the Sphinx versions of the tutorial notebooks. The first
+tutorials explain the core abstractions before the API reference: backend
+execution, contexts, spaces, linear operators, and conversion policy.
 
-Notebooks 6 and 7 are application examples and are not included here yet.
+The regularized optimal transport tutorial is an application example. It keeps
+the executed cell outputs in the rendered docs so the convergence diagnostics
+and transport-plan plots can be inspected directly.
 
 .. toctree::
    :maxdepth: 1
@@ -16,3 +17,4 @@ Notebooks 6 and 7 are application examples and are not included here yet.
    spaces
    linops
    conversion_policy
+   regularized_ot
