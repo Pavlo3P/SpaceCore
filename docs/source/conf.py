@@ -24,7 +24,7 @@ extensions = [
 
 autosummary_generate = True
 autodoc_typehints = "description"
-autodoc_mock_imports = ["torch"]
+autodoc_mock_imports = ["jax", "torch"]
 autodoc_class_signature = "mixed"
 autodoc_member_order = "bysource"
 autodoc_default_options = {
