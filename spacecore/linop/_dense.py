@@ -45,7 +45,9 @@ class DenseLinOp(LinOp[VectorSpace, VectorSpace]):
         self._dom_size = prod(self.dom.shape)
         self._matrix_shape = (self._cod_size, self._dom_size)
         self._A2 = self.A.reshape(self._matrix_shape)
-        self._A2H = self._A2.T.conj() if getattr(self.A.dtype, "kind", None) == "c" else self._A2.T
+        dtype = self.ops.get_dtype(self.A)
+        is_complex = getattr(dtype, "kind", None) == "c" or str(dtype).startswith("torch.complex")
+        self._A2H = self._A2.T.conj() if is_complex else self._A2.T
         self._dom_is_flat = tuple(self.dom.shape) == (self._dom_size,)
         self._cod_is_flat = tuple(self.cod.shape) == (self._cod_size,)
         self._dom_vector_fast_path = type(self.dom) is VectorSpace

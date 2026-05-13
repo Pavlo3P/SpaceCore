@@ -1,5 +1,8 @@
 import importlib
 import numpy as np
+import pytest
+
+from tests._helpers import has_torch
 
 
 def test_builtin_backends_are_usable():
@@ -91,3 +94,12 @@ def test_register_ops_adds_backend():
         def allclose_sparse(self, a, b, **kwargs): return False
     sc.register_ops(DummyOps)
     assert "dummy" in sc._contextual.manager.ctx_manager.available_ops
+
+
+@pytest.mark.skipif(not has_torch(), reason="torch is not installed")
+def test_torch_backend_aliases_resolve_when_available():
+    sc = importlib.import_module("spacecore")
+
+    assert isinstance(sc.TorchOps(), sc.BackendOps)
+    assert sc.VectorSpace((1,), "torch").ctx.ops.family == "torch"
+    assert sc.VectorSpace((1,), "pytorch").ctx.ops.family == "torch"

@@ -2,6 +2,10 @@ __version__ = "0.1.3"
 
 
 from .backend import Context, BackendOps, JaxOps, NumpyOps, jax_pytree_class
+try:
+    from .backend import TorchOps as TorchOps
+except ImportError:
+    pass
 from .linop import DenseLinOp, SparseLinOp, BlockDiagonalLinOp, SumToSingleLinOp, StackedLinOp, LinOp
 from .space import (
     BackendCheck,
@@ -70,3 +74,6 @@ __all__ = [
     "get_resolution_policy",
     "get_dtype_resolution_policy",
 ]
+
+if "TorchOps" in globals():
+    __all__.append("TorchOps")

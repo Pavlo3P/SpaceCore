@@ -1,5 +1,5 @@
 import importlib
-from tests._helpers import has_jax
+from tests._helpers import has_jax, has_torch
 
 
 def test___all___contains_importable_names():
@@ -22,6 +22,8 @@ def test_expected_names_are_exported():
     }
     if has_jax():
         expected |= {"JaxOps", "jax_pytree_class"}
+    if has_torch():
+        expected |= {"TorchOps"}
     assert expected.issubset(set(sc.__all__))
 
 
@@ -34,6 +36,8 @@ def test_top_level_objects_match_source_modules():
 
     assert sc.Context is backend.Context
     assert sc.NumpyOps is backend.NumpyOps
+    if has_torch():
+        assert sc.TorchOps is backend.TorchOps
     assert sc.Space is space.Space
     assert sc.VectorSpace is space.VectorSpace
     assert sc.DenseLinOp is linop.DenseLinOp

@@ -5,8 +5,13 @@ This tutorial follows ``tutorials/1_BackendOps.ipynb``. It explains what
 ``BackendOps`` represents in SpaceCore, how it relates to ``Context``, and how
 to use the predefined backends.
 
-Current predefined implementations are ``NumpyOps`` and ``JaxOps``. Natural
-future extensions include ``CuPyOps`` and ``TorchOps``.
+Current predefined implementations are ``NumpyOps``, ``JaxOps``, and
+``TorchOps``. ``TorchOps`` is optional and is available after installing the
+PyTorch extra:
+
+.. code-block:: bash
+
+   pip install spacecore[torch]
 
 Motivation
 ----------
@@ -26,8 +31,8 @@ SpaceCore separates two concerns:
 * the numerical backend used to store and compute with them.
 
 The same mathematical object may be represented using NumPy arrays for eager CPU
-work, JAX arrays for JIT compilation and automatic differentiation, or future
-backends such as CuPy or PyTorch. Without a backend abstraction, spaces and
+work, JAX arrays for JIT compilation and automatic differentiation, or PyTorch
+tensors for eager CPU/CUDA execution and autograd. Without a backend abstraction, spaces and
 operators would need backend-specific branches throughout their implementations.
 
 The design is:
@@ -134,6 +139,35 @@ Use ``JaxOps`` for the JAX execution model: JIT compilation, automatic
 differentiation, accelerator execution, and JAX sparse compatibility. JAX dtype
 behavior depends on local JAX configuration, especially ``jax_enable_x64``.
 
+Use ``TorchOps`` for PyTorch tensors. The backend can be requested by either
+``"torch"`` or ``"pytorch"`` where SpaceCore accepts backend names.
+
+.. code-block:: python
+
+   import torch
+   from spacecore.backend import Context, TorchOps
+
+   ctx_torch = Context(TorchOps(), dtype=torch.float64)
+   x = ctx_torch.asarray([1.0, 2.0, 3.0])
+
+``TorchOps`` follows PyTorch dtype defaults. When no dtype is provided,
+``Context(TorchOps())`` uses ``torch.get_default_dtype()``, which is commonly
+``torch.float32`` unless changed by ``torch.set_default_dtype``. Complex Python
+dtypes are mapped to ``torch.complex64`` or ``torch.complex128`` according to
+the active default floating dtype. NumPy dtype objects such as
+``np.float64`` and ``np.complex128`` are mapped to the corresponding PyTorch
+dtypes.
+
+Device placement also follows PyTorch. ``TorchOps.asarray`` and constructors
+accept a backend-specific ``device=`` keyword, and existing tensors stay on
+their device unless an explicit conversion requests another one. SpaceCore does
+not silently move tensors between CPU and CUDA devices.
+
+Autograd metadata is preserved by normal tensor operations. SpaceCore does not
+detach tensors during dense conversion or mathematical operations; explicit
+copies, dtype casts, and sparse layout conversions follow normal PyTorch
+semantics.
+
 Writing backend-agnostic code
 -----------------------------
 
@@ -198,7 +232,8 @@ Practical advice
 
 Prefer this flow:
 
-1. Choose a backend implementation, such as ``NumpyOps`` or ``JaxOps``.
+1. Choose a backend implementation, such as ``NumpyOps``, ``JaxOps``, or
+   ``TorchOps``.
 2. Wrap it in a ``Context``.
 3. Build spaces and operators from that context.
 

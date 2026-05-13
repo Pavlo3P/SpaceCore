@@ -6,6 +6,10 @@ from warnings import warn
 
 from ..types import DType
 from ..backend import Context, NumpyOps, JaxOps, BackendFamily, BackendOps
+try:
+    from ..backend import TorchOps
+except ImportError:
+    pass
 
 
 class ContextPolicy(StrEnum):
@@ -94,6 +98,8 @@ class Contextual:
             self._backend_key(NumpyOps): NumpyOps,
             self._backend_key(JaxOps): JaxOps,
         }
+        if "TorchOps" in globals():
+            self._available_ops[self._backend_key(TorchOps)] = TorchOps
 
         self.resolution_policy = resolution_policy
         self.dtype_resolution_policy = dtype_resolution_policy
@@ -471,7 +477,8 @@ class Contextual:
         if isinstance(x, BackendFamily):
             return x.value.lower()
         if isinstance(x, str):
-            return x.lower()
+            key = x.lower()
+            return "torch" if key == "pytorch" else key
         raise TypeError(f"Unsupported backend key source: {type(x)!r}")
 
     def resolve_context_priority(

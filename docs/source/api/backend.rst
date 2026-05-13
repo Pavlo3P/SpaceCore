@@ -10,6 +10,7 @@ operators.
    spacecore.backend.BackendOps
    spacecore.backend.NumpyOps
    spacecore.backend.JaxOps
+   spacecore.backend.TorchOps
 
 BackendOps
 ----------
@@ -39,3 +40,13 @@ JaxOps
    :inherited-members:
    :show-inheritance:
    :exclude-members: jax, jnp, jsparse
+
+TorchOps
+--------
+
+.. autoclass:: spacecore.backend.TorchOps
+   :members:
+   :undoc-members:
+   :inherited-members:
+   :show-inheritance:
+   :exclude-members: torch
