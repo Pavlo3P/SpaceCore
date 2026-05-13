@@ -108,12 +108,6 @@ Build the local HTML documentation:
 sphinx-build -b html docs/source docs/build/html
 ```
 
-GitHub Pages deployment is handled by `.github/workflows/docs.yml`. The workflow
-builds the same `docs/source` tree into `docs/build/html`, uploads it as a Pages
-artifact, and deploys it through GitHub Actions on pushes to `main` or `master`
-or by manual workflow dispatch. Configure GitHub Pages to use **GitHub Actions**
-as the source before the first deployment.
-
 ## License
 
 Apache License 2.0
