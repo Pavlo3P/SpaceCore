@@ -9,11 +9,40 @@ from ..backend import Context, NumpyOps, JaxOps, BackendFamily, BackendOps
 
 
 class ContextPolicy(StrEnum):
+    """
+    Policy for backend-incompatible context conversion.
+
+    Values
+    ------
+    warning:
+        Allow conversion to a different backend family and issue a warning.
+        This is the default.
+    error:
+        Reject conversion to a different backend family. Use this when
+        accidental backend migration should be forbidden.
+    silent:
+        Allow conversion to a different backend family without warning. Use
+        this when automatic conversion is expected and controlled.
+    """
+
     warning = auto()
     error = auto()
     silent = auto()
 
 class DtypePreservePolicy(StrEnum):
+    """
+    Policy for dtype handling during context conversion.
+
+    Values
+    ------
+    keep_native:
+        Preserve the source object's dtype where possible by converting it to an
+        equivalent dtype in the target backend. This is the default.
+    convert:
+        Use the dtype provided by the resolved target context. This prioritizes
+        dtype unification under the target context.
+    """
+
     keep_native = auto()
     convert = auto()
 
@@ -109,6 +138,32 @@ class Contextual:
         return self.default_ctx
 
     def normalize_context_like(self, base: Context | None, ctx: Context | BackendFamily | str | None = None) -> Context:
+        """
+        Normalize a target context while applying the dtype resolution policy.
+
+        Parameters
+        ----------
+        base:
+            Native context inferred from the object being converted, or
+            ``None`` when no native context is known.
+        ctx:
+            Requested target context. This may be a concrete ``Context``,
+            backend family string, backend enum value, or ``None``.
+
+        Returns
+        -------
+        Context
+            Normalized target context.
+
+        Notes
+        -----
+        This method implements ``dtype_resolution_policy``:
+
+        * ``keep_native`` preserves ``base.dtype`` when ``base`` exists, while
+          adapting it to the requested backend.
+        * ``convert`` ignores ``base.dtype`` and uses normal target-context
+          dtype resolution.
+        """
         if self.dtype_resolution_policy is DtypePreservePolicy.keep_native and isinstance(base, Context):
             if ctx is None:
                 return self.ctx_like(base, self.default_ctx)
@@ -146,10 +201,46 @@ class Contextual:
 
     @property
     def resolution_policy(self) -> ContextPolicy:
+        """
+        Backend conversion warning/error policy.
+
+        Returns
+        -------
+        ContextPolicy
+            Active policy for conversion between backend families.
+
+        Notes
+        -----
+        ``warning`` allows backend-incompatible conversion and emits a warning.
+        ``error`` rejects backend-incompatible conversion.
+        ``silent`` allows backend-incompatible conversion without warning.
+        """
         return self._resolution_policy
 
     @resolution_policy.setter
     def resolution_policy(self, policy: str | None = ContextPolicy.warning.value) -> None:
+        """
+        Set the backend conversion warning/error policy.
+
+        Parameters
+        ----------
+        policy:
+            One of ``"warning"``, ``"error"``, ``"silent"``, a
+            :class:`ContextPolicy` value, or ``None`` to restore the default.
+
+        Raises
+        ------
+        ValueError
+            If ``policy`` is not one of the supported policy values.
+
+        Notes
+        -----
+        This policy controls conversion between different backend families:
+
+        * ``warning``: convert and warn.
+        * ``error``: reject conversion.
+        * ``silent``: convert without warning.
+        """
         if policy is None:
             self._resolution_policy = self._default_policy
             return
@@ -169,10 +260,47 @@ class Contextual:
 
     @property
     def dtype_resolution_policy(self) -> DtypePreservePolicy:
+        """
+        Dtype handling policy for context conversion.
+
+        Returns
+        -------
+        DtypePreservePolicy
+            Active dtype policy.
+
+        Notes
+        -----
+        ``keep_native`` preserves the source dtype when converting between
+        contexts. ``convert`` uses the dtype supplied by the resolved target
+        context.
+        """
         return self._dtype_resolution_policy
 
     @dtype_resolution_policy.setter
     def dtype_resolution_policy(self, policy: str | None = DtypePreservePolicy.keep_native.value) -> None:
+        """
+        Set the dtype handling policy for context conversion.
+
+        Parameters
+        ----------
+        policy:
+            One of ``"keep_native"``, ``"convert"``, a
+            :class:`DtypePreservePolicy` value, or ``None`` to restore the
+            default.
+
+        Raises
+        ------
+        ValueError
+            If ``policy`` is not one of the supported policy values.
+
+        Notes
+        -----
+        This policy controls dtype choice after context resolution:
+
+        * ``keep_native``: preserve the source object's dtype in the target
+          backend when possible.
+        * ``convert``: use the dtype provided by the resolved target context.
+        """
         if policy is None:
             self._dtype_resolution_policy = self._default_dtype_resolution_policy
             return
@@ -278,6 +406,46 @@ class Contextual:
         return all(op.family == first.family for op in ops)
 
     def enforce_convert_policy(self, x: Any, to: Context | BackendFamily | str | None = None) -> Tuple[Any, Context]:
+        """
+        Resolve the target context for ``x`` and enforce conversion policies.
+
+        Parameters
+        ----------
+        x:
+            Object being converted. If it carries a native context, that context
+            is used to detect backend-family changes and native dtype.
+        to:
+            Requested target context. This may be a concrete ``Context``,
+            backend family string, backend enum value, or ``None``.
+
+        Returns
+        -------
+        tuple[Any, Context]
+            The original object and the normalized target context.
+
+        Raises
+        ------
+        ContextConversionError
+            If the native and target contexts use different backend families and
+            ``resolution_policy`` is ``"error"``.
+
+        Warns
+        -----
+        UserWarning
+            If the native and target contexts use different backend families and
+            ``resolution_policy`` is ``"warning"``.
+
+        Notes
+        -----
+        Backend-family compatibility is governed by ``resolution_policy``:
+
+        * ``warning``: allow backend conversion and warn.
+        * ``error``: reject backend conversion.
+        * ``silent``: allow backend conversion without warning.
+
+        Dtype choice is handled independently by ``dtype_resolution_policy`` via
+        :meth:`normalize_context_like`.
+        """
         native_ctx = self.infer_context(x)
         ctx = self.normalize_context_like(native_ctx, to)
         if self.resolution_policy is not ContextPolicy.silent:
@@ -312,16 +480,42 @@ class Contextual:
             *other_ctx: object,
     ) -> Context:
         """
-        Resolve context with priority:
+        Resolve the context assigned to a newly created object.
 
-        1. If priority_ctx is not None, return its normalized form.
-        2. Otherwise, infer contexts from other_ctx and return the best inferred one.
-        3. If inference fails, return default_ctx.
+        Parameters
+        ----------
+        priority_ctx:
+            Explicit context supplied by the caller. If this is not ``None``,
+            it wins over every inferred context.
+        *other_ctx:
+            Objects that may carry a ``ctx`` attribute or be backend-native
+            arrays. These are used for context inference when no explicit
+            context is supplied.
 
-        Policy:
-        - explicit context always wins
-        - inferred contexts must be family-compatible
-        - if inferred dtypes differ, take the most general of them
+        Returns
+        -------
+        Context
+            The resolved context.
+
+        Raises
+        ------
+        ValueError
+            If contexts can be inferred but their backend families are
+            incompatible.
+
+        Notes
+        -----
+        The resolution order follows the conversion-policy tutorial:
+
+        1. Use the explicit ``priority_ctx`` if provided.
+        2. Otherwise, infer contexts from input objects that carry context.
+        3. Inference is possible only when all inferred contexts use the same
+           backend family.
+        4. If inferred dtypes differ, choose the most general dtype among them.
+        5. The inferred ``enable_checks`` flag is the conjunction of source
+           flags, so checks remain enabled only when all source contexts enable
+           checks.
+        6. If inference finds no context, use ``default_ctx``.
         """
         if priority_ctx is not None:
             return self.normalize_context(priority_ctx)

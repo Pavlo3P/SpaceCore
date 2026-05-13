@@ -16,9 +16,9 @@ class StackedLinOp(ProductLinOp[Domain, ProductSpace]):
     dom = X
     cod = Y1 × ... × Yk
 
-    ops[i] : X -> Yi
-    apply(x)  = (ops[i](x))_i
-    rapply(y) = sum_i ops[i]^*(y_i)
+    ``ops[i] : X -> Yi``
+    ``apply(x)  = (ops[i](x))_i``
+    ``rapply(y) = sum_i ops[i]^*(y_i)``
     """
 
     def _check_layout(self) -> None:

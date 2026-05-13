@@ -39,6 +39,17 @@ classifiers = [
 jax = [
   "jax>=0.9.1",
 ]
+examples = [
+  "matplotlib>=3.8",
+  "optax>=0.2",
+]
+docs = [
+  "sphinx>=8.0",
+  "pydata-sphinx-theme>=0.16",
+  "sphinx-copybutton>=0.5",
+  "sphinx-design>=0.6",
+  "numpydoc>=1.8",
+]
 dev = [
   "pytest>=8.0",
     "ruff>=0.6",

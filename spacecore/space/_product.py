@@ -190,7 +190,7 @@ class ProductSpace(Space):
         return tuple(xs)
 
     def apply(self, x: Tuple[Any, ...], f: Callable[[Any], Any]) -> Tuple[Any, ...]:
-        """
+        r"""
         Apply a function to each component of a product-space element.
 
         For a product space

@@ -9,24 +9,46 @@ from ...types import DenseArray, SparseArray, DType, Index, X, T, Y, R, Carry
 
 
 class NumpyOps(BackendOps):
+    """
+    BackendOps implementation for the NumPy/SciPy ecosystem.
+
+    This backend uses NumPy for dense array operations and SciPy for sparse
+    array operations.
+
+    Dense arrays
+        numpy.ndarray
+
+    Sparse arrays
+        scipy.sparse.spmatrix
+        scipy.sparse.sparray
+
+    Methods
+        Most methods mirror the corresponding NumPy or SciPy signatures and
+        delegate directly to NumPy/SciPy implementations. Backend-specific
+        behavior, dtype promotion, broadcasting, memory layout, and error modes
+        therefore follow NumPy/SciPy semantics.
+
+    Backend handles
+      - np : module
+        NumPy module stored on the class and available through instances as
+        `ops.np`. Advanced users may use it when SpaceCore's portable API
+        does not expose a required NumPy feature.
+
+      - sp : module
+        SciPy module stored on the class and available through instances as
+        `ops.sp`. Advanced users may use it for SciPy-specific functionality.
+
+    Notes
+        Code intended to remain backend-portable should prefer `BackendOps`
+        methods. Direct use of `ops.np` or `ops.sp` is an explicit
+        NumPy/SciPy-specific escape hatch.
+
+        NumPy's `device` keyword is present for Array API interoperability.
+        When supplied, it must be `"cpu"` or `None`; see the corresponding NumPy
+        documentation for each method.
+    """
     import numpy as np
     import scipy as sp
-
-    """
-    BackendOps implementation for the NumPy ecosystem.
-
-    Dense arrays:
-      - numpy.ndarray
-
-    Sparse arrays:
-      - scipy.sparse.spmatrix and scipy.sparse.sparray (when SciPy is installed)
-
-    Methods mirror NumPy signatures and delegate to NumPy/SciPy.
-
-    Notes on `device`:
-      - NumPy's `device` keyword is present for Array-API interoperability and,
-        when passed, must be "cpu" (or None). See NumPy docs for each function.
-    """
 
     _family = BackendFamily.numpy.value.lower()
     _allow_sparse = True
@@ -36,10 +58,7 @@ class NumpyOps(BackendOps):
         """
         Dense array type using NumPy.
 
-        Input:
-            None.
-
-        Output:
+        Returns:
             Concrete dense array class accepted by this backend.
 
         See:
@@ -52,10 +71,7 @@ class NumpyOps(BackendOps):
         """
         Sparse array type tuple using SciPy.
 
-        Input:
-            None.
-
-        Output:
+        Returns:
             Concrete sparse array classes accepted by this backend, or None.
 
         See:
@@ -164,10 +180,7 @@ class NumpyOps(BackendOps):
         """
         Positive infinity scalar using NumPy.
 
-        Input:
-            None.
-
-        Output:
+        Returns:
             Backend scalar representing positive infinity.
 
         See:
@@ -180,10 +193,7 @@ class NumpyOps(BackendOps):
         """
         NaN scalar using NumPy.
 
-        Input:
-            None.
-
-        Output:
+        Returns:
             Backend scalar representing NaN.
 
         See:
@@ -196,10 +206,7 @@ class NumpyOps(BackendOps):
         """
         Pi scalar using NumPy.
 
-        Input:
-            None.
-
-        Output:
+        Returns:
             Backend scalar representing pi.
 
         See:
@@ -212,10 +219,7 @@ class NumpyOps(BackendOps):
         """
         Euler number scalar using NumPy.
 
-        Input:
-            None.
-
-        Output:
+        Returns:
             Backend scalar representing Euler's number.
 
         See:
@@ -228,10 +232,7 @@ class NumpyOps(BackendOps):
         """
         Machine epsilon scalar using NumPy.
 
-        Input:
-            None.
-
-        Output:
+        Returns:
             Backend scalar for float64 machine epsilon.
 
         See:
@@ -1798,7 +1799,7 @@ class NumpyOps(BackendOps):
             Tuple of dense backend arrays usable for open-mesh indexing.
 
         See:
-            https://numpy.org/doc/stable/reference/generated/numpy.ix_.html
+            https://numpy.org/doc/stable/reference/generated/numpy.ix\\_.html
         """
         return self.np.ix_(*args)
 

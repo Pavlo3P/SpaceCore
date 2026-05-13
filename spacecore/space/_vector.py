@@ -75,7 +75,7 @@ class VectorSpace(Space):
         return y
 
     def apply(self, x: DenseArray, f: Callable[[DenseArray], DenseArray]) -> DenseArray:
-        """
+        r"""
         Apply a scalar function to a vector-space element entrywise.
 
         For a space element

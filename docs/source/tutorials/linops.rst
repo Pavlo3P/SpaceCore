@@ -1,0 +1,188 @@
+LinOp tutorial
+==============
+
+This tutorial follows ``tutorials/4_LinOp.ipynb``. It introduces ``LinOp`` as
+the abstraction for linear maps between spaces.
+
+Current implemented operator types are:
+
+* ``DenseLinOp``
+* ``SparseLinOp``
+* ``BlockDiagonalLinOp``
+* ``StackedLinOp``
+* ``SumToSingleLinOp``
+
+What a LinOp signifies
+----------------------
+
+Let :math:`A` be a linear map
+
+.. math::
+
+   A : X \to Y.
+
+``LinOp`` encodes this map together with the numerical policy under which it is
+applied. It is not just an array or matrix. It is a map equipped with:
+
+* a domain space;
+* a codomain space;
+* a context;
+* methods for forward and adjoint application.
+
+The geometry is explicit:
+
+.. math::
+
+   x \in X \mapsto Ax \in Y.
+
+Core ingredients
+----------------
+
+A linear operator is organized around ``(X, Y, A)``:
+
+* ``op.dom`` is the domain :math:`X`;
+* ``op.cod`` is the codomain :math:`Y`;
+* ``apply(x)`` computes the forward action;
+* ``rapply(y)`` computes the adjoint action.
+
+The expected geometry is:
+
+.. math::
+
+   \texttt{apply}: X \to Y,
+   \qquad
+   \texttt{rapply}: Y \to X.
+
+In finite-dimensional real or complex spaces, ``rapply`` represents the adjoint
+operator :math:`A^* : Y \to X`, satisfying
+
+.. math::
+
+   \langle Ax, y\rangle_Y = \langle x, A^*y\rangle_X.
+
+DenseLinOp
+----------
+
+``DenseLinOp`` is the standard dense linear operator. If :math:`A : X \to Y`,
+then dense storage is a tensor compatible with domain and codomain shapes.
+
+.. code-block:: python
+
+   import numpy as np
+   import spacecore as sc
+
+   ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, enable_checks=True)
+
+   X = sc.VectorSpace((2,), ctx=ctx)
+   Y = sc.VectorSpace((3,), ctx=ctx)
+
+   A = np.array([
+       [1.0, 2.0],
+       [0.0, -1.0],
+       [3.0, 1.0],
+   ])
+
+   op = sc.DenseLinOp(A, X, Y, ctx=ctx)
+
+Forward application computes :math:`x \mapsto Ax`; adjoint application computes
+:math:`y \mapsto A^*y`.
+
+SparseLinOp
+-----------
+
+``SparseLinOp`` stores a sparse backend matrix and uses it for forward and
+adjoint actions. It represents the same kind of map, :math:`A : X \to Y`, but
+the internal storage is sparse rather than dense. Use it when sparsity is part
+of the operator structure.
+
+.. code-block:: python
+
+   import scipy.sparse as sp
+
+   A_sparse = sp.csr_matrix(np.array([
+       [1.0, 0.0],
+       [0.0, -1.0],
+       [3.0, 0.0],
+   ]))
+
+   op_sparse = sc.SparseLinOp(A_sparse, X, Y, ctx=ctx)
+
+Product operators
+-----------------
+
+Product operators compose linear maps over product spaces:
+
+.. dropdown:: Product LinOp classes
+
+   * ``BlockDiagonalLinOp`` applies independent component operators.
+   * ``StackedLinOp`` maps one domain into a product codomain.
+   * ``SumToSingleLinOp`` maps a product domain into one codomain by summing
+     component outputs.
+
+``BlockDiagonalLinOp`` is built from operators :math:`A_i : X_i \to Y_i` and
+acts componentwise:
+
+.. math::
+
+   (x_1,\dots,x_k)
+   \mapsto
+   (A_1x_1,\dots,A_kx_k).
+
+``StackedLinOp`` stacks operators with the same domain,
+:math:`A_i : X \to Y_i`, into one operator
+:math:`X \to Y_1 \times \cdots \times Y_k`:
+
+.. math::
+
+   x \mapsto (A_1x,\dots,A_kx).
+
+Its adjoint combines contributions:
+
+.. math::
+
+   (y_1,\dots,y_k) \mapsto A_1^*y_1 + \cdots + A_k^*y_k.
+
+``SumToSingleLinOp`` combines operators with a common codomain,
+:math:`A_i : X_i \to Y`, into one operator
+:math:`X_1 \times \cdots \times X_k \to Y`:
+
+.. math::
+
+   (x_1,\dots,x_k) \mapsto A_1x_1 + \cdots + A_kx_k.
+
+Its adjoint sends one output element back to a tuple:
+
+.. math::
+
+   y \mapsto (A_1^*y,\dots,A_k^*y).
+
+Defining a custom operator
+--------------------------
+
+Use existing concrete operator classes when you have dense or sparse storage.
+Subclass ``LinOp`` when the map has special structure and you do not want to
+materialize a matrix.
+
+.. code-block:: python
+
+   from spacecore.linop import LinOp
+
+   class ScaleLinOp(LinOp):
+       def __init__(self, alpha, dom, cod=None, ctx=None):
+           if cod is None:
+               cod = dom
+           super().__init__(dom=dom, cod=cod, ctx=ctx)
+           self.alpha = alpha
+
+       def apply(self, x):
+           return self.cod.scale(self.alpha, x)
+
+       def rapply(self, y):
+           return self.dom.scale(self.alpha, y)
+
+Summary
+-------
+
+``LinOp`` turns raw matrix-like storage and structured block maps into explicit
+geometric linear operators. It stores a domain, codomain, context, and forward
+and adjoint actions.

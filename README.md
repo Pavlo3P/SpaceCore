@@ -16,7 +16,7 @@ Base install:
 
 ```bash
 pip install spacecore
-````
+```
 
 With JAX support:
 
@@ -89,7 +89,24 @@ The public API may still evolve.
 
 ## Tutorials
 
-See the `tutorials/` directory for usage examples and design guidance.
+See the Sphinx documentation under `docs/source/` for tutorials, design notes,
+and API reference.
+
+## Documentation
+
+The documentation website is built with Sphinx from `docs/source`.
+
+Install the documentation dependencies:
+
+```bash
+pip install -e ".[docs]"
+```
+
+Build the local HTML documentation:
+
+```bash
+sphinx-build -b html docs/source docs/build/html
+```
 
 ## License
 

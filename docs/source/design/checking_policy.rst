@@ -1,0 +1,55 @@
+Checking policy
+===============
+
+SpaceCore spaces can validate membership before operations. Checks are attached
+to spaces and run only when ``Context.enable_checks`` is true.
+
+.. code-block:: python
+
+   import spacecore as sc
+
+   ctx = sc.Context(sc.NumpyOps(), dtype="float64", enable_checks=True)
+   X = sc.VectorSpace((3,), ctx=ctx)
+
+   x = X.ctx.asarray([1.0, 2.0, 3.0])
+   X.check_member(x)
+
+Built-in checks
+---------------
+
+.. dropdown:: Validation categories
+
+   * backend family and dense array representation
+   * shape
+   * dtype
+   * square matrix structure
+   * Hermitian matrix structure
+   * product tuple structure and component validity
+
+Where checks run
+----------------
+
+Spaces call ``check_member`` inside operations such as ``add``, ``inner``,
+``flatten``, and ``apply``. Linear operators call domain and codomain checks
+before ``apply`` and ``rapply`` when checking is enabled.
+
+For exploratory use, enabled checks produce clearer errors. For tight numerical
+loops, disabled checks reduce validation overhead.
+
+Inferred checking policy
+------------------------
+
+When a context is inferred from several source objects, the inferred
+``enable_checks`` flag is the conjunction of the source flags:
+
+.. math::
+
+   \texttt{enable\_checks}
+   =
+   \bigwedge_i \texttt{ctx}_i.\texttt{enable\_checks}.
+
+In other words, inferred checks remain enabled only if all source contexts have
+checks enabled. If any source context has checks disabled, the inferred context
+also disables checks.
+
+The default ``enable_checks`` value used by the context manager is ``False``.

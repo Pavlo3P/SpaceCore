@@ -12,11 +12,12 @@ class HermitianSpace(VectorSpace):
     """
     Space of dense n×n Hermitian matrices.
 
-    - Elements are backend-native dense arrays, shape (n, n).
-    - Membership enforces Hermitian structure up to tolerances.
-    - Inner product is Frobenius / Hilbert–Schmidt:
-        ⟨X, Y⟩ = vdot(vec(X), vec(Y)),
-      where vdot conjugates the first argument (backend-defined).
+    Elements are backend-native dense arrays with shape ``(n, n)``.
+    Membership enforces Hermitian structure up to tolerances.
+
+    The inner product is Frobenius / Hilbert-Schmidt:
+    ``<X, Y> = vdot(vec(X), vec(Y))``, where ``vdot`` conjugates the
+    first argument according to backend rules.
     """
 
     def __init__(self,
@@ -95,7 +96,7 @@ class HermitianSpace(VectorSpace):
         return HermitianSpace(self.n, self.atol, self.rtol, self.enforce_herm, new_ctx)
 
     def apply(self, x: DenseArray, f: Callable[[DenseArray], DenseArray]) -> DenseArray:
-        """
+        r"""
         Apply a scalar function to a Hermitian matrix via spectral calculus.
 
         For a Hermitian matrix
