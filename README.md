@@ -24,8 +24,16 @@ With JAX support:
 pip install "spacecore[jax]"
 ```
 
+With PyTorch support:
+
+```bash
+pip install "spacecore[torch]"
+```
+
 * `spacecore[jax]`: installs optional JAX support.
 * GPU users should install the appropriate CUDA-enabled JAX build first, following the official JAX installation guide.
+* `spacecore[torch]`: installs optional PyTorch support for `torch.Tensor` backends.
+* GPU users should install the appropriate CUDA-enabled PyTorch build first, following the official PyTorch installation guide.
 
 ## Main concepts
 
@@ -33,7 +41,7 @@ pip install "spacecore[jax]"
 
 A `Context` specifies how objects are represented, in particular:
 
-* backend (`NumPy`, `JAX`, etc.)
+* backend (`NumPy`, `JAX`, `PyTorch`, etc.)
 * dtype
 * validation/conversion behavior
 
@@ -80,6 +88,19 @@ x = X.ctx.asarray([1.0, 0.0, -1.0])
 y = linop.apply(x)
 
 print(y)
+```
+
+PyTorch tensors can be used by selecting the `torch` backend:
+
+```python
+import torch
+import spacecore as sc
+
+ctx = sc.Context(sc.TorchOps(), dtype=torch.float64)
+X = sc.VectorSpace((3,), ctx)
+x = ctx.asarray([1.0, 2.0, 3.0])
+
+print(X.inner(x, x))
 ```
 
 ## Status
