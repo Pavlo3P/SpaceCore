@@ -39,6 +39,9 @@ classifiers = [
 jax = [
   "jax>=0.9.1",
 ]
+torch = [
+  "torch>=2.0",
+]
 examples = [
   "matplotlib>=3.8",
   "optax>=0.2",

@@ -23,7 +23,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - run: python -m pip install --upgrade pip
-      - run: pip install -e ".[jax,dev]"
+      - run: pip install -e ".[jax,torch,dev]"
       - run: pytest
       - run: ruff check .
 
