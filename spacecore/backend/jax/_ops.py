@@ -651,6 +651,8 @@ class JaxOps(BackendOps):
         See:
             https://docs.jax.dev/en/latest/_autosummary/jax.numpy.ravel.html
         """
+        if order == "C" and out_sharding is None:
+            return self.jnp.ravel(a)
         if self._ravel_supports_out_sharding:
             return self.jnp.ravel(a, order=order, out_sharding=out_sharding)
         return self.jnp.ravel(a, order=order)
@@ -676,6 +678,8 @@ class JaxOps(BackendOps):
         See:
             https://docs.jax.dev/en/latest/_autosummary/jax.numpy.reshape.html
         """
+        if order == "C" and copy is None and out_sharding is None:
+            return self.jnp.reshape(a, shape)
         kwargs: dict[str, Any] = {"order": order}
         if self._reshape_supports_copy:
             kwargs["copy"] = copy
@@ -924,6 +928,10 @@ class JaxOps(BackendOps):
         See:
             https://docs.jax.dev/en/latest/_autosummary/jax.numpy.sum.html
         """
+        if out is None and initial is None and where is None and promote_integers:
+            if axis is None and dtype is None and not keepdims:
+                return self.jnp.sum(a)
+            return self.jnp.sum(a, axis=axis, dtype=dtype, keepdims=keepdims)
         return self.jnp.sum(
             a,
             axis=axis,
@@ -957,6 +965,10 @@ class JaxOps(BackendOps):
         See:
             https://docs.jax.dev/en/latest/_autosummary/jax.numpy.mean.html
         """
+        if out is None and where is None:
+            if axis is None and dtype is None and not keepdims:
+                return self.jnp.mean(a)
+            return self.jnp.mean(a, axis=axis, dtype=dtype, keepdims=keepdims)
         return self.jnp.mean(a, axis=axis, dtype=dtype, out=out, keepdims=keepdims, where=where)
 
     def min(
@@ -980,6 +992,10 @@ class JaxOps(BackendOps):
         See:
             https://docs.jax.dev/en/latest/_autosummary/jax.numpy.min.html
         """
+        if out is None and initial is None and where is None:
+            if axis is None and not keepdims:
+                return self.jnp.min(a)
+            return self.jnp.min(a, axis=axis, keepdims=keepdims)
         return self.jnp.min(a, axis=axis, out=out, keepdims=keepdims, initial=initial, where=where)
 
     def max(
@@ -1003,6 +1019,10 @@ class JaxOps(BackendOps):
         See:
             https://docs.jax.dev/en/latest/_autosummary/jax.numpy.max.html
         """
+        if out is None and initial is None and where is None:
+            if axis is None and not keepdims:
+                return self.jnp.max(a)
+            return self.jnp.max(a, axis=axis, keepdims=keepdims)
         return self.jnp.max(a, axis=axis, out=out, keepdims=keepdims, initial=initial, where=where)
 
     def prod(
@@ -1028,6 +1048,10 @@ class JaxOps(BackendOps):
         See:
             https://docs.jax.dev/en/latest/_autosummary/jax.numpy.prod.html
         """
+        if out is None and initial is None and where is None and promote_integers:
+            if axis is None and dtype is None and not keepdims:
+                return self.jnp.prod(a)
+            return self.jnp.prod(a, axis=axis, dtype=dtype, keepdims=keepdims)
         return self.jnp.prod(
             a,
             axis=axis,
@@ -1170,6 +1194,8 @@ class JaxOps(BackendOps):
         See:
             https://docs.jax.dev/en/latest/_autosummary/jax.numpy.vdot.html
         """
+        if precision is None and preferred_element_type is None:
+            return self.jnp.vdot(a, b)
         return self.jnp.vdot(a, b, precision=precision, preferred_element_type=preferred_element_type)
 
     def matmul(
@@ -1193,6 +1219,8 @@ class JaxOps(BackendOps):
         See:
             https://docs.jax.dev/en/latest/_autosummary/jax.numpy.matmul.html
         """
+        if precision is None and preferred_element_type is None and out_sharding is None:
+            return self.jnp.matmul(a, b)
         return self.jnp.matmul(
             a,
             b,
@@ -1550,6 +1578,8 @@ class JaxOps(BackendOps):
         See:
             https://docs.jax.dev/en/latest/_autosummary/jax.numpy.concatenate.html
         """
+        if dtype is None:
+            return self.jnp.concatenate(arrays, axis=axis)
         return self.jnp.concatenate(arrays, axis=axis, dtype=dtype)
 
     def take(

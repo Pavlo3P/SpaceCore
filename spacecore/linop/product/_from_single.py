@@ -36,14 +36,20 @@ class StackedLinOp(ProductLinOp[Domain, ProductSpace]):
 
     def apply(self, x: Any) -> Any:
         if self._enable_checks:
-            self.dom.check_member(x)
+            self.dom._check_member(x)
+        return self._apply_unchecked(x)
+
+    def _apply_unchecked(self, x: Any) -> Any:
         if self._num_parts == 2:
             return self._apply_parts[0](x), self._apply_parts[1](x)
         return tuple(apply(x) for apply in self._apply_parts)
 
     def rapply(self, y: Any) -> Any:
         if self._enable_checks:
-            self.cod.check_member(y)
+            self.cod._check_member(y)
+        return self._rapply_unchecked(y)
+
+    def _rapply_unchecked(self, y: Any) -> Any:
         if self._num_parts == 2:
             x0 = self._rapply_parts[0](y[0])
             x1 = self._rapply_parts[1](y[1])

@@ -890,7 +890,10 @@ class TorchOps(BackendOps):
         See:
             https://docs.pytorch.org/docs/stable/generated/torch.stack.html
         """
-        return self.torch.stack(tuple(arrays), dim=axis, out=out)
+        arrays = tuple(arrays)
+        if out is None:
+            return self.torch.stack(arrays, dim=axis)
+        return self.torch.stack(arrays, dim=axis, out=out)
 
     def conj(self, x: DenseArray) -> DenseArray:
         """
@@ -955,6 +958,8 @@ class TorchOps(BackendOps):
         See:
             https://docs.pytorch.org/docs/stable/generated/torch.abs.html
         """
+        if out is None:
+            return self.torch.abs(x)
         return self.torch.abs(x, out=out)
 
     def sign(
@@ -975,6 +980,8 @@ class TorchOps(BackendOps):
         See:
             https://docs.pytorch.org/docs/stable/generated/torch.sign.html
         """
+        if out is None:
+            return self.torch.sign(x)
         return self.torch.sign(x, out=out)
 
     def sqrt(
@@ -995,6 +1002,8 @@ class TorchOps(BackendOps):
         See:
             https://docs.pytorch.org/docs/stable/generated/torch.sqrt.html
         """
+        if out is None:
+            return self.torch.sqrt(x)
         return self.torch.sqrt(x, out=out)
 
     def sum(
@@ -1018,11 +1027,22 @@ class TorchOps(BackendOps):
         See:
             https://docs.pytorch.org/docs/stable/generated/torch.sum.html
         """
+        if dtype is None:
+            if out is None:
+                if axis is None and not keepdims:
+                    return self.torch.sum(x)
+                return self.torch.sum(x, dim=axis, keepdim=keepdims)
+            return self.torch.sum(x, dim=axis, keepdim=keepdims, out=out)
+        dtype = self.sanitize_dtype(dtype)
+        if out is None:
+            if axis is None and not keepdims:
+                return self.torch.sum(x, dtype=dtype)
+            return self.torch.sum(x, dim=axis, keepdim=keepdims, dtype=dtype)
         return self.torch.sum(
             x,
             dim=axis,
             keepdim=keepdims,
-            dtype=self.sanitize_dtype(dtype) if dtype is not None else None,
+            dtype=dtype,
             out=out,
         )
 
@@ -1047,11 +1067,22 @@ class TorchOps(BackendOps):
         See:
             https://docs.pytorch.org/docs/stable/generated/torch.mean.html
         """
+        if dtype is None:
+            if out is None:
+                if axis is None and not keepdims:
+                    return self.torch.mean(x)
+                return self.torch.mean(x, dim=axis, keepdim=keepdims)
+            return self.torch.mean(x, dim=axis, keepdim=keepdims, out=out)
+        dtype = self.sanitize_dtype(dtype)
+        if out is None:
+            if axis is None and not keepdims:
+                return self.torch.mean(x, dtype=dtype)
+            return self.torch.mean(x, dim=axis, keepdim=keepdims, dtype=dtype)
         return self.torch.mean(
             x,
             dim=axis,
             keepdim=keepdims,
-            dtype=self.sanitize_dtype(dtype) if dtype is not None else None,
+            dtype=dtype,
             out=out,
         )
 
@@ -1075,6 +1106,10 @@ class TorchOps(BackendOps):
         See:
             https://docs.pytorch.org/docs/stable/generated/torch.amin.html
         """
+        if out is None:
+            if axis is None and not keepdims:
+                return self.torch.amin(x)
+            return self.torch.amin(x, dim=axis, keepdim=keepdims)
         return self.torch.amin(x, dim=axis, keepdim=keepdims, out=out)
 
     def max(
@@ -1097,6 +1132,10 @@ class TorchOps(BackendOps):
         See:
             https://docs.pytorch.org/docs/stable/generated/torch.amax.html
         """
+        if out is None:
+            if axis is None and not keepdims:
+                return self.torch.amax(x)
+            return self.torch.amax(x, dim=axis, keepdim=keepdims)
         return self.torch.amax(x, dim=axis, keepdim=keepdims, out=out)
 
     def prod(
@@ -1126,12 +1165,16 @@ class TorchOps(BackendOps):
         """
         dtype = self.sanitize_dtype(dtype) if dtype is not None else None
         if axis is None:
-            result = self.torch.prod(x, dtype=dtype)
+            result = self.torch.prod(x) if dtype is None else self.torch.prod(x, dtype=dtype)
             if out is not None:
                 out.copy_(result)
                 return out
             return result
         if isinstance(axis, int):
+            if out is None:
+                if dtype is None:
+                    return self.torch.prod(x, dim=axis, keepdim=keepdims)
+                return self.torch.prod(x, dim=axis, dtype=dtype, keepdim=keepdims)
             return self.torch.prod(x, dim=axis, dtype=dtype, keepdim=keepdims, out=out)
         result = x
         for ax in sorted(axis, reverse=True):
@@ -1256,7 +1299,11 @@ class TorchOps(BackendOps):
         See:
             https://docs.pytorch.org/docs/stable/generated/torch.vdot.html
         """
-        return self.torch.vdot(self.ravel(x), self.ravel(y), out=out)
+        x1 = x if x.ndim == 1 else self.torch.ravel(x)
+        y1 = y if y.ndim == 1 else self.torch.ravel(y)
+        if out is None:
+            return self.torch.vdot(x1, y1)
+        return self.torch.vdot(x1, y1, out=out)
 
     def matmul(
         self,
@@ -1277,6 +1324,8 @@ class TorchOps(BackendOps):
         See:
             https://docs.pytorch.org/docs/stable/generated/torch.matmul.html
         """
+        if out is None:
+            return self.torch.matmul(a, b)
         return self.torch.matmul(a, b, out=out)
 
     def sparse_matmul(
@@ -1552,6 +1601,8 @@ class TorchOps(BackendOps):
         See:
             https://docs.pytorch.org/docs/stable/generated/torch.exp.html
         """
+        if out is None:
+            return self.torch.exp(x)
         return self.torch.exp(x, out=out)
 
     def log(
@@ -1572,6 +1623,8 @@ class TorchOps(BackendOps):
         See:
             https://docs.pytorch.org/docs/stable/generated/torch.log.html
         """
+        if out is None:
+            return self.torch.log(x)
         return self.torch.log(x, out=out)
 
     def where(
@@ -1598,6 +1651,8 @@ class TorchOps(BackendOps):
             return self.torch.where(condition)
         if x is None or y is None:
             raise TypeError("where requires both x and y when either is provided.")
+        if out is None:
+            return self.torch.where(condition, x, y)
         return self.torch.where(condition, x, y, out=out)
 
     def maximum(
@@ -1619,9 +1674,12 @@ class TorchOps(BackendOps):
         See:
             https://docs.pytorch.org/docs/stable/generated/torch.maximum.html
         """
+        y = y if isinstance(y, self.torch.Tensor) else self.asarray(y, dtype=x.dtype, device=x.device)
+        if out is None:
+            return self.torch.maximum(x, y)
         return self.torch.maximum(
             x,
-            y if isinstance(y, self.torch.Tensor) else self.asarray(y, dtype=x.dtype, device=x.device),
+            y,
             out=out,
         )
 
@@ -1644,9 +1702,12 @@ class TorchOps(BackendOps):
         See:
             https://docs.pytorch.org/docs/stable/generated/torch.minimum.html
         """
+        y = y if isinstance(y, self.torch.Tensor) else self.asarray(y, dtype=x.dtype, device=x.device)
+        if out is None:
+            return self.torch.minimum(x, y)
         return self.torch.minimum(
             x,
-            y if isinstance(y, self.torch.Tensor) else self.asarray(y, dtype=x.dtype, device=x.device),
+            y,
             out=out,
         )
 
@@ -1670,6 +1731,8 @@ class TorchOps(BackendOps):
         See:
             https://docs.pytorch.org/docs/stable/generated/torch.clamp.html
         """
+        if out is None:
+            return self.torch.clamp(x, min=a_min, max=a_max)
         return self.torch.clamp(x, min=a_min, max=a_max, out=out)
 
     def isfinite(self, x: DenseArray) -> DenseArray:
@@ -1722,7 +1785,11 @@ class TorchOps(BackendOps):
         See:
             https://docs.pytorch.org/docs/stable/generated/torch.cat.html
         """
-        result = self.torch.cat(tuple(arrays), dim=axis, out=out)
+        arrays = tuple(arrays)
+        if out is None:
+            result = self.torch.cat(arrays, dim=axis)
+        else:
+            result = self.torch.cat(arrays, dim=axis, out=out)
         return self.astype(result, dtype) if dtype is not None else result
 
     def take(

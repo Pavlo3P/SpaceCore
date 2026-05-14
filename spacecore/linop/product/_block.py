@@ -35,14 +35,20 @@ class BlockDiagonalLinOp(ProductLinOp[ProductSpace, ProductSpace]):
 
     def apply(self, x: Any) -> Any:
         if self._enable_checks:
-            self.dom.check_member(x)
+            self.dom._check_member(x)
+        return self._apply_unchecked(x)
+
+    def _apply_unchecked(self, x: Any) -> Any:
         if self._num_parts == 2:
             return self._apply_parts[0](x[0]), self._apply_parts[1](x[1])
         return tuple(apply(xi) for apply, xi in zip(self._apply_parts, x))
 
     def rapply(self, y: Any) -> Any:
         if self._enable_checks:
-            self.cod.check_member(y)
+            self.cod._check_member(y)
+        return self._rapply_unchecked(y)
+
+    def _rapply_unchecked(self, y: Any) -> Any:
         if self._num_parts == 2:
             return self._rapply_parts[0](y[0]), self._rapply_parts[1](y[1])
         return tuple(rapply(yi) for rapply, yi in zip(self._rapply_parts, y))

@@ -52,13 +52,16 @@ class DenseLinOp(LinOp[VectorSpace, VectorSpace]):
         self._cod_is_flat = tuple(self.cod.shape) == (self._cod_size,)
         self._dom_vector_fast_path = type(self.dom) is VectorSpace
         self._cod_vector_fast_path = type(self.cod) is VectorSpace
+        if not self._enable_checks:
+            self.apply = self._apply_unchecked
+            self.rapply = self._rapply_unchecked
 
     def apply(self, x: DenseArray) -> DenseArray:
         """
         Forward action: y = A ⋅ x with y in cod.shape.
         """
         if self._enable_checks:
-            self.dom.check_member(x)
+            self.dom._check_member(x)
         return self._apply_unchecked(x)
 
     def _apply_unchecked(self, x: DenseArray) -> DenseArray:
@@ -75,7 +78,7 @@ class DenseLinOp(LinOp[VectorSpace, VectorSpace]):
         For complex A, uses conjugate-transpose of the 2D reshaped matrix.
         """
         if self._enable_checks:
-            self.cod.check_member(y)
+            self.cod._check_member(y)
         return self._rapply_unchecked(y)
 
     def _rapply_unchecked(self, y: DenseArray) -> DenseArray:

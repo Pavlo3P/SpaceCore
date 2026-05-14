@@ -40,13 +40,17 @@ class SparseLinOp(LinOp):
         self.A = A  # No dtype conversion
         self._cod_size = expected[0]
         self._dom_size = expected[1]
-        self._A_is_complex = getattr(self.A.dtype, "kind", None) == "c"
+        dtype = self.ops.get_dtype(self.A)
+        self._A_is_complex = getattr(dtype, "kind", None) == "c" or str(dtype).startswith("torch.complex")
         self._AT = self.A.T
         self._AH = self._AT.conj() if self._A_is_complex else self._AT
         self._dom_is_flat = tuple(self.dom.shape) == (self._dom_size,)
         self._cod_is_flat = tuple(self.cod.shape) == (self._cod_size,)
         self._dom_vector_fast_path = type(self.dom) is VectorSpace
         self._cod_vector_fast_path = type(self.cod) is VectorSpace
+        if not self._enable_checks:
+            self.apply = self._apply_unchecked
+            self.rapply = self._rapply_unchecked
 
     def apply(self, x: DenseArray) -> DenseArray:
         """
@@ -55,7 +59,7 @@ class SparseLinOp(LinOp):
         x must have shape dom.shape (dense).
         """
         if self._enable_checks:
-            self.dom.check_member(x)
+            self.dom._check_member(x)
         return self._apply_unchecked(x)
 
     def _apply_unchecked(self, x: DenseArray) -> DenseArray:
@@ -72,7 +76,7 @@ class SparseLinOp(LinOp):
         y must have shape cod.shape (dense).
         """
         if self._enable_checks:
-            self.cod.check_member(y)
+            self.cod._check_member(y)
         return self._rapply_unchecked(y)
 
     def _rapply_unchecked(self, y: DenseArray) -> DenseArray:

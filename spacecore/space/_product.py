@@ -69,11 +69,22 @@ class ProductSpace(Space):
             shape == (dim,) for shape, dim in zip(self._component_shapes, self._dims)
         )
         raw_array_ops = getattr(self.ctx.ops, "np", None)
-        if raw_array_ops is None:
+        if raw_array_ops is not None:
+            self._concatenate = raw_array_ops.concatenate
+            self._concatenate_uses_dim = False
+        else:
             raw_array_ops = getattr(self.ctx.ops, "jnp", None)
-        self._concatenate = (
-            raw_array_ops.concatenate if raw_array_ops is not None else self.ctx.ops.concatenate
-        )
+            if raw_array_ops is not None:
+                self._concatenate = raw_array_ops.concatenate
+                self._concatenate_uses_dim = False
+            else:
+                raw_torch = getattr(self.ctx.ops, "torch", None)
+                if raw_torch is not None:
+                    self._concatenate = raw_torch.cat
+                    self._concatenate_uses_dim = True
+                else:
+                    self._concatenate = self.ctx.ops.concatenate
+                    self._concatenate_uses_dim = False
         if self._arity >= 1:
             self._slice0 = self._slices[0]
             self._shape0 = self._component_shapes[0]
@@ -103,17 +114,20 @@ class ProductSpace(Space):
         return tuple(s.zeros() for s in self.spaces)
 
     def add(self, x: Tuple[Any, ...], y: Tuple[Any, ...]) -> Tuple[Any, ...]:
-        self.check_member(x)
-        self.check_member(y)
+        if self._enable_checks:
+            self._check_member(x)
+            self._check_member(y)
         return tuple(s.add(xi, yi) for s, xi, yi in zip(self.spaces, x, y))
 
     def scale(self, a: Any, x: Tuple[Any, ...]) -> Tuple[Any, ...]:
-        self.check_member(x)
+        if self._enable_checks:
+            self._check_member(x)
         return tuple(s.scale(a, xi) for s, xi in zip(self.spaces, x))
 
     def inner(self, x: Tuple[Any, ...], y: Tuple[Any, ...]) -> Any:
-        self.check_member(x)
-        self.check_member(y)
+        if self._enable_checks:
+            self._check_member(x)
+            self._check_member(y)
 
         # Accumulate via backend ops (vdot works for scalars too, but sum is enough)
         acc = None
@@ -129,7 +143,8 @@ class ProductSpace(Space):
         )
 
     def flatten(self, x: Tuple[Any, ...]) -> DenseArray:
-        self.check_member(x)
+        if self._enable_checks:
+            self._check_member(x)
 
         if self._vector_fast_path:
             if self._arity == 1:
@@ -137,11 +152,15 @@ class ProductSpace(Space):
             if self._arity == 2:
                 x0 = x[0] if self._is_flat0 else x[0].reshape((-1,))
                 x1 = x[1] if self._is_flat1 else x[1].reshape((-1,))
+                if self._concatenate_uses_dim:
+                    return self._concatenate((x0, x1), dim=0)
                 return self._concatenate((x0, x1), axis=0)
             parts = tuple(
                 xi if is_flat else xi.reshape((-1,))
                 for xi, is_flat in zip(x, self._component_is_flat)
             )
+            if self._concatenate_uses_dim:
+                return self._concatenate(parts, dim=0)
             return self._concatenate(parts, axis=0)
 
         parts = []
@@ -154,6 +173,8 @@ class ProductSpace(Space):
         if len(parts) == 1:
             return parts[0]
 
+        if self._concatenate_uses_dim:
+            return self._concatenate(parts, dim=0)
         return self._concatenate(parts, axis=0)
 
     def unflatten(self, v: DenseArray) -> Tuple[Any, ...]:
@@ -236,7 +257,8 @@ class ProductSpace(Space):
         product space. It applies the existing functional calculus of each
         factor space independently, component by component.
         """
-        self.check_member(x)
+        if self._enable_checks:
+            self._check_member(x)
         if self._arity == 2:
             return self.spaces[0].apply(x[0], f), self.spaces[1].apply(x[1], f)
         return tuple(s.apply(xi, f) for s, xi in zip(self.spaces, x))

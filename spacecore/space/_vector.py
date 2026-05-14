@@ -34,17 +34,20 @@ class VectorSpace(Space):
         return self.ops.zeros(self.shape, dtype=self.dtype)
 
     def add(self, x: Any, y: Any) -> DenseArray:
-        self.check_member(x)
-        self.check_member(y)
+        if self._enable_checks:
+            self._check_member(x)
+            self._check_member(y)
         return x + y
 
     def scale(self, a: Any, x: Any) -> DenseArray:
-        self.check_member(x)
+        if self._enable_checks:
+            self._check_member(x)
         return a * x
 
     def inner(self, x: Any, y: Any) -> Any:
-        self.check_member(x)
-        self.check_member(y)
+        if self._enable_checks:
+            self._check_member(x)
+            self._check_member(y)
         return self.ops.vdot(x, y)
 
     def eigh(self, x: Any, k: int = None) -> Any:
@@ -53,7 +56,8 @@ class VectorSpace(Space):
         )
 
     def flatten(self, X: DenseArray) -> DenseArray:
-        self.check_member(X)
+        if self._enable_checks:
+            self._check_member(X)
         return X if self._is_flat_shape else X.reshape((-1,))
 
     def unflatten(self, v: DenseArray) -> DenseArray:
@@ -117,6 +121,7 @@ class VectorSpace(Space):
         application is performed entrywise in the distinguished coordinate
         representation.
         """
-        self.check_member(x)
+        if self._enable_checks:
+            self._check_member(x)
         y = self._apply_entrywise(x, f)
         return y

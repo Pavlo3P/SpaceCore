@@ -31,6 +31,11 @@ class ProductLinOp(LinOp[Domain, Codomain]):
         self._apply_parts = tuple(getattr(op, "_apply_unchecked", op.apply) for op in self.parts)
         self._rapply_parts = tuple(getattr(op, "_rapply_unchecked", op.rapply) for op in self.parts)
         self._check_layout()
+        unchecked_apply = getattr(self, "_apply_unchecked", None)
+        unchecked_rapply = getattr(self, "_rapply_unchecked", None)
+        if not self._enable_checks and unchecked_apply is not None and unchecked_rapply is not None:
+            self.apply = unchecked_apply
+            self.rapply = unchecked_rapply
 
     @abstractmethod
     def _check_layout(self) -> None:
