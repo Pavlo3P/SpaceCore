@@ -1,14 +1,181 @@
 # SpaceCore
 
-SpaceCore is a lightweight backend-agnostic library for working with vector spaces and linear operators.
+SpaceCore exists for writing numerical algorithms once, independently of the
+array backend.
 
-It provides a small set of abstractions for:
+For example, the same algorithm can run with NumPy for debugging, JAX for
+JIT/autodiff, and Torch for tensor workflows, while preserving the same
+mathematical spaces and linear operators.
 
-- backend-aware numerical operations
-- contexts carrying backend and dtype information
-- structured vector spaces
-- structured linear operators
-- conversion between compatible contexts
+## What problem does SpaceCore solve?
+
+Numerical algorithms often start as clear NumPy code and later need to move to
+JAX, Torch, or another array system. Without a backend boundary, that migration
+usually leaks through the whole implementation: array constructors, dtype
+handling, inner products, sparse support, and linear-operator conventions all
+become backend-specific.
+
+SpaceCore keeps those choices in a `Context`, while algorithms work with
+mathematical objects:
+
+- a `Space` knows the structure and geometry of its elements;
+- a `LinOp` maps one space to another;
+- backend-specific array creation and operations live behind `BackendOps`.
+
+The result is ordinary Python code whose core numerical logic is not tied to
+one array library.
+
+Mental model:
+
+```text
+BackendOps -> Context -> Space/LinOp -> Algorithm
+```
+
+## Write once, run twice
+
+This gradient descent loop uses only the `Space` and `LinOp` APIs. It does not
+know whether the arrays are NumPy arrays, JAX arrays, or Torch tensors.
+
+```python
+import numpy as np
+import spacecore as sc
+
+
+def as_numpy(x):
+    if hasattr(x, "detach"):
+        return x.detach().cpu().numpy()
+    return np.asarray(x)
+
+
+def make_problem(ctx):
+    X = sc.VectorSpace((3,), ctx)
+    Y = sc.VectorSpace((2,), ctx)
+
+    A = sc.DenseLinOp(
+        ctx.asarray([[1.0, 2.0, 3.0], [0.0, 1.0, 0.0]]),
+        dom=X,
+        cod=Y,
+        ctx=ctx,
+    )
+    x = ctx.asarray([1.0, 0.0, -1.0])
+    b = ctx.asarray([0.5, 0.25])
+    return X, Y, A, x, b
+
+
+def gradient_step(X, A, x, b, eta):
+    r = A.apply(x) - b
+    grad = A.rapply(r)
+    return X.axpy(-eta, grad, x)
+
+
+def run_gradient_descent(X, A, x, b, eta, steps):
+    for _ in range(steps):
+        x = gradient_step(X, A, x, b, eta)
+    return x
+```
+
+Run it with NumPy:
+
+```python
+np_ctx = sc.Context(sc.NumpyOps(), dtype="float64")
+X, Y, A, x, b = make_problem(np_ctx)
+x_numpy = run_gradient_descent(X, A, x, b, eta=0.1, steps=5)
+print(as_numpy(x_numpy))
+```
+
+Later, run the same problem and the same `run_gradient_descent` with JAX:
+
+```python
+import jax
+
+jax.config.update("jax_enable_x64", True)
+
+jax_ctx = sc.Context(sc.JaxOps(), dtype="float64")
+X, Y, A, x, b = make_problem(jax_ctx)
+x_jax = run_gradient_descent(X, A, x, b, eta=0.1, steps=5)
+print(as_numpy(x_jax))
+
+print(np.allclose(as_numpy(x_numpy), as_numpy(x_jax)))
+```
+
+Run it the same way with Torch:
+
+```python
+torch_ctx = sc.Context(sc.TorchOps(), dtype="float64")
+X, Y, A, x, b = make_problem(torch_ctx)
+x_torch = run_gradient_descent(X, A, x, b, eta=0.1, steps=5)
+print(as_numpy(x_torch))
+
+print(np.allclose(as_numpy(x_numpy), as_numpy(x_torch)))
+```
+
+All three backends produce the same result:
+
+```text
+[ 1.184125   0.3411875 -0.447625 ]
+[ 1.184125   0.3411875 -0.447625 ]
+True
+[ 1.184125   0.3411875 -0.447625 ]
+True
+```
+
+If you do not want to enable JAX 64-bit mode, use a supported dtype such as
+`"float32"`.
+
+## What SpaceCore is not
+
+SpaceCore is not an optimizer and not a NumPy/JAX/Torch replacement. It provides
+backend-aware spaces, operators, and context handling so you can write your own
+algorithms without wiring them to one array library.
+
+## Core concepts
+
+### `Context`
+
+A `Context` specifies how objects are represented:
+
+- backend operations (`NumpyOps`, `JaxOps`, `TorchOps`, etc.);
+- default dtype;
+- runtime validation behavior.
+
+Constructors resolve contexts in priority order: explicit `ctx=...`, then
+contexts inferred from inputs, then the global default context. Advanced code
+that needs this resolution step directly can call
+`spacecore.resolve_context_priority(...)`.
+
+### `Space`
+
+A `Space` describes the structure and geometry of values:
+
+- `VectorSpace` for Euclidean vectors and tensors;
+- `HermitianSpace` for Hermitian or symmetric matrices;
+- `ProductSpace` for Cartesian products of spaces.
+
+Algorithms should use space methods such as `zeros`, `add`, `scale`, `axpy`,
+`inner`, `norm`, `flatten`, and `unflatten` instead of hard-coding backend array
+operations.
+
+### `LinOp`
+
+A `LinOp` represents a linear operator between spaces:
+
+- `DenseLinOp` for dense matrix or tensor operators;
+- `SparseLinOp` for sparse operators;
+- `BlockDiagonalLinOp` for block-diagonal product-space operators;
+- `StackedLinOp` for operators from one space into a product space;
+- `SumToSingleLinOp` for operators from a product space into one space.
+
+Operators expose `apply` and `rapply`, so algorithms can use a linear map and
+its adjoint without depending on the storage format.
+
+## Who should use this?
+
+SpaceCore is aimed at people writing optimization, inverse-problem, optimal
+transport, semidefinite programming, or scientific ML algorithms that should not
+be tied to one backend.
+
+It is most useful when you want the mathematical model to stay stable while the
+execution backend changes.
 
 ## Installation
 
@@ -30,102 +197,36 @@ With PyTorch support:
 pip install "spacecore[torch]"
 ```
 
-* `spacecore[jax]`: installs optional JAX support.
-* GPU users should install the appropriate CUDA-enabled JAX build first, following the official JAX installation guide.
-* `spacecore[torch]`: installs optional PyTorch support for `torch.Tensor` backends.
-* GPU users should install the appropriate CUDA-enabled PyTorch build first, following the official PyTorch installation guide.
+- `spacecore[jax]` installs optional JAX support.
+- GPU users should install the appropriate CUDA-enabled JAX build first,
+  following the official JAX installation guide.
+- `spacecore[torch]` installs optional PyTorch support for `torch.Tensor`
+  backends.
+- GPU users should install the appropriate CUDA-enabled PyTorch build first,
+  following the official PyTorch installation guide.
 
-## Main concepts
+For local development:
 
-### `Context`
-
-A `Context` specifies how objects are represented, in particular:
-
-* backend (`NumPy`, `JAX`, `PyTorch`, etc.)
-* dtype
-* validation/conversion behavior
-
-Constructors resolve contexts in priority order: explicit `ctx=...`, then
-contexts inferred from inputs, then the global default context. Advanced code
-that needs this resolution step directly can call
-`spacecore.resolve_context_priority(...)`.
-
-### `Space`
-
-A `Space` describes the structure of objects space, for example:
-
-* `VectorSpace` - Euclidean space
-* `HermitianSpace` - space of Hermitian (symmetric) matrices 
-* `ProductSpace` - Cartesian product of spaces
-
-### `LinOp`
-
-A `LinOp` represents a linear operator between spaces, for example:
-
-* `DenseLinOp` - linear operator represented by dense matrix
-* `SparseLinOp` - linear operator represented by sparse matrix
-* `BlockDiagonalLinOp` - linear operator from $X_1 \times \dots \times X_k$ to $Y_1 \times \dots \times Y_k$
-* `StackedLinOp` - linear operator from $X$ to $Y_1 \times \dots \times Y_k$
-* `SumToSingleLinOp` - linear operator from $X_1 \times \dots \times X_k$ to $Y$
-
-## Minimal example
-
-```python
-import numpy as np
-import spacecore as sc
-
-sc.set_context('numpy', dtype='float64')
-
-X = sc.VectorSpace((3,))
-Y = sc.VectorSpace((2,))
-
-A = np.array(
-    [[1.0, 2.0, 3.0],
-     [0.0, 1.0, 0.0]]
-)
-linop = sc.DenseLinOp(
-    A,
-    dom=X,
-    cod=Y,
-)
-
-x = X.ctx.asarray([1.0, 0.0, -1.0])
-y = linop.apply(x)
-
-print(y)
+```bash
+python -m pip install -e ".[dev]"
 ```
 
-PyTorch tensors can be used by selecting the `torch` backend:
+## Full example
 
-```python
-import torch
-import spacecore as sc
-
-ctx = sc.Context(sc.TorchOps(), dtype=torch.float64)
-X = sc.VectorSpace((3,), ctx)
-x = ctx.asarray([1.0, 2.0, 3.0])
-
-print(X.inner(x, x))
-```
-
-## Status
-
-SpaceCore is currently experimental and under active development.
-The public API may still evolve.
-
-## Tutorials
-
-See the Sphinx documentation under `docs/source/` for tutorials, design notes,
-API reference, and release notes.
+For a complete example of regularized optimal transport problem, [see](https://pavlo3p.github.io/SpaceCore/tutorials/regularized_ot.html) 
+the model is written once and solved with NumPy/JAX backends and 
+its [notebook](https://github.com/Pavlo3P/SpaceCore/blob/master/tutorials/6_Regularized_Opt_Transport.ipynb).
 
 ## Documentation
+
+The hosted documentation is available [here](https://pavlo3p.github.io/SpaceCore/).
 
 The documentation website is built with Sphinx from `docs/source`.
 
 Install the documentation dependencies:
 
 ```bash
-pip install -e ".[docs]"
+python -m pip install -e ".[docs]"
 ```
 
 Build the local HTML documentation:
@@ -133,6 +234,11 @@ Build the local HTML documentation:
 ```bash
 sphinx-build -b html docs/source docs/build/html
 ```
+
+## Status
+
+SpaceCore is currently experimental and under active development. The public API
+may still evolve.
 
 ## License
 
