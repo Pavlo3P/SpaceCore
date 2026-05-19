@@ -61,6 +61,9 @@ class JaxOps(BackendOps):
     _family = BackendFamily.jax.value.lower()
     _allow_sparse = True
 
+    def __init__(self) -> None:
+        super().__init__()
+
     def sanitize_dtype(self, dtype: DType | None) -> DType:
         """
         Normalize a dtype specifier using JAX.

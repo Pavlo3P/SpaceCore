@@ -22,51 +22,36 @@ class LazyNamespace:
     def __getattr__(self, name: str) -> Any:
         return getattr(self._load(), name)
 
+    @property
+    def is_loaded(self) -> bool:
+        return self._module is not None
+
 
 class BackendOps(ABC):
     """
-    Backend-agnostic numerical ops interface (portable core).
+    Public numerical contract for SpaceCore backends.
 
-    Contract:
-      - This base class exposes only the portable subset used by library internals.
-      - Concrete backends (NumPy/JAX/Torch) may extend these methods with additional
-        optional keyword parameters (e.g., `order=`, `out=`, `where=`, `like=`, ...).
+    Common dense-array operations delegate to the backend's Array API-compatible
+    ``xp`` namespace. Subclasses provide backend-specific sparse conversion,
+    dtype policy, indexing mutation, control flow, device/autograd behavior, and
+    operations not covered by the Array API.
     """
 
     _family: ClassVar[str]
     _allow_sparse: ClassVar[bool]
     xp: ClassVar[Any]
 
+    def __init__(self) -> None:
+        self._constant_cache: dict[str, DenseArray] = {}
+
     @property
     def family(self) -> str:
-        """
-        Generic backend-agnostic wrapper to backend family identifier.
-
-        Input:
-            None.
-
-        Output:
-            String naming the concrete backend family.
-
-        This declaration only specifies the portable SpaceCore interface.
-        See the concrete backend implementation for backend-specific behavior.
-        """
+        """Backend family identifier."""
         return type(self)._family
 
     @property
     def allow_sparse(self) -> bool:
-        """
-        Generic backend-agnostic wrapper to sparse-array support flag.
-
-        Input:
-            None.
-
-        Output:
-            Boolean indicating whether this backend supports sparse arrays.
-
-        This declaration only specifies the portable SpaceCore interface.
-        See the concrete backend implementation for backend-specific behavior.
-        """
+        """Whether this backend supports sparse arrays."""
         return self._allow_sparse
 
     def __eq__(self, other: Any) -> bool:
@@ -74,148 +59,52 @@ class BackendOps(ABC):
             return self.family == other.family
         return False
 
+    def __hash__(self) -> int:
+        return hash((type(self).__name__, self.family))
+
     @property
     @abstractmethod
     def dense_array(self) -> Type[Any]:
-        """
-        Generic backend-agnostic wrapper to dense array type.
-
-        Input:
-            None.
-
-        Output:
-            Concrete dense array class accepted by this backend.
-
-        This declaration only specifies the portable SpaceCore interface.
-        See the concrete backend implementation for backend-specific behavior.
-        """
+        """Dense array type accepted by this backend."""
         ...
 
     @property
     @abstractmethod
     def sparse_array(self) -> Tuple[Type[Any], ...] | None:
-        """
-        Generic backend-agnostic wrapper to sparse array type tuple.
-
-        Input:
-            None.
-
-        Output:
-            Concrete sparse array classes accepted by this backend, or None.
-
-        This declaration only specifies the portable SpaceCore interface.
-        See the concrete backend implementation for backend-specific behavior.
-        """
+        """Sparse array types accepted by this backend, or None."""
         ...
 
     @abstractmethod
     def sanitize_dtype(self, dtype: DType | None) -> DType:
-        """
-        Generic backend-agnostic wrapper to normalize a dtype specifier.
-
-        Input:
-            dtype: Optional dtype requested by SpaceCore or the caller.
-
-        Output:
-            Backend dtype object accepted by array constructors.
-
-        This declaration only specifies the portable SpaceCore interface.
-        See the concrete backend implementation for backend-specific behavior.
-        """
+        """Normalize a dtype specifier for this backend."""
         ...
 
     def is_dense(self, x: Any) -> bool:
-        """
-        Generic backend-agnostic wrapper to test for a dense backend array.
-
-        Input:
-            x: Object to test.
-
-        Output:
-            True when x is an instance of the backend dense array type.
-
-        This declaration only specifies the portable SpaceCore interface.
-        See the concrete backend implementation for backend-specific behavior.
-        """
+        """Return whether x is a dense array for this backend."""
         return isinstance(x, self.dense_array)
 
     def is_sparse(self, x: Any) -> bool:
-        """
-        Generic backend-agnostic wrapper to test for a sparse backend array.
-
-        Input:
-            x: Object to test.
-
-        Output:
-            True when x is an instance of a backend sparse array type.
-
-        This declaration only specifies the portable SpaceCore interface.
-        See the concrete backend implementation for backend-specific behavior.
-        """
+        """Return whether x is a sparse array for this backend."""
         return self.sparse_array is not None and isinstance(x, self.sparse_array)
 
     def is_array(self, x: Any) -> bool:
-        """
-        Generic backend-agnostic wrapper to test for any backend array.
-
-        Input:
-            x: Object to test.
-
-        Output:
-            True when x is dense or sparse for this backend.
-
-        This declaration only specifies the portable SpaceCore interface.
-        See the concrete backend implementation for backend-specific behavior.
-        """
+        """Return whether x is any array for this backend."""
         return self.is_dense(x) or self.is_sparse(x)
 
     @abstractmethod
     def assparse(self, x: Any, dtype: DType | None = None) -> SparseArray:
-        """
-        Generic backend-agnostic wrapper to convert input to a sparse array.
-
-        Input:
-            x: Dense, sparse, or array-like input plus sparse-format options.
-
-        Output:
-            Sparse backend array.
-
-        This declaration only specifies the portable SpaceCore interface.
-        See the concrete backend implementation for backend-specific behavior.
-        """
+        """Convert input to a backend sparse array."""
         ...
 
     @abstractmethod
     def sparse_matmul(self, a: SparseArray, b: DenseArray) -> DenseArray:
-        """
-        Generic backend-agnostic wrapper to multiply sparse and dense arrays.
-
-        Input:
-            a: Sparse backend array; b: Dense backend array.
-
-        Output:
-            Dense backend array containing the product.
-
-        This declaration only specifies the portable SpaceCore interface.
-        See the concrete backend implementation for backend-specific behavior.
-        """
+        """Multiply a sparse array by a dense array."""
         ...
 
     @abstractmethod
     def logsumexp(self, a: DenseArray, axis: int | Sequence[int] | None = None, b: DenseArray | None = None,
                   keepdims: bool = False, return_sign: bool = False) -> DenseArray | Tuple[DenseArray, DenseArray]:
-        """
-        Generic backend-agnostic wrapper to compute a stable log-sum-exp reduction.
-
-        Input:
-            a: Dense backend array; axis, weights, and sign options control the reduction.
-
-        Output:
-            Dense backend array or tuple containing log-sum-exp results.
-
-        This declaration only specifies the portable SpaceCore interface.
-        See the concrete backend implementation for backend-specific behavior.
-        """
+        """Compute a stable log-sum-exp reduction."""
         ...
 
     @abstractmethod
@@ -227,18 +116,7 @@ class BackendOps(ABC):
             *,
             copy: bool = True,
     ) -> DenseArray:
-        """
-        Generic backend-agnostic wrapper to set indexed values.
-
-        Input:
-            x: Dense backend array; index: Selection; values: Replacement values; copy controls mutation policy.
-
-        Output:
-            Dense backend array with indexed values set.
-
-        This declaration only specifies the portable SpaceCore interface.
-        See the concrete backend implementation for backend-specific behavior.
-        """
+        """Set indexed values using backend mutation semantics."""
 
     @abstractmethod
     def index_add(
@@ -249,34 +127,12 @@ class BackendOps(ABC):
             *,
             copy: bool = True,
     ) -> DenseArray:
-        """
-        Generic backend-agnostic wrapper to add into indexed values.
-
-        Input:
-            x: Dense backend array; index: Selection; values: Values to add; copy controls mutation policy.
-
-        Output:
-            Dense backend array with indexed values incremented.
-
-        This declaration only specifies the portable SpaceCore interface.
-        See the concrete backend implementation for backend-specific behavior.
-        """
+        """Add values into indexed positions using backend mutation semantics."""
         ...
 
     @abstractmethod
     def ix_(self, *args: Any) -> Any:
-        """
-        Generic backend-agnostic wrapper to build open mesh index arrays.
-
-        Input:
-            args: One-dimensional index arrays or sequences.
-
-        Output:
-            Tuple of dense backend arrays usable for open-mesh indexing.
-
-        This declaration only specifies the portable SpaceCore interface.
-        See the concrete backend implementation for backend-specific behavior.
-        """
+        """Build open-mesh index arrays."""
         ...
 
     @abstractmethod
@@ -287,18 +143,7 @@ class BackendOps(ABC):
             body_fun: Callable[[int, T], T],
             init_val: T,
     ) -> T:
-        """
-        Generic backend-agnostic wrapper to run a counted loop primitive.
-
-        Input:
-            lower, upper: Loop bounds; body_fun: Loop body; init_val: Initial carry value.
-
-        Output:
-            Final carry value after loop execution.
-
-        This declaration only specifies the portable SpaceCore interface.
-        See the concrete backend implementation for backend-specific behavior.
-        """
+        """Run a counted loop primitive."""
 
     @abstractmethod
     def while_loop(
@@ -307,18 +152,7 @@ class BackendOps(ABC):
             body_fun: Callable[[T], T],
             init_val: T,
     ) -> T:
-        """
-        Generic backend-agnostic wrapper to run a while-loop primitive.
-
-        Input:
-            cond_fun: Loop condition; body_fun: Loop body; init_val: Initial carry value.
-
-        Output:
-            Final carry value after loop execution.
-
-        This declaration only specifies the portable SpaceCore interface.
-        See the concrete backend implementation for backend-specific behavior.
-        """
+        """Run a while-loop primitive."""
 
     @abstractmethod
     def scan(
@@ -330,18 +164,7 @@ class BackendOps(ABC):
             reverse: bool = False,
             unroll: int = 1,
     ) -> Tuple[Carry, Y]:
-        """
-        Generic backend-agnostic wrapper to run a scan primitive.
-
-        Input:
-            f: Scan body; init: Initial carry; xs: Per-step inputs plus scan options.
-
-        Output:
-            Tuple of final carry and stacked outputs.
-
-        This declaration only specifies the portable SpaceCore interface.
-        See the concrete backend implementation for backend-specific behavior.
-        """
+        """Run a scan primitive."""
 
     @abstractmethod
     def cond(
@@ -351,18 +174,7 @@ class BackendOps(ABC):
             false_fun: Callable[[T], R],
             *operands: Any,
     ) -> R:
-        """
-        Generic backend-agnostic wrapper to run conditional branch selection.
-
-        Input:
-            pred: Predicate; true_fun and false_fun: Branch functions; operands: Branch inputs.
-
-        Output:
-            Result returned by the selected branch.
-
-        This declaration only specifies the portable SpaceCore interface.
-        See the concrete backend implementation for backend-specific behavior.
-        """
+        """Run backend-compatible conditional branch selection."""
         ...
 
     @abstractmethod
@@ -373,18 +185,7 @@ class BackendOps(ABC):
             rtol: float = 1e-5,
             atol: float = 1e-8,
     ) -> bool:
-        """
-        Generic backend-agnostic wrapper to compare sparse arrays elementwise within tolerances.
-
-        Input:
-            a, b: Sparse backend arrays; rtol and atol configure comparison.
-
-        Output:
-            Boolean indicating whether sparse arrays are close.
-
-        This declaration only specifies the portable SpaceCore interface.
-        See the concrete backend implementation for backend-specific behavior.
-        """
+        """Compare sparse arrays elementwise within tolerances."""
         ...
 
     def _dtype_arg(self, dtype: DType | None) -> DType | None:
@@ -420,42 +221,56 @@ class BackendOps(ABC):
 
     @property
     def inf(self) -> DenseArray:
-        return self.asarray(float("inf"))
+        """Positive infinity as a cached backend scalar."""
+        return self._constant("inf", float("inf"))
 
     @property
     def nan(self) -> DenseArray:
-        return self.asarray(float("nan"))
+        """NaN as a cached backend scalar."""
+        return self._constant("nan", float("nan"))
 
     @property
     def pi(self) -> DenseArray:
-        return self.asarray(3.141592653589793)
+        """Pi as a cached backend scalar."""
+        return self._constant("pi", 3.141592653589793)
 
     @property
     def e(self) -> DenseArray:
-        return self.asarray(2.718281828459045)
+        """Euler's number as a cached backend scalar."""
+        return self._constant("e", 2.718281828459045)
 
-    @property
-    def eps(self) -> DenseArray:
-        return self.asarray(self.xp.finfo(self.sanitize_dtype(None)).eps)
+    def _constant(self, name: str, value: float) -> DenseArray:
+        if name not in self._constant_cache:
+            self._constant_cache[name] = self.asarray(value)
+        return self._constant_cache[name]
+
+    def eps(self, dtype: DType) -> float:
+        """Machine epsilon for dtype."""
+        return float(self.xp.finfo(self.sanitize_dtype(dtype)).eps)
 
     def get_dtype(self, x: Any) -> DType:
+        """Return x.dtype after verifying x is a backend array."""
         if self.is_array(x):
             return x.dtype
         raise TypeError(f"Expected {self.family} array, got {type(x)}.")
 
     def shape(self, x: Any) -> tuple[int, ...]:
+        """Return x.shape as a tuple."""
         return tuple(x.shape)
 
     def ndim(self, x: Any) -> int:
+        """Return the number of dimensions of x."""
         return int(x.ndim)
 
     def size(self, x: Any) -> int:
+        """Return the total number of elements in x."""
         result = 1
         for dim in self.shape(x):
             result *= int(dim)
         return result
 
     def asarray(self, x: Any, dtype: DType | None = None, **backend_kwargs: Any) -> DenseArray:
+        """Convert input to a dense backend array (delegates to xp.asarray)."""
         if self.is_sparse(x) and hasattr(x, "to_dense"):
             x = x.to_dense()
         dtype = self._dtype_arg(dtype)
@@ -463,28 +278,37 @@ class BackendOps(ABC):
             return self.xp.asarray(x, dtype=dtype, **backend_kwargs)
         return self.xp.as_tensor(x, dtype=dtype, **backend_kwargs)
 
-    def astype(self, x: DenseArray, dtype: DType, **backend_kwargs: Any) -> DenseArray:
+    def astype(self, x: DenseArray, dtype: DType | None, **backend_kwargs: Any) -> DenseArray:
+        """Cast x to dtype, returning x unchanged when dtype is None."""
+        if dtype is None:
+            return x
         dtype = self.sanitize_dtype(dtype)
         if hasattr(x, "astype"):
             return x.astype(dtype, **backend_kwargs)
         return x.to(dtype=dtype, **backend_kwargs)
 
     def empty(self, shape: Tuple[int, ...], dtype: DType | None = None) -> DenseArray:
+        """Create an uninitialized array (delegates to xp.empty)."""
         return self.xp.empty(shape, dtype=self._dtype_arg(dtype))
 
     def zeros(self, shape: Tuple[int, ...], dtype: DType | None = None) -> DenseArray:
+        """Create a zero-filled array (delegates to xp.zeros)."""
         return self.xp.zeros(shape, dtype=self._dtype_arg(dtype))
 
     def ones(self, shape: Tuple[int, ...], dtype: DType | None = None) -> DenseArray:
+        """Create a one-filled array (delegates to xp.ones)."""
         return self.xp.ones(shape, dtype=self._dtype_arg(dtype))
 
     def zeros_like(self, x: DenseArray, dtype: DType | None = None) -> DenseArray:
+        """Create a zero-filled array like x (delegates to xp.zeros_like)."""
         return self.xp.zeros_like(x, dtype=self._dtype_arg(dtype))
 
     def ones_like(self, x: DenseArray, dtype: DType | None = None) -> DenseArray:
+        """Create a one-filled array like x (delegates to xp.ones_like)."""
         return self.xp.ones_like(x, dtype=self._dtype_arg(dtype))
 
     def full_like(self, x: DenseArray, value: Any, dtype: DType | None = None) -> DenseArray:
+        """Create a value-filled array like x (delegates to xp.full_like)."""
         return self.xp.full_like(x, value, dtype=self._dtype_arg(dtype))
 
     def arange(
@@ -494,6 +318,7 @@ class BackendOps(ABC):
         step: int | None = None,
         dtype: DType | None = None,
     ) -> DenseArray:
+        """Create an evenly spaced range (delegates to xp.arange)."""
         dtype = self._dtype_arg(dtype)
         if stop is None:
             return self.xp.arange(start, dtype=dtype)
@@ -502,26 +327,32 @@ class BackendOps(ABC):
         return self.xp.arange(start, stop, step, dtype=dtype)
 
     def full(self, shape: Tuple[int, ...], fill_value: Any, dtype: DType | None = None) -> DenseArray:
+        """Create a value-filled array (delegates to xp.full)."""
         return self.xp.full(shape, fill_value, dtype=self._dtype_arg(dtype))
 
     def eye(self, n: int, m: int | None = None, dtype: DType | None = None) -> DenseArray:
+        """Create an identity-like matrix (delegates to xp.eye)."""
         return self.xp.eye(n, m, dtype=self._dtype_arg(dtype))
 
     def ravel(self, x: DenseArray) -> DenseArray:
+        """Flatten x to one dimension."""
         if hasattr(self.xp, "ravel"):
             return self.xp.ravel(x)
         return self.reshape(x, (-1,))
 
     def reshape(self, x: DenseArray, shape: Tuple[int, ...] | int) -> DenseArray:
+        """Reshape x (delegates to xp.reshape)."""
         shape_arg = (shape,) if isinstance(shape, int) else shape
         return self.xp.reshape(x, shape_arg)
 
     def transpose(self, x: DenseArray, axes: Sequence[int] | None = None) -> DenseArray:
+        """Permute dimensions of x."""
         if axes is None:
             axes = tuple(reversed(range(self.ndim(x))))
         return self._permute_dims(x, axes)
 
     def swapaxes(self, x: DenseArray, axis1: int, axis2: int) -> DenseArray:
+        """Swap two axes of x."""
         if hasattr(self.xp, "swapaxes"):
             return self.xp.swapaxes(x, axis1, axis2)
         axes = list(range(self.ndim(x)))
@@ -529,9 +360,11 @@ class BackendOps(ABC):
         return self._permute_dims(x, axes)
 
     def broadcast_to(self, x: DenseArray, shape: Tuple[int, ...]) -> DenseArray:
+        """Broadcast x to shape (delegates to xp.broadcast_to)."""
         return self.xp.broadcast_to(x, shape)
 
     def expand_dims(self, x: DenseArray, axis: int | Sequence[int]) -> DenseArray:
+        """Insert singleton dimensions into x."""
         if isinstance(axis, int):
             if hasattr(self.xp, "expand_dims"):
                 return self.xp.expand_dims(x, axis=axis)
@@ -543,6 +376,7 @@ class BackendOps(ABC):
         return out
 
     def squeeze(self, x: DenseArray, axis: int | Sequence[int] | None = None) -> DenseArray:
+        """Remove singleton dimensions from x."""
         if axis is None:
             axis = tuple(i for i, dim in enumerate(self.shape(x)) if dim == 1)
             if not axis:
@@ -556,29 +390,37 @@ class BackendOps(ABC):
         source: int | Sequence[int],
         destination: int | Sequence[int],
     ) -> DenseArray:
+        """Move axes of x to new positions."""
         if hasattr(self.xp, "moveaxis"):
             return self.xp.moveaxis(x, source, destination)
         return self._permute_dims(x, self._move_axis_order(self.ndim(x), source, destination))
 
     def stack(self, arrays: Sequence[DenseArray], axis: int = 0) -> DenseArray:
+        """Stack arrays along a new axis (delegates to xp.stack)."""
         return self.xp.stack(tuple(arrays), axis=axis)
 
     def conj(self, x: DenseArray) -> DenseArray:
+        """Complex conjugate of x (delegates to xp.conj)."""
         return self.xp.conj(x)
 
     def real(self, x: DenseArray) -> DenseArray:
+        """Real component of x (delegates to xp.real)."""
         return self.xp.real(x)
 
     def imag(self, x: DenseArray) -> DenseArray:
+        """Imaginary component of x (delegates to xp.imag)."""
         return self.xp.imag(x)
 
     def abs(self, x: DenseArray) -> DenseArray:
+        """Absolute value of x (delegates to xp.abs)."""
         return self.xp.abs(x)
 
     def sign(self, x: DenseArray) -> DenseArray:
+        """Elementwise sign of x (delegates to xp.sign)."""
         return self.xp.sign(x)
 
     def sqrt(self, x: DenseArray) -> DenseArray:
+        """Elementwise square root of x (delegates to xp.sqrt)."""
         return self.xp.sqrt(x)
 
     def sum(
@@ -588,6 +430,7 @@ class BackendOps(ABC):
         keepdims: bool = False,
         dtype: DType | None = None,
     ) -> DenseArray:
+        """Sum over given axes (delegates to xp.sum)."""
         return self.xp.sum(
             x,
             axis=self._to_axis_tuple(axis),
@@ -601,6 +444,7 @@ class BackendOps(ABC):
         axis: int | Sequence[int] | None = None,
         keepdims: bool = False,
     ) -> DenseArray:
+        """Mean over given axes (delegates to xp.mean)."""
         return self.xp.mean(x, axis=self._to_axis_tuple(axis), keepdims=keepdims)
 
     def min(
@@ -609,6 +453,7 @@ class BackendOps(ABC):
         axis: int | Sequence[int] | None = None,
         keepdims: bool = False,
     ) -> DenseArray:
+        """Minimum over given axes (delegates to xp.min)."""
         return self.xp.min(x, axis=self._to_axis_tuple(axis), keepdims=keepdims)
 
     def max(
@@ -617,6 +462,7 @@ class BackendOps(ABC):
         axis: int | Sequence[int] | None = None,
         keepdims: bool = False,
     ) -> DenseArray:
+        """Maximum over given axes (delegates to xp.max)."""
         return self.xp.max(x, axis=self._to_axis_tuple(axis), keepdims=keepdims)
 
     def prod(
@@ -626,6 +472,7 @@ class BackendOps(ABC):
         keepdims: bool = False,
         dtype: DType | None = None,
     ) -> DenseArray:
+        """Product over given axes (delegates to xp.prod)."""
         return self.xp.prod(
             x,
             axis=self._to_axis_tuple(axis),
@@ -634,23 +481,32 @@ class BackendOps(ABC):
         )
 
     def trace(self, x: DenseArray) -> DenseArray:
+        """Trace of a matrix (delegates to xp.trace when available)."""
         if hasattr(self.xp, "trace"):
             return self.xp.trace(x)
         return self.sum(self.diagonal(x))
 
     def argsort(self, x: DenseArray, axis: int = -1) -> DenseArray:
+        """Indices that sort x (delegates to xp.argsort)."""
         return self.xp.argsort(x, axis=axis)
 
     def sort(self, x: DenseArray, axis: int = -1) -> DenseArray:
+        """Sort x along an axis (delegates to xp.sort)."""
         return self.xp.sort(x, axis=axis)
 
     def argmin(self, x: DenseArray, axis: int | None = None, keepdims: bool = False) -> DenseArray:
+        """Indices of minima (delegates to xp.argmin)."""
         return self.xp.argmin(x, axis=axis, keepdims=keepdims)
 
     def argmax(self, x: DenseArray, axis: int | None = None, keepdims: bool = False) -> DenseArray:
+        """Indices of maxima (delegates to xp.argmax)."""
         return self.xp.argmax(x, axis=axis, keepdims=keepdims)
 
     def vdot(self, x: DenseArray, y: DenseArray) -> DenseArray:
+        """
+        Returns sum(conj(x) * y). Matches numpy/jax/torch vdot and Array API
+        vecdot. DenseLinOp.rapply relies on this for complex inputs.
+        """
         x_flat = self.ravel(x)
         y_flat = self.ravel(y)
         if hasattr(self.xp, "vdot"):
@@ -663,12 +519,15 @@ class BackendOps(ABC):
         b: DenseArray,
         backend_kwargs: dict[str, Any] | None = None,
     ) -> DenseArray:
+        """Matrix product (delegates to xp.matmul)."""
         return self.xp.matmul(a, b, **({} if backend_kwargs is None else backend_kwargs))
 
     def kron(self, a: DenseArray, b: DenseArray) -> DenseArray:
+        """Kronecker product (delegates to xp.kron)."""
         return self.xp.kron(a, b)
 
     def einsum(self, subscripts: str, *operands: DenseArray) -> DenseArray:
+        """Einstein summation (delegates to xp.einsum)."""
         return self.xp.einsum(subscripts, *operands)
 
     def eigh(
@@ -676,6 +535,7 @@ class BackendOps(ABC):
         x: DenseArray,
         backend_kwargs: dict[str, Any] | None = None,
     ) -> tuple[DenseArray, DenseArray]:
+        """Eigenpairs of a Hermitian dense matrix (delegates to xp.linalg.eigh)."""
         if self.is_sparse(x):
             raise TypeError("eigh requires a dense array; sparse input is not supported.")
         return self.xp.linalg.eigh(x, **({} if backend_kwargs is None else backend_kwargs))
@@ -687,6 +547,7 @@ class BackendOps(ABC):
         axis: int | Sequence[int] | None = None,
         keepdims: bool = False,
     ) -> DenseArray:
+        """Vector or matrix norm (delegates to xp.linalg.norm)."""
         return self.xp.linalg.norm(x, ord=ord, axis=axis, keepdims=keepdims)
 
     def solve(
@@ -695,6 +556,7 @@ class BackendOps(ABC):
         b: DenseArray,
         backend_kwargs: dict[str, Any] | None = None,
     ) -> DenseArray:
+        """Solve a dense linear system (delegates to xp.linalg.solve)."""
         return self.xp.linalg.solve(A, b, **({} if backend_kwargs is None else backend_kwargs))
 
     def eigvalsh(
@@ -702,6 +564,7 @@ class BackendOps(ABC):
         A: DenseArray,
         backend_kwargs: dict[str, Any] | None = None,
     ) -> DenseArray:
+        """Eigenvalues of a Hermitian dense matrix (delegates to xp.linalg.eigvalsh)."""
         return self.xp.linalg.eigvalsh(A, **({} if backend_kwargs is None else backend_kwargs))
 
     def svd(
@@ -710,6 +573,7 @@ class BackendOps(ABC):
         full_matrices: bool = True,
         backend_kwargs: dict[str, Any] | None = None,
     ) -> tuple[DenseArray, DenseArray, DenseArray]:
+        """Singular value decomposition (delegates to xp.linalg.svd)."""
         return self.xp.linalg.svd(
             A,
             full_matrices=full_matrices,
@@ -721,30 +585,39 @@ class BackendOps(ABC):
         A: DenseArray,
         backend_kwargs: dict[str, Any] | None = None,
     ) -> DenseArray:
+        """Cholesky factorization (delegates to xp.linalg.cholesky)."""
         return self.xp.linalg.cholesky(A, **({} if backend_kwargs is None else backend_kwargs))
 
     def exp(self, x: DenseArray) -> DenseArray:
+        """Elementwise exponential (delegates to xp.exp)."""
         return self.xp.exp(x)
 
     def log(self, x: DenseArray) -> DenseArray:
+        """Elementwise natural logarithm (delegates to xp.log)."""
         return self.xp.log(x)
 
     def where(self, condition: DenseArray | bool, x: ArrayLike, y: ArrayLike) -> DenseArray:
+        """Select between x and y by condition (delegates to xp.where)."""
         return self.xp.where(condition, x, y)
 
     def maximum(self, x: ArrayLike, y: ArrayLike) -> DenseArray:
+        """Elementwise maximum (delegates to xp.maximum)."""
         return self.xp.maximum(x, y)
 
     def minimum(self, x: ArrayLike, y: ArrayLike) -> DenseArray:
+        """Elementwise minimum (delegates to xp.minimum)."""
         return self.xp.minimum(x, y)
 
     def clip(self, x: DenseArray, a_min: ArrayLike, a_max: ArrayLike) -> DenseArray:
+        """Clip x into [a_min, a_max] (delegates to xp.clip)."""
         return self.xp.clip(x, a_min, a_max)
 
     def isfinite(self, x: DenseArray) -> DenseArray:
+        """Elementwise finite check (delegates to xp.isfinite)."""
         return self.xp.isfinite(x)
 
     def isnan(self, x: DenseArray) -> DenseArray:
+        """Elementwise NaN check (delegates to xp.isnan)."""
         return self.xp.isnan(x)
 
     def concatenate(
@@ -753,6 +626,7 @@ class BackendOps(ABC):
         axis: int = 0,
         dtype: DType | None = None,
     ) -> DenseArray:
+        """Concatenate arrays along an existing axis (delegates to xp.concat)."""
         if hasattr(self.xp, "concat"):
             result = self.xp.concat(tuple(arrays), axis=axis)
         else:
@@ -765,18 +639,23 @@ class BackendOps(ABC):
         indices: DenseArray,
         axis: int | None = None,
     ) -> DenseArray:
+        """Take entries from x by integer indices (delegates to xp.take)."""
         return self.xp.take(x, indices, axis=axis)
 
     def diag(self, x: DenseArray) -> DenseArray:
+        """Extract or construct a diagonal (delegates to xp.diag)."""
         return self.xp.diag(x)
 
     def diagonal(self, x: DenseArray) -> DenseArray:
+        """Return the main diagonal of x (delegates to xp.diagonal)."""
         return self.xp.diagonal(x)
 
     def tril(self, x: DenseArray) -> DenseArray:
+        """Lower triangle of x (delegates to xp.tril)."""
         return self.xp.tril(x)
 
     def triu(self, x: DenseArray) -> DenseArray:
+        """Upper triangle of x (delegates to xp.triu)."""
         return self.xp.triu(x)
 
     def allclose(
@@ -787,7 +666,12 @@ class BackendOps(ABC):
             atol: float = 1e-8,
             equal_nan: bool = False,
     ) -> bool:
+        """Return whether dense arrays are close within tolerances."""
         return bool(self.xp.allclose(a, b, rtol=rtol, atol=atol, equal_nan=equal_nan))
 
-    def __repr__(self):
-        return f"{type(self).__name__}"
+    def __repr__(self) -> str:
+        xp = type(self).xp
+        xp_state = ""
+        if isinstance(xp, LazyNamespace):
+            xp_state = f", xp_loaded={xp.is_loaded!r}"
+        return f"{type(self).__name__}(family={self.family!r}{xp_state})"

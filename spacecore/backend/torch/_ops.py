@@ -65,6 +65,9 @@ class TorchOps(BackendOps):
         torch.sparse_bsc,
     )
 
+    def __init__(self) -> None:
+        super().__init__()
+
     @staticmethod
     def _defined_kwargs(**kwargs: Any) -> dict[str, Any]:
         return {key: value for key, value in kwargs.items() if value is not None}
@@ -262,13 +265,15 @@ class TorchOps(BackendOps):
     def astype(
         self,
         x: DenseArray,
-        dtype: DType,
+        dtype: DType | None,
         *,
         copy: bool = True,
         non_blocking: bool = False,
         memory_format: Any | None = None,
         backend_kwargs: dict[str, Any] | None = None,
     ) -> DenseArray:
+        if dtype is None:
+            return x
         kwargs = {} if backend_kwargs is None else dict(backend_kwargs)
         kwargs.update(self._defined_kwargs(memory_format=memory_format))
         return x.to(

@@ -53,6 +53,9 @@ class NumpyOps(BackendOps):
     _family = BackendFamily.numpy.value.lower()
     _allow_sparse = True
 
+    def __init__(self) -> None:
+        super().__init__()
+
     @property
     def dense_array(self) -> Type[Any]:
         """

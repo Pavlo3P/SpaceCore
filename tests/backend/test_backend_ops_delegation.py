@@ -115,7 +115,7 @@ def test_numpy_eps_uses_default_dtype():
     sc = importlib.import_module("spacecore")
     ops = sc.NumpyOps()
 
-    np.testing.assert_allclose(to_numpy(ops.eps), np.finfo(ops.sanitize_dtype(None)).eps)
+    np.testing.assert_allclose(ops.eps(ops.sanitize_dtype(None)), np.finfo(ops.sanitize_dtype(None)).eps)
 
 
 @pytest.mark.skipif(not has_jax(), reason="jax is not installed")
@@ -123,7 +123,7 @@ def test_jax_eps_uses_default_dtype():
     sc = importlib.import_module("spacecore")
     ops = sc.JaxOps()
 
-    np.testing.assert_allclose(to_numpy(ops.eps), np.finfo(jax_real_dtype()).eps)
+    np.testing.assert_allclose(ops.eps(jax_real_dtype()), np.finfo(jax_real_dtype()).eps)
 
 
 @pytest.mark.skipif(not has_torch(), reason="torch is not installed")
@@ -132,7 +132,62 @@ def test_torch_eps_uses_default_dtype():
     import torch
 
     ops = sc.TorchOps()
-    np.testing.assert_allclose(to_numpy(ops.eps), torch.finfo(ops.sanitize_dtype(None)).eps)
+    np.testing.assert_allclose(ops.eps(ops.sanitize_dtype(None)), torch.finfo(ops.sanitize_dtype(None)).eps)
+
+
+def test_backend_ops_hash_and_repr():
+    sc = importlib.import_module("spacecore")
+    first = sc.NumpyOps()
+    second = sc.NumpyOps()
+
+    assert hash(first) == hash(second)
+    assert {first: 1, second: 2} == {first: 2}
+    assert repr(first) == "NumpyOps(family='numpy')"
+
+
+def test_numpy_eps_distinguishes_dtype_precision():
+    sc = importlib.import_module("spacecore")
+    ops = sc.NumpyOps()
+
+    assert ops.eps(np.float64) < ops.eps(np.float32)
+
+
+def test_numpy_constants_are_cached_and_astype_none_is_noop():
+    sc = importlib.import_module("spacecore")
+    ops = sc.NumpyOps()
+    x = ops.asarray([1.0, 2.0])
+
+    assert ops.inf is ops.inf
+    assert ops.nan is ops.nan
+    assert ops.pi is ops.pi
+    assert ops.e is ops.e
+    assert ops.astype(x, None) is x
+
+
+@pytest.mark.skipif(not has_jax(), reason="jax is not installed")
+def test_jax_constants_are_cached_and_astype_none_is_noop():
+    sc = importlib.import_module("spacecore")
+    ops = sc.JaxOps()
+    x = ops.asarray([1.0, 2.0], dtype=jax_real_dtype())
+
+    assert ops.inf is ops.inf
+    assert ops.nan is ops.nan
+    assert ops.pi is ops.pi
+    assert ops.e is ops.e
+    assert ops.astype(x, None) is x
+
+
+@pytest.mark.skipif(not has_torch(), reason="torch is not installed")
+def test_torch_constants_are_cached_and_astype_none_is_noop():
+    sc = importlib.import_module("spacecore")
+    ops = sc.TorchOps()
+    x = ops.asarray([1.0, 2.0], dtype=torch_real_dtype())
+
+    assert ops.inf is ops.inf
+    assert ops.nan is ops.nan
+    assert ops.pi is ops.pi
+    assert ops.e is ops.e
+    assert ops.astype(x, None) is x
 
 
 def _check_complex_adjoint(ops, dtype):
