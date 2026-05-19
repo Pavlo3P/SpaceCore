@@ -5,8 +5,8 @@ from typing import Any, Callable, Literal, Optional, Sequence, Tuple, Type
 import numpy as np
 
 from .._family import BackendFamily
-from .._ops import BackendOps
-from ...types import ArrayLike, DenseArray, DType, Index, SparseArray, T, X, Y, R, Carry
+from .._ops import BackendOps, LazyNamespace
+from ...types import DenseArray, DType, Index, SparseArray, T, X, Y, R, Carry
 
 
 class TorchOps(BackendOps):
@@ -52,6 +52,7 @@ class TorchOps(BackendOps):
     """
 
     import torch
+    xp = LazyNamespace("array_api_compat.torch")
 
     _family = BackendFamily.torch.value.lower()
     _allow_sparse = True
@@ -180,193 +181,6 @@ class TorchOps(BackendOps):
             return mapping[np_dtype]
         raise TypeError(f"Dtype {np_dtype!r} is not supported by PyTorch.")
 
-    def get_dtype(self, x: Any) -> DType:
-        """
-        Return a tensor dtype using PyTorch.
-
-        Input:
-            x: Dense or sparse backend tensor.
-
-        Output:
-            Backend dtype associated with x.
-
-        See:
-            https://docs.pytorch.org/docs/stable/tensor_attributes.html#torch-dtype
-        """
-        if self.is_array(x):
-            return x.dtype
-        raise TypeError(f"Expected PyTorch tensor, got {type(x)}.")
-
-    def shape(self, x: Any) -> tuple[int, ...]:
-        """
-        Return tensor shape metadata using PyTorch.
-
-        Input:
-            x: Dense or sparse backend tensor.
-
-        Output:
-            Tuple describing the logical shape of x.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.Tensor.shape.html
-        """
-        return tuple(x.shape)
-
-    def ndim(self, x: Any) -> int:
-        """
-        Return tensor rank metadata using PyTorch.
-
-        Input:
-            x: Dense or sparse backend tensor.
-
-        Output:
-            Number of dimensions in x.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.Tensor.ndim.html
-        """
-        return int(x.ndim)
-
-    def size(self, x: Any) -> int:
-        """
-        Return logical element count using PyTorch.
-
-        Input:
-            x: Dense or sparse backend tensor.
-
-        Output:
-            Total number of logical dense elements.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.numel.html
-        """
-        return int(x.numel())
-
-    @property
-    def inf(self):
-        """
-        Positive infinity scalar using PyTorch.
-
-        Returns:
-            Backend tensor scalar representing positive infinity.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.tensor.html
-        """
-        return self.torch.tensor(float("inf"))
-
-    @property
-    def nan(self):
-        """
-        NaN scalar using PyTorch.
-
-        Returns:
-            Backend tensor scalar representing NaN.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.tensor.html
-        """
-        return self.torch.tensor(float("nan"))
-
-    @property
-    def pi(self):
-        """
-        Pi scalar using PyTorch.
-
-        Returns:
-            Backend tensor scalar representing pi.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.tensor.html
-        """
-        return self.torch.tensor(np.pi)
-
-    @property
-    def e(self):
-        """
-        Euler number scalar using PyTorch.
-
-        Returns:
-            Backend tensor scalar representing Euler's number.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.tensor.html
-        """
-        return self.torch.tensor(np.e)
-
-    @property
-    def eps(self):
-        """
-        Machine epsilon scalar using PyTorch.
-
-        Returns:
-            Backend tensor scalar for float64 machine epsilon.
-
-        See:
-            https://docs.pytorch.org/docs/stable/type_info.html#torch.finfo
-        """
-        return self.torch.tensor(self.torch.finfo(self.torch.float64).eps)
-
-    def asarray(
-        self,
-        x: Any,
-        dtype: DType | None = None,
-        *,
-        device: Any | None = None,
-        copy: bool | None = None,
-    ) -> DenseArray:
-        """
-        Convert input to a dense tensor using PyTorch.
-
-        Input:
-            x/a: Array-like input and optional dtype, device, or copy controls.
-
-        Output:
-            Dense backend tensor.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.as_tensor.html
-
-        Backend-specific notes:
-            Sparse tensors are densified. Existing tensors keep autograd
-            metadata according to normal PyTorch conversion rules.
-        """
-        dtype = self.sanitize_dtype(dtype) if dtype is not None else None
-        if self.is_sparse(x):
-            x = x.to_dense()
-        out = self.torch.as_tensor(x, dtype=dtype, device=device)
-        if copy:
-            out = out.clone()
-        return out
-
-    def astype(
-        self,
-        x: DenseArray,
-        dtype: DType,
-        copy: bool = True,
-        *,
-        non_blocking: bool = False,
-        memory_format: Any | None = None,
-    ) -> DenseArray:
-        """
-        Cast a tensor to a dtype using PyTorch.
-
-        Input:
-            x: Dense backend tensor; dtype: Target dtype; copy: Whether to force a copy.
-
-        Output:
-            Tensor with the requested dtype.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.Tensor.to.html
-        """
-        return x.to(
-            dtype=self.sanitize_dtype(dtype),
-            non_blocking=non_blocking,
-            copy=copy,
-            **self._defined_kwargs(memory_format=memory_format),
-        )
-
     def assparse(
         self,
         x: Any,
@@ -427,9 +241,46 @@ class TorchOps(BackendOps):
             return out.to_sparse_csc()
         raise ValueError(f"Unknown sparse format: {format!r}")
 
+    def asarray(
+        self,
+        x: Any,
+        dtype: DType | None = None,
+        *,
+        device: Any | None = None,
+        copy: bool | None = None,
+        backend_kwargs: dict[str, Any] | None = None,
+    ) -> DenseArray:
+        kwargs = {} if backend_kwargs is None else dict(backend_kwargs)
+        if device is not None:
+            kwargs["device"] = device
+        dtype = self.sanitize_dtype(dtype) if dtype is not None else None
+        if self.is_sparse(x):
+            x = x.to_dense()
+        out = self.torch.as_tensor(x, dtype=dtype, **kwargs)
+        return out.clone() if copy else out
+
+    def astype(
+        self,
+        x: DenseArray,
+        dtype: DType,
+        *,
+        copy: bool = True,
+        non_blocking: bool = False,
+        memory_format: Any | None = None,
+        backend_kwargs: dict[str, Any] | None = None,
+    ) -> DenseArray:
+        kwargs = {} if backend_kwargs is None else dict(backend_kwargs)
+        kwargs.update(self._defined_kwargs(memory_format=memory_format))
+        return x.to(
+            dtype=self.sanitize_dtype(dtype),
+            non_blocking=non_blocking,
+            copy=copy,
+            **kwargs,
+        )
+
     def empty(
         self,
-        shape: int | Tuple[int, ...],
+        shape: Tuple[int, ...],
         dtype: DType | None = None,
         *,
         out: DenseArray | None = None,
@@ -439,18 +290,6 @@ class TorchOps(BackendOps):
         pin_memory: bool = False,
         memory_format: Any | None = None,
     ) -> DenseArray:
-        """
-        Create an uninitialized dense tensor using PyTorch.
-
-        Input:
-            shape: Output shape; dtype and device: Optional construction parameters.
-
-        Output:
-            Dense backend tensor with uninitialized values.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.empty.html
-        """
         return self.torch.empty(
             shape,
             out=out,
@@ -462,7 +301,7 @@ class TorchOps(BackendOps):
 
     def zeros(
         self,
-        shape: int | Tuple[int, ...],
+        shape: Tuple[int, ...],
         dtype: DType | None = None,
         *,
         out: DenseArray | None = None,
@@ -470,49 +309,7 @@ class TorchOps(BackendOps):
         device: Any | None = None,
         requires_grad: bool = False,
     ) -> DenseArray:
-        """
-        Create a dense tensor filled with zeros using PyTorch.
-
-        Input:
-            shape: Output shape; dtype and device: Optional construction parameters.
-
-        Output:
-            Dense backend tensor.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.zeros.html
-        """
         return self.torch.zeros(
-            shape,
-            out=out,
-            dtype=self.sanitize_dtype(dtype) if dtype is not None else None,
-            requires_grad=requires_grad,
-            **self._defined_kwargs(layout=layout, device=device),
-        )
-
-    def ones(
-        self,
-        shape: int | Tuple[int, ...],
-        dtype: DType | None = None,
-        *,
-        out: DenseArray | None = None,
-        layout: Any | None = None,
-        device: Any | None = None,
-        requires_grad: bool = False,
-    ) -> DenseArray:
-        """
-        Create a dense tensor filled with ones using PyTorch.
-
-        Input:
-            shape: Output shape; dtype and device: Optional construction parameters.
-
-        Output:
-            Dense backend tensor.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.ones.html
-        """
-        return self.torch.ones(
             shape,
             out=out,
             dtype=self.sanitize_dtype(dtype) if dtype is not None else None,
@@ -530,18 +327,6 @@ class TorchOps(BackendOps):
         requires_grad: bool = False,
         memory_format: Any | None = None,
     ) -> DenseArray:
-        """
-        Create a zero tensor matching another tensor using PyTorch.
-
-        Input:
-            x: Reference tensor; dtype and device: Optional overrides.
-
-        Output:
-            Dense backend tensor with shape matching x.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.zeros_like.html
-        """
         return self.torch.zeros_like(
             x,
             dtype=self.sanitize_dtype(dtype) if dtype is not None else None,
@@ -549,71 +334,11 @@ class TorchOps(BackendOps):
             **self._defined_kwargs(layout=layout, device=device, memory_format=memory_format),
         )
 
-    def ones_like(
-        self,
-        x: DenseArray,
-        dtype: DType | None = None,
-        *,
-        layout: Any | None = None,
-        device: Any | None = None,
-        requires_grad: bool = False,
-        memory_format: Any | None = None,
-    ) -> DenseArray:
-        """
-        Create a one tensor matching another tensor using PyTorch.
-
-        Input:
-            x: Reference tensor; dtype and device: Optional overrides.
-
-        Output:
-            Dense backend tensor with shape matching x.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.ones_like.html
-        """
-        return self.torch.ones_like(
-            x,
-            dtype=self.sanitize_dtype(dtype) if dtype is not None else None,
-            requires_grad=requires_grad,
-            **self._defined_kwargs(layout=layout, device=device, memory_format=memory_format),
-        )
-
-    def full_like(
-        self,
-        x: DenseArray,
-        value: Any,
-        dtype: DType | None = None,
-        *,
-        layout: Any | None = None,
-        device: Any | None = None,
-        requires_grad: bool = False,
-        memory_format: Any | None = None,
-    ) -> DenseArray:
-        """
-        Create a filled tensor matching another tensor using PyTorch.
-
-        Input:
-            x: Reference tensor; value: Fill value; dtype and device: Optional overrides.
-
-        Output:
-            Dense backend tensor with shape matching x.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.full_like.html
-        """
-        return self.torch.full_like(
-            x,
-            value,
-            dtype=self.sanitize_dtype(dtype) if dtype is not None else None,
-            requires_grad=requires_grad,
-            **self._defined_kwargs(layout=layout, device=device, memory_format=memory_format),
-        )
-
     def arange(
         self,
-        start: int | float = 0,
-        stop: int | float | None = None,
-        step: int | float | None = None,
+        start: int,
+        stop: int | None = None,
+        step: int | None = None,
         dtype: DType | None = None,
         *,
         out: DenseArray | None = None,
@@ -621,712 +346,43 @@ class TorchOps(BackendOps):
         device: Any | None = None,
         requires_grad: bool = False,
     ) -> DenseArray:
-        """
-        Create a range tensor using PyTorch.
-
-        Input:
-            start, stop, step: Range parameters; dtype and device: Optional construction parameters.
-
-        Output:
-            Dense backend tensor containing evenly spaced values.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.arange.html
-        """
-        dtype = self.sanitize_dtype(dtype) if dtype is not None else None
         kwargs = self._defined_kwargs(out=out, layout=layout, device=device)
         kwargs["requires_grad"] = requires_grad
+        dtype = self.sanitize_dtype(dtype) if dtype is not None else None
         if stop is None:
             return self.torch.arange(start, dtype=dtype, **kwargs)
         if step is None:
             return self.torch.arange(start, stop, dtype=dtype, **kwargs)
         return self.torch.arange(start, stop, step, dtype=dtype, **kwargs)
 
-    def full(
-        self,
-        shape: int | Tuple[int, ...],
-        fill_value: Any,
-        dtype: DType | None = None,
-        *,
-        out: DenseArray | None = None,
-        layout: Any | None = None,
-        device: Any | None = None,
-        requires_grad: bool = False,
-    ) -> DenseArray:
-        """
-        Create a filled dense tensor using PyTorch.
-
-        Input:
-            shape: Output shape; fill_value: Fill value; dtype and device: Optional parameters.
-
-        Output:
-            Dense backend tensor.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.full.html
-        """
-        return self.torch.full(
-            shape,
-            fill_value,
-            out=out,
-            dtype=self.sanitize_dtype(dtype) if dtype is not None else None,
-            requires_grad=requires_grad,
-            **self._defined_kwargs(layout=layout, device=device),
-        )
-
-    def eye(
-        self,
-        n: int,
-        m: int | None = None,
-        k: int = 0,
-        dtype: DType | None = None,
-        *,
-        out: DenseArray | None = None,
-        layout: Any | None = None,
-        device: Any | None = None,
-        requires_grad: bool = False,
-    ) -> DenseArray:
-        """
-        Create a two-dimensional identity-like tensor using PyTorch.
-
-        Input:
-            n, m: Matrix dimensions; k: Diagonal offset; dtype and device: Optional parameters.
-
-        Output:
-            Dense backend tensor with ones on the requested diagonal.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.eye.html
-
-        Backend-specific notes:
-            PyTorch ``torch.eye`` has no diagonal offset parameter, so SpaceCore
-            constructs the offset diagonal explicitly.
-        """
-        m = n if m is None else m
-        dtype = self.sanitize_dtype(dtype) if dtype is not None else None
-        if k == 0:
-            return self.torch.eye(
-                n,
-                m,
-                out=out,
-                dtype=dtype,
-                requires_grad=requires_grad,
-                **self._defined_kwargs(layout=layout, device=device),
-            )
-        out = self.torch.zeros(
-            (n, m),
-            out=out,
-            dtype=dtype,
-            requires_grad=False,
-            **self._defined_kwargs(layout=layout, device=device),
-        )
-        diag_len = min(n, m - k) if k > 0 else min(n + k, m)
-        if diag_len <= 0:
-            return out
-        rows = self.torch.arange(diag_len, device=device)
-        cols = rows + k
-        if k < 0:
-            rows = rows - k
-            cols = self.torch.arange(diag_len, device=device)
-        out[rows, cols] = 1
-        if requires_grad:
-            out.requires_grad_()
-        return out
-
-    def ravel(self, x: DenseArray) -> DenseArray:
-        """
-        Flatten a tensor using PyTorch.
-
-        Input:
-            x: Dense backend tensor.
-
-        Output:
-            One-dimensional tensor view or copy following PyTorch semantics.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.ravel.html
-        """
-        return self.torch.ravel(x)
-
-    def reshape(self, x: DenseArray, shape: int | Tuple[int, ...], *, copy: bool | None = None) -> DenseArray:
-        """
-        Reshape a tensor using PyTorch.
-
-        Input:
-            x: Dense backend tensor; shape: Target shape; copy: Whether to clone first.
-
-        Output:
-            Reshaped dense backend tensor.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.reshape.html
-        """
-        if copy:
-            x = x.clone()
-        return self.torch.reshape(x, shape if isinstance(shape, tuple) else (shape,))
-
-    def transpose(self, x: DenseArray, axes: Sequence[int] | None = None) -> DenseArray:
-        """
-        Permute tensor axes using PyTorch.
-
-        Input:
-            x: Dense backend tensor; axes: Optional axis order.
-
-        Output:
-            Tensor with permuted axes.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.permute.html
-        """
-        if axes is None:
-            axes = tuple(reversed(range(x.ndim)))
-        return x.permute(tuple(axes))
-
-    def swapaxes(self, x: DenseArray, axis1: int, axis2: int) -> DenseArray:
-        """
-        Swap two tensor axes using PyTorch.
-
-        Input:
-            x: Dense backend tensor; axis1, axis2: Axes to swap.
-
-        Output:
-            Tensor with the requested axes swapped.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.swapaxes.html
-        """
-        return self.torch.swapaxes(x, axis1, axis2)
-
-    def broadcast_to(self, x: DenseArray, shape: int | Tuple[int, ...]) -> DenseArray:
-        """
-        Broadcast a tensor to a shape using PyTorch.
-
-        Input:
-            x: Dense backend tensor; shape: Target broadcast shape.
-
-        Output:
-            Broadcasted tensor view following PyTorch broadcasting rules.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.broadcast_to.html
-        """
-        return self.torch.broadcast_to(x, shape)
-
-    def expand_dims(self, x: DenseArray, axis: int | Sequence[int]) -> DenseArray:
-        """
-        Insert singleton dimensions using PyTorch.
-
-        Input:
-            x: Dense backend tensor; axis: Axis or axes where dimensions are inserted.
-
-        Output:
-            Tensor with inserted singleton dimensions.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.unsqueeze.html
-        """
-        if isinstance(axis, int):
-            return self.torch.unsqueeze(x, axis)
-        ndim = x.ndim + len(axis)
-        axes = sorted(a + ndim if a < 0 else a for a in axis)
-        out = x
-        for ax in axes:
-            out = self.torch.unsqueeze(out, ax)
-        return out
-
-    def squeeze(self, x: DenseArray, axis: int | Sequence[int] | None = None) -> DenseArray:
-        """
-        Remove singleton dimensions using PyTorch.
-
-        Input:
-            x: Dense backend tensor; axis: Optional axis or axes to squeeze.
-
-        Output:
-            Tensor with singleton dimensions removed.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.squeeze.html
-        """
-        if axis is None:
-            return self.torch.squeeze(x)
-        if isinstance(axis, int):
-            return self.torch.squeeze(x, dim=axis)
-        out = x
-        for ax in sorted(axis, reverse=True):
-            out = self.torch.squeeze(out, dim=ax)
-        return out
-
-    def moveaxis(self, x: DenseArray, source: int | Sequence[int], destination: int | Sequence[int]) -> DenseArray:
-        """
-        Move tensor axes to new positions using PyTorch.
-
-        Input:
-            x: Dense backend tensor; source and destination: Axis positions.
-
-        Output:
-            Tensor with axes moved.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.moveaxis.html
-        """
-        return self.torch.moveaxis(x, source, destination)
-
-    def stack(
-        self,
-        arrays: Sequence[DenseArray],
-        axis: int = 0,
-        *,
-        out: DenseArray | None = None,
-    ) -> DenseArray:
-        """
-        Stack tensors along a new axis using PyTorch.
-
-        Input:
-            arrays: Sequence of tensors; axis: New axis; out: Optional output tensor.
-
-        Output:
-            Dense backend tensor.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.stack.html
-        """
-        arrays = tuple(arrays)
-        if out is None:
-            return self.torch.stack(arrays, dim=axis)
-        return self.torch.stack(arrays, dim=axis, out=out)
-
-    def conj(self, x: DenseArray) -> DenseArray:
-        """
-        Return the complex conjugate using PyTorch.
-
-        Input:
-            x: Dense backend tensor.
-
-        Output:
-            Tensor containing complex conjugates.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.conj.html
-        """
-        return self.torch.conj(x)
-
-    def real(self, x: DenseArray) -> DenseArray:
-        """
-        Return the real part of a tensor using PyTorch.
-
-        Input:
-            x: Dense backend tensor.
-
-        Output:
-            Tensor view or value containing real components.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.real.html
-        """
-        return self.torch.real(x)
-
-    def imag(self, x: DenseArray) -> DenseArray:
-        """
-        Return the imaginary part of a tensor using PyTorch.
-
-        Input:
-            x: Dense backend tensor.
-
-        Output:
-            Tensor view or value containing imaginary components.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.imag.html
-        """
-        return self.torch.imag(x)
-
-    def abs(
-        self,
-        x: DenseArray,
-        *,
-        out: DenseArray | None = None,
-    ) -> DenseArray:
-        """
-        Compute elementwise absolute value using PyTorch.
-
-        Input:
-            x: Dense backend tensor.
-
-        Output:
-            Dense backend tensor.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.abs.html
-        """
-        if out is None:
-            return self.torch.abs(x)
-        return self.torch.abs(x, out=out)
-
-    def sign(
-        self,
-        x: DenseArray,
-        *,
-        out: DenseArray | None = None,
-    ) -> DenseArray:
-        """
-        Compute elementwise sign using PyTorch.
-
-        Input:
-            x: Dense backend tensor.
-
-        Output:
-            Dense backend tensor.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.sign.html
-        """
-        if out is None:
-            return self.torch.sign(x)
-        return self.torch.sign(x, out=out)
-
-    def sqrt(
-        self,
-        x: DenseArray,
-        *,
-        out: DenseArray | None = None,
-    ) -> DenseArray:
-        """
-        Compute elementwise square root using PyTorch.
-
-        Input:
-            x: Dense backend tensor.
-
-        Output:
-            Dense backend tensor.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.sqrt.html
-        """
-        if out is None:
-            return self.torch.sqrt(x)
-        return self.torch.sqrt(x, out=out)
-
     def sum(
         self,
         x: DenseArray,
         axis: int | Sequence[int] | None = None,
+        keepdims: bool = False,
         dtype: DType | None = None,
-        keepdims: bool = False,
         *,
         out: DenseArray | None = None,
     ) -> DenseArray:
-        """
-        Sum tensor elements using PyTorch.
-
-        Input:
-            x: Dense backend tensor; axis, dtype, keepdims: Reduction controls.
-
-        Output:
-            Dense backend tensor or scalar tensor.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.sum.html
-        """
-        if dtype is None:
-            if out is None:
-                if axis is None and not keepdims:
-                    return self.torch.sum(x)
-                return self.torch.sum(x, dim=axis, keepdim=keepdims)
-            return self.torch.sum(x, dim=axis, keepdim=keepdims, out=out)
-        dtype = self.sanitize_dtype(dtype)
-        if out is None:
-            if axis is None and not keepdims:
-                return self.torch.sum(x, dtype=dtype)
-            return self.torch.sum(x, dim=axis, keepdim=keepdims, dtype=dtype)
-        return self.torch.sum(
-            x,
-            dim=axis,
-            keepdim=keepdims,
-            dtype=dtype,
-            out=out,
-        )
-
-    def mean(
-        self,
-        x: DenseArray,
-        axis: int | Sequence[int] | None = None,
-        dtype: DType | None = None,
-        keepdims: bool = False,
-        *,
-        out: DenseArray | None = None,
-    ) -> DenseArray:
-        """
-        Average tensor elements using PyTorch.
-
-        Input:
-            x: Dense backend tensor; axis, dtype, keepdims: Reduction controls.
-
-        Output:
-            Dense backend tensor or scalar tensor.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.mean.html
-        """
-        if dtype is None:
-            if out is None:
-                if axis is None and not keepdims:
-                    return self.torch.mean(x)
-                return self.torch.mean(x, dim=axis, keepdim=keepdims)
-            return self.torch.mean(x, dim=axis, keepdim=keepdims, out=out)
-        dtype = self.sanitize_dtype(dtype)
-        if out is None:
-            if axis is None and not keepdims:
-                return self.torch.mean(x, dtype=dtype)
-            return self.torch.mean(x, dim=axis, keepdim=keepdims, dtype=dtype)
-        return self.torch.mean(
-            x,
-            dim=axis,
-            keepdim=keepdims,
-            dtype=dtype,
-            out=out,
-        )
-
-    def min(
-        self,
-        x: DenseArray,
-        axis: int | Sequence[int] | None = None,
-        keepdims: bool = False,
-        *,
-        out: DenseArray | None = None,
-    ) -> DenseArray:
-        """
-        Compute minimum values using PyTorch.
-
-        Input:
-            x: Dense backend tensor; axis and keepdims: Reduction controls.
-
-        Output:
-            Dense backend tensor or scalar tensor.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.amin.html
-        """
-        if out is None:
-            if axis is None and not keepdims:
-                return self.torch.amin(x)
-            return self.torch.amin(x, dim=axis, keepdim=keepdims)
-        return self.torch.amin(x, dim=axis, keepdim=keepdims, out=out)
-
-    def max(
-        self,
-        x: DenseArray,
-        axis: int | Sequence[int] | None = None,
-        keepdims: bool = False,
-        *,
-        out: DenseArray | None = None,
-    ) -> DenseArray:
-        """
-        Compute maximum values using PyTorch.
-
-        Input:
-            x: Dense backend tensor; axis and keepdims: Reduction controls.
-
-        Output:
-            Dense backend tensor or scalar tensor.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.amax.html
-        """
-        if out is None:
-            if axis is None and not keepdims:
-                return self.torch.amax(x)
-            return self.torch.amax(x, dim=axis, keepdim=keepdims)
-        return self.torch.amax(x, dim=axis, keepdim=keepdims, out=out)
-
-    def prod(
-        self,
-        x: DenseArray,
-        axis: int | Sequence[int] | None = None,
-        dtype: DType | None = None,
-        keepdims: bool = False,
-        *,
-        out: DenseArray | None = None,
-    ) -> DenseArray:
-        """
-        Multiply tensor elements using PyTorch.
-
-        Input:
-            x: Dense backend tensor; axis, dtype, keepdims: Reduction controls.
-
-        Output:
-            Dense backend tensor or scalar tensor.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.prod.html
-
-        Backend-specific notes:
-            Multiple-axis products are applied one axis at a time because
-            PyTorch's ``torch.prod`` reduces a single dimension per call.
-        """
-        dtype = self.sanitize_dtype(dtype) if dtype is not None else None
-        if axis is None:
-            result = self.torch.prod(x) if dtype is None else self.torch.prod(x, dtype=dtype)
-            if out is not None:
-                out.copy_(result)
-                return out
-            return result
-        if isinstance(axis, int):
-            if out is None:
-                if dtype is None:
-                    return self.torch.prod(x, dim=axis, keepdim=keepdims)
-                return self.torch.prod(x, dim=axis, dtype=dtype, keepdim=keepdims)
-            return self.torch.prod(x, dim=axis, dtype=dtype, keepdim=keepdims, out=out)
-        result = x
-        for ax in sorted(axis, reverse=True):
-            result = self.torch.prod(result, dim=ax, dtype=dtype, keepdim=keepdims)
+        kwargs = {"dim": self._to_axis_tuple(axis), "keepdim": keepdims}
+        if dtype is not None:
+            kwargs["dtype"] = self.sanitize_dtype(dtype)
         if out is not None:
-            out.copy_(result)
-            return out
-        return result
-
-    def trace(
-        self,
-        x: DenseArray,
-        offset: int = 0,
-        axis1: int = 0,
-        axis2: int = 1,
-        dtype: DType | None = None,
-    ) -> DenseArray:
-        """
-        Sum diagonal entries using PyTorch.
-
-        Input:
-            x: Dense backend tensor; offset, axis1, axis2, dtype: Diagonal controls.
-
-        Output:
-            Dense backend tensor or scalar tensor.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.diagonal.html
-        """
-        return self.sum(self.diagonal(x, offset=offset, axis1=axis1, axis2=axis2), dtype=dtype)
-
-    def argsort(
-        self,
-        x: DenseArray,
-        axis: int = -1,
-        stable: bool = False,
-        descending: bool = False,
-    ) -> DenseArray:
-        """
-        Return sorting indices using PyTorch.
-
-        Input:
-            x: Dense backend tensor; axis, stable, descending: Sorting controls.
-
-        Output:
-            Integer tensor of indices.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.argsort.html
-        """
-        return self.torch.argsort(x, dim=axis, stable=stable, descending=descending)
-
-    def sort(
-        self,
-        x: DenseArray,
-        axis: int = -1,
-        stable: bool = False,
-        descending: bool = False,
-        *,
-        out: tuple[DenseArray, DenseArray] | None = None,
-    ) -> DenseArray:
-        """
-        Sort tensor values using PyTorch.
-
-        Input:
-            x: Dense backend tensor; axis, stable, descending: Sorting controls.
-
-        Output:
-            Dense backend tensor of sorted values.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.sort.html
-        """
-        return self.torch.sort(x, dim=axis, stable=stable, descending=descending, out=out).values
-
-    def argmin(self, x: DenseArray, axis: int | None = None, keepdims: bool = False) -> DenseArray:
-        """
-        Return indices of minimum values using PyTorch.
-
-        Input:
-            x: Dense backend tensor; axis and keepdims: Reduction controls.
-
-        Output:
-            Integer tensor of indices.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.argmin.html
-        """
-        return self.torch.argmin(x, dim=axis, keepdim=keepdims)
-
-    def argmax(self, x: DenseArray, axis: int | None = None, keepdims: bool = False) -> DenseArray:
-        """
-        Return indices of maximum values using PyTorch.
-
-        Input:
-            x: Dense backend tensor; axis and keepdims: Reduction controls.
-
-        Output:
-            Integer tensor of indices.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.argmax.html
-        """
-        return self.torch.argmax(x, dim=axis, keepdim=keepdims)
-
-    def vdot(
-        self,
-        x: DenseArray,
-        y: DenseArray,
-        *,
-        out: DenseArray | None = None,
-    ) -> DenseArray:
-        """
-        Compute conjugating vector dot product using PyTorch.
-
-        Input:
-            x, y: Dense backend tensors.
-
-        Output:
-            Scalar tensor containing the vector dot product.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.vdot.html
-        """
-        x1 = x if x.ndim == 1 else self.torch.ravel(x)
-        y1 = y if y.ndim == 1 else self.torch.ravel(y)
-        if out is None:
-            return self.torch.vdot(x1, y1)
-        return self.torch.vdot(x1, y1, out=out)
+            kwargs["out"] = out
+        return self.torch.sum(x, **kwargs)
 
     def matmul(
         self,
         a: DenseArray,
         b: DenseArray,
+        backend_kwargs: dict[str, Any] | None = None,
         *,
         out: DenseArray | None = None,
     ) -> DenseArray:
-        """
-        Matrix-multiply tensors using PyTorch.
-
-        Input:
-            a, b: Dense backend tensors.
-
-        Output:
-            Dense backend tensor.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.matmul.html
-        """
-        if out is None:
-            return self.torch.matmul(a, b)
-        return self.torch.matmul(a, b, out=out)
+        kwargs = {} if backend_kwargs is None else dict(backend_kwargs)
+        if out is not None:
+            kwargs["out"] = out
+        return self.torch.matmul(a, b, **kwargs)
 
     def sparse_matmul(
         self,
@@ -1352,64 +408,19 @@ class TorchOps(BackendOps):
             return self.torch.sparse.mm(a, b[:, None], **kwargs)[:, 0]
         return self.torch.sparse.mm(a, b, **kwargs)
 
-    def kron(
-        self,
-        a: DenseArray,
-        b: DenseArray,
-        *,
-        out: DenseArray | None = None,
-    ) -> DenseArray:
-        """
-        Compute the Kronecker product using PyTorch.
-
-        Input:
-            a, b: Dense backend tensors.
-
-        Output:
-            Dense backend tensor.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.kron.html
-        """
-        return self.torch.kron(a, b, out=out)
-
-    def einsum(self, subscripts: str, *operands: DenseArray) -> DenseArray:
-        """
-        Evaluate an Einstein summation using PyTorch.
-
-        Input:
-            subscripts: Einsum expression; operands: Dense backend tensors.
-
-        Output:
-            Dense backend tensor.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.einsum.html
-        """
-        return self.torch.einsum(subscripts, *operands)
-
     def eigh(
         self,
         x: DenseArray,
+        backend_kwargs: dict[str, Any] | None = None,
         UPLO: Literal["L", "U"] = "L",
         *,
         out: tuple[DenseArray, DenseArray] | None = None,
     ) -> tuple[DenseArray, DenseArray]:
-        """
-        Compute Hermitian eigenvalues and eigenvectors using PyTorch.
-
-        Input:
-            x: Dense Hermitian or symmetric backend tensor.
-
-        Output:
-            Tuple of eigenvalues and eigenvectors.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.linalg.eigh.html
-        """
         if self.is_sparse(x):
             raise TypeError("eigh requires a dense array; sparse input is not supported.")
-        return self.torch.linalg.eigh(x, UPLO=UPLO, out=out)
+        kwargs = {} if backend_kwargs is None else dict(backend_kwargs)
+        kwargs.update(self._defined_kwargs(out=out))
+        return self.torch.linalg.eigh(x, UPLO=UPLO, **kwargs)
 
     def norm(
         self,
@@ -1421,18 +432,6 @@ class TorchOps(BackendOps):
         dtype: DType | None = None,
         out: DenseArray | None = None,
     ) -> DenseArray:
-        """
-        Compute vector or matrix norms using PyTorch.
-
-        Input:
-            x: Dense backend tensor; ord, axis, keepdims: Norm controls.
-
-        Output:
-            Dense backend tensor or scalar tensor.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.linalg.norm.html
-        """
         return self.torch.linalg.norm(
             x,
             ord=ord,
@@ -1446,97 +445,39 @@ class TorchOps(BackendOps):
         self,
         A: DenseArray,
         b: DenseArray,
+        backend_kwargs: dict[str, Any] | None = None,
         *,
         left: bool = True,
         out: DenseArray | None = None,
     ) -> DenseArray:
-        """
-        Solve a linear system using PyTorch.
-
-        Input:
-            A: Coefficient tensor; b: Right-hand side tensor.
-
-        Output:
-            Dense backend tensor solving ``A @ x = b``.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.linalg.solve.html
-        """
-        return self.torch.linalg.solve(A, b, left=left, out=out)
-
-    def eigvalsh(
-        self,
-        A: DenseArray,
-        UPLO: Literal["L", "U"] = "L",
-        *,
-        out: DenseArray | None = None,
-    ) -> DenseArray:
-        """
-        Compute Hermitian eigenvalues using PyTorch.
-
-        Input:
-            A: Dense Hermitian or symmetric backend tensor.
-
-        Output:
-            Dense backend tensor of eigenvalues.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.linalg.eigvalsh.html
-        """
-        return self.torch.linalg.eigvalsh(A, UPLO=UPLO, out=out)
+        kwargs = {} if backend_kwargs is None else dict(backend_kwargs)
+        kwargs.update(self._defined_kwargs(out=out))
+        return self.torch.linalg.solve(A, b, left=left, **kwargs)
 
     def svd(
         self,
         A: DenseArray,
         full_matrices: bool = True,
-        compute_uv: bool = True,
-        hermitian: bool = False,
+        backend_kwargs: dict[str, Any] | None = None,
         *,
         driver: str | None = None,
         out: DenseArray | tuple[DenseArray, DenseArray, DenseArray] | None = None,
     ) -> DenseArray | tuple[DenseArray, DenseArray, DenseArray]:
-        """
-        Compute singular value decomposition using PyTorch.
-
-        Input:
-            A: Dense backend tensor; full_matrices, compute_uv, hermitian: SVD controls.
-
-        Output:
-            Singular values or tuple ``(U, S, Vh)``.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.linalg.svd.html
-
-        Backend-specific notes:
-            PyTorch does not expose a ``hermitian`` option for SVD. When
-            ``compute_uv`` is false, this delegates to ``torch.linalg.svdvals``.
-        """
-        if hermitian:
-            raise NotImplementedError("PyTorch svd does not expose a hermitian option.")
-        if not compute_uv:
-            return self.torch.linalg.svdvals(A, driver=driver, out=out)
-        return self.torch.linalg.svd(A, full_matrices=full_matrices, driver=driver, out=out)
+        kwargs = {} if backend_kwargs is None else dict(backend_kwargs)
+        kwargs.update(self._defined_kwargs(driver=driver, out=out))
+        return self.torch.linalg.svd(A, full_matrices=full_matrices, **kwargs)
 
     def cholesky(
         self,
         A: DenseArray,
+        backend_kwargs: dict[str, Any] | None = None,
         *,
         upper: bool = False,
         out: DenseArray | None = None,
     ) -> DenseArray:
-        """
-        Compute a Cholesky factorization using PyTorch.
-
-        Input:
-            A: Positive-definite dense backend tensor.
-
-        Output:
-            Dense backend tensor containing the Cholesky factor.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.linalg.cholesky.html
-        """
-        return self.torch.linalg.cholesky(A, upper=upper, out=out)
+        kwargs = {} if backend_kwargs is None else dict(backend_kwargs)
+        kwargs.update(self._defined_kwargs(out=out))
+        return self.torch.linalg.cholesky(A, upper=upper, **kwargs)
 
     def logsumexp(
         self,
@@ -1583,187 +524,17 @@ class TorchOps(BackendOps):
             return out
         return result
 
-    def exp(
-        self,
-        x: DenseArray,
-        *,
-        out: DenseArray | None = None,
-    ) -> DenseArray:
-        """
-        Compute elementwise exponential using PyTorch.
-
-        Input:
-            x: Dense backend tensor.
-
-        Output:
-            Dense backend tensor.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.exp.html
-        """
-        if out is None:
-            return self.torch.exp(x)
-        return self.torch.exp(x, out=out)
-
-    def log(
-        self,
-        x: DenseArray,
-        *,
-        out: DenseArray | None = None,
-    ) -> DenseArray:
-        """
-        Compute elementwise natural logarithm using PyTorch.
-
-        Input:
-            x: Dense backend tensor.
-
-        Output:
-            Dense backend tensor.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.log.html
-        """
-        if out is None:
-            return self.torch.log(x)
-        return self.torch.log(x, out=out)
-
     def where(
         self,
         condition: DenseArray | bool,
-        x: ArrayLike | None = None,
-        y: ArrayLike | None = None,
+        x: DenseArray,
+        y: DenseArray,
         *,
         out: DenseArray | None = None,
     ) -> DenseArray:
-        """
-        Select values conditionally using PyTorch.
-
-        Input:
-            condition: Boolean tensor or scalar; x, y: Values to select.
-
-        Output:
-            Dense backend tensor.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.where.html
-        """
-        if x is None and y is None:
-            return self.torch.where(condition)
-        if x is None or y is None:
-            raise TypeError("where requires both x and y when either is provided.")
         if out is None:
             return self.torch.where(condition, x, y)
         return self.torch.where(condition, x, y, out=out)
-
-    def maximum(
-        self,
-        x: ArrayLike,
-        y: ArrayLike,
-        *,
-        out: DenseArray | None = None,
-    ) -> DenseArray:
-        """
-        Compute elementwise maximum using PyTorch.
-
-        Input:
-            x, y: Array-like operands.
-
-        Output:
-            Dense backend tensor.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.maximum.html
-        """
-        y = y if isinstance(y, self.torch.Tensor) else self.asarray(y, dtype=x.dtype, device=x.device)
-        if out is None:
-            return self.torch.maximum(x, y)
-        return self.torch.maximum(
-            x,
-            y,
-            out=out,
-        )
-
-    def minimum(
-        self,
-        x: ArrayLike,
-        y: ArrayLike,
-        *,
-        out: DenseArray | None = None,
-    ) -> DenseArray:
-        """
-        Compute elementwise minimum using PyTorch.
-
-        Input:
-            x, y: Array-like operands.
-
-        Output:
-            Dense backend tensor.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.minimum.html
-        """
-        y = y if isinstance(y, self.torch.Tensor) else self.asarray(y, dtype=x.dtype, device=x.device)
-        if out is None:
-            return self.torch.minimum(x, y)
-        return self.torch.minimum(
-            x,
-            y,
-            out=out,
-        )
-
-    def clip(
-        self,
-        x: DenseArray,
-        a_min: ArrayLike | None = None,
-        a_max: ArrayLike | None = None,
-        *,
-        out: DenseArray | None = None,
-    ) -> DenseArray:
-        """
-        Clip tensor values using PyTorch.
-
-        Input:
-            x: Dense backend tensor; a_min, a_max: Lower and upper bounds.
-
-        Output:
-            Dense backend tensor.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.clamp.html
-        """
-        if out is None:
-            return self.torch.clamp(x, min=a_min, max=a_max)
-        return self.torch.clamp(x, min=a_min, max=a_max, out=out)
-
-    def isfinite(self, x: DenseArray) -> DenseArray:
-        """
-        Test finiteness elementwise using PyTorch.
-
-        Input:
-            x: Dense backend tensor.
-
-        Output:
-            Boolean dense backend tensor.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.isfinite.html
-        """
-        return self.torch.isfinite(x)
-
-    def isnan(self, x: DenseArray) -> DenseArray:
-        """
-        Test NaN values elementwise using PyTorch.
-
-        Input:
-            x: Dense backend tensor.
-
-        Output:
-            Boolean dense backend tensor.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.isnan.html
-        """
-        return self.torch.isnan(x)
 
     def concatenate(
         self,
@@ -1773,130 +544,11 @@ class TorchOps(BackendOps):
         *,
         out: DenseArray | None = None,
     ) -> DenseArray:
-        """
-        Concatenate tensors using PyTorch.
-
-        Input:
-            arrays: Sequence of dense backend tensors; axis: Concatenation axis; dtype: Optional cast.
-
-        Output:
-            Dense backend tensor.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.cat.html
-        """
-        arrays = tuple(arrays)
         if out is None:
-            result = self.torch.cat(arrays, dim=axis)
+            result = self.torch.cat(tuple(arrays), dim=axis)
         else:
-            result = self.torch.cat(arrays, dim=axis, out=out)
+            result = self.torch.cat(tuple(arrays), dim=axis, out=out)
         return self.astype(result, dtype) if dtype is not None else result
-
-    def take(
-        self,
-        x: DenseArray,
-        indices: DenseArray,
-        axis: int | None = None,
-        *,
-        out: DenseArray | None = None,
-    ) -> DenseArray:
-        """
-        Take tensor elements by index using PyTorch.
-
-        Input:
-            x: Dense backend tensor; indices: Integer indices; axis: Optional selection axis.
-
-        Output:
-            Dense backend tensor.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.take.html
-        """
-        if axis is None:
-            result = self.torch.take(x, indices)
-            if out is not None:
-                out.copy_(result)
-                return out
-            return result
-        return self.torch.index_select(x, dim=axis, index=indices, out=out)
-
-    def diag(
-        self,
-        x: DenseArray,
-        k: int = 0,
-        *,
-        out: DenseArray | None = None,
-    ) -> DenseArray:
-        """
-        Extract or construct a diagonal tensor using PyTorch.
-
-        Input:
-            x: Dense backend tensor; k: Diagonal offset.
-
-        Output:
-            Dense backend tensor.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.diag.html
-        """
-        return self.torch.diag(x, diagonal=k, out=out)
-
-    def diagonal(self, x: DenseArray, offset: int = 0, axis1: int = 0, axis2: int = 1) -> DenseArray:
-        """
-        Return a tensor diagonal using PyTorch.
-
-        Input:
-            x: Dense backend tensor; offset, axis1, axis2: Diagonal controls.
-
-        Output:
-            Dense backend tensor view or value.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.diagonal.html
-        """
-        return self.torch.diagonal(x, offset=offset, dim1=axis1, dim2=axis2)
-
-    def tril(
-        self,
-        x: DenseArray,
-        k: int = 0,
-        *,
-        out: DenseArray | None = None,
-    ) -> DenseArray:
-        """
-        Return the lower triangular part using PyTorch.
-
-        Input:
-            x: Dense backend tensor; k: Diagonal offset.
-
-        Output:
-            Dense backend tensor.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.tril.html
-        """
-        return self.torch.tril(x, diagonal=k, out=out)
-
-    def triu(
-        self,
-        x: DenseArray,
-        k: int = 0,
-        *,
-        out: DenseArray | None = None,
-    ) -> DenseArray:
-        """
-        Return the upper triangular part using PyTorch.
-
-        Input:
-            x: Dense backend tensor; k: Diagonal offset.
-
-        Output:
-            Dense backend tensor.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.triu.html
-        """
-        return self.torch.triu(x, diagonal=k, out=out)
 
     def index_set(self, x: DenseArray, index: Index, values: DenseArray, *, copy: bool = True):
         """
@@ -2105,21 +757,6 @@ class TorchOps(BackendOps):
             flow primitive.
         """
         return true_fun(*operands) if bool(pred) else false_fun(*operands)
-
-    def allclose(self, a: DenseArray, b: DenseArray, rtol: float = 1e-5, atol: float = 1e-8, equal_nan: bool = False) -> bool:
-        """
-        Compare dense tensors elementwise within tolerances using PyTorch.
-
-        Input:
-            a, b: Dense backend tensors; rtol, atol, equal_nan: Comparison controls.
-
-        Output:
-            Boolean indicating whether tensors are close.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.allclose.html
-        """
-        return bool(self.torch.allclose(a, b, rtol=rtol, atol=atol, equal_nan=equal_nan))
 
     def allclose_sparse(self, a: SparseArray, b: SparseArray, rtol: float = 1e-5, atol: float = 1e-8) -> bool:
         """
