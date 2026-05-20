@@ -19,6 +19,9 @@ def test_expected_names_are_exported():
     sc = importlib.import_module("spacecore")
     expected = {
         "Context", "BackendOps", "NumpyOps", "DenseLinOp", "SparseLinOp",
+        "ScaledLinOp", "SumLinOp", "ComposedLinOp", "ZeroLinOp",
+        "IdentityLinOp", "MatrixFreeLinOp", "make_sum", "make_scaled",
+        "make_composed",
         "BlockDiagonalLinOp", "StackedLinOp", "SumToSingleLinOp",
         "VectorSpace", "HermitianSpace", "ProductSpace", "Space",
         "DenseArray", "SparseArray", "ArrayLike",

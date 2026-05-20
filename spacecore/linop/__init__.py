@@ -1,12 +1,32 @@
 from ._base import LinOp
+from ._algebra import (
+    ComposedLinOp,
+    IdentityLinOp,
+    MatrixFreeLinOp,
+    ScaledLinOp,
+    SumLinOp,
+    ZeroLinOp,
+    make_composed,
+    make_scaled,
+    make_sum,
+)
 from ._dense import DenseLinOp
 from ._sparse import SparseLinOp
 from .product import ProductLinOp, StackedLinOp, SumToSingleLinOp, BlockDiagonalLinOp
 
 __all__ = [
     "LinOp",
+    "ComposedLinOp",
     "DenseLinOp",
+    "IdentityLinOp",
+    "MatrixFreeLinOp",
+    "ScaledLinOp",
     "SparseLinOp",
+    "SumLinOp",
+    "ZeroLinOp",
+    "make_composed",
+    "make_scaled",
+    "make_sum",
     "ProductLinOp",
     "SumToSingleLinOp",
     "BlockDiagonalLinOp",

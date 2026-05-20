@@ -6,7 +6,23 @@ try:
     from .backend import TorchOps as TorchOps
 except ImportError:
     pass
-from .linop import DenseLinOp, SparseLinOp, BlockDiagonalLinOp, SumToSingleLinOp, StackedLinOp, LinOp
+from .linop import (
+    BlockDiagonalLinOp,
+    ComposedLinOp,
+    DenseLinOp,
+    IdentityLinOp,
+    LinOp,
+    MatrixFreeLinOp,
+    ScaledLinOp,
+    SparseLinOp,
+    StackedLinOp,
+    SumLinOp,
+    SumToSingleLinOp,
+    ZeroLinOp,
+    make_composed,
+    make_scaled,
+    make_sum,
+)
 from .space import (
     BackendCheck,
     DTypeCheck,
@@ -42,8 +58,17 @@ __all__ = [
     "NumpyOps",
 
     "LinOp",
+    "ComposedLinOp",
     "DenseLinOp",
+    "IdentityLinOp",
+    "MatrixFreeLinOp",
+    "ScaledLinOp",
     "SparseLinOp",
+    "SumLinOp",
+    "ZeroLinOp",
+    "make_composed",
+    "make_scaled",
+    "make_sum",
     "BlockDiagonalLinOp",
     "SumToSingleLinOp",
     "StackedLinOp",
