@@ -87,6 +87,22 @@ class SparseLinOp(LinOp):
             return x1 if self._dom_is_flat else x1.reshape(self.dom.shape)
         return self.dom.unflatten(x1)
 
+    def to_dense(self) -> DenseArray:
+        """
+        Materialize the stored sparse matrix as a dense operator tensor.
+
+        The returned array has shape ``self.codomain.shape + self.domain.shape``.
+        """
+        if hasattr(self.A, "toarray"):
+            dense = self.A.toarray()
+        elif hasattr(self.A, "todense"):
+            dense = self.A.todense()
+        elif hasattr(self.A, "to_dense"):
+            dense = self.A.to_dense()
+        else:
+            dense = super().to_dense().reshape((self._cod_size, self._dom_size))
+        return self.ops.reshape(dense, tuple(self.codomain.shape) + tuple(self.domain.shape))
+
     def __eq__(self, x: Any) -> bool:
         if type(x) is type(self):
             return (self.dom == x.dom

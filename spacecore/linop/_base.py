@@ -163,10 +163,10 @@ class LinOp(ContextBound, Generic[Domain, Codomain]):
         already store the matrix should override this method for efficiency.
         """
         domain_size = prod(self.domain.shape)
-        zero = self.ops.zeros((domain_size,), dtype=self.dtype)
+        eye = self.ops.eye(domain_size, dtype=self.dtype)
         columns = []
         for i in range(domain_size):
-            basis_vector = self.ops.index_set(zero, i, 1, copy=True)
+            basis_vector = eye[:, i]
             x = self.domain.unflatten(basis_vector)
             y = self.apply(x)
             columns.append(self.codomain.flatten(y))
