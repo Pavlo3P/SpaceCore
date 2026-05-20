@@ -375,6 +375,14 @@ class ZeroLinOp(LinOp[Domain, Codomain]):
             self.codomain._check_member(y)
         return self.domain.zeros()
 
+    def to_dense(self) -> Any:
+        """
+        Return the dense tensor representation of the zero map.
+
+        The returned array has shape ``self.codomain.shape + self.domain.shape``.
+        """
+        return self.ops.zeros(tuple(self.codomain.shape) + tuple(self.domain.shape), dtype=self.dtype)
+
     def __eq__(self, other: Any) -> bool:
         if type(other) is type(self):
             return self.domain == other.domain and self.codomain == other.codomain
@@ -421,6 +429,18 @@ class IdentityLinOp(LinOp[Domain, Domain]):
         if self._enable_checks:
             self.codomain._check_member(x)
         return x
+
+    def to_dense(self) -> Any:
+        """
+        Return the dense tensor representation of this identity map.
+
+        The returned array has shape ``self.codomain.shape + self.domain.shape``.
+        """
+        size = 1
+        for dim in self.domain.shape:
+            size *= dim
+        eye = self.ops.eye(size, dtype=self.dtype)
+        return self.ops.reshape(eye, tuple(self.codomain.shape) + tuple(self.domain.shape))
 
     def __eq__(self, other: Any) -> bool:
         if type(other) is type(self):

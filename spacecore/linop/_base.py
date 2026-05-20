@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from abc import abstractmethod
+from math import prod
 from numbers import Number
 from typing import Any, Generic, TypeVar
 
@@ -146,6 +147,28 @@ class LinOp(ContextBound, Generic[Domain, Codomain]):
     def adjoint(self) -> LinOp:
         """Return the Hermitian-adjoint view of this linear operator."""
         return self.H
+
+    def to_dense(self) -> Any:
+        """
+        Materialize this operator as a dense backend array.
+
+        The returned array has shape ``self.codomain.shape + self.domain.shape``.
+        The default implementation applies the operator to each standard basis
+        vector of the domain, stacks the flattened outputs as matrix columns,
+        and reshapes the result back to tensor-operator form. Subclasses that
+        already store the matrix should override this method for efficiency.
+        """
+        domain_size = prod(self.domain.shape)
+        codomain_size = prod(self.codomain.shape)
+        zero = self.ops.zeros((domain_size,), dtype=self.dtype)
+        columns = []
+        for i in range(domain_size):
+            basis_vector = self.ops.index_set(zero, i, 1, copy=True)
+            x = self.domain.unflatten(basis_vector)
+            y = self.apply(x)
+            columns.append(self.codomain.flatten(y))
+        matrix = self.ops.stack(tuple(columns), axis=1)
+        return self.ops.reshape(matrix, tuple(self.codomain.shape) + tuple(self.domain.shape))
 
     def assert_domain(self, x: Any) -> None:
         self.dom.check_member(x)
