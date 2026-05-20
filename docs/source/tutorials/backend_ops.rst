@@ -52,6 +52,14 @@ What BackendOps signifies
 internals. It mostly wraps NumPy-like methods, while normalizing the minimal
 signatures that SpaceCore relies on.
 
+Common dense-array methods are implemented once in ``BackendOps`` by delegating
+to an Array API compatible ``xp`` namespace. NumPy and PyTorch use
+``array-api-compat`` wrappers, while JAX uses ``jax.numpy``. Concrete backend
+classes keep behavior that is genuinely backend-specific, such as dtype
+sanitation, sparse conversion, indexed updates, device/autograd controls, and
+control-flow primitives. ``ops.xp`` is available as an escape hatch, but
+portable SpaceCore code should prefer explicit ``ops`` methods.
+
 For example, NumPy and JAX expose different optional arguments for matrix
 multiplication, but SpaceCore's portable interface only needs the common core:
 
