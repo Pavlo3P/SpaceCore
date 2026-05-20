@@ -128,6 +128,8 @@ def make_scaled(scalar: Any, op: LinOp) -> LinOp:
         return ZeroLinOp(op.domain, op.codomain, op.ctx)
     if _is_one_scalar(scalar):
         return op
+    if isinstance(op, ZeroLinOp):
+        return op
     if isinstance(op, ScaledLinOp):
         return make_scaled(scalar * op.scalar, op.op)
     return ScaledLinOp(scalar, op)
