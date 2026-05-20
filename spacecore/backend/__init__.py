@@ -3,6 +3,11 @@ from ._ops import BackendOps
 from ._family import BackendFamily
 from .jax import JaxOps, jax_pytree_class
 from .numpy import NumpyOps
+try:
+    from .cupy import CuPyOps as CuPyOps
+except ModuleNotFoundError as exc:
+    if exc.name != "cupy":
+        raise
 
 try:
     from .torch import TorchOps as TorchOps
@@ -19,5 +24,7 @@ __all__ = [
     "NumpyOps",
 ]
 
+if "CuPyOps" in globals():
+    __all__.append("CuPyOps")
 if "TorchOps" in globals():
     __all__.append("TorchOps")

@@ -2,7 +2,7 @@ import importlib
 import tomllib
 from pathlib import Path
 
-from tests._helpers import has_jax, has_torch
+from tests._helpers import has_cupy, has_jax, has_torch
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -31,6 +31,8 @@ def test_expected_names_are_exported():
     }
     if has_jax():
         expected |= {"JaxOps", "jax_pytree_class"}
+    if has_cupy():
+        expected |= {"CuPyOps"}
     if has_torch():
         expected |= {"TorchOps"}
     assert expected.issubset(set(sc.__all__))
@@ -45,6 +47,8 @@ def test_top_level_objects_match_source_modules():
 
     assert sc.Context is backend.Context
     assert sc.NumpyOps is backend.NumpyOps
+    if has_cupy():
+        assert sc.CuPyOps is backend.CuPyOps
     if has_torch():
         assert sc.TorchOps is backend.TorchOps
     assert sc.Space is space.Space

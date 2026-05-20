@@ -3,7 +3,8 @@ import importlib
 import numpy as np
 import pytest
 
-from tests._helpers import has_jax, has_torch, jax_complex_dtype, to_numpy, torch_complex_dtype
+from tests._helpers import has_cupy, has_jax, has_torch, jax_complex_dtype, to_numpy
+from tests._helpers import torch_complex_dtype
 
 
 def _check_vdot_conjugates_first_argument(ops, dtype):
@@ -31,3 +32,10 @@ def test_torch_vdot_conjugates_first_argument():
     sc = importlib.import_module("spacecore")
 
     _check_vdot_conjugates_first_argument(sc.TorchOps(), torch_complex_dtype())
+
+
+@pytest.mark.skipif(not has_cupy(), reason="cupy is not installed")
+def test_cupy_vdot_conjugates_first_argument():
+    sc = importlib.import_module("spacecore")
+
+    _check_vdot_conjugates_first_argument(sc.CuPyOps(), np.complex128)

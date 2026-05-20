@@ -7,6 +7,10 @@ from warnings import warn
 from ..types import DType
 from ..backend import Context, NumpyOps, JaxOps, BackendFamily, BackendOps
 try:
+    from ..backend import CuPyOps
+except ImportError:
+    pass
+try:
     from ..backend import TorchOps
 except ImportError:
     pass
@@ -98,6 +102,8 @@ class Contextual:
             self._backend_key(NumpyOps): NumpyOps,
             self._backend_key(JaxOps): JaxOps,
         }
+        if "CuPyOps" in globals():
+            self._available_ops[self._backend_key(CuPyOps)] = CuPyOps
         if "TorchOps" in globals():
             self._available_ops[self._backend_key(TorchOps)] = TorchOps
 

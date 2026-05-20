@@ -2,7 +2,7 @@ import importlib
 import numpy as np
 import pytest
 
-from tests._helpers import has_torch
+from tests._helpers import has_cupy, has_torch
 
 
 def test_builtin_backends_are_usable():
@@ -73,3 +73,11 @@ def test_torch_backend_aliases_resolve_when_available():
     assert isinstance(sc.TorchOps(), sc.BackendOps)
     assert sc.VectorSpace((1,), "torch").ctx.ops.family == "torch"
     assert sc.VectorSpace((1,), "pytorch").ctx.ops.family == "torch"
+
+
+@pytest.mark.skipif(not has_cupy(), reason="cupy is not installed")
+def test_cupy_backend_alias_resolves_when_available():
+    sc = importlib.import_module("spacecore")
+
+    assert isinstance(sc.CuPyOps(), sc.BackendOps)
+    assert sc.VectorSpace((1,), "cupy").ctx.ops.family == "cupy"

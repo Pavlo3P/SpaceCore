@@ -3,6 +3,10 @@ __version__ = "0.1.4"
 
 from .backend import Context, BackendOps, JaxOps, NumpyOps, jax_pytree_class
 try:
+    from .backend import CuPyOps as CuPyOps
+except ImportError:
+    pass
+try:
     from .backend import TorchOps as TorchOps
 except ImportError:
     pass
@@ -104,3 +108,5 @@ __all__ = [
 
 if "TorchOps" in globals():
     __all__.append("TorchOps")
+if "CuPyOps" in globals():
+    __all__.append("CuPyOps")
