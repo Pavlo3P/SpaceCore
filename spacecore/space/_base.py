@@ -16,6 +16,11 @@ class Space(ContextBound):
     A Space owns the *geometry* (inner product, norm) and the basic linear
     structure (add/scale/axpy) for its elements.
 
+    Membership validation is exposed through ``check_member``, which respects
+    the space's ``enable_checks`` policy. Internal code paths that have already
+    checked that policy may call ``_check_member`` to run the concrete checks
+    exactly once.
+
     Solvers should use only this API.
     """
 

@@ -88,6 +88,14 @@ class DenseLinOp(LinOp[VectorSpace, VectorSpace]):
             return x1 if self._dom_is_flat else x1.reshape(self.dom.shape)
         return self.dom.unflatten(x1)
 
+    def to_dense(self) -> DenseArray:
+        """
+        Return the stored dense tensor representation of this operator.
+
+        The returned array has shape ``self.codomain.shape + self.domain.shape``.
+        """
+        return self.A
+
     def __eq__(self, x: Any) -> bool:
         if type(x) is type(self):
             return (self.dom == x.dom
