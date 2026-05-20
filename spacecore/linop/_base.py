@@ -153,12 +153,14 @@ class LinOp(ContextBound, Generic[Domain, Codomain]):
     def assert_codomain(self, y: Any) -> None:
         self.cod.check_member(y)
 
-    def __eq__(self, x: Any) -> bool:
-        raise NotImplementedError()
+    def __eq__(self, other: Any) -> bool:
+        return NotImplemented
 
+    @abstractmethod
     def tree_flatten(self):
-        raise NotImplementedError()
+        ...
 
     @classmethod
+    @abstractmethod
     def tree_unflatten(cls, aux, children):
-        raise NotImplementedError()
+        ...
