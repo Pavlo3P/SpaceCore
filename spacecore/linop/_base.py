@@ -76,7 +76,11 @@ class LinOp(ContextBound, Generic[Domain, Codomain]):
         """Hermitian-adjoint view of this linear operator."""
         from ._algebra import _AdjointViewLinOp
 
-        return _AdjointViewLinOp(self)
+        view = getattr(self, "_adjoint_view", None)
+        if view is None:
+            view = _AdjointViewLinOp(self)
+            self._adjoint_view = view
+        return view
 
     def __add__(self, other: Any) -> LinOp:
         """Return the lazy sum ``self + other`` of two compatible operators."""
@@ -159,7 +163,6 @@ class LinOp(ContextBound, Generic[Domain, Codomain]):
         already store the matrix should override this method for efficiency.
         """
         domain_size = prod(self.domain.shape)
-        codomain_size = prod(self.codomain.shape)
         zero = self.ops.zeros((domain_size,), dtype=self.dtype)
         columns = []
         for i in range(domain_size):
