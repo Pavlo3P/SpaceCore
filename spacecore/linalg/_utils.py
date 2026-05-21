@@ -82,3 +82,33 @@ def default_initial_vector(A: LinOp) -> Any:
     size = prod(A.domain.shape)
     flat = A.ops.ones((size,), dtype=A.dtype) / A.ops.sqrt(A.ops.asarray(float(size)))
     return A.domain.unflatten(flat)
+
+
+def summarize_value(value: Any) -> str:
+    """Return a compact representation for arrays, scalars, and pytrees."""
+    shape = getattr(value, "shape", None)
+    dtype = getattr(value, "dtype", None)
+    if shape is not None:
+        shape_text = tuple(shape)
+        if shape_text == ():
+            dtype_text = str(dtype)
+            if dtype_text in {"bool", "bool_", "torch.bool"}:
+                try:
+                    return repr(bool(value))
+                except Exception:
+                    return repr(value)
+            try:
+                return f"{float(value):.6g}"
+            except Exception:
+                return repr(value)
+        dtype_text = "" if dtype is None else f", dtype={dtype}"
+        return f"<array shape={shape_text}{dtype_text}>"
+    if isinstance(value, tuple):
+        return "(" + ", ".join(summarize_value(part) for part in value) + ")"
+    return repr(value)
+
+
+def result_repr(name: str, fields: dict[str, Any]) -> str:
+    """Return a compact result-object representation."""
+    body = ", ".join(f"{key}={summarize_value(value)}" for key, value in fields.items())
+    return f"{name}({body})"

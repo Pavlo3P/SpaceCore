@@ -5,7 +5,7 @@ from typing import Any, NamedTuple
 from ..linop import LinOp
 from ._utils import DEFAULT_CONVERGENCE_CHECK_INTERVAL, check_interval, check_maxiter
 from ._utils import default_initial_vector, is_converged, normalize, require_linop
-from ._utils import require_square, should_check_iteration
+from ._utils import require_square, result_repr, should_check_iteration
 
 
 class PowerIterationResult(NamedTuple):
@@ -16,6 +16,19 @@ class PowerIterationResult(NamedTuple):
     converged: Any
     num_iters: Any
     residual_norm: Any
+
+    def __repr__(self) -> str:
+        """Return a compact summary without printing the full eigenvector."""
+        return result_repr(
+            "PowerIterationResult",
+            {
+                "converged": self.converged,
+                "num_iters": self.num_iters,
+                "eigenvalue": self.eigenvalue,
+                "residual_norm": self.residual_norm,
+                "eigenvector": self.eigenvector,
+            },
+        )
 
 
 def power_iteration(

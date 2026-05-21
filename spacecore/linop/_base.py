@@ -43,6 +43,22 @@ class LinOp(ContextBound, Generic[Domain, Codomain]):
         """Codomain space of this linear operator."""
         return self.cod
 
+    @property
+    def A(self) -> Any:
+        """
+        Native numerical representation of this operator.
+
+        Concrete subclasses may choose the representation that best matches
+        their storage model: for example, dense operators return a dense array
+        while sparse operators return their sparse matrix. Matrix-free or lazy
+        operators generally do not have such a representation and should leave
+        this property unimplemented. Use :meth:`to_dense` when a dense tensor
+        materialization is explicitly required.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not define a native numerical representation."
+        )
+
     @abstractmethod
     def apply(self, x: Any) -> Any:
         """

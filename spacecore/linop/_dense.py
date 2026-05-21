@@ -40,7 +40,7 @@ class DenseLinOp(LinOp[VectorSpace, VectorSpace]):
         if tuple(A.shape) != expected:
             raise TypeError(f"Expected A.shape == cod.shape + dom.shape == {expected}, got {A.shape}")
 
-        self.A = A  # No dtype conversion
+        self._A = A  # No dtype conversion
         self._cod_size = prod(self.cod.shape)
         self._dom_size = prod(self.dom.shape)
         self._matrix_shape = (self._cod_size, self._dom_size)
@@ -55,6 +55,16 @@ class DenseLinOp(LinOp[VectorSpace, VectorSpace]):
         if not self._enable_checks:
             self.apply = self._apply_unchecked
             self.rapply = self._rapply_unchecked
+
+    @property
+    def A(self) -> DenseArray:
+        """
+        Stored dense tensor representation of this operator.
+
+        The returned array has shape ``self.codomain.shape + self.domain.shape``
+        and is the same object supplied at construction.
+        """
+        return self._A
 
     def apply(self, x: DenseArray) -> DenseArray:
         """

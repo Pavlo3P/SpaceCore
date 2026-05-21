@@ -37,7 +37,7 @@ class SparseLinOp(LinOp):
         if tuple(A.shape) != expected:
             raise TypeError(f"Expected A.shape == (prod(cod.shape), prod(dom.shape)) == {expected}, got {A.shape}")
 
-        self.A = A  # No dtype conversion
+        self._A = A  # No dtype conversion
         self._cod_size = expected[0]
         self._dom_size = expected[1]
         dtype = self.ops.get_dtype(self.A)
@@ -51,6 +51,17 @@ class SparseLinOp(LinOp):
         if not self._enable_checks:
             self.apply = self._apply_unchecked
             self.rapply = self._rapply_unchecked
+
+    @property
+    def A(self) -> SparseArray:
+        """
+        Stored sparse matrix representation of this operator.
+
+        The returned sparse matrix has shape
+        ``(prod(self.codomain.shape), prod(self.domain.shape))`` and is the
+        same object supplied at construction.
+        """
+        return self._A
 
     def apply(self, x: DenseArray) -> DenseArray:
         """
