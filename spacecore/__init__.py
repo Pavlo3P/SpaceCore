@@ -27,6 +27,15 @@ from .linop import (
     make_scaled,
     make_sum,
 )
+from .linalg import (
+    CGResult,
+    LSQRResult,
+    PowerIterationResult,
+    cg,
+    lsqr,
+    power_iteration,
+    stochastic_lanczos,
+)
 from .space import (
     BackendCheck,
     DTypeCheck,
@@ -76,6 +85,14 @@ __all__ = [
     "BlockDiagonalLinOp",
     "SumToSingleLinOp",
     "StackedLinOp",
+
+    "CGResult",
+    "LSQRResult",
+    "PowerIterationResult",
+    "cg",
+    "lsqr",
+    "power_iteration",
+    "stochastic_lanczos",
 
     "BackendCheck",
     "DTypeCheck",
