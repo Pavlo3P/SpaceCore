@@ -3,6 +3,7 @@ from typing import Any
 
 from ._ops import BackendOps
 from ..types import DenseArray, SparseArray, DType, ArrayLike
+from .._contextual import normalize_ops
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,8 +53,11 @@ class Context:
         TypeError
             If ``ops`` is not a :class:`BackendOps` instance.
         """
-        if not isinstance(self.ops, BackendOps):
-            raise TypeError("ops must be a BackendOps")
+        try:
+            ops = normalize_ops(self.ops)
+        except TypeError:
+            raise TypeError("Unknown ops type.")
+        object.__setattr__(self, "ops", ops)
 
         sanitized = self.ops.sanitize_dtype(self.dtype)
         object.__setattr__(self, "dtype", sanitized)

@@ -1,9 +1,19 @@
-from typing import Any
+from __future__ import annotations
 
-from ..backend import Context, BackendOps
+from typing import TYPE_CHECKING, Any
+
+from ..backend._family import BackendFamily
+from ..backend._ops import BackendOps
 from ._policies import ContextPolicy, DtypePreservePolicy
-from ._state import _contextual
-from ..backend import BackendFamily
+
+if TYPE_CHECKING:
+    from ..backend._context import Context
+
+
+def _state():
+    from ._state import _contextual
+
+    return _contextual
 
 
 def set_context(
@@ -33,8 +43,8 @@ def set_context(
     Objects created without an explicit context use this default context.
     Existing spaces, operators, and contexts are not modified.
     """
-    ctx = _contextual.normalize_context(ctx, dtype=dtype, enable_checks=enable_checks)
-    _contextual.default_ctx = ctx
+    ctx = _state().normalize_context(ctx, dtype=dtype, enable_checks=enable_checks)
+    _state().default_ctx = ctx
 
 
 def get_context() -> Context:
@@ -47,7 +57,7 @@ def get_context() -> Context:
         The default context used by constructors when no explicit context can
         be inferred or provided.
     """
-    return _contextual.default_ctx
+    return _state().default_ctx
 
 
 def resolve_context_priority(
@@ -78,7 +88,7 @@ def resolve_context_priority(
     User code should call this function instead of accessing the internal
     context manager singleton.
     """
-    return _contextual.resolve_context_priority(priority_ctx, *other_ctx)
+    return _state().resolve_context_priority(priority_ctx, *other_ctx)
 
 
 def register_ops(ops: type[BackendOps]) -> type[BackendOps]:
@@ -113,7 +123,7 @@ def register_ops(ops: type[BackendOps]) -> type[BackendOps]:
         class MyOps(BackendOps):
             ...
     """
-    return _contextual.register_ops(ops)
+    return _state().register_ops(ops)
 
 
 def normalize_context(
@@ -122,7 +132,16 @@ def normalize_context(
     enable_checks: bool | None = None,
 ) -> Context:
     """Normalize a context specification through the process-wide state."""
-    return _contextual.normalize_context(ctx, dtype=dtype, enable_checks=enable_checks)
+    return _state().normalize_context(ctx, dtype=dtype, enable_checks=enable_checks)
+
+
+def normalize_ops(
+    ops: str | BackendFamily | BackendOps | type[BackendOps] | Context
+) -> BackendOps:
+    """Normalize backend operations through the process-wide state."""
+    if isinstance(ops, BackendOps):
+        return ops
+    return _state().get_ops(ops)
 
 
 def enforce_convert_policy(
@@ -130,7 +149,7 @@ def enforce_convert_policy(
     to: Context | BackendFamily | str | None = None,
 ) -> tuple[Any, Context]:
     """Resolve a conversion target and enforce the configured policy."""
-    return _contextual.enforce_convert_policy(x, to)
+    return _state().enforce_convert_policy(x, to)
 
 
 def set_resolution_policy(policy: ContextPolicy | str | None = None) -> None:
@@ -156,7 +175,7 @@ def set_resolution_policy(policy: ContextPolicy | str | None = None) -> None:
     * ``"error"``: reject backend conversion.
     * ``"silent"``: allow backend conversion without warning.
     """
-    _contextual.resolution_policy = policy
+    _state().resolution_policy = policy
 
 
 def get_resolution_policy() -> str:
@@ -168,7 +187,7 @@ def get_resolution_policy() -> str:
     str
         Policy name, one of ``"warning"``, ``"error"``, or ``"silent"``.
     """
-    return _contextual.resolution_policy.value
+    return _state().resolution_policy.value
 
 
 def set_dtype_resolution_policy(
@@ -196,7 +215,7 @@ def set_dtype_resolution_policy(
       equivalent dtype in the target backend.
     * ``"convert"``: use the dtype provided by the resolved target context.
     """
-    _contextual.dtype_resolution_policy = policy
+    _state().dtype_resolution_policy = policy
 
 
 def get_dtype_resolution_policy() -> str:
@@ -208,4 +227,4 @@ def get_dtype_resolution_policy() -> str:
     str
         Policy name, one of ``"keep_native"`` or ``"convert"``.
     """
-    return _contextual.dtype_resolution_policy.value
+    return _state().dtype_resolution_policy.value

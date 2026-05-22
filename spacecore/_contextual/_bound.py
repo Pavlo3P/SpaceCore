@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from abc import ABC
-from typing import Self
+from typing import TYPE_CHECKING, Self
 
-from ..backend import Context, BackendOps, BackendFamily
 from ..types import DType
 from ._manager import enforce_convert_policy, normalize_context
+
+if TYPE_CHECKING:
+    from ..backend import BackendFamily, BackendOps, Context
 
 
 def _same_effective_context(left: Context, right: Context) -> bool:
