@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import abstractmethod
-from typing import Any
+from typing import Any, Callable
 
 from ._base import Domain, Functional
 from .._checks import checked_method
@@ -93,16 +93,60 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
     """
     Linear functional defined by user-supplied evaluation callables.
 
-    No representer is stored or materialized.
+    ``MatrixFreeLinearFunctional(value, X)`` represents a linear scalar-valued
+    map on ``X`` without storing or materializing a Riesz representer.
+
+    Parameters
+    ----------
+    value:
+        Callable with signature ``value(x: Any) -> Any`` accepting an element of
+        ``dom`` and returning a scalar-like backend value.
+    dom:
+        Domain space of the functional.
+    ctx:
+        Optional context specification. An explicit context wins over inferred
+        and default contexts.
+    vvalue:
+        Optional callable with signature ``vvalue(xs: Any) -> Any`` for batched
+        evaluation. If omitted, backend ``vmap`` fallback is used.
+
+    Returns
+    -------
+    MatrixFreeLinearFunctional
+        Functional using the supplied callable for scalar evaluation and,
+        optionally, batched scalar evaluation.
     """
 
     def __init__(
         self,
-        value: Any,
+        value: Callable[[Any], Any],
         dom: Domain,
         ctx: Context | str | None = None,
-        vvalue: Any | None = None,
+        vvalue: Callable[[Any], Any] | None = None,
     ) -> None:
+        """
+        Initialize a matrix-free linear functional.
+
+        Parameters
+        ----------
+        value:
+            Callable ``value(x)`` accepting an element of ``dom`` and returning
+            a scalar-like value.
+        dom:
+            Domain space of the functional.
+        ctx:
+            Optional context specification for the functional and converted
+            domain.
+        vvalue:
+            Optional callable ``vvalue(xs)`` accepting a batch of domain
+            elements and returning a batch of scalar-like values.
+
+        Returns
+        -------
+        None
+            The initializer stores the callables and converted domain on
+            ``self``.
+        """
         if not callable(value):
             raise TypeError(f"value must be callable, got {type(value).__name__}.")
         if vvalue is not None and not callable(vvalue):
@@ -113,20 +157,59 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
 
     @property
     def representer(self) -> Any:
+        """
+        Raise because matrix-free functionals do not store a representer.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        Any
+            This property never returns; it raises ``NotImplementedError``.
+        """
         raise NotImplementedError(
             f"{type(self).__name__} does not store a Riesz representer."
         )
 
     @checked_method(in_space="domain")
     def value(self, x: Any) -> Any:
-        """Return ``value_fn(x)``."""
+        """
+        Evaluate the scalar functional.
+
+        Parameters
+        ----------
+        x:
+            Element of ``self.domain`` passed to ``value_fn``.
+
+        Returns
+        -------
+        Any
+            Scalar-like backend value returned by ``value_fn``.
+        """
         y = self.value_fn(x)
         if self._enable_checks:
             self._check_scalar_batch(y, ())
         return y
 
     def vvalue(self, xs: Any, batch_space: Space | None = None) -> Any:
-        """Return ``vvalue_fn(xs)`` when supplied, otherwise use fallback batching."""
+        """
+        Evaluate the scalar functional over a batch of domain elements.
+
+        Parameters
+        ----------
+        xs:
+            Batched element of ``self.domain``.
+        batch_space:
+            Optional batch-space descriptor for ``xs``.
+
+        Returns
+        -------
+        Any
+            Backend array of scalar-like values with shape matching the leading
+            batch shape.
+        """
         if self.vvalue_fn is None:
             return super().vvalue(xs, batch_space)
         in_space = self._input_batch_space(self.domain, xs, batch_space)
@@ -158,6 +241,20 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
         return cls(value_fn, domain, ctx, vvalue_fn)
 
     def _convert(self, new_ctx: Context) -> MatrixFreeLinearFunctional:
+        """
+        Convert this functional to ``new_ctx``.
+
+        Parameters
+        ----------
+        new_ctx:
+            Concrete target context for the converted domain.
+
+        Returns
+        -------
+        MatrixFreeLinearFunctional
+            Functional with converted domain and the same user-supplied
+            callables.
+        """
         return MatrixFreeLinearFunctional(
             self.value_fn,
             self.domain.convert(new_ctx),

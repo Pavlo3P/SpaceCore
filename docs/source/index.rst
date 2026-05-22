@@ -4,18 +4,19 @@ SpaceCore
 SpaceCore exists for writing numerical algorithms once, independently of the
 array backend.
 
-For example, the same algorithm can run with NumPy for debugging, JAX for
-JIT/autodiff, and Torch for tensor workflows, while preserving the same
+For example, the same algorithm can run with NumPy for debugging, CuPy for
+eager GPU execution, JAX for JIT/autodiff, and Torch for tensor workflows,
+while preserving the same
 mathematical spaces and linear operators.
 
 What problem does SpaceCore solve?
 ----------------------------------
 
 Numerical algorithms often start as clear NumPy code and later need to move to
-JAX, Torch, or another array system. Without a backend boundary, that migration
-usually leaks through the whole implementation: array constructors, dtype
-handling, inner products, sparse support, and linear-operator conventions all
-become backend-specific.
+CuPy, JAX, Torch, or another array system. Without a backend boundary, that
+migration usually leaks through the whole implementation: array constructors,
+dtype handling, inner products, sparse support, and linear-operator conventions
+all become backend-specific.
 
 SpaceCore keeps those choices in a ``Context``, while algorithms work with
 mathematical objects:
@@ -38,7 +39,8 @@ Write once, run twice
 ---------------------
 
 This gradient descent loop uses only the ``Space`` and ``LinOp`` APIs. It does
-not know whether the arrays are NumPy arrays, JAX arrays, or Torch tensors.
+not know whether the arrays are NumPy arrays, CuPy arrays, JAX arrays, or Torch
+tensors.
 
 .. code-block:: python
 
@@ -141,7 +143,7 @@ Core concepts
 
 A ``Context`` specifies how objects are represented:
 
-* backend operations (``NumpyOps``, ``JaxOps``, ``TorchOps``, etc.);
+* backend operations (``NumpyOps``, ``CuPyOps``, ``JaxOps``, ``TorchOps``, etc.);
 * default dtype;
 * runtime validation behavior.
 
@@ -171,7 +173,12 @@ hard-coding backend array operations.
 A ``LinOp`` represents a linear operator between spaces:
 
 * ``DenseLinOp`` for dense matrix or tensor operators;
+* ``DiagonalLinOp`` for coordinatewise diagonal operators;
 * ``SparseLinOp`` for sparse operators;
+* ``MatrixFreeLinOp`` for callable-backed operators without stored matrices;
+* ``IdentityLinOp`` and ``ZeroLinOp`` for canonical identity and zero maps;
+* ``ScaledLinOp``, ``SumLinOp``, and ``ComposedLinOp`` for lazy operator
+  algebra;
 * ``BlockDiagonalLinOp`` for block-diagonal product-space operators;
 * ``StackedLinOp`` for operators from one space into a product space;
 * ``SumToSingleLinOp`` for operators from a product space into one space.
@@ -231,6 +238,12 @@ With JAX support:
 
    pip install "spacecore[jax]"
 
+With CuPy support:
+
+.. code-block:: bash
+
+   pip install "spacecore[cupy]"
+
 With PyTorch support:
 
 .. code-block:: bash
@@ -240,6 +253,10 @@ With PyTorch support:
 * ``spacecore[jax]`` installs optional JAX support.
 * GPU users should install the appropriate CUDA-enabled JAX build first,
   following the official JAX installation guide.
+* ``spacecore[cupy]`` installs optional CuPy support for ``cupy.ndarray`` and
+  ``cupyx.scipy.sparse`` backends.
+* GPU users should install the appropriate CUDA-enabled CuPy package first,
+  following the official CuPy installation guide.
 * ``spacecore[torch]`` installs optional PyTorch support for ``torch.Tensor``
   backends.
 * GPU users should install the appropriate CUDA-enabled PyTorch build first,

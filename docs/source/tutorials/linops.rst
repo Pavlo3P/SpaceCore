@@ -9,6 +9,12 @@ Current implemented operator types are:
 * ``DenseLinOp``
 * ``DiagonalLinOp``
 * ``SparseLinOp``
+* ``MatrixFreeLinOp``
+* ``IdentityLinOp``
+* ``ZeroLinOp``
+* ``ScaledLinOp``
+* ``SumLinOp``
+* ``ComposedLinOp``
 * ``BlockDiagonalLinOp``
 * ``StackedLinOp``
 * ``SumToSingleLinOp``
@@ -139,6 +145,42 @@ of the operator structure.
    ]))
 
    op_sparse = sc.SparseLinOp(A_sparse, X, Y, ctx=ctx)
+
+MatrixFreeLinOp
+---------------
+
+``MatrixFreeLinOp`` stores callables for forward and adjoint actions instead
+of matrix entries. Use it when a linear map has a fast procedural
+implementation or when materializing a matrix is too expensive.
+
+.. code-block:: python
+
+   def apply(x):
+       return ctx.asarray([x[0] + x[1], x[0] - x[1]])
+
+   def rapply(y):
+       return ctx.asarray([y[0] + y[1], y[0] - y[1]])
+
+   op_free = sc.MatrixFreeLinOp(apply, rapply, X, X, ctx=ctx)
+
+Canonical and algebraic operators
+---------------------------------
+
+``IdentityLinOp`` and ``ZeroLinOp`` represent the canonical identity and zero
+maps on spaces. Operator algebra creates lazy operators without immediately
+materializing dense storage:
+
+.. code-block:: python
+
+   I = sc.IdentityLinOp(X, ctx=ctx)
+   Z = sc.ZeroLinOp(X, Y, ctx=ctx)
+
+   scaled = 2.0 * I                 # ScaledLinOp
+   summed = I + scaled              # SumLinOp
+   composed = summed @ I            # ComposedLinOp
+
+The helper constructors ``make_scaled``, ``make_sum``, and ``make_composed``
+perform the same simplifications used by the Python operators.
 
 Product operators
 -----------------

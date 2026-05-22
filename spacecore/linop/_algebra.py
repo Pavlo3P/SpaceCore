@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from numbers import Number
-from typing import Any, Sequence
+from typing import Any, Callable, Sequence
 
 from ._base import LinOp, Domain, Codomain
 from .._checks import checked_method
@@ -556,18 +556,80 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
     action is ``rapply(y) = rapply_fn(y)`` for ``y in Y``. When checks are
     enabled, inputs and callable outputs are validated against the corresponding
     domain and codomain.
+
+    Parameters
+    ----------
+    apply:
+        Callable with signature ``apply(x: Any) -> Any`` implementing the
+        forward map from ``dom`` to ``cod``.
+    rapply:
+        Callable with signature ``rapply(y: Any) -> Any`` implementing the
+        adjoint map from ``cod`` back to ``dom``.
+    dom:
+        Domain space containing valid inputs for ``apply`` and outputs from
+        ``rapply``.
+    cod:
+        Codomain space containing outputs from ``apply`` and valid inputs for
+        ``rapply``.
+    ctx:
+        Optional context specification. An explicit context wins over inferred
+        contexts from ``dom`` and ``cod``.
+    vapply:
+        Optional callable with signature ``vapply(xs: Any) -> Any`` for batched
+        forward application. If omitted, backend ``vmap`` fallback is used.
+    rvapply:
+        Optional callable with signature ``rvapply(ys: Any) -> Any`` for
+        batched adjoint application. If omitted, backend ``vmap`` fallback is
+        used.
+
+    Returns
+    -------
+    MatrixFreeLinOp
+        Operator using the supplied callables for forward, adjoint, and
+        optionally batched actions.
     """
 
     def __init__(
         self,
-        apply: Any,
-        rapply: Any,
+        apply: Callable[[Any], Any],
+        rapply: Callable[[Any], Any],
         dom: Domain,
         cod: Codomain,
         ctx: Context | str | None = None,
-        vapply: Any | None = None,
-        rvapply: Any | None = None,
+        vapply: Callable[[Any], Any] | None = None,
+        rvapply: Callable[[Any], Any] | None = None,
     ) -> None:
+        """
+        Initialize a matrix-free linear operator.
+
+        Parameters
+        ----------
+        apply:
+            Callable ``apply(x)`` that accepts an element of ``dom`` and returns
+            an element of ``cod``.
+        rapply:
+            Callable ``rapply(y)`` that accepts an element of ``cod`` and
+            returns an element of ``dom``.
+        dom:
+            Domain space of the operator.
+        cod:
+            Codomain space of the operator.
+        ctx:
+            Optional context specification for the operator and converted
+            spaces.
+        vapply:
+            Optional callable for batched forward application over ``dom``
+            batches.
+        rvapply:
+            Optional callable for batched adjoint application over ``cod``
+            batches.
+
+        Returns
+        -------
+        None
+            The initializer stores the callables and converted spaces on
+            ``self``.
+        """
         if not callable(apply):
             raise TypeError(f"apply must be callable, got {type(apply).__name__}.")
         if not callable(rapply):
@@ -584,22 +646,87 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
 
     @checked_method(in_space="domain", out_space="codomain")
     def apply(self, x: Any) -> Any:
-        """Return ``apply_fn(x)``."""
+        """
+        Apply the forward callable.
+
+        Parameters
+        ----------
+        x:
+            Element of ``self.domain`` passed to ``apply_fn``.
+
+        Returns
+        -------
+        Any
+            Element of ``self.codomain`` returned by ``apply_fn``.
+        """
         return self._apply_unchecked(x)
 
     def _apply_unchecked(self, x: Any) -> Any:
+        """
+        Apply ``apply_fn`` without membership checks.
+
+        Parameters
+        ----------
+        x:
+            Value accepted by the user-supplied forward callable.
+
+        Returns
+        -------
+        Any
+            Raw forward-callable output.
+        """
         return self.apply_fn(x)
 
     @checked_method(in_space="codomain", out_space="domain")
     def rapply(self, y: Any) -> Any:
-        """Return ``rapply_fn(y)``."""
+        """
+        Apply the adjoint callable.
+
+        Parameters
+        ----------
+        y:
+            Element of ``self.codomain`` passed to ``rapply_fn``.
+
+        Returns
+        -------
+        Any
+            Element of ``self.domain`` returned by ``rapply_fn``.
+        """
         return self._rapply_unchecked(y)
 
     def _rapply_unchecked(self, y: Any) -> Any:
+        """
+        Apply ``rapply_fn`` without membership checks.
+
+        Parameters
+        ----------
+        y:
+            Value accepted by the user-supplied adjoint callable.
+
+        Returns
+        -------
+        Any
+            Raw adjoint-callable output.
+        """
         return self.rapply_fn(y)
 
     def vapply(self, xs: Any, batch_space=None) -> Any:
-        """Return ``vapply_fn(xs)`` when supplied, otherwise use fallback batching."""
+        """
+        Apply this operator to a batch of domain elements.
+
+        Parameters
+        ----------
+        xs:
+            Batched element of ``self.domain``.
+        batch_space:
+            Optional batch-space descriptor for ``xs``.
+
+        Returns
+        -------
+        Any
+            Batched element of ``self.codomain`` produced by ``vapply_fn`` or
+            by the fallback batching implementation.
+        """
         if self.vapply_fn is None:
             return super().vapply(xs, batch_space)
         in_space = self._input_batch_space(self.domain, xs, batch_space)
@@ -611,7 +738,22 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
         return ys
 
     def rvapply(self, ys: Any, batch_space=None) -> Any:
-        """Return ``rvapply_fn(ys)`` when supplied, otherwise use fallback batching."""
+        """
+        Apply the adjoint operator to a batch of codomain elements.
+
+        Parameters
+        ----------
+        ys:
+            Batched element of ``self.codomain``.
+        batch_space:
+            Optional batch-space descriptor for ``ys``.
+
+        Returns
+        -------
+        Any
+            Batched element of ``self.domain`` produced by ``rvapply_fn`` or by
+            the fallback batching implementation.
+        """
         if self.rvapply_fn is None:
             return super().rvapply(ys, batch_space)
         in_space = self._input_batch_space(self.codomain, ys, batch_space)
@@ -653,6 +795,20 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
         return cls(apply_fn, rapply_fn, domain, codomain, ctx, vapply_fn, rvapply_fn)
 
     def _convert(self, new_ctx: Context) -> MatrixFreeLinOp:
+        """
+        Convert this matrix-free operator to ``new_ctx``.
+
+        Parameters
+        ----------
+        new_ctx:
+            Concrete target context for converted domain and codomain spaces.
+
+        Returns
+        -------
+        MatrixFreeLinOp
+            Operator with converted spaces and the same user-supplied
+            callables.
+        """
         return MatrixFreeLinOp(
             self.apply_fn,
             self.rapply_fn,

@@ -5,9 +5,15 @@ This tutorial follows ``tutorials/1_BackendOps.ipynb``. It explains what
 ``BackendOps`` represents in SpaceCore, how it relates to ``Context``, and how
 to use the predefined backends.
 
-Current predefined implementations are ``NumpyOps``, ``JaxOps``, and
-``TorchOps``. ``TorchOps`` is optional and is available after installing the
-PyTorch extra:
+Current predefined implementations are ``NumpyOps``, ``JaxOps``, ``CuPyOps``,
+and ``TorchOps``. ``CuPyOps`` and ``TorchOps`` are optional and are available
+after installing their backend extras:
+
+.. code-block:: bash
+
+   pip install spacecore[cupy]
+
+Install PyTorch support with:
 
 .. code-block:: bash
 
@@ -31,9 +37,10 @@ SpaceCore separates two concerns:
 * the numerical backend used to store and compute with them.
 
 The same mathematical object may be represented using NumPy arrays for eager CPU
-work, JAX arrays for JIT compilation and automatic differentiation, or PyTorch
-tensors for eager CPU/CUDA execution and autograd. Without a backend abstraction, spaces and
-operators would need backend-specific branches throughout their implementations.
+work, CuPy arrays for eager GPU execution, JAX arrays for JIT compilation and
+automatic differentiation, or PyTorch tensors for eager CPU/CUDA execution and
+autograd. Without a backend abstraction, spaces and operators would need
+backend-specific branches throughout their implementations.
 
 The design is:
 
@@ -54,11 +61,12 @@ signatures that SpaceCore relies on.
 
 Common dense-array methods are implemented once in ``BackendOps`` by delegating
 to an Array API compatible ``xp`` namespace. NumPy and PyTorch use
-``array-api-compat`` wrappers, while JAX uses ``jax.numpy``. Concrete backend
-classes keep behavior that is genuinely backend-specific, such as dtype
-sanitation, sparse conversion, indexed updates, device/autograd controls, and
-control-flow primitives. ``ops.xp`` is available as an escape hatch, but
-portable SpaceCore code should prefer explicit ``ops`` methods.
+``array-api-compat`` wrappers, while CuPy uses ``cupy`` and JAX uses
+``jax.numpy``. Concrete backend classes keep behavior that is genuinely
+backend-specific, such as dtype sanitation, sparse conversion, indexed updates,
+device/autograd controls, and control-flow primitives. ``ops.xp`` is available
+as an escape hatch, but portable SpaceCore code should prefer explicit ``ops``
+methods.
 
 For example, NumPy and JAX expose different optional arguments for matrix
 multiplication, but SpaceCore's portable interface only needs the common core:
@@ -146,6 +154,19 @@ interoperability with SciPy sparse matrices.
 Use ``JaxOps`` for the JAX execution model: JIT compilation, automatic
 differentiation, accelerator execution, and JAX sparse compatibility. JAX dtype
 behavior depends on local JAX configuration, especially ``jax_enable_x64``.
+
+Use ``CuPyOps`` for eager GPU-backed CuPy arrays and ``cupyx.scipy.sparse``
+matrices. The backend is optional and is exported only when CuPy is installed.
+It follows CuPy's NumPy-compatible dtype behavior and keeps arrays on the CuPy
+device where they were created.
+
+.. code-block:: python
+
+   import numpy as np
+   from spacecore.backend import Context, CuPyOps
+
+   ctx_cupy = Context(CuPyOps(), dtype=np.float64)
+   x = ctx_cupy.asarray([1.0, 2.0, 3.0])
 
 Use ``TorchOps`` for PyTorch tensors. The backend can be requested by either
 ``"torch"`` or ``"pytorch"`` where SpaceCore accepts backend names.

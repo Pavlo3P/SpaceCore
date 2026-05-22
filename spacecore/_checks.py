@@ -10,7 +10,28 @@ def checked_method(
     out_space: str | None = None,
     arg_pos: int = 0,
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
-    """Decorate methods with optional Space membership checks."""
+    """
+    Build a decorator that validates method inputs and outputs against spaces.
+
+    Parameters
+    ----------
+    in_space:
+        Name of the attribute on ``self`` containing the input
+        :class:`~spacecore.space.Space`, or ``None`` to skip input validation.
+    out_space:
+        Name of the attribute on ``self`` containing the output
+        :class:`~spacecore.space.Space`, or ``None`` to skip output validation.
+    arg_pos:
+        Zero-based position in ``*args`` of the input value that should be
+        checked against ``in_space``.
+
+    Returns
+    -------
+    Callable[[Callable[..., Any]], Callable[..., Any]]
+        Decorator that wraps a method, performs Python-level checks when
+        ``self._enable_checks`` is true, and otherwise forwards directly to the
+        wrapped method.
+    """
 
     def decorate(method: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(method)
