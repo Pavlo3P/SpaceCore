@@ -72,6 +72,7 @@ from ._contextual import (
     register_ops,
     set_resolution_policy, set_dtype_resolution_policy,
     get_resolution_policy, get_dtype_resolution_policy,
+    normalize_ops, normalize_context,
 )
 
 __all__ = [
@@ -144,6 +145,8 @@ __all__ = [
     "set_dtype_resolution_policy",
     "get_resolution_policy",
     "get_dtype_resolution_policy",
+    "normalize_ops",
+    "normalize_context",
 ]
 
 if "TorchOps" in globals():
