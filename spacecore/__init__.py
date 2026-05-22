@@ -28,6 +28,14 @@ from .linop import (
     make_scaled,
     make_sum,
 )
+from .functional import (
+    Functional,
+    InnerProductFunctional,
+    LinearFunctional,
+    LinOpQuadraticForm,
+    MatrixFreeLinearFunctional,
+    QuadraticForm,
+)
 from .linalg import (
     CGResult,
     LSQRResult,
@@ -88,6 +96,13 @@ __all__ = [
     "BlockDiagonalLinOp",
     "SumToSingleLinOp",
     "StackedLinOp",
+
+    "Functional",
+    "LinearFunctional",
+    "InnerProductFunctional",
+    "MatrixFreeLinearFunctional",
+    "QuadraticForm",
+    "LinOpQuadraticForm",
 
     "CGResult",
     "LSQRResult",

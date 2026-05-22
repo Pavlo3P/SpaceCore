@@ -11,3 +11,4 @@ directives for public objects instead of dumping entire modules.
    context
    spaces
    linops
+   functionals
