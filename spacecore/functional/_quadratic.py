@@ -13,6 +13,10 @@ from ..space import Space
 class QuadraticForm(Functional[Domain]):
     """Scalar quadratic objective on a space."""
 
+    def hess_apply(self, x: Any) -> Any:
+        """Apply the Hessian action at ``x`` when available."""
+        raise NotImplementedError(f"{type(self).__name__} does not define hess_apply.")
+
     def grad(self, x: Any) -> Any:
         """Gradient at ``x`` when available."""
         raise NotImplementedError(f"{type(self).__name__} does not define grad.")
@@ -92,6 +96,14 @@ class LinOpQuadraticForm(QuadraticForm[Domain]):
         if self.linear is not None:
             grad = self.domain.add(grad, self.linear.representer)
         return grad
+
+    def hess_apply(self, x: Any) -> Any:
+        """Return the self-adjoint Hessian action ``(Q + Q*) x / 2``."""
+        if self._enable_checks:
+            self.domain._check_member(x)
+        qx = self.Q.apply(x)
+        qhx = self.Q.rapply(x)
+        return self.domain.scale(0.5, self.domain.add(qx, qhx))
 
     def __eq__(self, other: Any) -> bool:
         if type(other) is type(self):

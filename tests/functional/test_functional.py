@@ -90,6 +90,7 @@ def test_linop_quadratic_value_and_gradient_match_euclidean_hand_computation():
 
     assert np.allclose(q.value(x), 12.0)
     assert np.allclose(q.grad(x), [5.0, -5.0])
+    assert np.allclose(q.hess_apply(x), [4.0, -4.0])
 
 
 def test_vvalue_and_vgrad_match_elementwise_loops():
