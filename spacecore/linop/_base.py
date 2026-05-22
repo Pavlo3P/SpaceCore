@@ -43,6 +43,22 @@ class LinOp(ContextBound, Generic[Domain, Codomain]):
         """Codomain space of this linear operator."""
         return self.cod
 
+    @property
+    def A(self) -> Any:
+        """
+        Native numerical representation of this operator.
+
+        Concrete subclasses may choose the representation that best matches
+        their storage model: for example, dense operators return a dense array
+        while sparse operators return their sparse matrix. Matrix-free or lazy
+        operators generally do not have such a representation and should leave
+        this property unimplemented. Use :meth:`to_dense` when a dense tensor
+        materialization is explicitly required.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not define a native numerical representation."
+        )
+
     @abstractmethod
     def apply(self, x: Any) -> Any:
         """
@@ -70,6 +86,64 @@ class LinOp(ContextBound, Generic[Domain, Codomain]):
     def adjoint_apply(self, y: Any) -> Any:
         """Apply the adjoint of this linear operator to ``y``."""
         return self.rapply(y)
+
+    def vapply(self, xs: Any, batch_space: Space | None = None) -> Any:
+        """Apply this operator independently over a batch of domain elements."""
+        return self._fallback_vapply(xs, batch_space)
+
+    def rvapply(self, ys: Any, batch_space: Space | None = None) -> Any:
+        """Apply the adjoint independently over a batch of codomain elements."""
+        return self._fallback_rvapply(ys, batch_space)
+
+    def _infer_batch_shape(self, space: Space, value: Any) -> tuple[int, ...]:
+        if hasattr(space, "spaces") and isinstance(value, tuple) and value:
+            return self._infer_batch_shape(space.spaces[0], value[0])
+        shape = tuple(getattr(value, "shape", ()))
+        base_shape = tuple(space.shape)
+        if not base_shape:
+            return shape
+        if len(shape) < len(base_shape) or shape[-len(base_shape):] != base_shape:
+            raise ValueError(
+                f"Cannot infer leading batch shape for value shape {shape} "
+                f"and base space shape {base_shape}."
+            )
+        return shape[: len(shape) - len(base_shape)]
+
+    def _input_batch_space(
+        self,
+        space: Space,
+        value: Any,
+        batch_space: Space | None,
+    ) -> Space:
+        if batch_space is not None:
+            return batch_space
+        batch_shape = self._infer_batch_shape(space, value)
+        return space.batch(batch_shape, tuple(range(len(batch_shape))))
+
+    def _output_batch_space(self, space: Space, input_batch_space: Space) -> Space:
+        batch_shape = getattr(input_batch_space, "batch_shape", None)
+        batch_axes = getattr(input_batch_space, "batch_axes", None)
+        if batch_shape is None or batch_axes is None:
+            raise TypeError("batch_space must be a BatchSpace-compatible object.")
+        return space.batch(tuple(batch_shape), tuple(batch_axes))
+
+    def _fallback_vapply(self, xs: Any, batch_space: Space | None = None) -> Any:
+        in_space = self._input_batch_space(self.domain, xs, batch_space)
+        if self._enable_checks:
+            in_space._check_member(xs)
+        ys = self.ops.vmap(self.apply, in_axes=0, out_axes=0)(xs)
+        if self._enable_checks:
+            self._output_batch_space(self.codomain, in_space)._check_member(ys)
+        return ys
+
+    def _fallback_rvapply(self, ys: Any, batch_space: Space | None = None) -> Any:
+        in_space = self._input_batch_space(self.codomain, ys, batch_space)
+        if self._enable_checks:
+            in_space._check_member(ys)
+        xs = self.ops.vmap(self.rapply, in_axes=0, out_axes=0)(ys)
+        if self._enable_checks:
+            self._output_batch_space(self.domain, in_space)._check_member(xs)
+        return xs
 
     @property
     def H(self) -> LinOp:

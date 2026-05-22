@@ -413,6 +413,20 @@ class TorchOps(BackendOps):
             return self.torch.sparse.mm(a, b[:, None], **kwargs)[:, 0]
         return self.torch.sparse.mm(a, b, **kwargs)
 
+    def vmap(
+        self,
+        fn: Callable,
+        in_axes: int | Sequence[int | None] | None = 0,
+        out_axes: int | Sequence[int | None] | None = 0,
+    ) -> Callable:
+        """Vectorize a function using PyTorch's native vmap when available."""
+        vmap = getattr(self.torch, "vmap", None)
+        if vmap is None and hasattr(self.torch, "func"):
+            vmap = getattr(self.torch.func, "vmap", None)
+        if vmap is None:
+            return super().vmap(fn, in_axes=in_axes, out_axes=out_axes)
+        return vmap(fn, in_dims=in_axes, out_dims=out_axes)
+
     def eigh(
         self,
         x: DenseArray,

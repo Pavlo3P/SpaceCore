@@ -399,6 +399,77 @@ class BackendOps(ABC):
         """Stack arrays along a new axis (delegates to xp.stack)."""
         return self.xp.stack(tuple(arrays), axis=axis)
 
+    def vmap(
+        self,
+        fn: Callable,
+        in_axes: int | Sequence[int | None] | None = 0,
+        out_axes: int | Sequence[int | None] | None = 0,
+    ) -> Callable:
+        """Vectorize ``fn`` over array axes using a Python-loop fallback."""
+
+        def axis_for_arg(i: int) -> int | Sequence[int | None] | None:
+            if isinstance(in_axes, tuple) or isinstance(in_axes, list):
+                return in_axes[i]
+            return in_axes
+
+        def normalize_axis(axis: int, ndim: int) -> int:
+            return axis + ndim if axis < 0 else axis
+
+        def tree_size(x: Any, axis: Any) -> int | None:
+            if axis is None:
+                return None
+            if isinstance(x, tuple):
+                axes = axis if isinstance(axis, (tuple, list)) else (axis,) * len(x)
+                for xi, ai in zip(x, axes):
+                    size = tree_size(xi, ai)
+                    if size is not None:
+                        return size
+                return None
+            shape = tuple(getattr(x, "shape", ()))
+            axis = normalize_axis(int(axis), len(shape))
+            return int(shape[axis])
+
+        def tree_take(x: Any, axis: Any, i: int) -> Any:
+            if axis is None:
+                return x
+            if isinstance(x, tuple):
+                axes = axis if isinstance(axis, (tuple, list)) else (axis,) * len(x)
+                return tuple(tree_take(xi, ai, i) for xi, ai in zip(x, axes))
+            shape = tuple(getattr(x, "shape", ()))
+            axis = normalize_axis(int(axis), len(shape))
+            index = [slice(None)] * len(shape)
+            index[axis] = i
+            return x[tuple(index)]
+
+        def tree_stack(xs: Sequence[Any], axis: Any) -> Any:
+            first = xs[0]
+            if isinstance(first, tuple):
+                axes = axis if isinstance(axis, (tuple, list)) else (axis,) * len(first)
+                return tuple(
+                    tree_stack(tuple(x[i] for x in xs), ai)
+                    for i, ai in enumerate(axes)
+                )
+            if axis is None:
+                return first
+            return self.stack(xs, axis=int(axis))
+
+        def mapped(*args: Any) -> Any:
+            axes = tuple(axis_for_arg(i) for i in range(len(args)))
+            size = None
+            for arg, axis in zip(args, axes):
+                size = tree_size(arg, axis)
+                if size is not None:
+                    break
+            if size is None:
+                return fn(*args)
+            outputs = tuple(
+                fn(*(tree_take(arg, axis, i) for arg, axis in zip(args, axes)))
+                for i in range(size)
+            )
+            return tree_stack(outputs, out_axes)
+
+        return mapped
+
     def conj(self, x: DenseArray) -> DenseArray:
         """Complex conjugate of x (delegates to xp.conj)."""
         return self.xp.conj(x)

@@ -13,6 +13,7 @@ except ImportError:
 from .linop import (
     BlockDiagonalLinOp,
     ComposedLinOp,
+    DiagonalLinOp,
     DenseLinOp,
     IdentityLinOp,
     LinOp,
@@ -37,6 +38,7 @@ from .linalg import (
     stochastic_lanczos,
 )
 from .space import (
+    BatchSpace,
     BackendCheck,
     DTypeCheck,
     HermitianCheck,
@@ -72,6 +74,7 @@ __all__ = [
 
     "LinOp",
     "ComposedLinOp",
+    "DiagonalLinOp",
     "DenseLinOp",
     "IdentityLinOp",
     "MatrixFreeLinOp",
@@ -100,6 +103,7 @@ __all__ = [
     "ProductComponentCheck",
     "ProductStructureCheck",
     "ShapeCheck",
+    "BatchSpace",
     "VectorSpace",
     "HermitianSpace",
     "ProductSpace",

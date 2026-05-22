@@ -231,6 +231,15 @@ class JaxOps(BackendOps):
         """
         return a @ b
 
+    def vmap(
+            self,
+            fn: Callable,
+            in_axes: int | Sequence[int | None] | None = 0,
+            out_axes: int | Sequence[int | None] | None = 0,
+    ) -> Callable:
+        """Vectorize a function using ``jax.vmap``."""
+        return self.jax.vmap(fn, in_axes=in_axes, out_axes=out_axes)
+
     def logsumexp(self, a: DenseArray, axis: int | Sequence[int] | None = None, b: DenseArray | None = None, keepdims: bool = False,
                   return_sign: bool = False, where: DenseArray | None = None) -> DenseArray | Tuple[DenseArray, DenseArray]:
         """

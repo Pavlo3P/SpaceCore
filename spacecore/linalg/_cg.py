@@ -5,7 +5,7 @@ from typing import Any, NamedTuple
 from ..linop import LinOp
 from ._utils import DEFAULT_CONVERGENCE_CHECK_INTERVAL, check_interval, check_maxiter
 from ._utils import is_converged, real_inner, require_linop, require_square
-from ._utils import safe_inverse, should_check_iteration, threshold
+from ._utils import result_repr, safe_inverse, should_check_iteration, threshold
 
 
 class CGResult(NamedTuple):
@@ -15,6 +15,18 @@ class CGResult(NamedTuple):
     converged: Any
     num_iters: Any
     residual_norm: Any
+
+    def __repr__(self) -> str:
+        """Return a compact summary without printing the full solution array."""
+        return result_repr(
+            "CGResult",
+            {
+                "converged": self.converged,
+                "num_iters": self.num_iters,
+                "residual_norm": self.residual_norm,
+                "x": self.x,
+            },
+        )
 
 
 def cg(

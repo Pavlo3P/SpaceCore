@@ -11,12 +11,14 @@ from ._algebra import (
     make_sum,
 )
 from ._dense import DenseLinOp
+from ._diagonal import DiagonalLinOp
 from ._sparse import SparseLinOp
 from .product import ProductLinOp, StackedLinOp, SumToSingleLinOp, BlockDiagonalLinOp
 
 __all__ = [
     "LinOp",
     "ComposedLinOp",
+    "DiagonalLinOp",
     "DenseLinOp",
     "IdentityLinOp",
     "MatrixFreeLinOp",

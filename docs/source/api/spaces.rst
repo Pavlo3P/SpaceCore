@@ -10,6 +10,7 @@ Spaces define element structure, geometry, flattening, and validation.
    spacecore.space.VectorSpace
    spacecore.space.HermitianSpace
    spacecore.space.ProductSpace
+   spacecore.space.BatchSpace
    spacecore.space.SpaceCheck
    spacecore.space.SpaceValidationError
 
@@ -44,6 +45,15 @@ ProductSpace
 ------------
 
 .. autoclass:: spacecore.space.ProductSpace
+   :members:
+   :undoc-members:
+   :inherited-members:
+   :show-inheritance:
+
+BatchSpace
+----------
+
+.. autoclass:: spacecore.space.BatchSpace
    :members:
    :undoc-members:
    :inherited-members:

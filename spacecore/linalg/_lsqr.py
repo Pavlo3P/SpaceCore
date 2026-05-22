@@ -5,7 +5,7 @@ from typing import Any, NamedTuple
 from ..linop import LinOp
 from ._utils import DEFAULT_CONVERGENCE_CHECK_INTERVAL, check_interval, check_maxiter
 from ._utils import is_converged, require_linop, safe_inverse, should_check_iteration
-from ._utils import threshold
+from ._utils import result_repr, threshold
 
 
 class LSQRResult(NamedTuple):
@@ -16,6 +16,19 @@ class LSQRResult(NamedTuple):
     num_iters: Any
     residual_norm: Any
     normal_residual_norm: Any
+
+    def __repr__(self) -> str:
+        """Return a compact summary without printing the full solution array."""
+        return result_repr(
+            "LSQRResult",
+            {
+                "converged": self.converged,
+                "num_iters": self.num_iters,
+                "residual_norm": self.residual_norm,
+                "normal_residual_norm": self.normal_residual_norm,
+                "x": self.x,
+            },
+        )
 
 
 def lsqr(

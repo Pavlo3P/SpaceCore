@@ -106,6 +106,18 @@ class Space(ContextBound):
         """Inverse of flatten; returns an element in the requested representation."""
         raise NotImplementedError
 
+    def batch(
+        self,
+        batch_shape: Tuple[int, ...],
+        batch_axes: Tuple[int, ...] | None = None,
+    ) -> Space:
+        """Return a wrapper representing a batch/product of this space."""
+        from ._batch import BatchSpace
+
+        if batch_axes is None:
+            batch_axes = tuple(range(len(batch_shape)))
+        return BatchSpace(self, batch_shape, batch_axes)
+
     def _convert(self, new_ctx: Context) -> Space:
         raise NotImplementedError()
 

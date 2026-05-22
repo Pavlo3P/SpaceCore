@@ -53,6 +53,28 @@ class BlockDiagonalLinOp(ProductLinOp[ProductSpace, ProductSpace]):
             return self._rapply_parts[0](y[0]), self._rapply_parts[1](y[1])
         return tuple(rapply(yi) for rapply, yi in zip(self._rapply_parts, y))
 
+    def vapply(self, x: Any, batch_space=None) -> Any:
+        in_space = self._input_batch_space(self.domain, x, batch_space)
+        if self._enable_checks:
+            in_space._check_member(x)
+        batch_shape = in_space.batch_shape
+        batch_axes = in_space.batch_axes
+        return tuple(
+            op.vapply(xi, op.domain.batch(batch_shape, batch_axes))
+            for op, xi in zip(self.parts, x)
+        )
+
+    def rvapply(self, y: Any, batch_space=None) -> Any:
+        in_space = self._input_batch_space(self.codomain, y, batch_space)
+        if self._enable_checks:
+            in_space._check_member(y)
+        batch_shape = in_space.batch_shape
+        batch_axes = in_space.batch_axes
+        return tuple(
+            op.rvapply(yi, op.codomain.batch(batch_shape, batch_axes))
+            for op, yi in zip(self.parts, y)
+        )
+
     @classmethod
     def from_operators(cls, parts: Tuple[LinOp, ...]) -> BlockDiagonalLinOp:
         if not parts:
