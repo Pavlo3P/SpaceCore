@@ -5,7 +5,7 @@ from typing import Self
 
 from ..backend import Context, BackendOps, BackendFamily
 from ..types import DType
-from .manager import ctx_manager
+from ._manager import enforce_convert_policy, normalize_context
 
 
 def _same_effective_context(left: Context, right: Context) -> bool:
@@ -18,7 +18,7 @@ def _same_effective_context(left: Context, right: Context) -> bool:
 
 class ContextBound(ABC):
     def __init__(self, ctx: Context | str | None = None):
-        ctx = ctx_manager.normalize_context(ctx)
+        ctx = normalize_context(ctx)
         self._ctx = ctx
 
     @property
@@ -37,7 +37,7 @@ class ContextBound(ABC):
         raise NotImplementedError()
 
     def convert(self, new_ctx: Context | BackendFamily | str | None = None) -> Self:
-        _, new_ctx = ctx_manager.enforce_convert_policy(self, new_ctx)
+        _, new_ctx = enforce_convert_policy(self, new_ctx)
         if _same_effective_context(self.ctx, new_ctx):
             return self
         return self._convert(new_ctx)

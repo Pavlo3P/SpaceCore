@@ -4,6 +4,7 @@ from numbers import Number
 from typing import Any, Sequence
 
 from ._base import LinOp, Domain, Codomain
+from .._checks import checked_method
 from ..backend import Context, jax_pytree_class
 
 
@@ -190,10 +191,12 @@ class ScaledLinOp(LinOp[Domain, Codomain]):
         self.scalar = scalar
         self.op = op
 
+    @checked_method(in_space="domain", out_space="codomain")
     def apply(self, x: Any) -> Any:
         """Return ``scalar * op.apply(x)``."""
         return self.scalar * self.op.apply(x)
 
+    @checked_method(in_space="codomain", out_space="domain")
     def rapply(self, y: Any) -> Any:
         """Return ``conj(scalar) * op.rapply(y)``."""
         return _conjugate_scalar(self.scalar) * self.op.rapply(y)
@@ -262,6 +265,7 @@ class SumLinOp(LinOp[Domain, Codomain]):
         """Operators in this lazy sum."""
         return self.ops_tuple
 
+    @checked_method(in_space="domain", out_space="codomain")
     def apply(self, x: Any) -> Any:
         """Return ``sum_i ops[i].apply(x)``."""
         acc = self.ops_tuple[0].apply(x)
@@ -269,6 +273,7 @@ class SumLinOp(LinOp[Domain, Codomain]):
             acc = self.codomain.add(acc, op.apply(x))
         return acc
 
+    @checked_method(in_space="codomain", out_space="domain")
     def rapply(self, y: Any) -> Any:
         """Return ``sum_i ops[i].rapply(y)``."""
         acc = self.ops_tuple[0].rapply(y)
@@ -340,10 +345,12 @@ class ComposedLinOp(LinOp[Domain, Codomain]):
         self.left = left
         self.right = right
 
+    @checked_method(in_space="domain", out_space="codomain")
     def apply(self, x: Any) -> Any:
         """Return ``left.apply(right.apply(x))``."""
         return self.left.apply(self.right.apply(x))
 
+    @checked_method(in_space="codomain", out_space="domain")
     def rapply(self, z: Any) -> Any:
         """Return ``right.rapply(left.rapply(z))``."""
         return self.right.rapply(self.left.rapply(z))
@@ -401,16 +408,20 @@ class ZeroLinOp(LinOp[Domain, Codomain]):
     ) -> None:
         super().__init__(dom, cod, ctx)
 
+    @checked_method(in_space="domain", out_space="codomain")
     def apply(self, x: Any) -> Any:
         """Return the zero element of the codomain."""
-        if self._enable_checks:
-            self.domain._check_member(x)
+        return self._apply_unchecked(x)
+
+    def _apply_unchecked(self, x: Any) -> Any:
         return self.codomain.zeros()
 
+    @checked_method(in_space="codomain", out_space="domain")
     def rapply(self, y: Any) -> Any:
         """Return the zero element of the domain."""
-        if self._enable_checks:
-            self.codomain._check_member(y)
+        return self._rapply_unchecked(y)
+
+    def _rapply_unchecked(self, y: Any) -> Any:
         return self.domain.zeros()
 
     def vapply(self, xs: Any, batch_space=None) -> Any:
@@ -470,16 +481,20 @@ class IdentityLinOp(LinOp[Domain, Domain]):
     def __init__(self, space: Domain, ctx: Context | str | None = None) -> None:
         super().__init__(space, space, ctx)
 
+    @checked_method(in_space="domain", out_space="codomain")
     def apply(self, x: Any) -> Any:
         """Return ``x`` after domain validation."""
-        if self._enable_checks:
-            self.domain._check_member(x)
+        return self._apply_unchecked(x)
+
+    def _apply_unchecked(self, x: Any) -> Any:
         return x
 
+    @checked_method(in_space="codomain", out_space="domain")
     def rapply(self, x: Any) -> Any:
         """Return ``x`` after codomain validation."""
-        if self._enable_checks:
-            self.codomain._check_member(x)
+        return self._rapply_unchecked(x)
+
+    def _rapply_unchecked(self, x: Any) -> Any:
         return x
 
     def vapply(self, xs: Any, batch_space=None) -> Any:
@@ -567,23 +582,21 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
         self.vapply_fn = vapply
         self.rvapply_fn = rvapply
 
+    @checked_method(in_space="domain", out_space="codomain")
     def apply(self, x: Any) -> Any:
         """Return ``apply_fn(x)``."""
-        if self._enable_checks:
-            self.domain._check_member(x)
-        y = self.apply_fn(x)
-        if self._enable_checks:
-            self.codomain._check_member(y)
-        return y
+        return self._apply_unchecked(x)
 
+    def _apply_unchecked(self, x: Any) -> Any:
+        return self.apply_fn(x)
+
+    @checked_method(in_space="codomain", out_space="domain")
     def rapply(self, y: Any) -> Any:
         """Return ``rapply_fn(y)``."""
-        if self._enable_checks:
-            self.codomain._check_member(y)
-        x = self.rapply_fn(y)
-        if self._enable_checks:
-            self.domain._check_member(x)
-        return x
+        return self._rapply_unchecked(y)
+
+    def _rapply_unchecked(self, y: Any) -> Any:
+        return self.rapply_fn(y)
 
     def vapply(self, xs: Any, batch_space=None) -> Any:
         """Return ``vapply_fn(xs)`` when supplied, otherwise use fallback batching."""
@@ -669,10 +682,12 @@ class _AdjointViewLinOp(LinOp[Codomain, Domain]):
         super().__init__(op.codomain, op.domain, op.ctx)
         self.op = op
 
+    @checked_method(in_space="domain", out_space="codomain")
     def apply(self, y: Any) -> Any:
         """Return ``op.rapply(y)``."""
         return self.op.rapply(y)
 
+    @checked_method(in_space="codomain", out_space="domain")
     def rapply(self, x: Any) -> Any:
         """Return ``op.apply(x)``."""
         return self.op.apply(x)

@@ -60,7 +60,7 @@ def test_register_ops_adds_backend():
             return y
         def allclose_sparse(self, a, b, **kwargs): return False
     sc.register_ops(DummyOps)
-    assert "dummy" in sc._contextual.manager.ctx_manager.available_ops
+    assert sc.VectorSpace((1,), "dummy").ctx.ops.family == "dummy"
     ops = DummyOps()
     x = ops.reshape(ops.arange(6), (2, 3))
     assert np.allclose(ops.sum(x, axis=0), [3, 5, 7])

@@ -4,6 +4,7 @@ from abc import abstractmethod
 from typing import Any
 
 from ._base import Domain, Functional
+from .._checks import checked_method
 from ..backend import Context, jax_pytree_class
 from ..space import Space
 
@@ -59,10 +60,9 @@ class InnerProductFunctional(LinearFunctional[Domain]):
         """Stored domain element ``c`` defining ``ell_c(x) = <c, x>``."""
         return self._c
 
+    @checked_method(in_space="domain")
     def value(self, x: Any) -> Any:
         """Return ``domain.inner(representer, x)``."""
-        if self._enable_checks:
-            self.domain._check_member(x)
         return self.domain.inner(self._c, x)
 
     def __eq__(self, other: Any) -> bool:
@@ -117,10 +117,9 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
             f"{type(self).__name__} does not store a Riesz representer."
         )
 
+    @checked_method(in_space="domain")
     def value(self, x: Any) -> Any:
         """Return ``value_fn(x)``."""
-        if self._enable_checks:
-            self.domain._check_member(x)
         y = self.value_fn(x)
         if self._enable_checks:
             self._check_scalar_batch(y, ())

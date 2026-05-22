@@ -1,11 +1,9 @@
 from typing import Any
 
 from ..backend import Context, BackendOps
-from .contextual import Contextual, ContextPolicy, DtypePreservePolicy
+from ._policies import ContextPolicy, DtypePreservePolicy
+from ._state import _contextual
 from ..backend import BackendFamily
-
-
-ctx_manager = Contextual()
 
 
 def set_context(
@@ -35,8 +33,8 @@ def set_context(
     Objects created without an explicit context use this default context.
     Existing spaces, operators, and contexts are not modified.
     """
-    ctx = ctx_manager.normalize_context(ctx, dtype=dtype, enable_checks=enable_checks)
-    ctx_manager.default_ctx = ctx
+    ctx = _contextual.normalize_context(ctx, dtype=dtype, enable_checks=enable_checks)
+    _contextual.default_ctx = ctx
 
 
 def get_context() -> Context:
@@ -49,7 +47,7 @@ def get_context() -> Context:
         The default context used by constructors when no explicit context can
         be inferred or provided.
     """
-    return ctx_manager.default_ctx
+    return _contextual.default_ctx
 
 
 def resolve_context_priority(
@@ -80,7 +78,7 @@ def resolve_context_priority(
     User code should call this function instead of accessing the internal
     context manager singleton.
     """
-    return ctx_manager.resolve_context_priority(priority_ctx, *other_ctx)
+    return _contextual.resolve_context_priority(priority_ctx, *other_ctx)
 
 
 def register_ops(ops: type[BackendOps]) -> type[BackendOps]:
@@ -115,7 +113,24 @@ def register_ops(ops: type[BackendOps]) -> type[BackendOps]:
         class MyOps(BackendOps):
             ...
     """
-    return ctx_manager.register_ops(ops)
+    return _contextual.register_ops(ops)
+
+
+def normalize_context(
+    ctx: Context | BackendFamily | str | None = None,
+    dtype: Any = None,
+    enable_checks: bool | None = None,
+) -> Context:
+    """Normalize a context specification through the process-wide state."""
+    return _contextual.normalize_context(ctx, dtype=dtype, enable_checks=enable_checks)
+
+
+def enforce_convert_policy(
+    x: Any,
+    to: Context | BackendFamily | str | None = None,
+) -> tuple[Any, Context]:
+    """Resolve a conversion target and enforce the configured policy."""
+    return _contextual.enforce_convert_policy(x, to)
 
 
 def set_resolution_policy(policy: ContextPolicy | str | None = None) -> None:
@@ -141,7 +156,7 @@ def set_resolution_policy(policy: ContextPolicy | str | None = None) -> None:
     * ``"error"``: reject backend conversion.
     * ``"silent"``: allow backend conversion without warning.
     """
-    ctx_manager.resolution_policy = policy
+    _contextual.resolution_policy = policy
 
 
 def get_resolution_policy() -> str:
@@ -153,7 +168,7 @@ def get_resolution_policy() -> str:
     str
         Policy name, one of ``"warning"``, ``"error"``, or ``"silent"``.
     """
-    return ctx_manager.resolution_policy.value
+    return _contextual.resolution_policy.value
 
 
 def set_dtype_resolution_policy(
@@ -181,7 +196,7 @@ def set_dtype_resolution_policy(
       equivalent dtype in the target backend.
     * ``"convert"``: use the dtype provided by the resolved target context.
     """
-    ctx_manager.dtype_resolution_policy = policy
+    _contextual.dtype_resolution_policy = policy
 
 
 def get_dtype_resolution_policy() -> str:
@@ -193,4 +208,4 @@ def get_dtype_resolution_policy() -> str:
     str
         Policy name, one of ``"keep_native"`` or ``"convert"``.
     """
-    return ctx_manager.dtype_resolution_policy.value
+    return _contextual.dtype_resolution_policy.value

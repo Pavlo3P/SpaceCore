@@ -1,13 +1,15 @@
 from __future__ import annotations
 
+from functools import cached_property
 from math import prod
 from typing import Any
 
 from ._base import LinOp
+from .._checks import checked_method
 from ..backend import Context, jax_pytree_class
 from ..space import VectorSpace
 from ..types import DenseArray
-from .._contextual.manager import ctx_manager
+from .._contextual import resolve_context_priority
 
 
 @jax_pytree_class
@@ -20,7 +22,7 @@ class DiagonalLinOp(LinOp[VectorSpace, VectorSpace]):
         space: VectorSpace | None = None,
         ctx: Context | str | None = None,
     ) -> None:
-        ctx = ctx_manager.resolve_context_priority(ctx, space)
+        ctx = resolve_context_priority(ctx, space)
         ctx.assert_dense(diagonal)
         if space is None:
             space = VectorSpace(tuple(diagonal.shape), ctx)
@@ -39,18 +41,16 @@ class DiagonalLinOp(LinOp[VectorSpace, VectorSpace]):
             self._diag_adjoint if self._is_flat else self._diag_adjoint.reshape((self._size,))
         )
 
-    @property
+    @cached_property
     def A(self) -> DenseArray:
         return self.to_dense()
 
+    @checked_method(in_space="domain", out_space="codomain")
     def apply(self, x: DenseArray) -> DenseArray:
-        if self._enable_checks:
-            self.domain._check_member(x)
         return self.diagonal * x
 
+    @checked_method(in_space="codomain", out_space="domain")
     def rapply(self, y: DenseArray) -> DenseArray:
-        if self._enable_checks:
-            self.codomain._check_member(y)
         return self._diag_adjoint * y
 
     def vapply(self, xs: DenseArray, batch_space=None) -> DenseArray:

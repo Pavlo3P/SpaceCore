@@ -48,7 +48,7 @@ def test_top_level_objects_match_source_modules():
     linop = importlib.import_module("spacecore.linop")
     functional = importlib.import_module("spacecore.functional")
     linalg = importlib.import_module("spacecore.linalg")
-    manager = importlib.import_module("spacecore._contextual.manager")
+    contextual = importlib.import_module("spacecore._contextual")
 
     assert sc.Context is backend.Context
     assert sc.NumpyOps is backend.NumpyOps
@@ -62,8 +62,8 @@ def test_top_level_objects_match_source_modules():
     assert sc.Functional is functional.Functional
     assert sc.InnerProductFunctional is functional.InnerProductFunctional
     assert sc.StochasticLanczosResult is linalg.StochasticLanczosResult
-    assert sc.get_context is manager.get_context
-    assert sc.resolve_context_priority is manager.resolve_context_priority
+    assert sc.get_context is contextual.get_context
+    assert sc.resolve_context_priority is contextual.resolve_context_priority
 
 
 def test_package_version_matches_project_metadata():

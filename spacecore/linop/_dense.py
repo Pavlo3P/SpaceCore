@@ -1,13 +1,15 @@
 from __future__ import annotations
 
+from functools import cached_property
 from math import prod
 from typing import Any
 
 from ._base import LinOp, Domain, Codomain
+from .._checks import checked_method
 from ..space import VectorSpace
 from ..types import DenseArray
 from ..backend import jax_pytree_class, Context
-from .._contextual.manager import ctx_manager
+from .._contextual import resolve_context_priority
 
 
 @jax_pytree_class
@@ -27,7 +29,7 @@ class DenseLinOp(LinOp[VectorSpace, VectorSpace]):
                  cod: Codomain | None = None,
                  ctx: Context | str | None = None
                  ) -> None:
-        ctx = ctx_manager.resolve_context_priority(ctx, dom, cod)
+        ctx = resolve_context_priority(ctx, dom, cod)
         ctx.assert_dense(A)  # Check if A is ndarray of ctx
 
         if cod is None:
@@ -53,13 +55,8 @@ class DenseLinOp(LinOp[VectorSpace, VectorSpace]):
         self._cod_is_flat = tuple(self.cod.shape) == (self._cod_size,)
         self._dom_vector_fast_path = type(self.dom) is VectorSpace
         self._cod_vector_fast_path = type(self.cod) is VectorSpace
-        if not self._enable_checks:
-            self.apply = self._apply_unchecked
-            self.rapply = self._rapply_unchecked
-            self.vapply = self._vapply_unchecked
-            self.rvapply = self._rvapply_unchecked
 
-    @property
+    @cached_property
     def A(self) -> DenseArray:
         """
         Stored dense tensor representation of this operator.
@@ -69,12 +66,11 @@ class DenseLinOp(LinOp[VectorSpace, VectorSpace]):
         """
         return self._A
 
+    @checked_method(in_space="dom", out_space="cod")
     def apply(self, x: DenseArray) -> DenseArray:
         """
         Forward action: y = A ⋅ x with y in cod.shape.
         """
-        if self._enable_checks:
-            self.dom._check_member(x)
         return self._apply_unchecked(x)
 
     def _apply_unchecked(self, x: DenseArray) -> DenseArray:
@@ -84,14 +80,13 @@ class DenseLinOp(LinOp[VectorSpace, VectorSpace]):
             return y1 if self._cod_is_flat else y1.reshape(self.cod.shape)
         return self.cod.unflatten(y1)
 
+    @checked_method(in_space="cod", out_space="dom")
     def rapply(self, y: DenseArray) -> DenseArray:
         """
         Adjoint action: x = A^* ⋅ y with x in dom.shape.
 
         For complex A, uses conjugate-transpose of the 2D reshaped matrix.
         """
-        if self._enable_checks:
-            self.cod._check_member(y)
         return self._rapply_unchecked(y)
 
     def _rapply_unchecked(self, y: DenseArray) -> DenseArray:

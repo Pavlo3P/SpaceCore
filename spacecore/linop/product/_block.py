@@ -4,6 +4,7 @@ from typing import Any, Tuple
 
 from ._base import ProductLinOp
 from .._base import LinOp
+from ..._checks import checked_method
 from ... import Context
 from ...space import ProductSpace
 from ...backend import jax_pytree_class
@@ -33,9 +34,8 @@ class BlockDiagonalLinOp(ProductLinOp[ProductSpace, ProductSpace]):
             else:
                 raise TypeError(f"Component op {i} has incompatible dom/cod spaces.")
 
+    @checked_method(in_space="dom", out_space="cod")
     def apply(self, x: Any) -> Any:
-        if self._enable_checks:
-            self.dom._check_member(x)
         return self._apply_unchecked(x)
 
     def _apply_unchecked(self, x: Any) -> Any:
@@ -43,9 +43,8 @@ class BlockDiagonalLinOp(ProductLinOp[ProductSpace, ProductSpace]):
             return self._apply_parts[0](x[0]), self._apply_parts[1](x[1])
         return tuple(apply(xi) for apply, xi in zip(self._apply_parts, x))
 
+    @checked_method(in_space="cod", out_space="dom")
     def rapply(self, y: Any) -> Any:
-        if self._enable_checks:
-            self.cod._check_member(y)
         return self._rapply_unchecked(y)
 
     def _rapply_unchecked(self, y: Any) -> Any:

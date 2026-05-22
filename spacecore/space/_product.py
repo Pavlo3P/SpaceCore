@@ -8,7 +8,7 @@ from ._vector import VectorSpace
 from ..types import DenseArray
 from ..backend import Context
 
-from .._contextual.manager import ctx_manager
+from .._contextual import resolve_context_priority
 
 
 def _prod_int(shape: Tuple[int, ...]) -> int:
@@ -47,7 +47,7 @@ class ProductSpace(Space):
             raise ValueError("ProductSpace requires at least one subspace.")
 
         spaces = self._validate_spaces(spaces)
-        ctx = ctx_manager.resolve_context_priority(ctx, *spaces)
+        ctx = resolve_context_priority(ctx, *spaces)
 
         dims = tuple(_prod_int(s.shape) for s in spaces)
         offsets: List[int] = [0]

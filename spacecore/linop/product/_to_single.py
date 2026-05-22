@@ -4,6 +4,7 @@ from typing import Any, Tuple
 
 from ._base import ProductLinOp
 from .._base import LinOp, Codomain
+from ..._checks import checked_method
 from ...space import ProductSpace, VectorSpace
 from ...backend import jax_pytree_class, Context
 
@@ -34,9 +35,8 @@ class SumToSingleLinOp(ProductLinOp[ProductSpace, Codomain]):
             else:
                 raise TypeError(f"Component op {i} must map dom.spaces[{i}] -> cod.")
 
+    @checked_method(in_space="dom", out_space="cod")
     def apply(self, x: Any) -> Any:
-        if self._enable_checks:
-            self.dom._check_member(x)
         return self._apply_unchecked(x)
 
     def _apply_unchecked(self, x: Any) -> Any:
@@ -51,9 +51,8 @@ class SumToSingleLinOp(ProductLinOp[ProductSpace, Codomain]):
             acc = yi if acc is None else (acc + yi if use_direct_add else self.cod.add(yi, acc))
         return acc
 
+    @checked_method(in_space="cod", out_space="dom")
     def rapply(self, y: Any) -> Any:
-        if self._enable_checks:
-            self.cod._check_member(y)
         return self._rapply_unchecked(y)
 
     def _rapply_unchecked(self, y: Any) -> Any:

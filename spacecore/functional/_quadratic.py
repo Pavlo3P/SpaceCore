@@ -4,9 +4,10 @@ from typing import Any
 
 from ._base import Domain, Functional
 from ._linear import LinearFunctional
-from .._contextual.manager import ctx_manager
+from .._checks import checked_method
+from .._contextual import resolve_context_priority
 from ..backend import Context, jax_pytree_class
-from ..linop import LinOp
+from ..linop import DenseLinOp, DiagonalLinOp, LinOp
 from ..space import Space
 
 
@@ -36,9 +37,19 @@ class QuadraticForm(Functional[Domain]):
 @jax_pytree_class
 class LinOpQuadraticForm(QuadraticForm[Domain]):
     """
-    Quadratic form backed by a linear operator.
+    Quadratic form f(x) = 0.5 * <x, Qx>.
 
-    ``q(x) = 1/2 * <x, Qx> + linear(x) + a`` with ``Q : X -> X``.
+    Assumption:
+        Q is Hermitian/self-adjoint. Under this assumption,
+        grad f(x) = Q x.
+
+    Non-Hermitian operators are not supported here. If users need the
+    Hermitian part, they must construct 0.5 * (Q + Q.H) explicitly.
+
+    The full objective is ``q(x) = 1/2 * <x, Qx> + linear(x) + a`` with
+    ``Q : X -> X``. Structurally available dense and diagonal operators are
+    checked at construction. Matrix-free operators are not validated; correctness
+    is the caller's responsibility.
     """
 
     def __init__(
@@ -55,10 +66,11 @@ class LinOpQuadraticForm(QuadraticForm[Domain]):
                 f"linear must be a LinearFunctional or None, got {type(linear).__name__}."
             )
 
-        resolved_ctx = ctx_manager.resolve_context_priority(ctx, Q.domain, Q, linear)
+        resolved_ctx = resolve_context_priority(ctx, Q.domain, Q, linear)
         Q = Q.convert(resolved_ctx)
         if Q.domain != Q.codomain:
             raise ValueError("LinOpQuadraticForm requires Q.domain == Q.codomain.")
+        self._check_hermitian_structure(Q)
         if linear is not None:
             linear = linear.convert(resolved_ctx)
             if linear.domain != Q.domain:
@@ -71,39 +83,46 @@ class LinOpQuadraticForm(QuadraticForm[Domain]):
         if self._enable_checks:
             self._check_scalar_batch(self.a, ())
 
+    @staticmethod
+    def _check_hermitian_structure(Q: LinOp[Domain, Domain]) -> None:
+        try:
+            if isinstance(Q, DenseLinOp):
+                is_hermitian = Q.ops.allclose(Q._A2, Q._A2H)
+            elif isinstance(Q, DiagonalLinOp):
+                is_hermitian = Q.ops.allclose(Q.diagonal, Q._diag_adjoint)
+            else:
+                return
+        except Exception:
+            return
+        if not is_hermitian:
+            raise ValueError("LinOpQuadraticForm requires Q to be Hermitian/self-adjoint.")
+
+    @checked_method(in_space="domain")
     def value(self, x: Any) -> Any:
         """Return ``1/2 * <x, Qx> + linear(x) + a``."""
-        if self._enable_checks:
-            self.domain._check_member(x)
         qx = self.Q.apply(x)
         value = 0.5 * self.domain.inner(x, qx)
         if self.linear is not None:
             value = value + self.linear.value(x)
         return value + self.a
 
+    @checked_method(in_space="domain", out_space="domain")
     def grad(self, x: Any) -> Any:
         """
         Return the Euclidean/Riesz gradient.
 
-        The quadratic part uses the symmetric adjoint part ``(Q + Q*) / 2``.
-        For self-adjoint ``Q`` this is exactly ``Qx``.
+        ``LinOpQuadraticForm`` assumes ``Q`` is Hermitian/self-adjoint, so the
+        quadratic contribution is exactly ``Q.apply(x)``.
         """
-        if self._enable_checks:
-            self.domain._check_member(x)
-        qx = self.Q.apply(x)
-        qhx = self.Q.rapply(x)
-        grad = self.domain.scale(0.5, self.domain.add(qx, qhx))
+        grad = self.Q.apply(x)
         if self.linear is not None:
             grad = self.domain.add(grad, self.linear.representer)
         return grad
 
+    @checked_method(in_space="domain", out_space="domain")
     def hess_apply(self, x: Any) -> Any:
-        """Return the self-adjoint Hessian action ``(Q + Q*) x / 2``."""
-        if self._enable_checks:
-            self.domain._check_member(x)
-        qx = self.Q.apply(x)
-        qhx = self.Q.rapply(x)
-        return self.domain.scale(0.5, self.domain.add(qx, qhx))
+        """Return the Hessian action ``Q x`` under the Hermitian assumption."""
+        return self.Q.apply(x)
 
     def __eq__(self, other: Any) -> bool:
         if type(other) is type(self):

@@ -93,6 +93,46 @@ def test_linop_quadratic_value_and_gradient_match_euclidean_hand_computation():
     assert np.allclose(q.hess_apply(x), [4.0, -4.0])
 
 
+def test_linop_quadratic_form_hermitian_gradient_is_q_apply():
+    sc = importlib.import_module("spacecore")
+    ctx = _ctx()
+    space = sc.VectorSpace((2,), ctx)
+    Q = sc.DenseLinOp(ctx.asarray([[2.0, 1.0], [1.0, 4.0]]), space, space, ctx)
+    q = sc.LinOpQuadraticForm(Q, ctx=ctx)
+    x = ctx.asarray([2.0, -1.0])
+
+    np.testing.assert_allclose(q.grad(x), Q.apply(x))
+    np.testing.assert_allclose(q.hess_apply(x), Q.apply(x))
+
+
+def test_linop_quadratic_form_rejects_non_hermitian_dense_operator():
+    sc = importlib.import_module("spacecore")
+    ctx = _ctx()
+    space = sc.VectorSpace((2,), ctx)
+    Q = sc.DenseLinOp(ctx.asarray([[1.0, 2.0], [0.0, 3.0]]), space, space, ctx)
+
+    with pytest.raises(ValueError, match="Hermitian"):
+        sc.LinOpQuadraticForm(Q, ctx=ctx)
+
+
+def test_linop_quadratic_form_does_not_validate_matrix_free_hermitian_assumption():
+    sc = importlib.import_module("spacecore")
+    ctx = _ctx()
+    space = sc.VectorSpace((2,), ctx)
+
+    def apply(x):
+        return ctx.asarray([x[0] + 2.0 * x[1], 3.0 * x[1]])
+
+    def rapply(y):
+        return ctx.asarray([y[0], 2.0 * y[0] + 3.0 * y[1]])
+
+    Q = sc.MatrixFreeLinOp(apply, rapply, space, space, ctx)
+    q = sc.LinOpQuadraticForm(Q, ctx=ctx)
+    x = ctx.asarray([1.0, 2.0])
+
+    np.testing.assert_allclose(q.grad(x), Q.apply(x))
+
+
 def test_vvalue_and_vgrad_match_elementwise_loops():
     ctx = _ctx()
     q = _quadratic_problem(ctx)

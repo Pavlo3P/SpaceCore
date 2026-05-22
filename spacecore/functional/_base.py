@@ -3,8 +3,7 @@ from __future__ import annotations
 from abc import abstractmethod
 from typing import Any, Generic, TypeVar
 
-from .._contextual import ContextBound
-from .._contextual.manager import ctx_manager
+from .._contextual import ContextBound, resolve_context_priority
 from ..backend import Context
 from ..space import Space
 
@@ -23,7 +22,7 @@ class Functional(ContextBound, Generic[Domain]):
     """
 
     def __init__(self, dom: Domain, ctx: Context | str | None = None) -> None:
-        ctx = ctx_manager.resolve_context_priority(ctx, dom)
+        ctx = resolve_context_priority(ctx, dom)
         super().__init__(ctx)
         self.dom = dom.convert(self.ctx)
         self._enable_checks = self.ctx.enable_checks

@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 from abc import abstractmethod
+from functools import cached_property
 from math import prod
 from numbers import Number
 from typing import Any, Generic, TypeVar
 
 from ..space import Space
 from ..backend import Context
-from .._contextual import ContextBound
-from .._contextual.manager import ctx_manager
+from .._contextual import ContextBound, resolve_context_priority
 
 Domain = TypeVar('Domain', bound=Space)
 Codomain = TypeVar('Codomain', bound=Space)
@@ -26,7 +26,7 @@ class LinOp(ContextBound, Generic[Domain, Codomain]):
     """
 
     def __init__(self, dom: Domain, cod: Codomain, ctx: Context | str | None = None):
-        ctx = ctx_manager.resolve_context_priority(ctx, dom, cod)
+        ctx = resolve_context_priority(ctx, dom, cod)
         super(LinOp, self).__init__(ctx)
 
         self.dom = dom.convert(self.ctx)
@@ -43,7 +43,7 @@ class LinOp(ContextBound, Generic[Domain, Codomain]):
         """Codomain space of this linear operator."""
         return self.cod
 
-    @property
+    @cached_property
     def A(self) -> Any:
         """
         Native numerical representation of this operator.

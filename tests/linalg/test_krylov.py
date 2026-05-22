@@ -112,6 +112,45 @@ def test_lsqr_works_with_matrix_free_linop_and_uses_rapply():
     assert calls["rapply"] > 0
 
 
+def test_cg_solves_complex_hermitian_positive_definite_system():
+    sc = importlib.import_module("spacecore")
+    ctx = _ctx(dtype=np.complex128)
+    space = sc.VectorSpace((2,), ctx)
+    matrix = np.array([[4.0, 1.0 + 1.0j], [1.0 - 1.0j, 3.0]], dtype=np.complex128)
+    A = sc.DenseLinOp(ctx.asarray(matrix), space, space, ctx)
+    b = ctx.asarray([1.0 + 2.0j, 3.0 - 1.0j])
+
+    result = sc.cg(A, b, tol=1e-10, maxiter=10)
+
+    np.testing.assert_allclose(to_numpy(result.x), np.linalg.solve(matrix, to_numpy(b)), rtol=1e-8)
+    np.testing.assert_allclose(to_numpy(A.apply(result.x)), to_numpy(b), rtol=1e-8, atol=1e-8)
+    assert bool(to_numpy(result.converged))
+
+
+def test_lsqr_solves_complex_least_squares():
+    sc = importlib.import_module("spacecore")
+    ctx = _ctx(dtype=np.complex128)
+    domain = sc.VectorSpace((2,), ctx)
+    codomain = sc.VectorSpace((3,), ctx)
+    matrix = np.array(
+        [[1.0 + 1.0j, 0.0], [0.0, 2.0 - 1.0j], [1.0, 1.0j]],
+        dtype=np.complex128,
+    )
+    A = sc.DenseLinOp(ctx.asarray(matrix), domain, codomain, ctx)
+    b = ctx.asarray([1.0 - 1.0j, 2.0 + 0.5j, 3.0j])
+
+    result = sc.lsqr(A, b, tol=1e-10, maxiter=20)
+
+    expected, *_ = np.linalg.lstsq(matrix, to_numpy(b), rcond=None)
+    np.testing.assert_allclose(to_numpy(result.x), expected, rtol=1e-7, atol=1e-7)
+    np.testing.assert_allclose(
+        to_numpy(A.H.apply(A.apply(result.x) - b)),
+        np.zeros(2, dtype=np.complex128),
+        atol=1e-7,
+    )
+    assert bool(to_numpy(result.converged))
+
+
 @pytest.mark.parametrize("backend_name,dtype", _backend_params())
 def test_power_iteration_estimates_dominant_eigenpair(backend_name, dtype):
     sc = importlib.import_module("spacecore")
@@ -252,6 +291,98 @@ def test_stochastic_lanczos_rejects_invalid_max_iter():
 
     with pytest.raises(ValueError, match="max_iter"):
         sc.stochastic_lanczos(op, ctx.asarray([1.0]), max_iter=0)
+
+
+def test_stochastic_lanczos_handles_eigenvalues_larger_than_1e10():
+    sc = importlib.import_module("spacecore")
+    ctx = _ctx()
+    space = sc.VectorSpace((2,), ctx)
+    matrix = np.diag([2.0e12, 3.0e12])
+    op = sc.DenseLinOp(ctx.asarray(matrix), space, space, ctx)
+
+    eigenvalue, eigenvector = sc.stochastic_lanczos(
+        op,
+        ctx.asarray([1.0, 1.0]),
+        max_iter=4,
+        tol=1e-8,
+    )
+
+    np.testing.assert_allclose(to_numpy(eigenvalue), 2.0e12, rtol=1e-6)
+    np.testing.assert_allclose(np.abs(to_numpy(eigenvector)), [1.0, 0.0], atol=1e-5)
+
+
+def test_stochastic_lanczos_handles_complex_hermitian_operator():
+    sc = importlib.import_module("spacecore")
+    ctx = _ctx(dtype=np.complex128)
+    space = sc.VectorSpace((2,), ctx)
+    matrix = np.array([[2.0, 1.0 + 2.0j], [1.0 - 2.0j, 5.0]], dtype=np.complex128)
+    op = sc.DenseLinOp(ctx.asarray(matrix), space, space, ctx)
+
+    eigenvalue, eigenvector = sc.stochastic_lanczos(
+        op,
+        ctx.asarray([1.0 + 0.0j, 1.0j]),
+        max_iter=2,
+        tol=1e-10,
+    )
+
+    expected = np.linalg.eigvalsh(matrix)[0]
+    np.testing.assert_allclose(to_numpy(eigenvalue), expected, rtol=1e-7, atol=1e-7)
+    np.testing.assert_allclose(
+        to_numpy(op.apply(eigenvector)),
+        to_numpy(eigenvalue) * to_numpy(eigenvector),
+        rtol=1e-6,
+        atol=1e-6,
+    )
+
+
+def test_stochastic_lanczos_uses_domain_geometry_for_weighted_inner_product():
+    sc = importlib.import_module("spacecore")
+    ctx = _ctx()
+
+    class WeightedVectorSpace(sc.VectorSpace):
+        def __init__(self, weights, ctx):
+            weights = ctx.asarray(weights)
+            super().__init__(tuple(weights.shape), ctx)
+            self.weights = weights
+
+        def inner(self, x, y):
+            if self._enable_checks:
+                self._check_member(x)
+                self._check_member(y)
+            return self.ops.vdot(x, self.weights * y)
+
+        def _convert(self, new_ctx):
+            return WeightedVectorSpace(new_ctx.asarray(self.weights), new_ctx)
+
+    space = WeightedVectorSpace([1.0, 4.0], ctx)
+    matrix = np.array([[2.0, 1.0], [0.25, 0.75]])
+    op = sc.DenseLinOp(ctx.asarray(matrix), space, space, ctx)
+
+    eigenvalue, eigenvector = sc.stochastic_lanczos(
+        op,
+        ctx.asarray([1.0, 1.0]),
+        max_iter=2,
+        tol=1e-12,
+    )
+
+    expected = np.min(np.linalg.eigvals(matrix).real)
+    np.testing.assert_allclose(to_numpy(eigenvalue), expected, rtol=1e-7, atol=1e-7)
+    np.testing.assert_allclose(
+        to_numpy(op.apply(eigenvector)),
+        to_numpy(eigenvalue) * to_numpy(eigenvector),
+        rtol=1e-6,
+        atol=1e-6,
+    )
+
+
+def test_safe_inverse_returns_reciprocal_for_positive_values_only():
+    sc = importlib.import_module("spacecore")
+    utils = importlib.import_module("spacecore.linalg._utils")
+    ctx = _ctx()
+
+    values = ctx.asarray([-2.0, 0.0, 4.0])
+
+    np.testing.assert_allclose(to_numpy(utils.safe_inverse(sc.NumpyOps(), values)), [0.0, 0.0, 0.25])
 
 
 def test_iterative_solvers_poll_convergence_on_check_interval():

@@ -64,13 +64,14 @@ from .space import (
 )
 from .types import DenseArray, SparseArray, ArrayLike
 
-from ._contextual import ContextBound
-from ._contextual.manager import (
+from ._checks import checked_method
+from ._contextual import (
+    ContextBound,
     set_context, get_context,
     resolve_context_priority,
     register_ops,
     set_resolution_policy, set_dtype_resolution_policy,
-    get_resolution_policy, get_dtype_resolution_policy
+    get_resolution_policy, get_dtype_resolution_policy,
 )
 
 __all__ = [
@@ -133,6 +134,7 @@ __all__ = [
     "SparseArray",
     "ArrayLike",
 
+    "checked_method",
     "ContextBound",
     "set_context",
     "get_context",
