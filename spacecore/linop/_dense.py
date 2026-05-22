@@ -47,6 +47,7 @@ class DenseLinOp(LinOp[VectorSpace, VectorSpace]):
         self._A2 = self.A.reshape(self._matrix_shape)
         dtype = self.ops.get_dtype(self.A)
         is_complex = getattr(dtype, "kind", None) == "c" or str(dtype).startswith("torch.complex")
+        self._A2T = self._A2.T
         self._A2H = self._A2.T.conj() if is_complex else self._A2.T
         self._dom_is_flat = tuple(self.dom.shape) == (self._dom_size,)
         self._cod_is_flat = tuple(self.cod.shape) == (self._cod_size,)
@@ -97,6 +98,44 @@ class DenseLinOp(LinOp[VectorSpace, VectorSpace]):
         if self._dom_vector_fast_path:
             return x1 if self._dom_is_flat else x1.reshape(self.dom.shape)
         return self.dom.unflatten(x1)
+
+    def vapply(self, xs: DenseArray, batch_space=None) -> DenseArray:
+        in_space = self._input_batch_space(self.domain, xs, batch_space)
+        if tuple(getattr(in_space, "batch_axes", ())) != tuple(range(len(in_space.batch_shape))):
+            return self._fallback_vapply(xs, batch_space)
+        if self._enable_checks:
+            in_space._check_member(xs)
+        batch_shape = tuple(in_space.batch_shape)
+        xs2 = self.ops.reshape(xs, (-1, self._dom_size))
+        ys2 = self.ops.matmul(xs2, self._A2T)
+        y_flat_shape = batch_shape + (self._cod_size,)
+        ys_flat = self.ops.reshape(ys2, y_flat_shape)
+        if self._cod_vector_fast_path:
+            ys = self.ops.reshape(ys2, batch_shape + tuple(self.cod.shape))
+        else:
+            ys = self.cod.batch(batch_shape, tuple(range(len(batch_shape)))).unflatten(ys_flat)
+        if self._enable_checks:
+            self._output_batch_space(self.codomain, in_space)._check_member(ys)
+        return ys
+
+    def rvapply(self, ys: DenseArray, batch_space=None) -> DenseArray:
+        in_space = self._input_batch_space(self.codomain, ys, batch_space)
+        if tuple(getattr(in_space, "batch_axes", ())) != tuple(range(len(in_space.batch_shape))):
+            return self._fallback_rvapply(ys, batch_space)
+        if self._enable_checks:
+            in_space._check_member(ys)
+        batch_shape = tuple(in_space.batch_shape)
+        ys2 = self.ops.reshape(ys, (-1, self._cod_size))
+        xs2 = self.ops.matmul(ys2, self._A2H.T)
+        x_flat_shape = batch_shape + (self._dom_size,)
+        xs_flat = self.ops.reshape(xs2, x_flat_shape)
+        if self._dom_vector_fast_path:
+            xs = self.ops.reshape(xs2, batch_shape + tuple(self.dom.shape))
+        else:
+            xs = self.dom.batch(batch_shape, tuple(range(len(batch_shape)))).unflatten(xs_flat)
+        if self._enable_checks:
+            self._output_batch_space(self.domain, in_space)._check_member(xs)
+        return xs
 
     def to_dense(self) -> DenseArray:
         """

@@ -10,6 +10,7 @@ actions.
    spacecore.linop.LinOp
    spacecore.linop.ProductLinOp
    spacecore.linop.DenseLinOp
+   spacecore.linop.DiagonalLinOp
    spacecore.linop.SparseLinOp
    spacecore.linop.BlockDiagonalLinOp
    spacecore.linop.StackedLinOp
@@ -37,6 +38,15 @@ DenseLinOp
 ----------
 
 .. autoclass:: spacecore.linop.DenseLinOp
+   :members:
+   :undoc-members:
+   :inherited-members:
+   :show-inheritance:
+
+DiagonalLinOp
+-------------
+
+.. autoclass:: spacecore.linop.DiagonalLinOp
    :members:
    :undoc-members:
    :inherited-members:

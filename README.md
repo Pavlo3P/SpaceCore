@@ -150,6 +150,8 @@ A `Space` describes the structure and geometry of values:
 - `VectorSpace` for Euclidean vectors and tensors;
 - `HermitianSpace` for Hermitian or symmetric matrices;
 - `ProductSpace` for Cartesian products of spaces.
+- `BatchSpace` for batched elements such as `X.batch((B,), (0,))`,
+  representing `B` independent copies of `X`.
 
 Algorithms should use space methods such as `zeros`, `add`, `scale`, `axpy`,
 `inner`, `norm`, `flatten`, and `unflatten` instead of hard-coding backend array
@@ -167,6 +169,20 @@ A `LinOp` represents a linear operator between spaces:
 
 Operators expose `apply` and `rapply`, so algorithms can use a linear map and
 its adjoint without depending on the storage format.
+
+For batched inputs, `vapply(xs)` and `rvapply(ys)` lift the operator over the
+leading batch axis:
+
+```python
+XB = X.batch(batch_shape=(B,), batch_axes=(0,))
+YB = Y.batch(batch_shape=(B,), batch_axes=(0,))
+
+ys = A.vapply(xs, batch_space=XB)    # xs in XB, ys in YB
+xs2 = A.rvapply(ys, batch_space=YB)  # ys in YB, xs2 in XB
+```
+
+The fallback uses backend `vmap`; dense, sparse, diagonal, identity, zero,
+algebraic, and product-structured operators provide specialized batched paths.
 
 ## Who should use this?
 
