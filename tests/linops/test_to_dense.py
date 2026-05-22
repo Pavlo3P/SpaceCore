@@ -153,6 +153,18 @@ def test_custom_linop_can_define_A_representation():
     assert op.A["data"] is dense
 
 
+def test_diagonal_linop_A_is_cached():
+    sc = importlib.import_module("spacecore")
+    ctx = _ctx()
+    space = sc.VectorSpace((3,), ctx)
+    op = sc.DiagonalLinOp(ctx.asarray([1.0, 2.0, 3.0]), space, ctx)
+
+    A = op.A
+
+    assert op.A is A
+    assert np.allclose(A, np.diag([1.0, 2.0, 3.0]))
+
+
 def test_sum_linop_to_dense_matches_apply():
     sc = importlib.import_module("spacecore")
     ctx = _ctx()
