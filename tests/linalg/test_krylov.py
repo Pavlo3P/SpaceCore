@@ -1,4 +1,5 @@
 import importlib
+import inspect
 
 import numpy as np
 import pytest
@@ -131,6 +132,62 @@ def test_power_iteration_estimates_dominant_eigenpair(backend_name, dtype):
     assert bool(to_numpy(result.converged))
 
 
+def test_power_iteration_accepts_quadratic_form_hessian_action():
+    sc = importlib.import_module("spacecore")
+    ctx = _ctx()
+    space = sc.VectorSpace((2,), ctx)
+    op = sc.DenseLinOp(ctx.asarray([[2.0, 0.0], [0.0, 5.0]]), space, space, ctx)
+    q = sc.LinOpQuadraticForm(op, ctx=ctx)
+    x0 = ctx.asarray([1.0, 1.0])
+
+    op_result = sc.power_iteration(op, x0=x0, tol=1e-5, maxiter=60)
+    q_result = sc.power_iteration(q, x0=x0, tol=1e-5, maxiter=60)
+
+    np.testing.assert_allclose(to_numpy(q_result.eigenvalue), to_numpy(op_result.eigenvalue))
+    np.testing.assert_allclose(
+        np.abs(to_numpy(q_result.eigenvector)),
+        np.abs(to_numpy(op_result.eigenvector)),
+        rtol=1e-6,
+        atol=1e-6,
+    )
+
+
+def test_power_iteration_dispatches_quadratic_form_before_core(monkeypatch):
+    sc = importlib.import_module("spacecore")
+    power_mod = importlib.import_module("spacecore.linalg._power")
+    ctx = _ctx()
+    space = sc.VectorSpace((2,), ctx)
+    op = sc.DenseLinOp(ctx.asarray([[2.0, 0.0], [0.0, 5.0]]), space, space, ctx)
+    q = sc.LinOpQuadraticForm(op, ctx=ctx)
+    x0 = ctx.asarray([1.0, 0.0])
+    captured = {}
+
+    def fake_core(action, x, tol, maxiter, check_every):
+        captured["action"] = action
+        captured["x"] = x
+        return ctx.asarray(0.0), x, ctx.asarray(True), 0, ctx.asarray(0.0)
+
+    monkeypatch.setattr(power_mod, "_power_iteration_core", fake_core)
+    result = power_mod.power_iteration(q, x0=x0, maxiter=1)
+
+    assert result.eigenvector is x0
+    assert isinstance(captured["action"], power_mod._SelfAdjointAction)
+    assert captured["action"].domain == q.domain
+    x = ctx.asarray([1.0, 2.0])
+    np.testing.assert_allclose(captured["action"].apply(x), q.hess_apply(x))
+
+
+def test_power_iteration_core_has_no_dispatch_logic():
+    power_mod = importlib.import_module("spacecore.linalg._power")
+    source = inspect.getsource(power_mod._power_iteration_core)
+
+    assert "isinstance" not in source
+    assert "hasattr" not in source
+    assert "getattr" not in source
+    assert "_SelfAdjointAction(" not in source
+    assert "PowerIterationResult(" not in source
+
+
 @pytest.mark.parametrize("backend_name,dtype", _backend_params())
 def test_stochastic_lanczos_approximates_smallest_eigenpair(backend_name, dtype):
     sc = importlib.import_module("spacecore")
@@ -153,6 +210,20 @@ def test_stochastic_lanczos_approximates_smallest_eigenpair(backend_name, dtype)
         rtol=1e-5,
         atol=1e-5,
     )
+
+
+def test_stochastic_lanczos_returns_result_object():
+    sc = importlib.import_module("spacecore")
+    ctx = _ctx()
+    space = sc.VectorSpace((2,), ctx)
+    op = sc.DenseLinOp(ctx.asarray([[2.0, 0.0], [0.0, 5.0]]), space, space, ctx)
+
+    result = sc.stochastic_lanczos(op, ctx.asarray([1.0, 1.0]), max_iter=2, tol=1e-8)
+    eigenvalue, eigenvector = result
+
+    assert isinstance(result, sc.StochasticLanczosResult)
+    np.testing.assert_allclose(eigenvalue, result.eigenvalue)
+    np.testing.assert_allclose(eigenvector, result.eigenvector)
 
 
 def test_stochastic_lanczos_uses_e0_for_zero_initial_vector():
@@ -247,6 +318,21 @@ def test_power_iteration_jit_compiles_with_operator_argument():
 
     run = jax.jit(lambda A, x: sc.power_iteration(A, x0=x, maxiter=60).eigenvalue)
     eigenvalue = run(op, ctx.asarray([1.0, 1.0]))
+
+    np.testing.assert_allclose(to_numpy(eigenvalue), 5.0, rtol=1e-5, atol=1e-5)
+
+
+@pytest.mark.skipif(not has_jax(), reason="jax is not installed")
+def test_power_iteration_jit_compiles_with_quadratic_form_argument():
+    jax = pytest.importorskip("jax")
+    sc = importlib.import_module("spacecore")
+    ctx = _ctx("jax", jax_real_dtype())
+    space = sc.VectorSpace((2,), ctx)
+    op = sc.DenseLinOp(ctx.asarray([[2.0, 0.0], [0.0, 5.0]]), space, space, ctx)
+    q = sc.LinOpQuadraticForm(op, ctx=ctx)
+
+    run = jax.jit(lambda quad, x: sc.power_iteration(quad, x0=x, maxiter=60).eigenvalue)
+    eigenvalue = run(q, ctx.asarray([1.0, 1.0]))
 
     np.testing.assert_allclose(to_numpy(eigenvalue), 5.0, rtol=1e-5, atol=1e-5)
 

@@ -23,11 +23,14 @@ def test_expected_names_are_exported():
         "IdentityLinOp", "MatrixFreeLinOp", "make_sum", "make_scaled",
         "make_composed",
         "BlockDiagonalLinOp", "StackedLinOp", "SumToSingleLinOp",
+        "Functional", "LinearFunctional", "InnerProductFunctional",
+        "MatrixFreeLinearFunctional", "QuadraticForm", "LinOpQuadraticForm",
         "VectorSpace", "HermitianSpace", "ProductSpace", "Space",
         "DenseArray", "SparseArray", "ArrayLike",
         "set_context", "get_context", "resolve_context_priority", "register_ops",
         "set_resolution_policy", "set_dtype_resolution_policy",
         "get_resolution_policy", "get_dtype_resolution_policy",
+        "StochasticLanczosResult",
     }
     if has_jax():
         expected |= {"JaxOps", "jax_pytree_class"}
@@ -43,6 +46,8 @@ def test_top_level_objects_match_source_modules():
     backend = importlib.import_module("spacecore.backend")
     space = importlib.import_module("spacecore.space")
     linop = importlib.import_module("spacecore.linop")
+    functional = importlib.import_module("spacecore.functional")
+    linalg = importlib.import_module("spacecore.linalg")
     manager = importlib.import_module("spacecore._contextual.manager")
 
     assert sc.Context is backend.Context
@@ -54,6 +59,9 @@ def test_top_level_objects_match_source_modules():
     assert sc.Space is space.Space
     assert sc.VectorSpace is space.VectorSpace
     assert sc.DenseLinOp is linop.DenseLinOp
+    assert sc.Functional is functional.Functional
+    assert sc.InnerProductFunctional is functional.InnerProductFunctional
+    assert sc.StochasticLanczosResult is linalg.StochasticLanczosResult
     assert sc.get_context is manager.get_context
     assert sc.resolve_context_priority is manager.resolve_context_priority
 

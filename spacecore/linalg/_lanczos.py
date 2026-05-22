@@ -1,11 +1,29 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, NamedTuple
 
 from ..linop import LinOp
 from ..types import DenseArray
 from ._utils import DEFAULT_CONVERGENCE_CHECK_INTERVAL, check_interval
 from ._utils import require_linop, require_square, should_check_iteration
+from ._utils import result_repr
+
+
+class StochasticLanczosResult(NamedTuple):
+    """Result returned by :func:`stochastic_lanczos`."""
+
+    eigenvalue: Any
+    eigenvector: Any
+
+    def __repr__(self) -> str:
+        """Return a compact summary without printing the full eigenvector."""
+        return result_repr(
+            "StochasticLanczosResult",
+            {
+                "eigenvalue": self.eigenvalue,
+                "eigenvector": self.eigenvector,
+            },
+        )
 
 
 def _check_lanczos_max_iter(max_iter: int) -> int:
@@ -22,7 +40,7 @@ def stochastic_lanczos(
     max_iter: int = 100,
     tol: float = 1e-6,
     check_every: int = DEFAULT_CONVERGENCE_CHECK_INTERVAL,
-) -> tuple[DenseArray, Any]:
+) -> StochasticLanczosResult:
     r"""Approximate the smallest eigenpair of a Hermitian operator.
 
     The operator is supplied as a square ``LinOp`` and ``initial_vector`` is an
@@ -47,8 +65,9 @@ def stochastic_lanczos(
             this many iterations, and always on the final iteration.
 
     Returns:
-        A pair ``(eigenvalue, eigenvector)`` for the smallest approximated
-        eigenpair.
+        ``StochasticLanczosResult`` containing the smallest approximated
+        eigenpair. The result supports tuple unpacking as
+        ``eigenvalue, eigenvector``.
     """
     A = require_linop(A)
     require_square(A, "stochastic_lanczos")
@@ -185,4 +204,4 @@ def stochastic_lanczos(
     den = ops.real(A.domain.inner(x, x))
     lam = num / den
 
-    return lam, x
+    return StochasticLanczosResult(lam, x)

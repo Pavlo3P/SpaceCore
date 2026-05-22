@@ -22,6 +22,7 @@ mathematical objects:
 
 * a ``Space`` knows the structure and geometry of its elements;
 * a ``LinOp`` maps one space to another;
+* a ``Functional`` maps a space element to a scalar;
 * backend-specific array creation and operations live behind ``BackendOps``.
 
 The result is ordinary Python code whose core numerical logic is not tied to
@@ -31,7 +32,7 @@ Mental model:
 
 .. code-block:: text
 
-   BackendOps -> Context -> Space/LinOp -> Algorithm
+   BackendOps -> Context -> Space/LinOp/Functional -> Algorithm
 
 Write once, run twice
 ---------------------
@@ -191,6 +192,19 @@ the leading batch axis:
 
 The fallback uses backend ``vmap``; dense, sparse, diagonal, identity, zero,
 algebraic, and product-structured operators provide specialized batched paths.
+
+``Functional``
+~~~~~~~~~~~~~~
+
+A ``Functional`` represents a scalar-valued map on a space.
+``LinearFunctional`` covers maps such as ``<c, x>``,
+``MatrixFreeLinearFunctional`` wraps a callable without storing a representer,
+and ``LinOpQuadraticForm`` represents objectives such as
+``0.5 * <x, Qx> + ell(x) + a``.
+
+For batched inputs, ``vvalue(xs)`` evaluates independently over leading batch
+axes. Quadratic forms that define gradients also expose ``grad(x)`` and
+``vgrad(xs)``.
 
 Who should use this?
 --------------------
