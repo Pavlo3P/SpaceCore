@@ -21,11 +21,11 @@ wrapper.
 | `lsqr` | Yes | No. Trace count stayed at 1 after two calls. | Yes. Static `maxiter` change raised trace count to 2; shape change raised it to 3. | `scripts/jit_audit.py` output for `lsqr`. |
 | `lanczos_smallest` | Yes | No. Trace count stayed at 1 after two calls. | Yes. Static `max_iter` change raised trace count to 2; shape change raised it to 3. | `scripts/jit_audit.py` output for `lanczos_smallest`. |
 | `power_iteration` | Yes | No. Trace count stayed at 1 after two calls. | Yes. Static `maxiter` change raised trace count to 2; shape change raised it to 3. | `scripts/jit_audit.py` output for `power_iteration`. |
-| `expm_multiply` | Not audited yet | Not applicable | Not applicable | Not implemented before Task 1. The script reports `{'solver': 'expm_multiply', 'status': 'not available before Task 1'}` and should be rerun after Task 1. |
+| `expm_multiply` | Yes | No. Trace count stayed at 1 after two calls. | Yes. Static `max_iter` change raised trace count to 2; shape change raised it to 3. | `scripts/jit_audit.py` output: `{'solver': 'expm_multiply', 'traces_after_two_same_shape_calls': 1, 'traces_after_static_change': 2, 'traces_after_shape_change': 3, ...}` |
 
 ## Findings
 
-### 1. Lanczos full reorthogonalization lowers to an inner scan
+### 1. Lanczos full reorthogonalization now uses a vectorized exact-VectorSpace path
 
 `tests/fixtures/jaxpr_lanczos_smallest.txt` captures the current JAXPR for
 `lanczos_smallest(max_iter=3)`. Grep evidence:
@@ -34,7 +34,7 @@ wrapper.
 grep -n "scan\\|while\\|scatter\\|dot_general" tests/fixtures/jaxpr_lanczos_smallest.txt
 ```
 
-The fixture shows:
+The initial audit fixture showed:
 
 - a top-level `while` at line 61 for the Krylov iteration;
 - a nested `scan` at line 143 corresponding to
@@ -49,6 +49,11 @@ Important constraint: this replacement is **not valid for arbitrary
 `Space.inner`**. A weighted space, RKHS, or any custom geometry must keep using
 `Space.inner(v_j, w)`. Therefore the optimization should be guarded to the exact
 `VectorSpace` type only, not subclasses.
+
+The implemented exact-`VectorSpace` path now lowers the coefficient computation
+to a single `dot_general` at fixture line 143. Remaining `scan` operations in
+the fixture are the fixed-size tridiagonal construction loops, not the
+reorthogonalization coefficient loop.
 
 ### 2. `cg` and `lsqr` use `ops.cond` correctly for periodic diagnostics
 
@@ -80,12 +85,12 @@ work arrays change. Scalars such as tolerances are currently Python arguments
 converted through `ops.asarray`; changing them may retrace unless callers pass
 them through a wrapper as array values. This is acceptable for the current API.
 
-## Recommended Implementation
+## Implemented Change
 
-- Add a Euclidean fast path for Lanczos reorthogonalization when
+- Added a Euclidean fast path for Lanczos reorthogonalization when
   `type(A.domain) is VectorSpace`: compute all coefficients with
   `ops.einsum("jn,n->j", ops.conj(V_), w)`.
-- Keep the existing `Space.inner` loop for all non-exact `VectorSpace` domains
+- Kept the existing `Space.inner` loop for all non-exact `VectorSpace` domains
   to preserve Space geometry.
 
 This is the only validated change from this audit. The broader replacement
@@ -94,10 +99,10 @@ geometry-correct Lanczos recurrence.
 
 ## Follow-Up TODO
 
-1. Rerun `scripts/jit_audit.py` after `expm_multiply` lands and update this
-   document with its trace counts.
-2. Consider a benchmark for exact `VectorSpace` Lanczos before/after the
+1. Consider a benchmark for exact `VectorSpace` Lanczos before/after the
    reorthogonalization fast path.
+2. Consider vectorizing fixed-size tridiagonal construction if the remaining
+   construction `scan` nodes show up in JAX profiling.
 3. If users report trace-time issues from constructing algebra expressions
    inside `jax.jit`, document that operators should be built outside the jitted
    function.
