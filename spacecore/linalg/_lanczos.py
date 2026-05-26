@@ -127,6 +127,7 @@ def lanczos_smallest(
 
     full_indices = ops.arange(max_iter + 1)
     idx = ops.arange(max_iter)
+    coeffs_zero = ops.zeros((max_iter + 1,), dtype=ctx.dtype)
 
     def cond_fun(state: tuple[Any, Any, Any, Any, Any, Any]) -> Any:
         i, _V, _alphas, _betas, _beta, keep_going = state
@@ -160,7 +161,7 @@ def lanczos_smallest(
         )
         mask = ops.astype(mask, ctx.dtype)
 
-        coeffs_full = ops.zeros((max_iter + 1,), dtype=ctx.dtype)
+        coeffs_full = coeffs_zero
 
         def fill_coeff(j: int, coeffs_in: DenseArray) -> DenseArray:
             v_j_member = A.domain.unflatten(V_[j])
