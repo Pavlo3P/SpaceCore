@@ -38,6 +38,17 @@ class LanczosResult(NamedTuple):
 StochasticLanczosResult = LanczosResult
 
 
+class _LanczosBasisResult(NamedTuple):
+    V: DenseArray
+    T: DenseArray
+    alphas: DenseArray
+    betas: DenseArray
+    krylov_dim: Any
+    initial_norm: Any
+    tol: Any
+    e0_unit: DenseArray
+
+
 def _check_lanczos_max_iter(max_iter: int) -> int:
     max_iter = int(max_iter)
     if max_iter < 1:
@@ -45,53 +56,51 @@ def _check_lanczos_max_iter(max_iter: int) -> int:
     return max_iter
 
 
-def lanczos_smallest(
+def _build_tridiagonal(
+    ops: Any,
+    alphas: DenseArray,
+    betas: DenseArray,
+    max_iter: int,
+    m: Any,
+    real_dtype: Any,
+) -> DenseArray:
+    idx = ops.arange(max_iter)
+    full_indices = ops.arange(max_iter + 1)
+    mask_alpha = idx < m
+    inactive_sentinel = (
+        ops.max(ops.abs(alphas))
+        + 2.0 * ops.max(ops.abs(betas))
+        + ops.asarray(1.0, dtype=real_dtype)
+    )
+    alphas_full = ops.where(mask_alpha, alphas, inactive_sentinel)
+    betas_full = ops.where(full_indices == m, ops.asarray(0.0, dtype=real_dtype), betas)
+
+    T = ops.zeros((max_iter, max_iter), dtype=real_dtype)
+
+    def fill_diag(ii: int, T_in: DenseArray) -> DenseArray:
+        return ops.index_set(T_in, (ii, ii), alphas_full[ii], copy=True)
+
+    T = ops.fori_loop(0, max_iter, fill_diag, T)
+
+    def fill_off(ii: int, T_in: DenseArray) -> DenseArray:
+        b = betas_full[ii + 1]
+        T_in = ops.index_set(T_in, (ii, ii + 1), b, copy=True)
+        T_in = ops.index_set(T_in, (ii + 1, ii), b, copy=True)
+        return T_in
+
+    return ops.fori_loop(0, max_iter - 1, fill_off, T)
+
+
+def _lanczos_basis_and_tridiag(
     A: LinOp,
     initial_vector: Any,
-    *,
-    max_iter: int = 100,
-    tol: float = 1e-6,
-    check_every: int = DEFAULT_CONVERGENCE_CHECK_INTERVAL,
-) -> LanczosResult:
-    r"""Approximate the smallest eigenpair of a Hermitian operator.
-
-    The operator is supplied as a square ``LinOp`` and ``initial_vector`` is an
-    element of ``A.domain``. The implementation keeps fixed-size coordinate
-    arrays for JAX compatibility, safely handles zero initial vectors, and
-    refines the returned eigenvalue with the Rayleigh quotient of the
-    reconstructed Ritz vector in the original space.
-
-    Mathematically, Lanczos builds an orthonormal Krylov basis ``V`` for
-    ``span{v, T v, T^2 v, ...}`` and a tridiagonal projection
-    :math:`T_k = V^\dagger T V`. The returned vector is the Ritz vector
-    reconstructed in the original coordinates, and the returned scalar is the
-    Rayleigh quotient
-    :math:`(x^\dagger T x) / (x^\dagger x)`.
-
-    Args:
-        A: Square Hermitian linear operator.
-        initial_vector: Starting vector in ``A.domain``.
-        max_iter: Maximum number of Lanczos steps.
-        tol: Breakdown tolerance for the off-diagonal Lanczos coefficient.
-        check_every: Refresh the breakdown-based stopping decision only every
-            this many iterations, and always on the final iteration.
-
-    Returns:
-        ``LanczosResult`` containing the smallest approximated eigenpair, the
-        standard Ritz residual estimate ``beta[m] * abs(y[m - 1])``, the
-        Krylov dimension reached, and a convergence flag. The residual estimate
-        is computed from the tridiagonal recurrence; callers that need the true
-        residual can evaluate ``A.apply(eigenvector) - eigenvalue * eigenvector``
-        once more in the original space.
-    """
-    A = require_linop(A)
-    require_square(A, "lanczos_smallest")
-    max_iter = _check_lanczos_max_iter(max_iter)
-    check_every = check_interval(check_every)
-    A.domain.check_member(initial_vector)
+    max_iter: int,
+    tol: float,
+    real_dtype: Any,
+    check_every: int,
+) -> _LanczosBasisResult:
     ops = A.ops
     ctx = A.ctx
-    real_dtype = ops.real_dtype(ctx.dtype)
     use_euclidean_reorth = type(A.domain) is VectorSpace
 
     v0 = A.domain.flatten(initial_vector)
@@ -128,7 +137,6 @@ def lanczos_smallest(
     keep_going0 = ops.asarray(True)
 
     full_indices = ops.arange(max_iter + 1)
-    idx = ops.arange(max_iter)
     coeffs_zero = ops.zeros((max_iter + 1,), dtype=ctx.dtype)
 
     def cond_fun(state: tuple[Any, Any, Any, Any, Any, Any]) -> Any:
@@ -200,36 +208,67 @@ def lanczos_smallest(
     i_final, V, alphas, betas, _beta_final, _keep_going = ops.while_loop(
         cond_fun, body_fun, (i0, V, alphas, betas, beta0, keep_going0)
     )
-    m = i_final
+    T = _build_tridiagonal(ops, alphas, betas, max_iter, i_final, real_dtype)
+    return _LanczosBasisResult(V, T, alphas, betas, i_final, v0_norm, tol_s, e0_unit)
 
-    mask_alpha = idx < m
-    inactive_sentinel = (
-        ops.max(ops.abs(alphas))
-        + 2.0 * ops.max(ops.abs(betas))
-        + ops.asarray(1.0, dtype=real_dtype)
+
+def lanczos_smallest(
+    A: LinOp,
+    initial_vector: Any,
+    *,
+    max_iter: int = 100,
+    tol: float = 1e-6,
+    check_every: int = DEFAULT_CONVERGENCE_CHECK_INTERVAL,
+) -> LanczosResult:
+    r"""Approximate the smallest eigenpair of a Hermitian operator.
+
+    The operator is supplied as a square ``LinOp`` and ``initial_vector`` is an
+    element of ``A.domain``. The implementation keeps fixed-size coordinate
+    arrays for JAX compatibility, safely handles zero initial vectors, and
+    refines the returned eigenvalue with the Rayleigh quotient of the
+    reconstructed Ritz vector in the original space.
+
+    Mathematically, Lanczos builds an orthonormal Krylov basis ``V`` for
+    ``span{v, T v, T^2 v, ...}`` and a tridiagonal projection
+    :math:`T_k = V^\dagger T V`. The returned vector is the Ritz vector
+    reconstructed in the original coordinates, and the returned scalar is the
+    Rayleigh quotient
+    :math:`(x^\dagger T x) / (x^\dagger x)`.
+
+    Args:
+        A: Square Hermitian linear operator.
+        initial_vector: Starting vector in ``A.domain``.
+        max_iter: Maximum number of Lanczos steps.
+        tol: Breakdown tolerance for the off-diagonal Lanczos coefficient.
+        check_every: Refresh the breakdown-based stopping decision only every
+            this many iterations, and always on the final iteration.
+
+    Returns:
+        ``LanczosResult`` containing the smallest approximated eigenpair, the
+        standard Ritz residual estimate ``beta[m] * abs(y[m - 1])``, the
+        Krylov dimension reached, and a convergence flag. The residual estimate
+        is computed from the tridiagonal recurrence; callers that need the true
+        residual can evaluate ``A.apply(eigenvector) - eigenvalue * eigenvector``
+        once more in the original space.
+    """
+    A = require_linop(A)
+    require_square(A, "lanczos_smallest")
+    max_iter = _check_lanczos_max_iter(max_iter)
+    check_every = check_interval(check_every)
+    A.domain.check_member(initial_vector)
+    ops = A.ops
+    ctx = A.ctx
+    real_dtype = ops.real_dtype(ctx.dtype)
+    idx = ops.arange(max_iter)
+    basis = _lanczos_basis_and_tridiag(
+        A, initial_vector, max_iter, tol, real_dtype, check_every
     )
-    alphas_full = ops.where(mask_alpha, alphas, inactive_sentinel)
-    betas_full = ops.where(full_indices == m, ops.asarray(0.0, dtype=real_dtype), betas)
 
-    T = ops.zeros((max_iter, max_iter), dtype=real_dtype)
-
-    def fill_diag(ii: int, T_in: DenseArray) -> DenseArray:
-        return ops.index_set(T_in, (ii, ii), alphas_full[ii], copy=True)
-
-    T = ops.fori_loop(0, max_iter, fill_diag, T)
-
-    def fill_off(ii: int, T_in: DenseArray) -> DenseArray:
-        b = betas_full[ii + 1]
-        T_in = ops.index_set(T_in, (ii, ii + 1), b, copy=True)
-        T_in = ops.index_set(T_in, (ii + 1, ii), b, copy=True)
-        return T_in
-
-    T = ops.fori_loop(0, max_iter - 1, fill_off, T)
-
-    _eigvals, eigvecs = ops.eigh(T)
+    m = basis.krylov_dim
+    _eigvals, eigvecs = ops.eigh(basis.T)
     y_full = eigvecs[:, 0]
-    residual_norm = betas[m] * ops.abs(y_full[m - 1])
-    converged = residual_norm < tol_s
+    residual_norm = basis.betas[m] * ops.abs(y_full[m - 1])
+    converged = residual_norm < basis.tol
 
     mask_y = ops.where(
         idx < m,
@@ -239,15 +278,15 @@ def lanczos_smallest(
     mask_y = ops.astype(mask_y, y_full.dtype)
     y_valid = y_full * mask_y
 
-    V_reduced = V[:max_iter, :]
+    V_reduced = basis.V[:max_iter, :]
     x_flat = ops.einsum("j,jn->n", y_valid, V_reduced)
 
     x_member = A.domain.unflatten(x_flat)
     x_norm = A.domain.norm(x_member)
     x_flat = ops.cond(
-        x_norm > eps_s,
+        x_norm > ops.asarray(1e-12, dtype=real_dtype),
         lambda _: A.domain.flatten(A.domain.scale(safe_inverse_nonneg(ops, x_norm), x_member)),
-        lambda _: e0_unit,
+        lambda _: basis.e0_unit,
         ops.asarray(0.0, dtype=real_dtype),
     )
 

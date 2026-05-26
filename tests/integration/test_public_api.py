@@ -32,6 +32,7 @@ def test_expected_names_are_exported():
         "set_resolution_policy", "set_dtype_resolution_policy",
         "get_resolution_policy", "get_dtype_resolution_policy",
         "LanczosResult", "StochasticLanczosResult", "lanczos_smallest",
+        "ExpmMultiplyResult", "expm_multiply",
     }
     if has_jax():
         expected |= {"JaxOps", "jax_pytree_class"}
@@ -65,6 +66,8 @@ def test_top_level_objects_match_source_modules():
     assert sc.InnerProductFunctional is functional.InnerProductFunctional
     assert sc.LanczosResult is linalg.LanczosResult
     assert sc.StochasticLanczosResult is linalg.StochasticLanczosResult
+    assert sc.ExpmMultiplyResult is linalg.ExpmMultiplyResult
+    assert sc.expm_multiply is linalg.expm_multiply
     assert sc.get_context is contextual.get_context
     assert sc.resolve_context_priority is contextual.resolve_context_priority
 

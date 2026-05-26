@@ -45,11 +45,13 @@ from .functional import (
 )
 from .linalg import (
     CGResult,
+    ExpmMultiplyResult,
     LanczosResult,
     LSQRResult,
     PowerIterationResult,
     StochasticLanczosResult,
     cg,
+    expm_multiply,
     lanczos_smallest,
     lsqr,
     power_iteration,
@@ -119,11 +121,13 @@ __all__ = [
     "make_functional_composed",
 
     "CGResult",
+    "ExpmMultiplyResult",
     "LanczosResult",
     "LSQRResult",
     "PowerIterationResult",
     "StochasticLanczosResult",
     "cg",
+    "expm_multiply",
     "lanczos_smallest",
     "lsqr",
     "power_iteration",
