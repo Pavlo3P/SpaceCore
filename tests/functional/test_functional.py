@@ -83,6 +83,81 @@ def test_matrix_free_linear_functional_has_no_representer():
         functional.representer
 
 
+def test_linear_functional_compose_specializes_to_inner_product_functional():
+    sc = importlib.import_module("spacecore")
+    ctx = _ctx()
+    X = sc.VectorSpace((2,), ctx)
+    Y = sc.VectorSpace((3,), ctx)
+    A = sc.DenseLinOp(ctx.asarray([[1.0, 2.0], [0.0, -1.0], [3.0, 0.5]]), X, Y, ctx)
+    c = ctx.asarray([2.0, -1.0, 0.5])
+    F = sc.InnerProductFunctional(c, Y, ctx)
+    pullback = F.compose(A)
+    x = ctx.asarray([4.0, -2.0])
+
+    assert isinstance(pullback, sc.InnerProductFunctional)
+    np.testing.assert_allclose(pullback.representer, A.H.apply(c))
+    np.testing.assert_allclose(pullback.value(x), F.value(A.apply(x)))
+
+
+def test_quadratic_form_compose_specializes_quadratic_and_linear_terms():
+    sc = importlib.import_module("spacecore")
+    ctx = _ctx()
+    X = sc.VectorSpace((2,), ctx)
+    Y = sc.VectorSpace((3,), ctx)
+    A = sc.DenseLinOp(ctx.asarray([[1.0, 2.0], [0.0, -1.0], [3.0, 0.5]]), X, Y, ctx)
+    Q = sc.IdentityLinOp(Y, ctx)
+    linear = sc.InnerProductFunctional(ctx.asarray([1.0, -2.0, 0.5]), Y, ctx)
+    F = sc.LinOpQuadraticForm(Q, linear, 1.25, ctx)
+    pullback = F.compose(A)
+    x = ctx.asarray([0.5, -1.5])
+
+    assert isinstance(pullback, sc.LinOpQuadraticForm)
+    np.testing.assert_allclose(pullback.value(x), F.value(A.apply(x)))
+    np.testing.assert_allclose(pullback.grad(x), A.H.apply(F.grad(A.apply(x))))
+
+
+def test_generic_functional_compose_forwards_value():
+    sc = importlib.import_module("spacecore")
+    ctx = _ctx()
+    X = sc.VectorSpace((2,), ctx)
+    Y = sc.VectorSpace((2,), ctx)
+    A = sc.DiagonalLinOp(ctx.asarray([2.0, -1.0]), X, ctx)
+
+    class SumSquares(sc.Functional):
+        def value(self, x):
+            return self.ops.sum(x * x)
+
+        def tree_flatten(self):
+            return (), (self.domain, self.ctx)
+
+        @classmethod
+        def tree_unflatten(cls, aux, children):
+            domain, ctx = aux
+            return cls(domain, ctx)
+
+        def _convert(self, new_ctx):
+            return SumSquares(self.domain.convert(new_ctx), new_ctx)
+
+    F = SumSquares(Y, ctx)
+    pullback = F.compose(A)
+    x = ctx.asarray([3.0, 4.0])
+
+    assert isinstance(pullback, sc.ComposedFunctional)
+    np.testing.assert_allclose(pullback.value(x), F.value(A.apply(x)))
+
+
+def test_functional_compose_rejects_incompatible_codomain():
+    sc = importlib.import_module("spacecore")
+    ctx = _ctx()
+    X = sc.VectorSpace((2,), ctx)
+    Y = sc.VectorSpace((3,), ctx)
+    A = sc.IdentityLinOp(X, ctx)
+    F = sc.InnerProductFunctional(ctx.asarray([1.0, 2.0, 3.0]), Y, ctx)
+
+    with pytest.raises(ValueError, match="A.codomain == F.domain"):
+        F.compose(A)
+
+
 def test_linop_quadratic_value_and_gradient_match_euclidean_hand_computation():
     ctx = _ctx()
     q = _quadratic_problem(ctx)
@@ -131,6 +206,16 @@ def test_linop_quadratic_form_does_not_validate_matrix_free_hermitian_assumption
     x = ctx.asarray([1.0, 2.0])
 
     np.testing.assert_allclose(q.grad(x), Q.apply(x))
+
+
+def test_linop_quadratic_form_always_rejects_nonscalar_constant():
+    sc = importlib.import_module("spacecore")
+    ctx = _ctx(enable_checks=False)
+    space = sc.VectorSpace((2,), ctx)
+    Q = sc.IdentityLinOp(space, ctx)
+
+    with pytest.raises(ValueError, match="scalar batch"):
+        sc.LinOpQuadraticForm(Q, a=ctx.asarray([0.0, 0.0]), ctx=ctx)
 
 
 def test_vvalue_and_vgrad_match_elementwise_loops():

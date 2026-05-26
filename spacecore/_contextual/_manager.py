@@ -10,10 +10,17 @@ if TYPE_CHECKING:
     from ..backend._context import Context
 
 
+_cached_state = None
+
+
 def _state():
+    global _cached_state
+    if _cached_state is not None:
+        return _cached_state
     from ._state import _contextual
 
-    return _contextual
+    _cached_state = _contextual
+    return _cached_state
 
 
 def set_context(

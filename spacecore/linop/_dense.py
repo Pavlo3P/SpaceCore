@@ -48,7 +48,7 @@ class DenseLinOp(LinOp[VectorSpace, VectorSpace]):
         self._matrix_shape = (self._cod_size, self._dom_size)
         self._A2 = self.A.reshape(self._matrix_shape)
         dtype = self.ops.get_dtype(self.A)
-        is_complex = getattr(dtype, "kind", None) == "c" or str(dtype).startswith("torch.complex")
+        is_complex = self.ops.is_complex_dtype(dtype)
         self._A2T = self._A2.T
         self._A2H = self._A2.T.conj() if is_complex else self._A2.T
         self._dom_is_flat = tuple(self.dom.shape) == (self._dom_size,)
@@ -192,6 +192,23 @@ class DenseLinOp(LinOp[VectorSpace, VectorSpace]):
         The returned array has shape ``self.codomain.shape + self.domain.shape``.
         """
         return self.A
+
+    def is_hermitian(self) -> bool | None:
+        """
+        Return whether this dense operator is structurally Hermitian.
+
+        Returns
+        -------
+        bool
+            ``True`` when the operator is square and its flattened matrix
+            equals its conjugate transpose.
+        """
+        if self.dom != self.cod:
+            return False
+        try:
+            return bool(self.ops.allclose(self._A2, self._A2H))
+        except Exception:
+            return None
 
     def __eq__(self, x: Any) -> bool:
         if type(x) is type(self):

@@ -31,14 +31,9 @@ class DiagonalLinOp(LinOp[VectorSpace, VectorSpace]):
         if tuple(diagonal.shape) != expected:
             raise TypeError(f"Expected diagonal.shape == space.shape == {expected}, got {diagonal.shape}")
         self.diagonal = diagonal
-        self._size = prod(self.domain.shape)
-        self._is_flat = tuple(self.domain.shape) == (self._size,)
-        self._diag_flat = diagonal if self._is_flat else diagonal.reshape((self._size,))
         dtype = self.ops.get_dtype(diagonal)
-        self._is_complex = getattr(dtype, "kind", None) == "c" or str(dtype).startswith("torch.complex")
-        self._diag_adjoint = self.ops.conj(diagonal) if self._is_complex else diagonal
-        self._diag_adjoint_flat = (
-            self._diag_adjoint if self._is_flat else self._diag_adjoint.reshape((self._size,))
+        self._diag_adjoint = (
+            self.ops.conj(diagonal) if self.ops.is_complex_dtype(dtype) else diagonal
         )
 
     @cached_property
@@ -53,11 +48,22 @@ class DiagonalLinOp(LinOp[VectorSpace, VectorSpace]):
     def rapply(self, y: DenseArray) -> DenseArray:
         return self._diag_adjoint * y
 
+    def _reshape_diagonal_for_batch(self, diagonal: DenseArray, batch_space: Any) -> DenseArray:
+        batch_shape = tuple(getattr(batch_space, "batch_shape", ()))
+        batch_axes = tuple(getattr(batch_space, "batch_axes", ()))
+        total_ndim = len(self.domain.shape) + len(batch_shape)
+        base_axes = [axis for axis in range(total_ndim) if axis not in batch_axes]
+        shape = [1] * total_ndim
+        for axis, dim in zip(base_axes, self.domain.shape, strict=True):
+            shape[axis] = dim
+        return self.ops.reshape(diagonal, tuple(shape))
+
     def vapply(self, xs: DenseArray, batch_space=None) -> DenseArray:
         in_space = self._input_batch_space(self.domain, xs, batch_space)
         if self._enable_checks:
             in_space._check_member(xs)
-        ys = self.diagonal * xs
+        diagonal = self._reshape_diagonal_for_batch(self.diagonal, in_space)
+        ys = diagonal * xs
         if self._enable_checks:
             self._output_batch_space(self.codomain, in_space)._check_member(ys)
         return ys
@@ -66,14 +72,30 @@ class DiagonalLinOp(LinOp[VectorSpace, VectorSpace]):
         in_space = self._input_batch_space(self.codomain, ys, batch_space)
         if self._enable_checks:
             in_space._check_member(ys)
-        xs = self._diag_adjoint * ys
+        diagonal = self._reshape_diagonal_for_batch(self._diag_adjoint, in_space)
+        xs = diagonal * ys
         if self._enable_checks:
             self._output_batch_space(self.domain, in_space)._check_member(xs)
         return xs
 
     def to_dense(self) -> DenseArray:
-        matrix = self.ops.diag(self._diag_flat)
+        flat = self.diagonal.reshape((prod(self.domain.shape),))
+        matrix = self.ops.diag(flat)
         return self.ops.reshape(matrix, tuple(self.codomain.shape) + tuple(self.domain.shape))
+
+    def is_hermitian(self) -> bool | None:
+        """
+        Return whether this diagonal operator is structurally Hermitian.
+
+        Returns
+        -------
+        bool
+            ``True`` when the diagonal equals its complex conjugate.
+        """
+        try:
+            return bool(self.ops.allclose(self.diagonal, self._diag_adjoint))
+        except Exception:
+            return None
 
     def __eq__(self, other: Any) -> bool:
         if type(other) is type(self):
@@ -91,4 +113,8 @@ class DiagonalLinOp(LinOp[VectorSpace, VectorSpace]):
         return cls(children[0], domain, ctx)
 
     def _convert(self, new_ctx: Context) -> DiagonalLinOp:
-        return DiagonalLinOp(new_ctx.asarray(self.diagonal), self.domain.convert(new_ctx), new_ctx)
+        return DiagonalLinOp(
+            new_ctx.asarray(self.diagonal),
+            VectorSpace(tuple(self.domain.shape), new_ctx),
+            new_ctx,
+        )

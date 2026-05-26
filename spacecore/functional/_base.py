@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 from abc import abstractmethod
-from typing import Any, Generic, TypeVar
+from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
 from .._contextual import ContextBound, resolve_context_priority
 from ..backend import Context
 from ..space import Space
+
+if TYPE_CHECKING:
+    from ..linop import LinOp
 
 
 Domain = TypeVar("Domain", bound=Space)
@@ -45,6 +48,24 @@ class Functional(ContextBound, Generic[Domain]):
     def __call__(self, x: Any) -> Any:
         """Evaluate this functional at ``x``."""
         return self.value(x)
+
+    def compose(self, A: "LinOp") -> "Functional":
+        """
+        Return the pull-back ``self o A``.
+
+        Parameters
+        ----------
+        A:
+            Linear operator whose codomain matches this functional's domain.
+
+        Returns
+        -------
+        Functional
+            Functional on ``A.domain`` evaluating ``self.value(A.apply(x))``.
+        """
+        from ._composed import make_functional_composed
+
+        return make_functional_composed(self, A)
 
     def vvalue(self, xs: Any, batch_space: Space | None = None) -> Any:
         """Evaluate this functional independently over leading batch axes."""

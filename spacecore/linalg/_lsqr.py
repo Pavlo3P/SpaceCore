@@ -4,7 +4,7 @@ from typing import Any, NamedTuple
 
 from ..linop import LinOp
 from ._utils import DEFAULT_CONVERGENCE_CHECK_INTERVAL, check_interval, check_maxiter
-from ._utils import is_converged, require_linop, safe_inverse, should_check_iteration
+from ._utils import is_converged, require_linop, safe_inverse_nonneg, should_check_iteration
 from ._utils import result_repr, threshold
 
 
@@ -63,10 +63,10 @@ def lsqr(
     beta = A.codomain.norm(residual)
     normal_residual_norm = A.domain.norm(A.H.apply(residual))
     u = residual
-    u = A.codomain.scale(safe_inverse(A.ops, beta), u)
+    u = A.codomain.scale(safe_inverse_nonneg(A.ops, beta), u)
     v = A.H.apply(u)
     alpha = A.domain.norm(v)
-    v = A.domain.scale(safe_inverse(A.ops, alpha), v)
+    v = A.domain.scale(safe_inverse_nonneg(A.ops, alpha), v)
     w = v
     phi_bar = beta
     rho_bar = alpha
@@ -81,14 +81,14 @@ def lsqr(
         x, u, v, w, alpha, _beta, rho_bar, phi_bar, _residual_norm, _normal_residual, k = carry
         u_next = A.codomain.axpy(-alpha, u, A.apply(v))
         beta_next = A.codomain.norm(u_next)
-        u_next = A.codomain.scale(safe_inverse(A.ops, beta_next), u_next)
+        u_next = A.codomain.scale(safe_inverse_nonneg(A.ops, beta_next), u_next)
 
         v_next = A.domain.axpy(-beta_next, v, A.H.apply(u_next))
         alpha_next = A.domain.norm(v_next)
-        v_next = A.domain.scale(safe_inverse(A.ops, alpha_next), v_next)
+        v_next = A.domain.scale(safe_inverse_nonneg(A.ops, alpha_next), v_next)
 
         rho = A.ops.sqrt(rho_bar * rho_bar + beta_next * beta_next)
-        inv_rho = safe_inverse(A.ops, rho)
+        inv_rho = safe_inverse_nonneg(A.ops, rho)
         c = rho_bar * inv_rho
         s = beta_next * inv_rho
         theta = s * alpha_next

@@ -43,7 +43,7 @@ class SparseLinOp(LinOp):
         self._cod_size = expected[0]
         self._dom_size = expected[1]
         dtype = self.ops.get_dtype(self.A)
-        self._A_is_complex = getattr(dtype, "kind", None) == "c" or str(dtype).startswith("torch.complex")
+        self._A_is_complex = self.ops.is_complex_dtype(dtype)
         self._AT = self.A.T
         self._AH = self._AT.conj() if self._A_is_complex else self._AT
         self._dom_is_flat = tuple(self.dom.shape) == (self._dom_size,)
@@ -199,6 +199,23 @@ class SparseLinOp(LinOp):
         else:
             dense = super().to_dense().reshape((self._cod_size, self._dom_size))
         return self.ops.reshape(dense, tuple(self.codomain.shape) + tuple(self.domain.shape))
+
+    def is_hermitian(self) -> bool | None:
+        """
+        Return whether this sparse operator is structurally Hermitian.
+
+        Returns
+        -------
+        bool
+            ``True`` when the operator is square and its sparse matrix equals
+            its conjugate transpose within backend tolerances.
+        """
+        if self.dom != self.cod:
+            return False
+        try:
+            return bool(self.ops.allclose_sparse(self.A, self._AH))
+        except Exception:
+            return None
 
     def __eq__(self, x: Any) -> bool:
         if type(x) is type(self):

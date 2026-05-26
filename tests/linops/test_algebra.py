@@ -263,6 +263,27 @@ def test_factories_enforce_same_context_dtype():
         sc.make_composed(A32, A64)
 
 
+def test_factories_ignore_enable_checks_when_context_dtype_matches():
+    sc = importlib.import_module("spacecore")
+    checked = sc.Context(sc.NumpyOps(), dtype=np.float64, enable_checks=True)
+    unchecked = sc.Context(sc.NumpyOps(), dtype=np.float64, enable_checks=False)
+    X_checked = sc.VectorSpace((2,), checked)
+    X_unchecked = sc.VectorSpace((2,), unchecked)
+    A = sc.DenseLinOp(checked.asarray([[1.0, 0.0], [0.0, 1.0]]), X_checked, X_checked, checked)
+    B = sc.DenseLinOp(
+        unchecked.asarray([[2.0, 0.0], [0.0, 3.0]]),
+        X_unchecked,
+        X_unchecked,
+        unchecked,
+    )
+
+    summed = sc.make_sum((A, B))
+    composed = sc.make_composed(A, B)
+
+    assert isinstance(summed, sc.SumLinOp)
+    assert isinstance(composed, sc.ComposedLinOp)
+
+
 def test_factories_enforce_domain_and_codomain_compatibility():
     sc = importlib.import_module("spacecore")
     ctx = _ctx(dtype=np.float64)

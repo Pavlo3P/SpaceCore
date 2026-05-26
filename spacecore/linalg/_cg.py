@@ -5,7 +5,7 @@ from typing import Any, NamedTuple
 from ..linop import LinOp
 from ._utils import DEFAULT_CONVERGENCE_CHECK_INTERVAL, check_interval, check_maxiter
 from ._utils import is_converged, real_inner, require_linop, require_square
-from ._utils import result_repr, safe_inverse, should_check_iteration, threshold
+from ._utils import result_repr, safe_inverse_nonneg, should_check_iteration, threshold
 
 
 class CGResult(NamedTuple):
@@ -73,11 +73,11 @@ def cg(
         Ap = A.apply(p)
         pAp = real_inner(A.domain, p, Ap)
         active = (rs > eps) & (pAp > eps)
-        alpha = A.ops.where(active, rs * safe_inverse(A.ops, pAp), A.ops.zeros_like(rs))
+        alpha = A.ops.where(active, rs * safe_inverse_nonneg(A.ops, pAp), A.ops.zeros_like(rs))
         x_next = A.domain.axpy(alpha, p, x)
         r_next = A.codomain.axpy(-alpha, Ap, r)
         rs_next = real_inner(A.domain, r_next, r_next)
-        beta = A.ops.where(active, rs_next * safe_inverse(A.ops, rs), A.ops.zeros_like(rs_next))
+        beta = A.ops.where(active, rs_next * safe_inverse_nonneg(A.ops, rs), A.ops.zeros_like(rs_next))
         p_next = A.domain.axpy(beta, p, r_next)
         k_next = k + 1
         current_residual_norm = A.domain.norm(r_next)

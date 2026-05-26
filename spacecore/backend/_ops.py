@@ -248,6 +248,49 @@ class BackendOps(ABC):
         """Machine epsilon for dtype."""
         return float(self.xp.finfo(self.sanitize_dtype(dtype)).eps)
 
+    def is_complex_dtype(self, dtype: DType) -> bool:
+        """
+        Return whether ``dtype`` is a complex floating type.
+
+        Parameters
+        ----------
+        dtype:
+            Backend or portable dtype specifier to inspect.
+
+        Returns
+        -------
+        bool
+            ``True`` when ``dtype`` represents complex floating values.
+        """
+        dtype = self.sanitize_dtype(dtype)
+        return getattr(dtype, "kind", None) == "c" or str(dtype).startswith("torch.complex")
+
+    def real_dtype(self, dtype: DType) -> DType:
+        """
+        Return the real floating dtype with the same precision as ``dtype``.
+
+        Parameters
+        ----------
+        dtype:
+            Backend or portable dtype specifier.
+
+        Returns
+        -------
+        DType
+            ``dtype`` itself when it is already real-valued; otherwise
+            ``float32`` for complex64 and ``float64`` for complex128.
+        """
+        dtype = self.sanitize_dtype(dtype)
+        if not self.is_complex_dtype(dtype):
+            return dtype
+        itemsize = getattr(dtype, "itemsize", None)
+        if itemsize is None:
+            dtype_text = str(dtype)
+            if "complex64" in dtype_text:
+                return self.sanitize_dtype("float32")
+            return self.sanitize_dtype("float64")
+        return self.sanitize_dtype("float32" if itemsize <= 8 else "float64")
+
     def get_dtype(self, x: Any) -> DType:
         """Return x.dtype after verifying x is a backend array."""
         if self.is_array(x):

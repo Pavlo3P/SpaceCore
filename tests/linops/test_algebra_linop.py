@@ -37,14 +37,12 @@ def test_algebra_linops_inherit_from_linop():
     assert not hasattr(sc, "AdjointLinOp")
 
 
-def test_context_mismatch_raises_clear_error():
+def test_check_policy_mismatch_does_not_block_algebra():
     A = _op([[1.0, 2.0], [3.0, 4.0]], (2,), (2,), _ctx(enable_checks=True))
     B = _op([[5.0, 6.0], [7.0, 8.0]], (2,), (2,), _ctx(enable_checks=False))
 
-    with pytest.raises(ValueError, match="same ctx"):
-        _ = A + B
-    with pytest.raises(ValueError, match="same ctx"):
-        _ = A @ B
+    assert isinstance(A + B, importlib.import_module("spacecore").SumLinOp)
+    assert isinstance(A @ B, importlib.import_module("spacecore").ComposedLinOp)
 
 
 def test_sum_requires_matching_domain_and_codomain():

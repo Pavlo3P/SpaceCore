@@ -10,9 +10,9 @@ if TYPE_CHECKING:
     from ..backend import BackendFamily, BackendOps, Context
 
 
-def _same_effective_context(left: Context, right: Context) -> bool:
+def _same_context_for_conversion(left: Context, right: Context) -> bool:
     """
-    Compare two contexts for conversion equivalence.
+    Compare contexts for conversion equivalence.
 
     Parameters
     ----------
@@ -26,12 +26,42 @@ def _same_effective_context(left: Context, right: Context) -> bool:
     bool
         ``True`` when both contexts use the same backend operations, dtype, and
         check policy; otherwise ``False``.
+
+    Notes
+    -----
+    This predicate is used by ``convert()`` and intentionally includes
+    ``enable_checks`` because a converted object with different runtime checks
+    is operationally different.
     """
     return (
         left.ops == right.ops
         and left.dtype == right.dtype
         and left.enable_checks == right.enable_checks
     )
+
+
+def _same_context_for_algebra(left: Context, right: Context) -> bool:
+    """
+    Compare contexts for algebraic compatibility.
+
+    Parameters
+    ----------
+    left:
+        First context to compare.
+    right:
+        Second context to compare.
+
+    Returns
+    -------
+    bool
+        ``True`` when both contexts use the same backend operations and dtype.
+
+    Notes
+    -----
+    Algebraic combinators ignore ``enable_checks`` because validation policy is
+    operational, not mathematical.
+    """
+    return left.ops == right.ops and left.dtype == right.dtype
 
 
 class ContextBound(ABC):
@@ -166,6 +196,6 @@ class ContextBound(ABC):
             converted object produced by :meth:`_convert`.
         """
         _, new_ctx = enforce_convert_policy(self, new_ctx)
-        if _same_effective_context(self.ctx, new_ctx):
+        if _same_context_for_conversion(self.ctx, new_ctx):
             return self
         return self._convert(new_ctx)

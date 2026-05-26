@@ -64,8 +64,14 @@ def is_converged(residual_norm: Any, threshold_value: Any) -> Any:
     return residual_norm <= threshold_value
 
 
-def safe_inverse(ops: Any, value: Any) -> Any:
-    """Return ``1 / value`` where positive and zero otherwise."""
+def safe_inverse_nonneg(ops: Any, value: Any) -> Any:
+    """
+    Return ``1 / value`` where ``value > 0`` and zero otherwise.
+
+    This helper is intended for norms and nonnegative residual magnitudes. It
+    is not a general scalar inverse: for example, ``-2`` maps to ``0``, not
+    ``-0.5``.
+    """
     positive = value > 0
     safe_value = ops.where(positive, value, ops.ones_like(value))
     return ops.where(positive, 1.0 / safe_value, ops.zeros_like(value))
@@ -74,14 +80,16 @@ def safe_inverse(ops: Any, value: Any) -> Any:
 def normalize(space: Any, x: Any) -> tuple[Any, Any]:
     """Normalize a space member and return ``(unit, norm)``."""
     norm = space.norm(x)
-    return space.scale(safe_inverse(space.ops, norm), x), norm
+    return space.scale(safe_inverse_nonneg(space.ops, norm), x), norm
 
 
 def default_initial_vector(A: LinOp) -> Any:
-    """Return a deterministic nonzero initial vector for ``A.domain``."""
+    """Return a deterministic unit vector in ``A.domain`` using its geometry."""
     size = prod(A.domain.shape)
-    flat = A.ops.ones((size,), dtype=A.dtype) / A.ops.sqrt(A.ops.asarray(float(size)))
-    return A.domain.unflatten(flat)
+    flat = A.ops.ones((size,), dtype=A.dtype)
+    v = A.domain.unflatten(flat)
+    norm = A.domain.norm(v)
+    return A.domain.scale(safe_inverse_nonneg(A.ops, norm), v)
 
 
 def summarize_value(value: Any) -> str:

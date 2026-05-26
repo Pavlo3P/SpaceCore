@@ -7,7 +7,7 @@ from ._linear import LinearFunctional
 from .._checks import checked_method
 from .._contextual import resolve_context_priority
 from ..backend import Context, jax_pytree_class
-from ..linop import DenseLinOp, DiagonalLinOp, LinOp
+from ..linop import LinOp
 from ..space import Space
 
 
@@ -80,21 +80,12 @@ class LinOpQuadraticForm(QuadraticForm[Domain]):
         self.Q = Q
         self.linear = linear
         self.a = self.ctx.asarray(a)
-        if self._enable_checks:
-            self._check_scalar_batch(self.a, ())
+        self._check_scalar_batch(self.a, ())
 
     @staticmethod
     def _check_hermitian_structure(Q: LinOp[Domain, Domain]) -> None:
-        try:
-            if isinstance(Q, DenseLinOp):
-                is_hermitian = Q.ops.allclose(Q._A2, Q._A2H)
-            elif isinstance(Q, DiagonalLinOp):
-                is_hermitian = Q.ops.allclose(Q.diagonal, Q._diag_adjoint)
-            else:
-                return
-        except Exception:
-            return
-        if not is_hermitian:
+        result = Q.is_hermitian()
+        if result is False:
             raise ValueError("LinOpQuadraticForm requires Q to be Hermitian/self-adjoint.")
 
     @checked_method(in_space="domain")

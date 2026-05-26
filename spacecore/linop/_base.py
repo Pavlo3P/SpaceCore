@@ -87,6 +87,18 @@ class LinOp(ContextBound, Generic[Domain, Codomain]):
         """Apply the adjoint of this linear operator to ``y``."""
         return self.rapply(y)
 
+    def is_hermitian(self) -> bool | None:
+        """
+        Return whether this operator is structurally Hermitian when known.
+
+        Returns
+        -------
+        bool | None
+            ``True`` or ``False`` when the subclass can verify the structure
+            cheaply, otherwise ``None`` for unknown or matrix-free operators.
+        """
+        return None
+
     def vapply(self, xs: Any, batch_space: Space | None = None) -> Any:
         """Apply this operator independently over a batch of domain elements."""
         return self._fallback_vapply(xs, batch_space)

@@ -1,31 +1,40 @@
 from __future__ import annotations
 
 from typing import Any, NamedTuple
+from warnings import warn
 
-import numpy as np
 
 from ..linop import LinOp
 from ..types import DenseArray
 from ._utils import DEFAULT_CONVERGENCE_CHECK_INTERVAL, check_interval
-from ._utils import require_linop, require_square, safe_inverse, should_check_iteration
+from ._utils import require_linop, require_square, safe_inverse_nonneg, should_check_iteration
 from ._utils import result_repr
 
 
-class StochasticLanczosResult(NamedTuple):
-    """Result returned by :func:`stochastic_lanczos`."""
+class LanczosResult(NamedTuple):
+    """Result returned by :func:`lanczos_smallest`."""
 
     eigenvalue: Any
     eigenvector: Any
+    residual_norm: Any
+    krylov_dim: Any
+    converged: Any
 
     def __repr__(self) -> str:
         """Return a compact summary without printing the full eigenvector."""
         return result_repr(
-            "StochasticLanczosResult",
+            "LanczosResult",
             {
                 "eigenvalue": self.eigenvalue,
                 "eigenvector": self.eigenvector,
+                "residual_norm": self.residual_norm,
+                "krylov_dim": self.krylov_dim,
+                "converged": self.converged,
             },
         )
+
+
+StochasticLanczosResult = LanczosResult
 
 
 def _check_lanczos_max_iter(max_iter: int) -> int:
@@ -35,29 +44,14 @@ def _check_lanczos_max_iter(max_iter: int) -> int:
     return max_iter
 
 
-def _real_dtype(ctx: Any) -> Any:
-    dtype_text = str(ctx.dtype)
-    if "complex128" in dtype_text:
-        return ctx.ops.sanitize_dtype(np.float64)
-    if "complex64" in dtype_text:
-        return ctx.ops.sanitize_dtype(np.float32)
-    try:
-        dtype = np.dtype(ctx.dtype)
-    except TypeError:
-        return ctx.dtype
-    if dtype.kind == "c":
-        return ctx.ops.sanitize_dtype(np.float64 if dtype.itemsize > 8 else np.float32)
-    return ctx.dtype
-
-
-def stochastic_lanczos(
+def lanczos_smallest(
     A: LinOp,
     initial_vector: Any,
     *,
     max_iter: int = 100,
     tol: float = 1e-6,
     check_every: int = DEFAULT_CONVERGENCE_CHECK_INTERVAL,
-) -> StochasticLanczosResult:
+) -> LanczosResult:
     r"""Approximate the smallest eigenpair of a Hermitian operator.
 
     The operator is supplied as a square ``LinOp`` and ``initial_vector`` is an
@@ -82,18 +76,21 @@ def stochastic_lanczos(
             this many iterations, and always on the final iteration.
 
     Returns:
-        ``StochasticLanczosResult`` containing the smallest approximated
-        eigenpair. The result supports tuple unpacking as
-        ``eigenvalue, eigenvector``.
+        ``LanczosResult`` containing the smallest approximated eigenpair, the
+        standard Ritz residual estimate ``beta[m] * abs(y[m - 1])``, the
+        Krylov dimension reached, and a convergence flag. The residual estimate
+        is computed from the tridiagonal recurrence; callers that need the true
+        residual can evaluate ``A.apply(eigenvector) - eigenvalue * eigenvector``
+        once more in the original space.
     """
     A = require_linop(A)
-    require_square(A, "stochastic_lanczos")
+    require_square(A, "lanczos_smallest")
     max_iter = _check_lanczos_max_iter(max_iter)
     check_every = check_interval(check_every)
     A.domain.check_member(initial_vector)
     ops = A.ops
     ctx = A.ctx
-    real_dtype = _real_dtype(ctx)
+    real_dtype = ops.real_dtype(ctx.dtype)
 
     v0 = A.domain.flatten(initial_vector)
     v0 = ctx.assert_dense(v0)
@@ -112,12 +109,12 @@ def stochastic_lanczos(
     e0 = ops.index_set(e0, (0,), ctx.asarray(1.0), copy=True)
     e0_member = A.domain.unflatten(e0)
     e0_norm = A.domain.norm(e0_member)
-    e0_unit = A.domain.flatten(A.domain.scale(safe_inverse(ops, e0_norm), e0_member))
+    e0_unit = A.domain.flatten(A.domain.scale(safe_inverse_nonneg(ops, e0_norm), e0_member))
 
     v0_unit = ops.cond(
         v0_norm > eps_s,
         lambda _: A.domain.flatten(
-            A.domain.scale(safe_inverse(ops, v0_norm), initial_vector)
+            A.domain.scale(safe_inverse_nonneg(ops, v0_norm), initial_vector)
         ),
         lambda _: e0_unit,
         ops.asarray(0.0, dtype=real_dtype),
@@ -180,7 +177,7 @@ def stochastic_lanczos(
         betas_ = ops.index_set(betas_, (i + 1,), beta_new, copy=True)
 
         def set_next(V_in: DenseArray) -> DenseArray:
-            w_unit = A.domain.flatten(A.domain.scale(safe_inverse(ops, beta_new), w_member))
+            w_unit = A.domain.flatten(A.domain.scale(safe_inverse_nonneg(ops, beta_new), w_member))
             return ops.index_set(V_in, (i + 1, slice(None)), w_unit, copy=True)
 
         V_ = ops.cond(beta_new >= tol_s, set_next, lambda V_in: V_in, V_)
@@ -225,6 +222,8 @@ def stochastic_lanczos(
 
     _eigvals, eigvecs = ops.eigh(T)
     y_full = eigvecs[:, 0]
+    residual_norm = betas[m] * ops.abs(y_full[m - 1])
+    converged = residual_norm < tol_s
 
     mask_y = ops.where(
         idx < m,
@@ -241,7 +240,7 @@ def stochastic_lanczos(
     x_norm = A.domain.norm(x_member)
     x_flat = ops.cond(
         x_norm > eps_s,
-        lambda _: A.domain.flatten(A.domain.scale(safe_inverse(ops, x_norm), x_member)),
+        lambda _: A.domain.flatten(A.domain.scale(safe_inverse_nonneg(ops, x_norm), x_member)),
         lambda _: e0_unit,
         ops.asarray(0.0, dtype=real_dtype),
     )
@@ -253,4 +252,34 @@ def stochastic_lanczos(
     den = ops.real(A.domain.inner(x, x))
     lam = num / den
 
-    return StochasticLanczosResult(lam, x)
+    return LanczosResult(lam, x, residual_norm, m, converged)
+
+
+def stochastic_lanczos(
+    A: LinOp,
+    initial_vector: Any,
+    *,
+    max_iter: int = 100,
+    tol: float = 1e-6,
+    check_every: int = DEFAULT_CONVERGENCE_CHECK_INTERVAL,
+) -> LanczosResult:
+    """
+    Deprecated alias for :func:`lanczos_smallest`.
+
+    Returns
+    -------
+    LanczosResult
+        Result from :func:`lanczos_smallest`.
+    """
+    warn(
+        "stochastic_lanczos is deprecated; use lanczos_smallest instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return lanczos_smallest(
+        A,
+        initial_vector,
+        max_iter=max_iter,
+        tol=tol,
+        check_every=check_every,
+    )

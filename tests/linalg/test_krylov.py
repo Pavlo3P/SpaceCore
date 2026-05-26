@@ -228,97 +228,107 @@ def test_power_iteration_core_has_no_dispatch_logic():
 
 
 @pytest.mark.parametrize("backend_name,dtype", _backend_params())
-def test_stochastic_lanczos_approximates_smallest_eigenpair(backend_name, dtype):
+def test_lanczos_smallest_approximates_smallest_eigenpair(backend_name, dtype):
     sc = importlib.import_module("spacecore")
     ctx = _ctx(backend_name, dtype)
     space = sc.VectorSpace((2,), ctx)
     op = sc.DenseLinOp(ctx.asarray([[2.0, 0.0], [0.0, 5.0]]), space, space, ctx)
     initial = ctx.asarray([1.0, 1.0])
 
-    eigenvalue, eigenvector = sc.stochastic_lanczos(
+    result = sc.lanczos_smallest(
         op,
         initial,
         max_iter=2,
         tol=1e-8,
     )
 
-    np.testing.assert_allclose(to_numpy(eigenvalue), 2.0, rtol=1e-5, atol=1e-5)
+    np.testing.assert_allclose(to_numpy(result.eigenvalue), 2.0, rtol=1e-5, atol=1e-5)
     np.testing.assert_allclose(
-        np.abs(to_numpy(eigenvector)),
+        np.abs(to_numpy(result.eigenvector)),
         [1.0, 0.0],
         rtol=1e-5,
         atol=1e-5,
     )
+    assert bool(to_numpy(result.converged))
+    np.testing.assert_allclose(to_numpy(result.residual_norm), 0.0, atol=1e-5)
+    assert int(to_numpy(result.krylov_dim)) == 2
 
 
-def test_stochastic_lanczos_returns_result_object():
+def test_lanczos_smallest_returns_result_object_and_deprecated_alias_warns():
     sc = importlib.import_module("spacecore")
     ctx = _ctx()
     space = sc.VectorSpace((2,), ctx)
     op = sc.DenseLinOp(ctx.asarray([[2.0, 0.0], [0.0, 5.0]]), space, space, ctx)
 
-    result = sc.stochastic_lanczos(op, ctx.asarray([1.0, 1.0]), max_iter=2, tol=1e-8)
-    eigenvalue, eigenvector = result
+    result = sc.lanczos_smallest(op, ctx.asarray([1.0, 1.0]), max_iter=2, tol=1e-8)
 
+    assert isinstance(result, sc.LanczosResult)
     assert isinstance(result, sc.StochasticLanczosResult)
-    np.testing.assert_allclose(eigenvalue, result.eigenvalue)
-    np.testing.assert_allclose(eigenvector, result.eigenvector)
+    with pytest.warns(DeprecationWarning, match="lanczos_smallest"):
+        alias_result = sc.stochastic_lanczos(
+            op,
+            ctx.asarray([1.0, 1.0]),
+            max_iter=2,
+            tol=1e-8,
+        )
+    np.testing.assert_allclose(alias_result.eigenvalue, result.eigenvalue)
+    np.testing.assert_allclose(alias_result.eigenvector, result.eigenvector)
 
 
-def test_stochastic_lanczos_uses_e0_for_zero_initial_vector():
+def test_lanczos_smallest_uses_e0_for_zero_initial_vector():
     sc = importlib.import_module("spacecore")
     ctx = _ctx()
     space = sc.VectorSpace((2,), ctx)
     op = sc.DenseLinOp(ctx.asarray([[2.0, 0.0], [0.0, 5.0]]), space, space, ctx)
     initial = ctx.asarray([0.0, 0.0])
 
-    eigenvalue, eigenvector = sc.stochastic_lanczos(
+    result = sc.lanczos_smallest(
         op,
         initial,
         max_iter=2,
         tol=1e-8,
     )
 
-    np.testing.assert_allclose(eigenvalue, 2.0, rtol=1e-6, atol=1e-6)
-    np.testing.assert_allclose(eigenvector, [1.0, 0.0], rtol=1e-6, atol=1e-6)
+    np.testing.assert_allclose(result.eigenvalue, 2.0, rtol=1e-6, atol=1e-6)
+    np.testing.assert_allclose(result.eigenvector, [1.0, 0.0], rtol=1e-6, atol=1e-6)
 
 
-def test_stochastic_lanczos_rejects_invalid_max_iter():
+def test_lanczos_smallest_rejects_invalid_max_iter():
     sc = importlib.import_module("spacecore")
     ctx = _ctx()
     space = sc.VectorSpace((1,), ctx)
     op = sc.IdentityLinOp(space, ctx)
 
     with pytest.raises(ValueError, match="max_iter"):
-        sc.stochastic_lanczos(op, ctx.asarray([1.0]), max_iter=0)
+        sc.lanczos_smallest(op, ctx.asarray([1.0]), max_iter=0)
 
 
-def test_stochastic_lanczos_handles_eigenvalues_larger_than_1e10():
+def test_lanczos_smallest_handles_eigenvalues_larger_than_1e10():
     sc = importlib.import_module("spacecore")
     ctx = _ctx()
     space = sc.VectorSpace((2,), ctx)
     matrix = np.diag([2.0e12, 3.0e12])
     op = sc.DenseLinOp(ctx.asarray(matrix), space, space, ctx)
 
-    eigenvalue, eigenvector = sc.stochastic_lanczos(
+    result = sc.lanczos_smallest(
         op,
         ctx.asarray([1.0, 1.0]),
         max_iter=4,
         tol=1e-8,
     )
 
-    np.testing.assert_allclose(to_numpy(eigenvalue), 2.0e12, rtol=1e-6)
-    np.testing.assert_allclose(np.abs(to_numpy(eigenvector)), [1.0, 0.0], atol=1e-5)
+    np.testing.assert_allclose(to_numpy(result.eigenvalue), 2.0e12, rtol=1e-6)
+    np.testing.assert_allclose(np.abs(to_numpy(result.eigenvector)), [1.0, 0.0], atol=1e-5)
 
 
-def test_stochastic_lanczos_handles_complex_hermitian_operator():
+def test_lanczos_smallest_handles_complex_hermitian_operator():
     sc = importlib.import_module("spacecore")
     ctx = _ctx(dtype=np.complex128)
     space = sc.VectorSpace((2,), ctx)
     matrix = np.array([[2.0, 1.0 + 2.0j], [1.0 - 2.0j, 5.0]], dtype=np.complex128)
     op = sc.DenseLinOp(ctx.asarray(matrix), space, space, ctx)
 
-    eigenvalue, eigenvector = sc.stochastic_lanczos(
+    result = sc.lanczos_smallest(
         op,
         ctx.asarray([1.0 + 0.0j, 1.0j]),
         max_iter=2,
@@ -326,16 +336,16 @@ def test_stochastic_lanczos_handles_complex_hermitian_operator():
     )
 
     expected = np.linalg.eigvalsh(matrix)[0]
-    np.testing.assert_allclose(to_numpy(eigenvalue), expected, rtol=1e-7, atol=1e-7)
+    np.testing.assert_allclose(to_numpy(result.eigenvalue), expected, rtol=1e-7, atol=1e-7)
     np.testing.assert_allclose(
-        to_numpy(op.apply(eigenvector)),
-        to_numpy(eigenvalue) * to_numpy(eigenvector),
+        to_numpy(op.apply(result.eigenvector)),
+        to_numpy(result.eigenvalue) * to_numpy(result.eigenvector),
         rtol=1e-6,
         atol=1e-6,
     )
 
 
-def test_stochastic_lanczos_uses_domain_geometry_for_weighted_inner_product():
+def test_lanczos_smallest_uses_domain_geometry_for_weighted_inner_product():
     sc = importlib.import_module("spacecore")
     ctx = _ctx()
 
@@ -358,7 +368,7 @@ def test_stochastic_lanczos_uses_domain_geometry_for_weighted_inner_product():
     matrix = np.array([[2.0, 1.0], [0.25, 0.75]])
     op = sc.DenseLinOp(ctx.asarray(matrix), space, space, ctx)
 
-    eigenvalue, eigenvector = sc.stochastic_lanczos(
+    result = sc.lanczos_smallest(
         op,
         ctx.asarray([1.0, 1.0]),
         max_iter=2,
@@ -366,23 +376,23 @@ def test_stochastic_lanczos_uses_domain_geometry_for_weighted_inner_product():
     )
 
     expected = np.min(np.linalg.eigvals(matrix).real)
-    np.testing.assert_allclose(to_numpy(eigenvalue), expected, rtol=1e-7, atol=1e-7)
+    np.testing.assert_allclose(to_numpy(result.eigenvalue), expected, rtol=1e-7, atol=1e-7)
     np.testing.assert_allclose(
-        to_numpy(op.apply(eigenvector)),
-        to_numpy(eigenvalue) * to_numpy(eigenvector),
+        to_numpy(op.apply(result.eigenvector)),
+        to_numpy(result.eigenvalue) * to_numpy(result.eigenvector),
         rtol=1e-6,
         atol=1e-6,
     )
 
 
-def test_safe_inverse_returns_reciprocal_for_positive_values_only():
+def test_safe_inverse_nonneg_returns_reciprocal_for_positive_values_only():
     sc = importlib.import_module("spacecore")
     utils = importlib.import_module("spacecore.linalg._utils")
     ctx = _ctx()
 
     values = ctx.asarray([-2.0, 0.0, 4.0])
 
-    np.testing.assert_allclose(to_numpy(utils.safe_inverse(sc.NumpyOps(), values)), [0.0, 0.0, 0.25])
+    np.testing.assert_allclose(to_numpy(utils.safe_inverse_nonneg(sc.NumpyOps(), values)), [0.0, 0.0, 0.25])
 
 
 def test_iterative_solvers_poll_convergence_on_check_interval():
@@ -469,7 +479,7 @@ def test_power_iteration_jit_compiles_with_quadratic_form_argument():
 
 
 @pytest.mark.skipif(not has_jax(), reason="jax is not installed")
-def test_stochastic_lanczos_jit_compiles_with_operator_argument():
+def test_lanczos_smallest_jit_compiles_with_operator_argument():
     jax = pytest.importorskip("jax")
     sc = importlib.import_module("spacecore")
     ctx = _ctx("jax", jax_real_dtype())
@@ -477,12 +487,13 @@ def test_stochastic_lanczos_jit_compiles_with_operator_argument():
     op = sc.DenseLinOp(ctx.asarray([[2.0, 0.0], [0.0, 5.0]]), space, space, ctx)
 
     def run(A, initial):
-        return sc.stochastic_lanczos(
+        result = sc.lanczos_smallest(
             A,
             initial,
             max_iter=2,
             tol=1e-8,
         )
+        return result.eigenvalue, result.eigenvector
 
     eigenvalue, eigenvector = jax.jit(run)(op, ctx.asarray([1.0, 1.0]))
 
@@ -507,4 +518,4 @@ def test_cg_and_power_iteration_reject_rectangular_operator():
     with pytest.raises(ValueError, match="square LinOp"):
         sc.power_iteration(A)
     with pytest.raises(ValueError, match="square LinOp"):
-        sc.stochastic_lanczos(A, ctx.asarray([1.0, 2.0]))
+        sc.lanczos_smallest(A, ctx.asarray([1.0, 2.0]))

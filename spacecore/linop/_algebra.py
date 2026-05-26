@@ -5,6 +5,7 @@ from typing import Any, Callable, Sequence
 
 from ._base import LinOp, Domain, Codomain
 from .._checks import checked_method
+from .._contextual._bound import _same_context_for_algebra
 from ..backend import Context, jax_pytree_class
 
 
@@ -27,23 +28,31 @@ def _conjugate_scalar(value: Any) -> Any:
     return value
 
 
-def _same_context(left: LinOp, right: LinOp) -> bool:
-    return (
-        left.ctx == right.ctx
-        and left.ctx.dtype == right.ctx.dtype
-        and left.ctx.enable_checks == right.ctx.enable_checks
-    )
-
-
 def _require_same_context(ops: Sequence[LinOp]) -> Context:
     ctx = ops[0].ctx
     for i, op in enumerate(ops[1:], start=1):
-        if not _same_context(ops[0], op):
+        if not _same_context_for_algebra(ops[0].ctx, op.ctx):
             raise ValueError(
                 "All LinOp operands in an algebraic expression must have the same ctx; "
                 f"operand 0 has ctx {ctx!r}, operand {i} has ctx {op.ctx!r}."
             )
     return ctx
+
+
+def _same_space_for_algebra(left: Any, right: Any) -> bool:
+    if type(left) is not type(right):
+        return False
+    if tuple(left.shape) != tuple(right.shape):
+        return False
+    if not _same_context_for_algebra(left.ctx, right.ctx):
+        return False
+    left_parts = getattr(left, "spaces", None)
+    right_parts = getattr(right, "spaces", None)
+    if left_parts is not None or right_parts is not None:
+        if left_parts is None or right_parts is None or len(left_parts) != len(right_parts):
+            return False
+        return all(_same_space_for_algebra(a, b) for a, b in zip(left_parts, right_parts))
+    return True
 
 
 def _require_linop(op: Any, name: str) -> LinOp:
@@ -96,7 +105,10 @@ def make_sum(ops: Sequence[LinOp]) -> LinOp:
     domain = terms[0].domain
     codomain = terms[0].codomain
     for i, op in enumerate(terms[1:], start=1):
-        if op.domain != domain or op.codomain != codomain:
+        if (
+            not _same_space_for_algebra(op.domain, domain)
+            or not _same_space_for_algebra(op.codomain, codomain)
+        ):
             raise ValueError(
                 "All SumLinOp operands must have the same domain and codomain; "
                 f"operand 0 maps {domain!r} -> {codomain!r}, "
@@ -150,7 +162,7 @@ def make_composed(left: LinOp, right: LinOp) -> LinOp:
     left = _require_linop(left, "left")
     right = _require_linop(right, "right")
     _require_same_context((left, right))
-    if right.codomain != left.domain:
+    if not _same_space_for_algebra(right.codomain, left.domain):
         raise ValueError(
             "ComposedLinOp requires right.codomain == left.domain; "
             f"got {right.codomain!r} and {left.domain!r}."
@@ -251,7 +263,10 @@ class SumLinOp(LinOp[Domain, Codomain]):
         domain = parts[0].domain
         codomain = parts[0].codomain
         for i, op in enumerate(parts[1:], start=1):
-            if op.domain != domain or op.codomain != codomain:
+            if (
+                not _same_space_for_algebra(op.domain, domain)
+                or not _same_space_for_algebra(op.codomain, codomain)
+            ):
                 raise ValueError(
                     "All SumLinOp operands must have the same domain and codomain; "
                     f"operand 0 maps {domain!r} -> {codomain!r}, "
@@ -336,7 +351,7 @@ class ComposedLinOp(LinOp[Domain, Codomain]):
         left = _require_linop(left, "left")
         right = _require_linop(right, "right")
         _require_same_context((left, right))
-        if right.codomain != left.domain:
+        if not _same_space_for_algebra(right.codomain, left.domain):
             raise ValueError(
                 "ComposedLinOp requires right.codomain == left.domain; "
                 f"got {right.codomain!r} and {left.domain!r}."
@@ -446,6 +461,17 @@ class ZeroLinOp(LinOp[Domain, Codomain]):
         """
         return self.ops.zeros(tuple(self.codomain.shape) + tuple(self.domain.shape), dtype=self.dtype)
 
+    def is_hermitian(self) -> bool:
+        """
+        Return whether the zero map is Hermitian.
+
+        Returns
+        -------
+        bool
+            ``True`` exactly when domain and codomain are the same space.
+        """
+        return self.domain == self.codomain
+
     def __eq__(self, other: Any) -> bool:
         if type(other) is type(self):
             return self.domain == other.domain and self.codomain == other.codomain
@@ -522,6 +548,17 @@ class IdentityLinOp(LinOp[Domain, Domain]):
             size *= dim
         eye = self.ops.eye(size, dtype=self.dtype)
         return self.ops.reshape(eye, tuple(self.codomain.shape) + tuple(self.domain.shape))
+
+    def is_hermitian(self) -> bool:
+        """
+        Return whether this identity operator is Hermitian.
+
+        Returns
+        -------
+        bool
+            Always ``True``.
+        """
+        return True
 
     def __eq__(self, other: Any) -> bool:
         if type(other) is type(self):

@@ -24,13 +24,14 @@ def test_expected_names_are_exported():
         "make_composed",
         "BlockDiagonalLinOp", "StackedLinOp", "SumToSingleLinOp",
         "Functional", "LinearFunctional", "InnerProductFunctional",
-        "MatrixFreeLinearFunctional", "QuadraticForm", "LinOpQuadraticForm",
+        "ComposedFunctional", "MatrixFreeLinearFunctional", "QuadraticForm",
+        "LinOpQuadraticForm", "make_functional_composed",
         "VectorSpace", "HermitianSpace", "ProductSpace", "Space",
         "DenseArray", "SparseArray", "ArrayLike",
         "set_context", "get_context", "resolve_context_priority", "register_ops",
         "set_resolution_policy", "set_dtype_resolution_policy",
         "get_resolution_policy", "get_dtype_resolution_policy",
-        "StochasticLanczosResult",
+        "LanczosResult", "StochasticLanczosResult", "lanczos_smallest",
     }
     if has_jax():
         expected |= {"JaxOps", "jax_pytree_class"}
@@ -60,7 +61,9 @@ def test_top_level_objects_match_source_modules():
     assert sc.VectorSpace is space.VectorSpace
     assert sc.DenseLinOp is linop.DenseLinOp
     assert sc.Functional is functional.Functional
+    assert sc.ComposedFunctional is functional.ComposedFunctional
     assert sc.InnerProductFunctional is functional.InnerProductFunctional
+    assert sc.LanczosResult is linalg.LanczosResult
     assert sc.StochasticLanczosResult is linalg.StochasticLanczosResult
     assert sc.get_context is contextual.get_context
     assert sc.resolve_context_priority is contextual.resolve_context_priority

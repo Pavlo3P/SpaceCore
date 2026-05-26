@@ -1,4 +1,9 @@
-__version__ = "0.1.4"
+from importlib.metadata import version as _version
+
+try:
+    __version__ = _version("spacecore")
+except Exception:
+    __version__ = "0.0.0+unknown"
 
 
 from .backend import Context, BackendOps, JaxOps, NumpyOps, jax_pytree_class
@@ -29,19 +34,23 @@ from .linop import (
     make_sum,
 )
 from .functional import (
+    ComposedFunctional,
     Functional,
     InnerProductFunctional,
     LinearFunctional,
     LinOpQuadraticForm,
     MatrixFreeLinearFunctional,
     QuadraticForm,
+    make_functional_composed,
 )
 from .linalg import (
     CGResult,
+    LanczosResult,
     LSQRResult,
     PowerIterationResult,
     StochasticLanczosResult,
     cg,
+    lanczos_smallest,
     lsqr,
     power_iteration,
     stochastic_lanczos,
@@ -100,18 +109,22 @@ __all__ = [
     "SumToSingleLinOp",
     "StackedLinOp",
 
+    "ComposedFunctional",
     "Functional",
     "LinearFunctional",
     "InnerProductFunctional",
     "MatrixFreeLinearFunctional",
     "QuadraticForm",
     "LinOpQuadraticForm",
+    "make_functional_composed",
 
     "CGResult",
+    "LanczosResult",
     "LSQRResult",
     "PowerIterationResult",
     "StochasticLanczosResult",
     "cg",
+    "lanczos_smallest",
     "lsqr",
     "power_iteration",
     "stochastic_lanczos",
