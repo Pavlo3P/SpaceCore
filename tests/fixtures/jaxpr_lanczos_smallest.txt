@@ -1,0 +1,484 @@
+let _where = { lambda ; a:bool[] b:f32[] c:f32[]. let
+    d:f32[] = select_n a c b
+  in (d,) } in
+{ lambda ; e:f32[2,2] f:f32[2]. let
+    _:f32[2,2] = transpose[permutation=(1, 0)] e
+    _:f32[2,2] = transpose[permutation=(1, 0)] e
+    g:f32[4,2] = broadcast_in_dim 0.0:f32[]
+    h:f32[3] = broadcast_in_dim 0.0:f32[]
+    i:f32[4] = broadcast_in_dim 0.0:f32[]
+    j:f32[] = dot_general[
+      dimension_numbers=(([0], [0]), ([], []))
+      preferred_element_type=float32
+    ] f f
+    k:f32[] = sqrt j
+    l:f32[2] = broadcast_in_dim 0.0:f32[]
+    m:i32[1] = broadcast_in_dim 0:i32[]
+    n:f32[2] = scatter[
+      dimension_numbers=ScatterDimensionNumbers(update_window_dims=(), inserted_window_dims=(0,), scatter_dims_to_operand_dims=(0,), operand_batching_dims=(), scatter_indices_batching_dims=())
+      indices_are_sorted=True
+      mode=GatherScatterMode.FILL_OR_DROP
+      unique_indices=True
+      update_consts=()
+      update_jaxpr=None
+    ] l m 1.0:f32[]
+    o:f32[] = dot_general[
+      dimension_numbers=(([0], [0]), ([], []))
+      preferred_element_type=float32
+    ] n n
+    p:f32[] = sqrt o
+    q:bool[] = gt p 0.0:f32[]
+    r:f32[] = jit[name=_where jaxpr=_where] q p 1.0:f32[]
+    s:f32[] = div 1.0:f32[] r
+    t:f32[] = jit[name=_where jaxpr=_where] q s 0.0:f32[]
+    u:f32[2] = mul t n
+    v:bool[] = gt k 9.999999960041972e-13:f32[]
+    w:i32[] = convert_element_type[new_dtype=int32 weak_type=False] v
+    x:f32[2] = cond[
+      branches=(
+        { lambda ; y:f32[] z:f32[2] ba:f32[2] bb:f32[]. let  in (ba,) }
+        { lambda ; bc:f32[] bd:f32[2] be:f32[2] bf:f32[]. let
+            bg:bool[] = gt bc 0.0:f32[]
+            bh:f32[] = jit[name=_where jaxpr=_where] bg bc 1.0:f32[]
+            bi:f32[] = div 1.0:f32[] bh
+            bj:f32[] = jit[name=_where jaxpr=_where] bg bi 0.0:f32[]
+            bk:f32[2] = mul bj bd
+          in (bk,) }
+      )
+    ] w k f u 0.0:f32[]
+    bl:i32[1] = broadcast_in_dim 0:i32[]
+    bm:f32[4,2] = scatter[
+      dimension_numbers=ScatterDimensionNumbers(update_window_dims=(0,), inserted_window_dims=(0,), scatter_dims_to_operand_dims=(0,), operand_batching_dims=(), scatter_indices_batching_dims=())
+      indices_are_sorted=True
+      mode=GatherScatterMode.FILL_OR_DROP
+      unique_indices=True
+      update_consts=()
+      update_jaxpr=None
+    ] g bl x
+    bn:i32[4] = iota[dimension=0 dtype=int32 shape=(4,) sharding=None] 
+    bo:i32[3] = iota[dimension=0 dtype=int32 shape=(3,) sharding=None] 
+    bp:f32[4] = broadcast_in_dim 0.0:f32[]
+    bq:i32[] br:f32[4,2] bs:f32[3] bt:f32[4] _:f32[] _:bool[] = while[
+      body_jaxpr={ lambda ; bu:f32[2,2] bv:i32[4] bw:f32[4] bx:f32[] by:i32[] bz:f32[4,2]
+          ca:f32[3] cb:f32[4] cc:f32[] cd:bool[]. let
+          ce:i32[] = convert_element_type[new_dtype=int32 weak_type=False] by
+          cf:bool[] = lt ce 0:i32[]
+          cg:i32[] = add ce 4:i32[]
+          ch:i32[] = select_n cf ce cg
+          ci:bool[] = lt 0:i32[] 0:i32[]
+          cj:i32[] = add 0:i32[] 2:i32[]
+          ck:i32[] = select_n ci 0:i32[] cj
+          cl:f32[1,2] = dynamic_slice[slice_sizes=(1, 2)] bz ch ck
+          cm:f32[2] = squeeze[dimensions=(0,)] cl
+          cn:f32[2] = dot_general[
+            dimension_numbers=(([1], [0]), ([], []))
+            preferred_element_type=float32
+          ] bu cm
+          co:f32[] = dot_general[
+            dimension_numbers=(([0], [0]), ([], []))
+            preferred_element_type=float32
+          ] cm cn
+          cp:bool[] = lt by 0:i32[]
+          cq:i32[] = add by 3:i32[]
+          cr:i32[] = select_n cp by cq
+          cs:i32[] = convert_element_type[new_dtype=int32 weak_type=False] cr
+          ct:i32[1] = broadcast_in_dim cs
+          cu:f32[3] = scatter[
+            dimension_numbers=ScatterDimensionNumbers(update_window_dims=(), inserted_window_dims=(0,), scatter_dims_to_operand_dims=(0,), operand_batching_dims=(), scatter_indices_batching_dims=())
+            indices_are_sorted=True
+            mode=GatherScatterMode.FILL_OR_DROP
+            unique_indices=True
+            update_consts=()
+            update_jaxpr=None
+          ] ca ct co
+          cv:bool[] = eq by 0:i32[]
+          cw:i32[] = convert_element_type[new_dtype=int32 weak_type=False] cv
+          cx:f32[2] = cond[
+            branches=(
+              { lambda ; cy:f32[] cz:f32[2] da:i32[] db:f32[4] dc:f32[4,2] dd:f32[2]. let
+                  de:f32[2] = mul cy cz
+                  df:f32[2] = sub dd de
+                  dg:bool[] = lt da 0:i32[]
+                  dh:i32[] = convert_element_type[
+                    new_dtype=int32
+                    weak_type=False
+                  ] da
+                  di:i32[] = add dh 4:i32[]
+                  dj:i32[] = select_n dg da di
+                  dk:f32[1] = dynamic_slice[slice_sizes=(1,)] db dj
+                  dl:f32[] = squeeze[dimensions=(0,)] dk
+                  dm:i32[] = sub da 1:i32[]
+                  dn:i32[] = convert_element_type[
+                    new_dtype=int32
+                    weak_type=False
+                  ] dm
+                  do:bool[] = lt dn 0:i32[]
+                  dp:i32[] = add dn 4:i32[]
+                  dq:i32[] = select_n do dn dp
+                  dr:bool[] = lt 0:i32[] 0:i32[]
+                  ds:i32[] = add 0:i32[] 2:i32[]
+                  dt:i32[] = select_n dr 0:i32[] ds
+                  du:f32[1,2] = dynamic_slice[slice_sizes=(1, 2)] dc dq dt
+                  dv:f32[2] = squeeze[dimensions=(0,)] du
+                  dw:f32[2] = mul dl dv
+                  dx:f32[2] = sub df dw
+                in (dx,) }
+              { lambda ; dy:f32[] dz:f32[2] ea:i32[] eb:f32[4] ec:f32[4,2] ed:f32[2]. let
+                  ee:f32[2] = mul dy dz
+                  ef:f32[2] = sub ed ee
+                in (ef,) }
+            )
+          ] cw co cm by cb bz cn
+          eg:i32[] = add by 1:i32[]
+          eh:i32[] = convert_element_type[new_dtype=int32 weak_type=False] eg
+          ei:bool[4] = lt bv eh
+          ej:f32[4] = jit[
+            name=_where
+            jaxpr={ lambda ; ei:bool[4] ek:f32[] el:f32[]. let
+                em:f32[4] = broadcast_in_dim ek
+                en:f32[4] = broadcast_in_dim el
+                ej:f32[4] = select_n ei en em
+              in (ej,) }
+          ] ei 1.0:f32[] 0.0:f32[]
+          _:i32[] eo:f32[4] = scan[
+            _split_transpose=False
+            jaxpr={ lambda ; ep:f32[4,2] eq:f32[2] er:i32[] es:f32[4]. let
+                et:i32[] = add er 1:i32[]
+                eu:i32[] = convert_element_type[new_dtype=int32 weak_type=False] er
+                ev:bool[] = lt eu 0:i32[]
+                ew:i32[] = add eu 4:i32[]
+                ex:i32[] = select_n ev eu ew
+                ey:bool[] = lt 0:i32[] 0:i32[]
+                ez:i32[] = add 0:i32[] 2:i32[]
+                fa:i32[] = select_n ey 0:i32[] ez
+                fb:f32[1,2] = dynamic_slice[slice_sizes=(1, 2)] ep ex fa
+                fc:f32[2] = squeeze[dimensions=(0,)] fb
+                fd:f32[] = dot_general[
+                  dimension_numbers=(([0], [0]), ([], []))
+                  preferred_element_type=float32
+                ] fc eq
+                fe:bool[] = lt er 0:i32[]
+                ff:i32[] = add er 4:i32[]
+                fg:i32[] = select_n fe er ff
+                fh:i32[] = convert_element_type[new_dtype=int32 weak_type=False] fg
+                fi:i32[1] = broadcast_in_dim fh
+                fj:f32[4] = scatter[
+                  dimension_numbers=ScatterDimensionNumbers(update_window_dims=(), inserted_window_dims=(0,), scatter_dims_to_operand_dims=(0,), operand_batching_dims=(), scatter_indices_batching_dims=())
+                  indices_are_sorted=True
+                  mode=GatherScatterMode.FILL_OR_DROP
+                  unique_indices=True
+                  update_consts=()
+                  update_jaxpr=None
+                ] es fi fd
+              in (et, fj) }
+            length=4
+            linear=(False, False, False, False)
+            num_carry=2
+            num_consts=2
+            reverse=False
+            unroll=1
+          ] bz cx 0:i32[] bw
+          fk:f32[4] = mul eo ej
+          fl:f32[4,1] = broadcast_in_dim[broadcast_dimensions=(0,)] fk
+          fm:f32[4,2] = mul fl bz
+          fn:f32[2] = reduce_sum[axes=(0,) out_sharding=None] fm
+          fo:f32[2] = sub cx fn
+          fp:f32[] = dot_general[
+            dimension_numbers=(([0], [0]), ([], []))
+            preferred_element_type=float32
+          ] fo fo
+          fq:f32[] = sqrt fp
+          fr:i32[] = add by 1:i32[]
+          fs:bool[] = lt fr 0:i32[]
+          ft:i32[] = add fr 4:i32[]
+          fu:i32[] = select_n fs fr ft
+          fv:i32[] = convert_element_type[new_dtype=int32 weak_type=False] fu
+          fw:i32[1] = broadcast_in_dim fv
+          fx:f32[4] = scatter[
+            dimension_numbers=ScatterDimensionNumbers(update_window_dims=(), inserted_window_dims=(0,), scatter_dims_to_operand_dims=(0,), operand_batching_dims=(), scatter_indices_batching_dims=())
+            indices_are_sorted=True
+            mode=GatherScatterMode.FILL_OR_DROP
+            unique_indices=True
+            update_consts=()
+            update_jaxpr=None
+          ] cb fw fq
+          fy:bool[] = ge fq bx
+          fz:i32[] = convert_element_type[new_dtype=int32 weak_type=False] fy
+          ga:f32[4,2] = cond[
+            branches=(
+              { lambda ; gb:f32[] gc:f32[2] gd:i32[] ge:f32[4,2]. let
+                  
+                in (ge,) }
+              { lambda ; gf:f32[] gg:f32[2] gh:i32[] gi:f32[4,2]. let
+                  gj:bool[] = gt gf 0.0:f32[]
+                  gk:f32[] = jit[name=_where jaxpr=_where] gj gf 1.0:f32[]
+                  gl:f32[] = div 1.0:f32[] gk
+                  gm:f32[] = jit[name=_where jaxpr=_where] gj gl 0.0:f32[]
+                  gn:f32[2] = mul gm gg
+                  go:i32[] = add gh 1:i32[]
+                  gp:bool[] = lt go 0:i32[]
+                  gq:i32[] = add go 4:i32[]
+                  gr:i32[] = select_n gp go gq
+                  gs:i32[] = convert_element_type[
+                    new_dtype=int32
+                    weak_type=False
+                  ] gr
+                  gt:i32[1] = broadcast_in_dim gs
+                  gu:f32[4,2] = scatter[
+                    dimension_numbers=ScatterDimensionNumbers(update_window_dims=(0,), inserted_window_dims=(0,), scatter_dims_to_operand_dims=(0,), operand_batching_dims=(), scatter_indices_batching_dims=())
+                    indices_are_sorted=True
+                    mode=GatherScatterMode.FILL_OR_DROP
+                    unique_indices=True
+                    update_consts=()
+                    update_jaxpr=None
+                  ] gi gt gn
+                in (gu,) }
+            )
+          ] fz fq fo by bz
+          gv:i32[] = add by 1:i32[]
+          gw:bool[] = ge gv 3:i32[]
+          gx:i32[] = jit[
+            name=remainder
+            jaxpr={ lambda ; gv:i32[] gy:i32[]. let
+                gz:bool[] = eq gy 0:i32[]
+                ha:i32[] = jit[
+                  name=_where
+                  jaxpr={ lambda ; gz:bool[] hb:i32[] gy:i32[]. let
+                      ha:i32[] = select_n gz gy hb
+                    in (ha,) }
+                ] gz 1:i32[] gy
+                hc:i32[] = rem gv ha
+                hd:bool[] = ne hc 0:i32[]
+                he:bool[] = lt hc 0:i32[]
+                hf:bool[] = lt ha 0:i32[]
+                hg:bool[] = ne he hf
+                hh:bool[] = and hg hd
+                hi:i32[] = add hc ha
+                gx:i32[] = select_n hh hc hi
+              in (gx,) }
+          ] gv 1:i32[]
+          hj:bool[] = eq gx 0:i32[]
+          hk:bool[] = convert_element_type[new_dtype=bool weak_type=False] gw
+          hl:bool[] = convert_element_type[new_dtype=bool weak_type=False] hj
+          hm:bool[] = or hk hl
+          hn:i32[] = convert_element_type[new_dtype=int32 weak_type=False] hm
+          ho:bool[] = cond[
+            branches=(
+              { lambda ; hp:f32[] hq:f32[] hr:bool[] hs:f32[]. let  in (hr,) }
+              { lambda ; ht:f32[] hu:f32[] hv:bool[] hw:f32[]. let
+                  hx:bool[] = ge ht hu
+                in (hx,) }
+            )
+          ] hn fq bx cd 0.0:f32[]
+        in (gv, ga, cu, fx, fq, ho) }
+      body_nconsts=4
+      cond_jaxpr={ lambda ; hy:i32[] hz:f32[4,2] ia:f32[3] ib:f32[4] ic:f32[] id:bool[]. let
+          ie:bool[] = lt hy 3:i32[]
+          if:bool[] = convert_element_type[new_dtype=bool weak_type=False] ie
+          ig:bool[] = and if id
+        in (ig,) }
+      cond_nconsts=0
+    ] e bn bp 9.999999974752427e-07:f32[] 0:i32[] bm h i 1.0:f32[] True:bool[]
+    ih:i32[] = convert_element_type[new_dtype=int32 weak_type=False] bq
+    ii:bool[3] = lt bo ih
+    ij:f32[3] = abs bs
+    ik:f32[] = reduce_max[axes=(0,)] ij
+    il:f32[4] = abs bt
+    im:f32[] = reduce_max[axes=(0,)] il
+    in:f32[] = mul 2.0:f32[] im
+    io:f32[] = add ik in
+    ip:f32[] = add io 1.0:f32[]
+    iq:f32[3] = jit[
+      name=_where
+      jaxpr={ lambda ; ii:bool[3] bs:f32[3] ip:f32[]. let
+          ir:f32[3] = broadcast_in_dim ip
+          iq:f32[3] = select_n ii ir bs
+        in (iq,) }
+    ] ii bs ip
+    is:i32[] = convert_element_type[new_dtype=int32 weak_type=False] bq
+    it:bool[4] = eq bn is
+    iu:f32[4] = jit[
+      name=_where
+      jaxpr={ lambda ; it:bool[4] iv:f32[] bt:f32[4]. let
+          iw:f32[4] = broadcast_in_dim iv
+          iu:f32[4] = select_n it bt iw
+        in (iu,) }
+    ] it 0.0:f32[] bt
+    ix:f32[3,3] = broadcast_in_dim 0.0:f32[]
+    _:i32[] iy:f32[3,3] = scan[
+      _split_transpose=False
+      jaxpr={ lambda ; iz:f32[3] ja:i32[] jb:f32[3,3]. let
+          jc:i32[] = add ja 1:i32[]
+          jd:bool[] = lt ja 0:i32[]
+          je:i32[] = convert_element_type[new_dtype=int32 weak_type=False] ja
+          jf:i32[] = add je 3:i32[]
+          jg:i32[] = select_n jd ja jf
+          jh:f32[1] = dynamic_slice[slice_sizes=(1,)] iz jg
+          ji:f32[] = squeeze[dimensions=(0,)] jh
+          jj:bool[] = lt ja 0:i32[]
+          jk:i32[] = add ja 3:i32[]
+          jl:i32[] = select_n jj ja jk
+          jm:bool[] = lt ja 0:i32[]
+          jn:i32[] = add ja 3:i32[]
+          jo:i32[] = select_n jm ja jn
+          jp:i32[] = convert_element_type[new_dtype=int32 weak_type=False] jl
+          jq:i32[] = convert_element_type[new_dtype=int32 weak_type=False] jo
+          jr:i32[1] = broadcast_in_dim jp
+          js:i32[1] = broadcast_in_dim jq
+          jt:i32[2] = concatenate[dimension=0] jr js
+          ju:f32[3,3] = scatter[
+            dimension_numbers=ScatterDimensionNumbers(update_window_dims=(), inserted_window_dims=(0, 1), scatter_dims_to_operand_dims=(0, 1), operand_batching_dims=(), scatter_indices_batching_dims=())
+            indices_are_sorted=True
+            mode=GatherScatterMode.FILL_OR_DROP
+            unique_indices=True
+            update_consts=()
+            update_jaxpr=None
+          ] jb jt ji
+        in (jc, ju) }
+      length=3
+      linear=(False, False, False)
+      num_carry=2
+      num_consts=1
+      reverse=False
+      unroll=1
+    ] iq 0:i32[] ix
+    _:i32[] jv:f32[3,3] = scan[
+      _split_transpose=False
+      jaxpr={ lambda ; jw:f32[4] jx:i32[] jy:f32[3,3]. let
+          jz:i32[] = add jx 1:i32[]
+          ka:i32[] = add jx 1:i32[]
+          kb:bool[] = lt ka 0:i32[]
+          kc:i32[] = convert_element_type[new_dtype=int32 weak_type=False] ka
+          kd:i32[] = add kc 4:i32[]
+          ke:i32[] = select_n kb ka kd
+          kf:f32[1] = dynamic_slice[slice_sizes=(1,)] jw ke
+          kg:f32[] = squeeze[dimensions=(0,)] kf
+          kh:i32[] = add jx 1:i32[]
+          ki:bool[] = lt jx 0:i32[]
+          kj:i32[] = add jx 3:i32[]
+          kk:i32[] = select_n ki jx kj
+          kl:bool[] = lt kh 0:i32[]
+          km:i32[] = add kh 3:i32[]
+          kn:i32[] = select_n kl kh km
+          ko:i32[] = convert_element_type[new_dtype=int32 weak_type=False] kk
+          kp:i32[] = convert_element_type[new_dtype=int32 weak_type=False] kn
+          kq:i32[1] = broadcast_in_dim ko
+          kr:i32[1] = broadcast_in_dim kp
+          ks:i32[2] = concatenate[dimension=0] kq kr
+          kt:f32[3,3] = scatter[
+            dimension_numbers=ScatterDimensionNumbers(update_window_dims=(), inserted_window_dims=(0, 1), scatter_dims_to_operand_dims=(0, 1), operand_batching_dims=(), scatter_indices_batching_dims=())
+            indices_are_sorted=True
+            mode=GatherScatterMode.FILL_OR_DROP
+            unique_indices=True
+            update_consts=()
+            update_jaxpr=None
+          ] jy ks kg
+          ku:i32[] = add jx 1:i32[]
+          kv:bool[] = lt ku 0:i32[]
+          kw:i32[] = add ku 3:i32[]
+          kx:i32[] = select_n kv ku kw
+          ky:bool[] = lt jx 0:i32[]
+          kz:i32[] = add jx 3:i32[]
+          la:i32[] = select_n ky jx kz
+          lb:i32[] = convert_element_type[new_dtype=int32 weak_type=False] kx
+          lc:i32[] = convert_element_type[new_dtype=int32 weak_type=False] la
+          ld:i32[1] = broadcast_in_dim lb
+          le:i32[1] = broadcast_in_dim lc
+          lf:i32[2] = concatenate[dimension=0] ld le
+          lg:f32[3,3] = scatter[
+            dimension_numbers=ScatterDimensionNumbers(update_window_dims=(), inserted_window_dims=(0, 1), scatter_dims_to_operand_dims=(0, 1), operand_batching_dims=(), scatter_indices_batching_dims=())
+            indices_are_sorted=True
+            mode=GatherScatterMode.FILL_OR_DROP
+            unique_indices=True
+            update_consts=()
+            update_jaxpr=None
+          ] kt lf kg
+        in (jz, lg) }
+      length=2
+      linear=(False, False, False)
+      num_carry=2
+      num_consts=1
+      reverse=False
+      unroll=1
+    ] iu 0:i32[] iy
+    _:f32[3] lh:f32[3,3] = jit[
+      name=eigh
+      jaxpr={ lambda ; jv:f32[3,3]. let
+          li:f32[3,3] = transpose[permutation=(1, 0)] jv
+          lj:f32[3,3] = add jv li
+          lk:f32[3,3] = div lj 2.0:f32[]
+          lh:f32[3,3] _:f32[3] = eigh[
+            algorithm=None
+            lower=True
+            sort_eigenvalues=True
+            subset_by_index=None
+          ] lk
+        in (_, lh) }
+    ] jv
+    ll:f32[3,1] = slice[limit_indices=(3, 1) start_indices=(0, 0) strides=None] lh
+    lm:f32[3] = squeeze[dimensions=(1,)] ll
+    ln:bool[] = lt bq 0:i32[]
+    lo:i32[] = convert_element_type[new_dtype=int32 weak_type=False] bq
+    lp:i32[] = add lo 4:i32[]
+    lq:i32[] = select_n ln bq lp
+    lr:f32[1] = dynamic_slice[slice_sizes=(1,)] bt lq
+    ls:f32[] = squeeze[dimensions=(0,)] lr
+    lt:i32[] = sub bq 1:i32[]
+    lu:bool[] = lt lt 0:i32[]
+    lv:i32[] = convert_element_type[new_dtype=int32 weak_type=False] lt
+    lw:i32[] = add lv 3:i32[]
+    lx:i32[] = select_n lu lt lw
+    ly:f32[1] = dynamic_slice[slice_sizes=(1,)] lm lx
+    lz:f32[] = squeeze[dimensions=(0,)] ly
+    ma:f32[] = abs lz
+    mb:f32[] = mul ls ma
+    _:bool[] = lt mb 9.999999974752427e-07:f32[]
+    mc:i32[] = convert_element_type[new_dtype=int32 weak_type=False] bq
+    md:bool[3] = lt bo mc
+    me:f32[3] = jit[
+      name=_where
+      jaxpr={ lambda ; md:bool[3] mf:f32[] mg:f32[]. let
+          mh:f32[3] = broadcast_in_dim mf
+          mi:f32[3] = broadcast_in_dim mg
+          me:f32[3] = select_n md mi mh
+        in (me,) }
+    ] md 1.0:f32[] 0.0:f32[]
+    mj:f32[3] = mul lm me
+    mk:f32[3,2] = slice[limit_indices=(3, 2) start_indices=(0, 0) strides=None] br
+    ml:f32[2] = dot_general[
+      dimension_numbers=(([0], [0]), ([], []))
+      preferred_element_type=float32
+    ] mj mk
+    mm:f32[] = dot_general[
+      dimension_numbers=(([0], [0]), ([], []))
+      preferred_element_type=float32
+    ] ml ml
+    mn:f32[] = sqrt mm
+    mo:bool[] = gt mn 9.999999960041972e-13:f32[]
+    mp:i32[] = convert_element_type[new_dtype=int32 weak_type=False] mo
+    mq:f32[2] = cond[
+      branches=(
+        { lambda ; mr:f32[] ms:f32[2] mt:f32[2] mu:f32[]. let  in (mt,) }
+        { lambda ; mv:f32[] mw:f32[2] mx:f32[2] my:f32[]. let
+            mz:bool[] = gt mv 0.0:f32[]
+            na:f32[] = jit[name=_where jaxpr=_where] mz mv 1.0:f32[]
+            nb:f32[] = div 1.0:f32[] na
+            nc:f32[] = jit[name=_where jaxpr=_where] mz nb 0.0:f32[]
+            nd:f32[2] = mul nc mw
+          in (nd,) }
+      )
+    ] mp mn ml u 0.0:f32[]
+    ne:f32[2] = dot_general[
+      dimension_numbers=(([1], [0]), ([], []))
+      preferred_element_type=float32
+    ] e mq
+    nf:f32[] = dot_general[
+      dimension_numbers=(([0], [0]), ([], []))
+      preferred_element_type=float32
+    ] mq ne
+    ng:f32[] = dot_general[
+      dimension_numbers=(([0], [0]), ([], []))
+      preferred_element_type=float32
+    ] mq mq
+    nh:f32[] = div nf ng
+  in (nh,) }
