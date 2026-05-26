@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 from typing import Any, Callable
 
@@ -85,11 +86,44 @@ def _audit_solver(
     }
 
 
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Audit JAX trace stability for SpaceCore solvers.")
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Exit non-zero if any solver retraces on same-shape inputs.",
+    )
+    parser.add_argument(
+        "--log-compiles",
+        action="store_true",
+        help="Enable jax_log_compiles for manual inspection.",
+    )
+    parser.add_argument(
+        "--write-fixture",
+        action="store_true",
+        help="Write the lanczos_smallest JAXPR fixture. Disabled by default in --check mode.",
+    )
+    return parser.parse_args()
+
+
+def _audit_failed(item: dict[str, Any]) -> bool:
+    if "status" in item:
+        return True
+    return (
+        item["traces_after_two_same_shape_calls"] != 1
+        or item["stable_values_retraced"]
+        or not item["static_change_retraced"]
+        or not item["shape_change_retraced"]
+    )
+
+
 def main() -> None:
     import jax
     import spacecore as sc
 
-    jax.config.update("jax_log_compiles", True)
+    args = _parse_args()
+    if args.log_compiles:
+        jax.config.update("jax_log_compiles", True)
 
     A2 = _spd_operator(2)
     A3 = _spd_operator(3)
@@ -190,16 +224,25 @@ def main() -> None:
     else:
         audits.append({"solver": "expm_multiply", "status": "not available before Task 1"})
 
-    FIXTURE.parent.mkdir(parents=True, exist_ok=True)
-    jaxpr = jax.make_jaxpr(
-        lambda A, x: sc.lanczos_smallest(A, x, max_iter=3, check_every=1).eigenvalue
-    )(A2, x2a)
-    FIXTURE.write_text(str(jaxpr))
-
     print("JIT audit summary")
     for item in audits:
         print(item)
-    print(f"wrote {FIXTURE.relative_to(ROOT)}")
+
+    if args.write_fixture or not args.check:
+        FIXTURE.parent.mkdir(parents=True, exist_ok=True)
+        jaxpr = jax.make_jaxpr(
+            lambda A, x: sc.lanczos_smallest(A, x, max_iter=3, check_every=1).eigenvalue
+        )(A2, x2a)
+        FIXTURE.write_text(str(jaxpr))
+        print(f"wrote {FIXTURE.relative_to(ROOT)}")
+
+    if args.check:
+        failures = [item for item in audits if _audit_failed(item)]
+        if failures:
+            print("JIT audit check failed")
+            for item in failures:
+                print(item)
+            raise SystemExit(1)
 
 
 if __name__ == "__main__":
