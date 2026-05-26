@@ -5,6 +5,7 @@ from warnings import warn
 
 
 from ..linop import LinOp
+from ..space import VectorSpace
 from ..types import DenseArray
 from ._utils import DEFAULT_CONVERGENCE_CHECK_INTERVAL, check_interval
 from ._utils import require_linop, require_square, safe_inverse_nonneg, should_check_iteration
@@ -91,6 +92,7 @@ def lanczos_smallest(
     ops = A.ops
     ctx = A.ctx
     real_dtype = ops.real_dtype(ctx.dtype)
+    use_euclidean_reorth = type(A.domain) is VectorSpace
 
     v0 = A.domain.flatten(initial_vector)
     v0 = ctx.assert_dense(v0)
@@ -161,14 +163,17 @@ def lanczos_smallest(
         )
         mask = ops.astype(mask, ctx.dtype)
 
-        coeffs_full = coeffs_zero
+        if use_euclidean_reorth:
+            coeffs_full = ops.einsum("jn,n->j", ops.conj(V_), w)
+        else:
+            coeffs_full = coeffs_zero
 
-        def fill_coeff(j: int, coeffs_in: DenseArray) -> DenseArray:
-            v_j_member = A.domain.unflatten(V_[j])
-            coeff = A.domain.inner(v_j_member, w_member)
-            return ops.index_set(coeffs_in, (j,), coeff, copy=True)
+            def fill_coeff(j: int, coeffs_in: DenseArray) -> DenseArray:
+                v_j_member = A.domain.unflatten(V_[j])
+                coeff = A.domain.inner(v_j_member, w_member)
+                return ops.index_set(coeffs_in, (j,), coeff, copy=True)
 
-        coeffs_full = ops.fori_loop(0, max_iter + 1, fill_coeff, coeffs_full)
+            coeffs_full = ops.fori_loop(0, max_iter + 1, fill_coeff, coeffs_full)
         coeffs_valid = coeffs_full * mask
         proj = ops.sum(coeffs_valid[:, None] * V_, axis=0)
         w = w - proj
