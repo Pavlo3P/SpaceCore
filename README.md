@@ -248,6 +248,8 @@ its [notebook](https://github.com/Pavlo3P/SpaceCore/blob/master/tutorials/6_Regu
 ## Documentation
 
 The hosted documentation is available [here](https://pavlo3p.github.io/SpaceCore/).
+JAX integration notes are available
+[here](https://pavlo3p.github.io/SpaceCore/design/jax_integration.html).
 
 The documentation website is built with Sphinx from `docs/source`.
 
