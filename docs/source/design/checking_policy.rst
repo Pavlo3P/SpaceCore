@@ -36,6 +36,18 @@ before ``apply`` and ``rapply`` when checking is enabled.
 For exploratory use, enabled checks produce clearer errors. For tight numerical
 loops, disabled checks reduce validation overhead.
 
+Implementation convention
+-------------------------
+
+Methods that perform simple membership validation should use
+``@checked_method`` rather than inline ``if self._enable_checks`` branches. This
+keeps validation policy visible at the method signature and avoids duplicating
+the same guard throughout spaces, operators, and functionals.
+
+Inline ``if self._enable_checks`` blocks are reserved for checks that are not
+plain membership checks, such as dense-array assertions, custom output-shape
+comparisons, or the implementation of ``_check_member`` itself.
+
 Inferred checking policy
 ------------------------
 

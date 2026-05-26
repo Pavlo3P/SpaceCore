@@ -6,6 +6,7 @@ from typing import Any, Callable, Tuple
 from ._base import Space
 from ._checks import BackendCheck, DTypeCheck, ShapeCheck
 from ._product import ProductSpace
+from .._checks import checked_method
 from ..backend import Context
 from ..types import DenseArray
 
@@ -106,25 +107,20 @@ class BatchSpace(Space):
             return tuple(space.zeros() for space in self._component_spaces())
         return self.ops.zeros(self.shape, dtype=self.dtype)
 
+    @checked_method(in_space="self", arg_positions=(0, 1))
     def add(self, x: Any, y: Any) -> Any:
-        if self._enable_checks:
-            self._check_member(x)
-            self._check_member(y)
         if isinstance(self.base, ProductSpace):
             return tuple(space.add(xi, yi) for space, xi, yi in zip(self._component_spaces(), x, y))
         return x + y
 
+    @checked_method(in_space="self", arg_positions=(1,))
     def scale(self, a: Any, x: Any) -> Any:
-        if self._enable_checks:
-            self._check_member(x)
         if isinstance(self.base, ProductSpace):
             return tuple(space.scale(a, xi) for space, xi in zip(self._component_spaces(), x))
         return a * x
 
+    @checked_method(in_space="self", arg_positions=(0, 1))
     def inner(self, x: Any, y: Any) -> Any:
-        if self._enable_checks:
-            self._check_member(x)
-            self._check_member(y)
         if isinstance(self.base, ProductSpace):
             acc = None
             for space, xi, yi in zip(self._component_spaces(), x, y):
@@ -136,9 +132,8 @@ class BatchSpace(Space):
     def eigh(self, x: Any, k: int = None) -> Any:
         raise TypeError(f"{type(self).__name__}.eigh is not defined for batched spaces.")
 
+    @checked_method(in_space="self")
     def flatten(self, x: Any) -> DenseArray:
-        if self._enable_checks:
-            self._check_member(x)
         if isinstance(self.base, ProductSpace):
             parts = tuple(space.flatten(xi) for space, xi in zip(self._component_spaces(), x))
             return parts[0] if len(parts) == 1 else self.ops.concatenate(parts, axis=0)
@@ -168,17 +163,14 @@ class BatchSpace(Space):
             return tuple(xs)
         return self.ops.reshape(vv, self.shape)
 
+    @checked_method(in_space="self", out_space="self")
     def apply(self, x: Any, f: Callable) -> Any:
-        if self._enable_checks:
-            self._check_member(x)
         if isinstance(self.base, ProductSpace):
             return tuple(space.apply(xi, f) for space, xi in zip(self._component_spaces(), x))
         try:
             y = f(x)
         except Exception:
             y = self.ops.vmap(lambda xi: self.base.apply(xi, f))(x)
-        if self._enable_checks:
-            self._check_member(y)
         return y
 
     def _convert(self, new_ctx: Context) -> BatchSpace:

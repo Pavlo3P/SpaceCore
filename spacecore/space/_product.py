@@ -5,6 +5,7 @@ from typing import Any, Tuple, List, Sequence, Callable
 from ._base import Space
 from ._checks import ProductComponentCheck, ProductStructureCheck
 from ._vector import VectorSpace
+from .._checks import checked_method
 from ..types import DenseArray
 from ..backend import Context
 
@@ -113,22 +114,16 @@ class ProductSpace(Space):
     def zeros(self) -> Tuple[Any, ...]:
         return tuple(s.zeros() for s in self.spaces)
 
+    @checked_method(in_space="self", arg_positions=(0, 1))
     def add(self, x: Tuple[Any, ...], y: Tuple[Any, ...]) -> Tuple[Any, ...]:
-        if self._enable_checks:
-            self._check_member(x)
-            self._check_member(y)
         return tuple(s.add(xi, yi) for s, xi, yi in zip(self.spaces, x, y))
 
+    @checked_method(in_space="self", arg_positions=(1,))
     def scale(self, a: Any, x: Tuple[Any, ...]) -> Tuple[Any, ...]:
-        if self._enable_checks:
-            self._check_member(x)
         return tuple(s.scale(a, xi) for s, xi in zip(self.spaces, x))
 
+    @checked_method(in_space="self", arg_positions=(0, 1))
     def inner(self, x: Tuple[Any, ...], y: Tuple[Any, ...]) -> Any:
-        if self._enable_checks:
-            self._check_member(x)
-            self._check_member(y)
-
         # Accumulate via backend ops (vdot works for scalars too, but sum is enough)
         acc = None
         for s, xi, yi in zip(self.spaces, x, y):
@@ -142,10 +137,8 @@ class ProductSpace(Space):
             "Call eigh on a specific component space, or define a custom convention."
         )
 
+    @checked_method(in_space="self")
     def flatten(self, x: Tuple[Any, ...]) -> DenseArray:
-        if self._enable_checks:
-            self._check_member(x)
-
         if self._vector_fast_path:
             if self._arity == 1:
                 return x[0] if self._component_is_flat[0] else x[0].reshape((-1,))
@@ -210,6 +203,7 @@ class ProductSpace(Space):
 
         return tuple(xs)
 
+    @checked_method(in_space="self", out_space="self")
     def apply(self, x: Tuple[Any, ...], f: Callable[[Any], Any]) -> Tuple[Any, ...]:
         r"""
         Apply a function to each component of a product-space element.
@@ -257,8 +251,6 @@ class ProductSpace(Space):
         product space. It applies the existing functional calculus of each
         factor space independently, component by component.
         """
-        if self._enable_checks:
-            self._check_member(x)
         if self._arity == 2:
             return self.spaces[0].apply(x[0], f), self.spaces[1].apply(x[1], f)
         return tuple(s.apply(xi, f) for s, xi in zip(self.spaces, x))

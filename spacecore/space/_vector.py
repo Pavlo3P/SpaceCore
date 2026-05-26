@@ -5,6 +5,7 @@ from typing import Any, Tuple, Callable
 
 from ._base import Space
 from ._checks import BackendCheck, DTypeCheck, ShapeCheck
+from .._checks import checked_method
 from ..types import DenseArray
 from ..backend import Context
 
@@ -33,21 +34,16 @@ class VectorSpace(Space):
     def zeros(self) -> DenseArray:
         return self.ops.zeros(self.shape, dtype=self.dtype)
 
+    @checked_method(in_space="self", arg_positions=(0, 1))
     def add(self, x: Any, y: Any) -> DenseArray:
-        if self._enable_checks:
-            self._check_member(x)
-            self._check_member(y)
         return x + y
 
+    @checked_method(in_space="self", arg_positions=(1,))
     def scale(self, a: Any, x: Any) -> DenseArray:
-        if self._enable_checks:
-            self._check_member(x)
         return a * x
 
+    @checked_method(in_space="self", arg_positions=(0, 1))
     def inner(self, x: Any, y: Any) -> Any:
-        if self._enable_checks:
-            self._check_member(x)
-            self._check_member(y)
         return self.ops.vdot(x, y)
 
     def eigh(self, x: Any, k: int = None) -> Any:
@@ -55,9 +51,8 @@ class VectorSpace(Space):
             f"{type(self).__name__}.eigh is not defined for vector spaces."
         )
 
+    @checked_method(in_space="self")
     def flatten(self, X: DenseArray) -> DenseArray:
-        if self._enable_checks:
-            self._check_member(X)
         return X if self._is_flat_shape else X.reshape((-1,))
 
     def unflatten(self, v: DenseArray) -> DenseArray:
@@ -78,6 +73,7 @@ class VectorSpace(Space):
                 raise ValueError("Function application changed shape.")
         return y
 
+    @checked_method(in_space="self", out_space="self")
     def apply(self, x: DenseArray, f: Callable[[DenseArray], DenseArray]) -> DenseArray:
         r"""
         Apply a scalar function to a vector-space element entrywise.
@@ -121,7 +117,5 @@ class VectorSpace(Space):
         application is performed entrywise in the distinguished coordinate
         representation.
         """
-        if self._enable_checks:
-            self._check_member(x)
         y = self._apply_entrywise(x, f)
         return y

@@ -42,6 +42,17 @@ class _CheckedDemo:
     def grad(self, x):
         return self.grad_result
 
+    @checked_method(in_space="self", arg_positions=(0, 1))
+    def combine(self, x, y):
+        return "combined"
+
+    @checked_method(in_space="self", arg_pos=0)
+    def legacy_single_arg(self, x):
+        return "legacy"
+
+    def _check_member(self, value):
+        self.space._check_member(value)
+
 
 def test_checked_method_validates_apply_input_and_output():
     demo = _CheckedDemo()
@@ -101,3 +112,22 @@ def test_checked_method_preserves_metadata():
     assert _CheckedDemo.apply.__name__ == "apply"
     assert _CheckedDemo.apply.__doc__ == "Apply docstring."
     assert _CheckedDemo.apply.__wrapped__ is not None
+
+
+def test_checked_method_supports_self_target_and_multiple_input_args():
+    demo = _CheckedDemo()
+
+    assert demo.combine("z", "z") == "combined"
+    assert demo.space.calls == ["z", "z"]
+
+
+def test_checked_method_arg_pos_alias_still_works():
+    demo = _CheckedDemo()
+
+    assert demo.legacy_single_arg("z") == "legacy"
+    assert demo.space.calls == ["z"]
+
+
+def test_checked_method_rejects_arg_pos_and_arg_positions_together():
+    with pytest.raises(TypeError, match="arg_pos"):
+        checked_method(in_space="space", arg_pos=0, arg_positions=(0,))

@@ -4,6 +4,7 @@ from typing import Any, Tuple, Callable
 
 from ._checks import HermitianCheck, SquareMatrixCheck
 from ._vector import VectorSpace
+from .._checks import checked_method
 from ..types import DenseArray
 from ..backend import Context
 
@@ -70,8 +71,8 @@ class HermitianSpace(VectorSpace):
         """Project onto the Hermitian cone: (X + X^H)/2."""
         return (x + x.T.conj()) * 0.5
 
+    @checked_method(in_space="self")
     def eigh(self, x: DenseArray, k: int = None) -> Tuple[DenseArray, DenseArray]:
-        self.check_member(x)
         return self.ops.eigh(x)
 
     def unflatten(self, v: DenseArray) -> DenseArray:
@@ -79,8 +80,8 @@ class HermitianSpace(VectorSpace):
         X = vv.reshape(self.shape)
         return self.symmetrize(X)
 
+    @checked_method(in_space="self")
     def psd_proj(self, x: DenseArray) -> DenseArray:
-        self.check_member(x)
         evals, evecs = self.ops.eigh(x)
         evals = self.ops.maximum(evals, 0.)
         return self.eig_to_dense(evals, evecs)
@@ -95,6 +96,7 @@ class HermitianSpace(VectorSpace):
     def _convert(self, new_ctx: Context) -> HermitianSpace:
         return HermitianSpace(self.n, self.atol, self.rtol, self.enforce_herm, new_ctx)
 
+    @checked_method(in_space="self")
     def apply(self, x: DenseArray, f: Callable[[DenseArray], DenseArray]) -> DenseArray:
         r"""
         Apply a scalar function to a Hermitian matrix via spectral calculus.
@@ -149,7 +151,6 @@ class HermitianSpace(VectorSpace):
         then the eigenvectors are preserved and only the eigenvalues are
         transformed.
         """
-        self.check_member(x)
         evals, evecs = self.ops.eigh(x)
         fevals = self._apply_entrywise(evals, f)
 
