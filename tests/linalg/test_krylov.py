@@ -365,6 +365,8 @@ def test_lanczos_smallest_uses_domain_geometry_for_weighted_inner_product():
             return WeightedVectorSpace(new_ctx.asarray(self.weights), new_ctx)
 
     space = WeightedVectorSpace([1.0, 4.0], ctx)
+    assert type(space) is not sc.VectorSpace
+
     matrix = np.array([[2.0, 1.0], [0.25, 0.75]])
     op = sc.DenseLinOp(ctx.asarray(matrix), space, space, ctx)
 
