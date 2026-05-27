@@ -62,6 +62,7 @@ dev = [
   "pytest>=8.0",
   "pytest-cov>=5",
   "ruff>=0.6",
+  "numpydoc>=1.7",
 ]
 
 [tool.setuptools]
@@ -72,12 +73,45 @@ where = ["."]
 include = ["spacecore*"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+addopts = [
+  "--doctest-modules",
+  "--ignore-glob=spacecore/_contextual/*",
+  "--ignore-glob=spacecore/backend/cupy/*",
+  "--ignore-glob=spacecore/backend/torch/*",
+]
+testpaths = ["spacecore", "tests"]
+doctest_optionflags = ["NORMALIZE_WHITESPACE", "ELLIPSIS", "NUMBER"]
 
 [tool.ruff]
 line-length = 100
 target-version = "py311"
 
+[tool.ruff.lint]
+ignore = [
+  "D100",
+  "D104",
+  "D203",
+  "D213",
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"
+
 [tool.ruff.lint.per-file-ignores]
 "tutorials/*.ipynb" = ["E741"]
 "tests/*.py" = ["E701"]
+"tests/*" = ["D"]
+
+[tool.numpydoc_validation]
+checks = [
+  "all",
+  "ES01",
+  "EX01",
+  "SA01",
+  "GL08",
+]
+exclude = [
+  '\._',
+  '\.tests\.',
+  'test_',
+]
