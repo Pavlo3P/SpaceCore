@@ -51,13 +51,11 @@ from .linalg import (
     LanczosResult,
     LSQRResult,
     PowerIterationResult,
-    StochasticLanczosResult,
     cg,
     expm_multiply,
     lanczos_smallest,
     lsqr,
     power_iteration,
-    stochastic_lanczos,
 )
 from .space import (
     BatchSpace,
@@ -127,13 +125,11 @@ __all__ = [
     "LanczosResult",
     "LSQRResult",
     "PowerIterationResult",
-    "StochasticLanczosResult",
     "cg",
     "expm_multiply",
     "lanczos_smallest",
     "lsqr",
     "power_iteration",
-    "stochastic_lanczos",
 
     "BackendCheck",
     "DTypeCheck",

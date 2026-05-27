@@ -254,7 +254,7 @@ def test_lanczos_smallest_approximates_smallest_eigenpair(backend_name, dtype):
     assert int(to_numpy(result.krylov_dim)) == 2
 
 
-def test_lanczos_smallest_returns_result_object_and_deprecated_alias_warns():
+def test_lanczos_smallest_returns_result_object():
     sc = importlib.import_module("spacecore")
     ctx = _ctx()
     space = sc.VectorSpace((2,), ctx)
@@ -263,16 +263,7 @@ def test_lanczos_smallest_returns_result_object_and_deprecated_alias_warns():
     result = sc.lanczos_smallest(op, ctx.asarray([1.0, 1.0]), max_iter=2, tol=1e-8)
 
     assert isinstance(result, sc.LanczosResult)
-    assert isinstance(result, sc.StochasticLanczosResult)
-    with pytest.warns(DeprecationWarning, match="lanczos_smallest"):
-        alias_result = sc.stochastic_lanczos(
-            op,
-            ctx.asarray([1.0, 1.0]),
-            max_iter=2,
-            tol=1e-8,
-        )
-    np.testing.assert_allclose(alias_result.eigenvalue, result.eigenvalue)
-    np.testing.assert_allclose(alias_result.eigenvector, result.eigenvector)
+    np.testing.assert_allclose(result.eigenvalue, 2.0)
 
 
 def test_lanczos_smallest_uses_e0_for_zero_initial_vector():
