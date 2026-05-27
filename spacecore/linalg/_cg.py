@@ -115,9 +115,9 @@ def cg(
 
     References
     ----------
-    .. [1] Hestenes, M. R. and Stiefel, E., "Methods of Conjugate Gradients
-       for Solving Linear Systems," J. Res. Natl. Bur. Stand., 49 (1952),
-       409-436.
+    Hestenes, M. R. and Stiefel, E., "Methods of Conjugate Gradients
+    for Solving Linear Systems," J. Res. Natl. Bur. Stand., 49 (1952),
+    409-436.
 
     Examples
     --------

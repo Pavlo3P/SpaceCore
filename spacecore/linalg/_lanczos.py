@@ -309,9 +309,9 @@ def lanczos_smallest(
 
     References
     ----------
-    .. [1] Lanczos, C., "An Iteration Method for the Solution of the Eigenvalue
-       Problem of Linear Differential and Integral Operators," J. Res. Natl.
-       Bur. Stand., 45 (1950), 255-282.
+    Lanczos, C., "An Iteration Method for the Solution of the Eigenvalue
+    Problem of Linear Differential and Integral Operators," J. Res. Natl.
+    Bur. Stand., 45 (1950), 255-282.
 
     Examples
     --------

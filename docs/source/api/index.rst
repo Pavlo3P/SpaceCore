@@ -12,3 +12,4 @@ directives for public objects instead of dumping entire modules.
    spaces
    linops
    functionals
+   linalg

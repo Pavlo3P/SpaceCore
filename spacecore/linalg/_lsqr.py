@@ -120,9 +120,9 @@ def lsqr(
 
     References
     ----------
-    .. [1] Paige, C. C. and Saunders, M. A., "LSQR: An Algorithm for Sparse
-       Linear Equations and Sparse Least Squares," ACM Trans. Math. Soft.,
-       8 (1982), 43-71.
+    Paige, C. C. and Saunders, M. A., "LSQR: An Algorithm for Sparse
+    Linear Equations and Sparse Least Squares," ACM Trans. Math. Soft.,
+    8 (1982), 43-71.
 
     Examples
     --------
