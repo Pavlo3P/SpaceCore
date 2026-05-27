@@ -235,12 +235,16 @@ class DenseLinOp(LinOp[VectorSpace, VectorSpace]):
 
         Returns
         -------
-        bool
-            ``True`` when the operator is square and its flattened matrix
-            equals its conjugate transpose.
+        bool or None
+            ``True`` or ``False`` for plain :class:`VectorSpace` domains, where
+            Hermiticity is checked against the Euclidean flattened matrix.
+            ``None`` for custom geometries whose inner product may differ from
+            the Euclidean coordinate product.
         """
         if self.dom != self.cod:
             return False
+        if type(self.dom) is not VectorSpace:
+            return None
         try:
             return bool(self.ops.allclose(self._A2, self._A2H))
         except Exception:

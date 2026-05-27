@@ -93,19 +93,25 @@ def power_iteration(
 
     Accept a square :class:`LinOp` or a :class:`QuadraticForm` exposing
     ``hess_apply``. Public dispatch converts either input into a fixed
-    self-adjoint action before entering the numerical loop.
+    self-adjoint action before entering the numerical loop. "Dominant" means
+    largest eigenvalue in absolute value, not necessarily the largest positive
+    eigenvalue.
 
     Parameters
     ----------
     A : LinOp or QuadraticForm
-        Square operator or quadratic form whose dominant eigenpair is sought.
+        Square operator or quadratic form whose dominant eigenpair, largest in
+        absolute value, is sought. Linear-operator inputs must satisfy
+        ``A.domain == A.codomain``; this includes the underlying space type and
+        inner-product geometry.
         For spectral-norm estimates of a rectangular operator, pass
         ``A.H @ A``.
     x0 : array-like or None, optional
         Initial vector in the action domain. Default is a normalized all-ones
         vector in the domain geometry.
     tol : float, optional
-        Residual-norm tolerance. Default is 1e-6.
+        Residual-norm tolerance. ``result.converged`` is ``True`` when
+        ``norm(A @ x - lambda * x) < tol``. Default is 1e-6.
     maxiter : int or None, optional
         Maximum number of iterations. Default is ``prod(A.domain.shape)``.
     check_every : int, optional
@@ -145,6 +151,13 @@ def power_iteration(
     iterations, and always on the final iteration. This function is
     JIT-compatible on the JAX backend when ``maxiter`` and ``check_every`` are
     static arguments.
+
+    For operators with eigenvalues of mixed sign, the dominant eigenvalue is
+    the one with largest absolute value, which may be negative. Convergence
+    requires that this eigenvalue be separated from the rest in absolute value.
+    If the dominant modulus is degenerate, for example both ``lambda`` and
+    ``-lambda`` have maximum modulus, the iteration may oscillate between
+    subspaces.
 
     Examples
     --------

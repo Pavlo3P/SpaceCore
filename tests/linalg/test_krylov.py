@@ -303,6 +303,16 @@ def test_lanczos_smallest_rejects_invalid_max_iter():
         sc.lanczos_smallest(op, ctx.asarray([1.0]), max_iter=0)
 
 
+def test_lanczos_smallest_rejects_structurally_non_hermitian_operator():
+    sc = importlib.import_module("spacecore")
+    ctx = _ctx()
+    space = sc.VectorSpace((2,), ctx)
+    op = sc.DenseLinOp(ctx.asarray([[1.0, 2.0], [0.0, 3.0]]), space, space, ctx)
+
+    with pytest.raises(ValueError, match="Hermitian"):
+        sc.lanczos_smallest(op, ctx.asarray([1.0, 1.0]), max_iter=2)
+
+
 def test_lanczos_smallest_handles_eigenvalues_larger_than_1e10():
     sc = importlib.import_module("spacecore")
     ctx = _ctx()

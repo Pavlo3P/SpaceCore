@@ -243,11 +243,12 @@ def lanczos_smallest(
     r"""
     Approximate the smallest eigenpair of a Hermitian operator.
 
-    The operator is supplied as a square ``LinOp`` and ``initial_vector`` is an
-    element of ``A.domain``. The implementation keeps fixed-size coordinate
-    arrays for JAX compatibility, safely handles zero initial vectors, and
-    refines the returned eigenvalue with the Rayleigh quotient of the
-    reconstructed Ritz vector in the original space.
+    The operator is supplied as a square ``LinOp`` in the SpaceCore sense
+    (``A.domain == A.codomain``), and ``initial_vector`` is an element of
+    ``A.domain``. The implementation keeps fixed-size coordinate arrays for JAX
+    compatibility, safely handles zero initial vectors, and refines the
+    returned eigenvalue with the Rayleigh quotient of the reconstructed Ritz
+    vector in the original space.
 
     Mathematically, Lanczos builds an orthonormal Krylov basis ``V`` for
     ``span{v, A v, A^2 v, ...}`` and a tridiagonal projection
@@ -258,15 +259,24 @@ def lanczos_smallest(
     Parameters
     ----------
     A : LinOp
-        Square Hermitian linear operator.
+        Linear operator that must be Hermitian/self-adjoint with respect to
+        ``A.domain.inner``. ``A.domain`` must equal ``A.codomain``, including
+        the underlying space type and inner-product geometry. Operators with
+        structurally unknown Hermiticity (``A.is_hermitian()`` returns
+        ``None``) are accepted on trust; the caller is responsible for ensuring
+        Hermiticity. Non-Hermitian inputs produce undefined results.
     initial_vector : array-like
         Starting vector in ``A.domain``. If it is numerically zero, the
         algorithm falls back to a deterministic coordinate vector.
     max_iter : int, optional
-        Maximum Krylov dimension. Default is 100.
+        Maximum Krylov dimension. Must be a Python ``int`` rather than a
+        traced JAX scalar; under ``jax.jit`` it is treated as a static argument
+        and changing it triggers retracing. Default is 100.
     tol : float, optional
-        Breakdown tolerance for the off-diagonal Lanczos coefficient. Default
-        is 1e-6.
+        Tolerance used for two purposes. Iteration stops at a check point when
+        the off-diagonal Lanczos coefficient falls below ``tol``; the returned
+        ``converged`` flag is ``True`` when the Ritz residual estimate is below
+        ``tol``. Default is 1e-6.
     check_every : int, optional
         Refresh the breakdown-based stopping decision every this many
         iterations and always on the final iteration. Default is
@@ -288,7 +298,8 @@ def lanczos_smallest(
     TypeError
         If ``A`` is not a :class:`LinOp`.
     ValueError
-        If ``A`` is not square or if ``max_iter`` is invalid.
+        If ``A`` is not square, is known to be non-Hermitian, or if
+        ``max_iter`` is invalid.
 
     See Also
     --------
@@ -301,6 +312,18 @@ def lanczos_smallest(
     :math:`\beta_m |y_{m-1}|`. Callers that need the true residual can evaluate
     ``A.apply(eigenvector) - eigenvalue * eigenvector`` once more in the
     original space.
+
+    The "smallest Ritz value" is the smallest eigenvalue of the projected
+    tridiagonal matrix, not necessarily a good approximation of the smallest
+    eigenvalue of ``A``. Convergence to the actual smallest eigenvalue requires
+    the bottom of the spectrum to be separated and the initial vector to have
+    nonzero projection onto the corresponding eigenspace. For clustered low
+    eigenvalues, increase ``max_iter`` or use multiple initial vectors.
+
+    Hermiticity is enforced only when it can be structurally verified: known
+    non-Hermitian operators raise ``ValueError``. Operators with unknown
+    structure, such as many matrix-free operators and operators on custom
+    spaces, are trusted.
 
     This function is JIT-compatible on the JAX backend when ``max_iter`` and
     ``check_every`` are static arguments. For plain :class:`VectorSpace`
@@ -328,6 +351,8 @@ def lanczos_smallest(
     """
     A = require_linop(A)
     require_square(A, "lanczos_smallest")
+    if A.is_hermitian() is False:
+        raise ValueError("lanczos_smallest requires A to be Hermitian/self-adjoint.")
     max_iter = _check_lanczos_max_iter(max_iter)
     check_every = check_interval(check_every)
     A.domain.check_member(initial_vector)

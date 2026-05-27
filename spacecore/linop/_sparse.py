@@ -233,12 +233,16 @@ class SparseLinOp(LinOp):
 
         Returns
         -------
-        bool
-            ``True`` when the operator is square and its sparse matrix equals
-            its conjugate transpose within backend tolerances.
+        bool or None
+            ``True`` or ``False`` for plain :class:`VectorSpace` domains, where
+            Hermiticity is checked against the Euclidean sparse matrix.
+            ``None`` for custom geometries whose inner product may differ from
+            the Euclidean coordinate product.
         """
         if self.dom != self.cod:
             return False
+        if type(self.dom) is not VectorSpace:
+            return None
         try:
             return bool(self.ops.allclose_sparse(self.A, self._AH))
         except Exception:

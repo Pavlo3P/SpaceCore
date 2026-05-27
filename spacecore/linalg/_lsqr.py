@@ -59,21 +59,25 @@ def lsqr(
     r"""
     Solve :math:`\min_x \|A x - b\|` by LSQR.
 
-    Allow ``A`` to be rectangular or square. The method uses
-    :meth:`LinOp.apply` for forward products and ``A.H.apply`` for adjoint
-    products, so the normal equations are represented implicitly and no dense
-    matrix is formed.
+    Allow ``A`` to map between distinct ``domain`` and ``codomain`` spaces.
+    The method uses :meth:`LinOp.apply` for forward products and ``A.H.apply``
+    for adjoint products, so the normal equations are represented implicitly
+    and no dense matrix is formed.
 
     Parameters
     ----------
     A : LinOp
-        Linear operator defining the least-squares problem.
+        Linear operator with possibly distinct ``domain`` and ``codomain``.
+        For square ``A`` (``A.domain == A.codomain``), :func:`cg` is usually
+        preferred when ``A`` is also Hermitian positive-definite.
     b : array-like
         Right-hand side in ``A.codomain``.
     x0 : array-like or None, optional
         Initial guess in ``A.domain``. Default is the zero vector.
     tol : float, optional
-        Relative tolerance for the normal-equation residual. Default is 1e-6.
+        Relative tolerance for the normal-equation residual
+        ``norm(A.H @ (A @ x - b))``. ``result.converged`` is ``True`` when that
+        residual is below ``atol + tol * norm(b)``. Default is 1e-6.
     atol : float, optional
         Absolute tolerance for the normal-equation residual. Default is 0.0.
     maxiter : int or None, optional
@@ -114,6 +118,10 @@ def lsqr(
     iterations, and always on the final iteration. This function is
     JIT-compatible on the JAX backend when ``maxiter`` and ``check_every`` are
     static arguments.
+
+    The normal-equation residual can be much smaller than the solution error
+    for ill-conditioned ``A``. For ill-conditioned problems, use a tighter
+    ``tol`` or check the residual and solution quality directly.
 
     Works on real and complex operators. For complex operators, ``A.H`` uses
     the conjugate adjoint.

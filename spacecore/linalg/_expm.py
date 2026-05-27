@@ -54,26 +54,37 @@ def expm_multiply(
     r"""
     Compute :math:`\exp(t A) v` by Krylov projection.
 
-    Require ``A`` to be Hermitian or structurally unknown. The method builds a
-    Lanczos basis and applies the exponential of the small tridiagonal
-    projection, avoiding dense materialization of ``A``.
+    Require ``A`` to be square in the SpaceCore sense
+    (``A.domain == A.codomain``) and Hermitian with respect to
+    ``A.domain.inner``. The method builds a Lanczos basis and applies the
+    exponential of the small tridiagonal projection, avoiding dense
+    materialization of ``A``.
 
     Parameters
     ----------
     A : LinOp
-        Square Hermitian linear operator.
+        Linear operator that must be Hermitian/self-adjoint with respect to
+        ``A.domain.inner``. ``A.domain`` must equal ``A.codomain``, including
+        the underlying space type and inner-product geometry. Operators with
+        structurally unknown Hermiticity (``A.is_hermitian()`` returns
+        ``None``) are accepted on trust; the caller is responsible for ensuring
+        Hermiticity. Non-Hermitian inputs produce undefined results.
     v : array-like
         Initial vector in ``A.domain``.
     t : float or complex, optional
-        Scalar time/scale multiplying ``A``. Complex values are supported for
-        complex-valued contexts, for example Schrodinger evolution. Default is
-        1.0.
+        Scalar multiplier on ``A``. Complex values require a complex-valued
+        ``ctx.dtype`` such as ``complex64`` or ``complex128``. Using a complex
+        ``t`` with a real-valued context produces backend-dependent results.
+        Default is 1.0.
     max_iter : int, optional
         Maximum Krylov dimension. Values around 20-50 are usually sufficient
-        when :math:`|t|\|A\|` is moderate. Default is 30.
+        when :math:`|t|\|A\|` is moderate. Must be a Python ``int`` rather
+        than a traced JAX scalar; under ``jax.jit`` it is treated as a static
+        argument and changing it triggers retracing. Default is 30.
     tol : float, optional
-        Breakdown tolerance for Lanczos and threshold for the projected
-        exponential residual estimate. Default is 1e-10.
+        Tolerance used both for Lanczos breakdown and for the convergence flag:
+        ``result.converged`` is ``True`` when the projected exponential
+        residual estimate is below ``tol``. Default is 1e-10.
 
     Returns
     -------
@@ -101,6 +112,11 @@ def expm_multiply(
     symmetric tridiagonal matrix ``T``. This is JIT-compatible on the JAX
     backend when ``max_iter`` is static.
 
+    Hermiticity is enforced only when it can be structurally verified: known
+    non-Hermitian operators raise ``ValueError``. Operators with unknown
+    structure, such as many matrix-free operators and operators on custom
+    spaces, are trusted.
+
     The returned residual estimate is
     :math:`|\beta_m \phi_{m-1}|`, where ``phi`` is the projected exponential
     vector. Callers that need the true residual can perform one additional
@@ -116,8 +132,8 @@ def expm_multiply(
     >>> X = sc.VectorSpace((2,), ctx)
     >>> A = sc.DiagonalLinOp(ctx.asarray([0.0, 1.0]), X, ctx)
     >>> v = ctx.asarray([2.0, 3.0])
-    >>> result = sc.expm_multiply(A, v, t=0.5, max_iter=2)
-    >>> np.allclose(result.result, [2.0, 3.0 * np.exp(0.5)])
+    >>> result = sc.expm_multiply(A, v, t=0.5, max_iter=5)
+    >>> np.allclose(result.result, [2.0, 3.0 * np.exp(0.5)], atol=1e-10)
     True
     """
     A = require_linop(A)

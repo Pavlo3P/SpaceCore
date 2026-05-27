@@ -55,20 +55,28 @@ def cg(
     r"""
     Solve :math:`A x = b` by conjugate gradients.
 
-    Require ``A`` to be a square Hermitian positive-definite :class:`LinOp`.
-    The implementation uses only :meth:`LinOp.apply` and the domain-space inner
-    product; it never materializes a dense matrix.
+    Require ``A`` to be square in the SpaceCore sense
+    (``A.domain == A.codomain``), Hermitian, and positive-definite with respect
+    to ``A.domain.inner``. The implementation uses only :meth:`LinOp.apply` and
+    the domain-space inner product; it never materializes a dense matrix.
 
     Parameters
     ----------
     A : LinOp
-        Hermitian positive-definite linear operator.
+        Linear operator that must be Hermitian positive-definite with respect
+        to ``A.domain.inner``. ``A.domain`` must equal ``A.codomain``,
+        including the underlying space type and inner-product geometry.
+        Hermiticity and positive-definiteness are not validated by ``cg``;
+        indefinite or non-Hermitian operators can diverge or produce NaN
+        outputs without an explicit error.
     b : array-like
         Right-hand side in ``A.codomain``.
     x0 : array-like or None, optional
         Initial guess in ``A.domain``. Default is the zero vector.
     tol : float, optional
-        Relative residual tolerance. Default is 1e-6.
+        Relative tolerance on the linear-system residual. ``result.converged``
+        is ``True`` when the residual norm is below
+        ``atol + tol * norm(b)``. Default is 1e-6.
     atol : float, optional
         Absolute residual tolerance. Default is 0.0.
     maxiter : int or None, optional
@@ -110,8 +118,10 @@ def cg(
     flow. ``maxiter`` and ``check_every`` should be treated as static JAX
     arguments.
 
-    Works on real and complex operators. For complex operators, the method uses
-    the domain inner product convention implemented by ``A.domain``.
+    For complex operators, residual norms and step sizes are computed from the
+    real part of ``A.domain.inner(x, y)``. SpaceCore's complex inner-product
+    convention conjugates the first argument; custom :class:`Space` subclasses
+    must follow that convention for CG to converge correctly.
 
     References
     ----------
