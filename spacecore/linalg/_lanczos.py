@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from typing import Any, NamedTuple
-from warnings import warn
 
 
 from ..linop import LinOp
