@@ -14,6 +14,7 @@ _cached_state = None
 
 
 def _state():
+    """Return the cached contextual singleton."""
     global _cached_state
     if _cached_state is not None:
         return _cached_state
@@ -33,14 +34,14 @@ def set_context(
 
     Parameters
     ----------
-    ctx:
+    ctx : Context, BackendFamily, str, or None, optional
         Context specification to make default. This may be a concrete
         :class:`spacecore.backend.Context`, a backend family enum, a backend
         family string such as ``"numpy"`` or ``"jax"``, or ``None``.
-    dtype:
+    dtype : dtype-like, optional
         Optional dtype used when ``ctx`` is a backend family string or enum.
         Ignored when ``ctx`` is ``None`` or already a concrete ``Context``.
-    enable_checks:
+    enable_checks : bool or None, optional
         Optional validation flag used when constructing a context from a backend
         family. Ignored when ``ctx`` is ``None`` or already a concrete
         ``Context``.
@@ -76,10 +77,10 @@ def resolve_context_priority(
 
     Parameters
     ----------
-    priority_ctx:
+    priority_ctx : Context, BackendFamily, str, or None, optional
         Explicit context supplied by the caller. If this is not ``None``, it
         wins over every inferred context.
-    *other_ctx:
+    *other_ctx : object
         Objects that may carry a ``ctx`` attribute or be backend-native arrays.
         These are used for context inference when no explicit context is
         supplied.
@@ -104,7 +105,7 @@ def register_ops(ops: type[BackendOps]) -> type[BackendOps]:
 
     Parameters
     ----------
-    ops:
+    ops : type[BackendOps]
         Backend operations class to register. It must be a subclass of
         :class:`spacecore.backend.BackendOps` and define a unique backend
         family key.
@@ -138,14 +139,42 @@ def normalize_context(
     dtype: Any = None,
     enable_checks: bool | None = None,
 ) -> Context:
-    """Normalize a context specification through the process-wide state."""
+    """
+    Normalize a context specification through the process-wide state.
+
+    Parameters
+    ----------
+    ctx : Context, BackendFamily, str, or None, optional
+        Context specification to normalize.
+    dtype : dtype-like, optional
+        Optional dtype used when constructing a context from backend family.
+    enable_checks : bool or None, optional
+        Optional validation flag.
+
+    Returns
+    -------
+    Context
+        Normalized context.
+    """
     return _state().normalize_context(ctx, dtype=dtype, enable_checks=enable_checks)
 
 
 def normalize_ops(
     ops: str | BackendFamily | BackendOps | type[BackendOps] | Context
 ) -> BackendOps:
-    """Normalize backend operations through the process-wide state."""
+    """
+    Normalize backend operations through the process-wide state.
+
+    Parameters
+    ----------
+    ops : str, BackendFamily, BackendOps, type[BackendOps], or Context
+        Backend operations specification.
+
+    Returns
+    -------
+    BackendOps
+        Backend operations instance.
+    """
     if isinstance(ops, BackendOps):
         return ops
     return _state().get_ops(ops)
@@ -165,7 +194,7 @@ def set_resolution_policy(policy: ContextPolicy | str | None = None) -> None:
 
     Parameters
     ----------
-    policy:
+    policy : ContextPolicy, str, or None, optional
         Conversion policy to use. Accepted values are ``"warning"``,
         ``"error"``, ``"silent"``, matching :class:`ContextPolicy`, or
         ``None`` to restore the default policy.
@@ -205,7 +234,7 @@ def set_dtype_resolution_policy(
 
     Parameters
     ----------
-    policy:
+    policy : DtypePreservePolicy, str, or None, optional
         Dtype policy to use. Accepted values are ``"keep_native"`` and
         ``"convert"``, matching :class:`DtypePreservePolicy`, or ``None`` to
         restore the default policy.

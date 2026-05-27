@@ -1,3 +1,5 @@
+"""Vector space abstractions, concrete spaces, and validation checks."""
+
 from ._checks import (
     BackendCheck,
     DTypeCheck,

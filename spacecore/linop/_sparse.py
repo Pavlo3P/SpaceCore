@@ -14,14 +14,39 @@ from .._contextual import resolve_context_priority
 
 @jax_pytree_class
 class SparseLinOp(LinOp):
-    """
-    Sparse linear operator implementing the tensor map A : dom -> cod where
-    conceptually A has shape cod.shape + dom.shape, but stored as a 2D sparse matrix:
+    r"""
+    Represent a sparse matrix-backed linear operator.
 
-        A2.shape == (prod(cod.shape), prod(dom.shape))
+    ``SparseLinOp(A, dom, cod)`` represents a tensor map whose conceptual shape
+    is ``cod.shape + dom.shape`` while storage uses a two-dimensional sparse
+    matrix with shape ``(prod(cod.shape), prod(dom.shape))``.
 
-    apply:  y = A ⋅ x  (contract over dom axes)
-    rapply: x = A^* ⋅ y  (contract over cod axes)
+    Parameters
+    ----------
+    A : SparseArray
+        Sparse backend matrix with shape ``(prod(cod.shape), prod(dom.shape))``.
+    dom : Space
+        Domain space.
+    cod : Space
+        Codomain space.
+    ctx : Context, str, or None, optional
+        Backend context specification. Default is resolved from the spaces.
+
+    Attributes
+    ----------
+    A : SparseArray
+        Stored sparse matrix representation.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> import scipy.sparse as sps
+    >>> import spacecore as sc
+    >>> ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    >>> X = sc.VectorSpace((2,), ctx)
+    >>> A = sc.SparseLinOp(ctx.assparse(sps.eye(2)), X, X, ctx)
+    >>> A.apply(ctx.asarray([1.0, 2.0]))
+    array([1., 2.])
     """
 
     def __init__(self,
@@ -72,6 +97,7 @@ class SparseLinOp(LinOp):
         return self._apply_unchecked(x)
 
     def _apply_unchecked(self, x: DenseArray) -> DenseArray:
+        """Apply the stored sparse matrix without membership checks."""
         x1 = x if self._dom_is_flat else x.reshape((self._dom_size,))
         y1 = self.A @ x1   # (m,)
         if self._cod_vector_fast_path:
@@ -88,6 +114,7 @@ class SparseLinOp(LinOp):
         return self._rapply_unchecked(y)
 
     def _rapply_unchecked(self, y: DenseArray) -> DenseArray:
+        """Apply the stored sparse adjoint without membership checks."""
         y1 = y if self._cod_is_flat else y.reshape((self._cod_size,))
         x1 = self._AH @ y1
 

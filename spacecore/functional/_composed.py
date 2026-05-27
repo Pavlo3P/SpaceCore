@@ -11,6 +11,7 @@ from ..linop import LinOp
 
 
 def _require_composable(F: Functional, A: LinOp) -> None:
+    """Raise unless ``F`` can be composed with ``A``."""
     if not isinstance(F, Functional):
         raise TypeError(f"F must be a Functional, got {type(F).__name__}.")
     if not isinstance(A, LinOp):
@@ -28,9 +29,9 @@ def make_functional_composed(F: Functional, A: LinOp) -> Functional:
 
     Parameters
     ----------
-    F:
+    F : Functional
         Functional defined on ``A.codomain``.
-    A:
+    A : LinOp
         Linear operator whose codomain is ``F.domain``.
 
     Returns
@@ -55,6 +56,13 @@ class ComposedFunctional(Functional):
     Generic pull-back of a functional through a linear operator.
 
     ``ComposedFunctional(F, A)`` represents ``x -> F(A x)`` on ``A.domain``.
+
+    Parameters
+    ----------
+    F : Functional
+        Functional defined on ``A.codomain``.
+    A : LinOp
+        Linear operator whose codomain is ``F.domain``.
     """
 
     def __init__(self, F: Functional, A: LinOp) -> None:
@@ -81,19 +89,23 @@ class ComposedFunctional(Functional):
         return self.F.value(self.A.apply(x))
 
     def __eq__(self, other: Any) -> bool:
+        """Return whether another composed functional has the same operands."""
         if type(other) is type(self):
             return self.F == other.F and self.A == other.A
         return False
 
     def tree_flatten(self):
+        """Flatten this functional for pytree registration."""
         children = (self.F, self.A)
         aux = ()
         return children, aux
 
     @classmethod
     def tree_unflatten(cls, aux, children):
+        """Rebuild this functional from pytree data."""
         F, A = children
         return cls(F, A)
 
     def _convert(self, new_ctx: Context) -> ComposedFunctional:
+        """Convert the composed functional and operator to ``new_ctx``."""
         return ComposedFunctional(self.F.convert(new_ctx), self.A.convert(new_ctx))

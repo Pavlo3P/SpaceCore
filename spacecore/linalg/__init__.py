@@ -1,3 +1,5 @@
+"""Iterative linear algebra solvers and Krylov algorithms."""
+
 from __future__ import annotations
 
 from ._cg import CGResult, cg

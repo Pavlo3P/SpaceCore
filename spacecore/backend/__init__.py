@@ -1,3 +1,5 @@
+"""Backend contexts and operation implementations."""
+
 from ._context import Context
 from ._ops import BackendOps
 from ._family import BackendFamily

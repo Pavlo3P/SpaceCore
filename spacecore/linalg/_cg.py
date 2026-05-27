@@ -9,7 +9,20 @@ from ._utils import result_repr, safe_inverse_nonneg, should_check_iteration, th
 
 
 class CGResult(NamedTuple):
-    """Result returned by :func:`cg`."""
+    """
+    Store the result returned by :func:`cg`.
+
+    Parameters
+    ----------
+    x : array-like
+        Approximate solution in ``A.domain``.
+    converged : bool-like
+        Whether the final residual norm satisfied the requested tolerance.
+    num_iters : int-like
+        Number of conjugate-gradient iterations executed.
+    residual_norm : scalar
+        Norm of the final residual in ``A.codomain``.
+    """
 
     x: Any
     converged: Any
@@ -39,15 +52,89 @@ def cg(
     maxiter: int | None = None,
     check_every: int = DEFAULT_CONVERGENCE_CHECK_INTERVAL,
 ) -> CGResult:
-    """
-    Solve ``A x = b`` by conjugate gradients.
+    r"""
+    Solve :math:`A x = b` by conjugate gradients.
 
-    ``A`` must be a square symmetric/Hermitian positive-definite ``LinOp``.
-    The implementation uses only ``A.apply`` and the domain-space inner product;
-    it never materializes a dense matrix. The residual norm is compared with
-    ``atol + tol * ||b||`` only every ``check_every`` iterations, and always on
-    the final iteration. This avoids checking the stopping criterion on every
-    step while remaining compatible with JAX JIT control flow.
+    Require ``A`` to be a square Hermitian positive-definite :class:`LinOp`.
+    The implementation uses only :meth:`LinOp.apply` and the domain-space inner
+    product; it never materializes a dense matrix.
+
+    Parameters
+    ----------
+    A : LinOp
+        Hermitian positive-definite linear operator.
+    b : array-like
+        Right-hand side in ``A.codomain``.
+    x0 : array-like or None, optional
+        Initial guess in ``A.domain``. Default is the zero vector.
+    tol : float, optional
+        Relative residual tolerance. Default is 1e-6.
+    atol : float, optional
+        Absolute residual tolerance. Default is 0.0.
+    maxiter : int or None, optional
+        Maximum number of iterations. Default is ``prod(A.domain.shape)``.
+    check_every : int, optional
+        Refresh convergence diagnostics every this many iterations and always
+        on the final iteration. Default is
+        ``DEFAULT_CONVERGENCE_CHECK_INTERVAL``.
+
+    Returns
+    -------
+    CGResult
+        Named tuple with fields:
+
+        - ``x``: approximate solution in ``A.domain``
+        - ``converged``: whether the requested tolerance was met
+        - ``num_iters``: number of iterations executed
+        - ``residual_norm``: final residual norm
+
+    Raises
+    ------
+    TypeError
+        If ``A`` is not a :class:`LinOp`.
+    ValueError
+        If ``A`` is not square or if iteration parameters are invalid.
+
+    See Also
+    --------
+    lsqr : Solve least-squares systems for rectangular operators.
+    lanczos_smallest : Approximate the smallest eigenpair of a Hermitian
+        operator.
+
+    Notes
+    -----
+    The residual norm is compared with
+    :math:`\text{atol} + \text{tol} \| b \|` only every ``check_every``
+    iterations, and always on the final iteration. This keeps convergence
+    checks out of the hot loop while remaining compatible with JAX JIT control
+    flow. ``maxiter`` and ``check_every`` should be treated as static JAX
+    arguments.
+
+    Works on real and complex operators. For complex operators, the method uses
+    the domain inner product convention implemented by ``A.domain``.
+
+    References
+    ----------
+    .. [1] Hestenes, M. R. and Stiefel, E., "Methods of Conjugate Gradients
+       for Solving Linear Systems," J. Res. Natl. Bur. Stand., 49 (1952),
+       409-436.
+
+    Examples
+    --------
+    Solve a small positive-definite system.
+
+    >>> import numpy as np
+    >>> import spacecore as sc
+    >>> ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    >>> X = sc.VectorSpace((3,), ctx)
+    >>> M = ctx.asarray([[4.0, 1.0, 0.0], [1.0, 3.0, 1.0], [0.0, 1.0, 2.0]])
+    >>> A = sc.DenseLinOp(M, X, X, ctx)
+    >>> b = ctx.asarray([1.0, 2.0, 3.0])
+    >>> result = sc.cg(A, b, tol=1e-10)
+    >>> bool(result.converged)
+    True
+    >>> np.allclose(A.apply(result.x), b)
+    True
     """
     A = require_linop(A)
     require_square(A, "cg")

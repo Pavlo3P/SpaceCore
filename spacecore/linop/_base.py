@@ -14,15 +14,47 @@ Domain = TypeVar('Domain', bound=Space)
 Codomain = TypeVar('Codomain', bound=Space)
 
 class LinOp(ContextBound, Generic[Domain, Codomain]):
-    """
-    Minimal linear operator (morphism) between two spaces.
+    r"""
+    Represent a linear map between two spaces.
 
-    This class is intentionally small. It defines no matrix semantics,
-    arithmetic, or storage assumptions.
+    This class is intentionally small. It defines no storage assumptions and
+    requires subclasses to provide forward and adjoint actions.
 
-    Its sole purpose is to represent a linear map
-    ``A : dom -> cod``
-    with access to both forward and adjoint actions.
+    The adjoint :math:`A^*` satisfies
+    :math:`\langle A x, y\rangle_Y = \langle x, A^* y\rangle_X` for
+    :math:`x \in X` and :math:`y \in Y`. For complex operators this is the
+    conjugate adjoint.
+
+    Parameters
+    ----------
+    dom : Space
+        Domain space ``X``.
+    cod : Space
+        Codomain space ``Y``.
+    ctx : Context, str, or None, optional
+        Backend context specification. Default is resolved from ``dom`` and
+        ``cod``.
+
+    Attributes
+    ----------
+    dom : Space
+        Domain space converted to ``ctx``.
+    cod : Space
+        Codomain space converted to ``ctx``.
+    ctx : Context
+        Resolved backend context.
+
+    Examples
+    --------
+    Use a concrete dense operator as a :class:`LinOp`.
+
+    >>> import numpy as np
+    >>> import spacecore as sc
+    >>> ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    >>> X = sc.VectorSpace((2,), ctx)
+    >>> A = sc.DenseLinOp(ctx.asarray([[1.0, 0.0], [0.0, 2.0]]), X, X, ctx)
+    >>> A.apply(ctx.asarray([3.0, 4.0]))
+    array([3., 8.])
     """
 
     def __init__(self, dom: Domain, cod: Codomain, ctx: Context | str | None = None):
@@ -61,23 +93,11 @@ class LinOp(ContextBound, Generic[Domain, Codomain]):
 
     @abstractmethod
     def apply(self, x: Any) -> Any:
-        """
-        Forward application: y = A x
-
-        Contract:
-          - x is an element of self.dom
-          - return value is an element of self.cod
-        """
+        """Apply the forward map to an element of ``self.domain``."""
 
     @abstractmethod
     def rapply(self, y: Any) -> Any:
-        """
-        Adjoint application: x = A^* y
-
-        Contract:
-          - y is an element of self.cod
-          - return value is an element of self.dom
-        """
+        """Apply the adjoint map to an element of ``self.codomain``."""
 
     def __call__(self, x: Any) -> Any:
         """Apply this linear operator to ``x``."""
@@ -108,6 +128,7 @@ class LinOp(ContextBound, Generic[Domain, Codomain]):
         return self._fallback_rvapply(ys, batch_space)
 
     def _infer_batch_shape(self, space: Space, value: Any) -> tuple[int, ...]:
+        """Infer leading batch dimensions from a value and base space."""
         if hasattr(space, "spaces") and isinstance(value, tuple) and value:
             return self._infer_batch_shape(space.spaces[0], value[0])
         shape = tuple(getattr(value, "shape", ()))
@@ -127,12 +148,14 @@ class LinOp(ContextBound, Generic[Domain, Codomain]):
         value: Any,
         batch_space: Space | None,
     ) -> Space:
+        """Return the batch space used to validate batched inputs."""
         if batch_space is not None:
             return batch_space
         batch_shape = self._infer_batch_shape(space, value)
         return space.batch(batch_shape, tuple(range(len(batch_shape))))
 
     def _output_batch_space(self, space: Space, input_batch_space: Space) -> Space:
+        """Return the batch space corresponding to a batched output."""
         batch_shape = getattr(input_batch_space, "batch_shape", None)
         batch_axes = getattr(input_batch_space, "batch_axes", None)
         if batch_shape is None or batch_axes is None:
@@ -140,6 +163,7 @@ class LinOp(ContextBound, Generic[Domain, Codomain]):
         return space.batch(tuple(batch_shape), tuple(batch_axes))
 
     def _fallback_vapply(self, xs: Any, batch_space: Space | None = None) -> Any:
+        """Apply ``self.apply`` over a leading batch with backend ``vmap``."""
         in_space = self._input_batch_space(self.domain, xs, batch_space)
         if self._enable_checks:
             in_space._check_member(xs)
@@ -149,6 +173,7 @@ class LinOp(ContextBound, Generic[Domain, Codomain]):
         return ys
 
     def _fallback_rvapply(self, ys: Any, batch_space: Space | None = None) -> Any:
+        """Apply ``self.rapply`` over a leading batch with backend ``vmap``."""
         in_space = self._input_batch_space(self.codomain, ys, batch_space)
         if self._enable_checks:
             in_space._check_member(ys)
@@ -159,7 +184,14 @@ class LinOp(ContextBound, Generic[Domain, Codomain]):
 
     @property
     def H(self) -> LinOp:
-        """Hermitian-adjoint view of this linear operator."""
+        r"""Hermitian-adjoint view of this linear operator.
+
+        Returns
+        -------
+        LinOp
+            Adjoint view satisfying
+            :math:`\langle A x, y\rangle_Y = \langle x, A^* y\rangle_X`.
+        """
         from ._algebra import _AdjointViewLinOp
 
         view = getattr(self, "_adjoint_view", None)
@@ -260,19 +292,24 @@ class LinOp(ContextBound, Generic[Domain, Codomain]):
         return self.ops.reshape(matrix, tuple(self.codomain.shape) + tuple(self.domain.shape))
 
     def assert_domain(self, x: Any) -> None:
+        """Raise if ``x`` is not in the domain."""
         self.dom.check_member(x)
 
     def assert_codomain(self, y: Any) -> None:
+        """Raise if ``y`` is not in the codomain."""
         self.cod.check_member(y)
 
     def __eq__(self, other: Any) -> bool:
+        """Return structural equality when implemented by a subclass."""
         return NotImplemented
 
     @abstractmethod
     def tree_flatten(self):
+        """Flatten this operator for backend pytree registration."""
         ...
 
     @classmethod
     @abstractmethod
     def tree_unflatten(cls, aux, children):
+        """Rebuild this operator from backend pytree data."""
         ...

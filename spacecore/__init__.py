@@ -1,3 +1,5 @@
+"""Backend-agnostic vector spaces, linear operators, and solvers."""
+
 from importlib.metadata import version as _version
 
 try:

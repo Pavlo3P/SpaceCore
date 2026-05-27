@@ -8,19 +8,20 @@ from ._utils import require_linop, require_square, result_repr
 
 
 class ExpmMultiplyResult(NamedTuple):
-    """Result returned by :func:`expm_multiply`.
+    """
+    Store the result returned by :func:`expm_multiply`.
 
-    Attributes
+    Parameters
     ----------
-    result:
+    result : array-like
         Vector in the domain of the input operator approximating
         ``exp(t * A) @ v``.
-    krylov_dim:
+    krylov_dim : int-like
         Actual Krylov dimension reached before breakdown or ``max_iter``.
-    residual_estimate:
+    residual_estimate : scalar
         Projected exponential residual estimate
         ``abs(beta[m] * phi[m - 1])``.
-    converged:
+    converged : bool-like
         Boolean indicating whether ``residual_estimate < tol``.
     """
 
@@ -50,30 +51,74 @@ def expm_multiply(
     max_iter: int = 30,
     tol: float = 1e-10,
 ) -> ExpmMultiplyResult:
-    """
-    Compute ``exp(t * A) @ v`` for a Hermitian operator via Krylov projection.
+    r"""
+    Compute :math:`\exp(t A) v` by Krylov projection.
+
+    Require ``A`` to be Hermitian or structurally unknown. The method builds a
+    Lanczos basis and applies the exponential of the small tridiagonal
+    projection, avoiding dense materialization of ``A``.
 
     Parameters
     ----------
-    A:
+    A : LinOp
         Square Hermitian linear operator.
-    v:
+    v : array-like
         Initial vector in ``A.domain``.
-    t:
+    t : float or complex, optional
         Scalar time/scale multiplying ``A``. Complex values are supported for
-        complex-valued contexts, for example Schrödinger evolution.
-    max_iter:
+        complex-valued contexts, for example Schrodinger evolution. Default is
+        1.0.
+    max_iter : int, optional
         Maximum Krylov dimension. Values around 20-50 are usually sufficient
-        when ``abs(t) * ||A||`` is moderate.
-    tol:
+        when :math:`|t|\|A\|` is moderate. Default is 30.
+    tol : float, optional
         Breakdown tolerance for Lanczos and threshold for the projected
-        exponential residual estimate.
+        exponential residual estimate. Default is 1e-10.
 
     Returns
     -------
     ExpmMultiplyResult
         Result vector in ``A.domain``, the Krylov dimension used, the standard
         estimate ``abs(beta[m] * phi[m - 1])``, and a convergence flag.
+
+    Raises
+    ------
+    TypeError
+        If ``A`` is not a :class:`LinOp`.
+    ValueError
+        If ``A`` is not square, is known to be non-Hermitian, or if
+        ``max_iter`` is invalid.
+
+    See Also
+    --------
+    lanczos_smallest : Build the related Hermitian Krylov projection.
+    power_iteration : Estimate a dominant eigenpair.
+
+    Notes
+    -----
+    The projected exponential is computed as
+    :math:`\exp(t T) e_0` using an eigendecomposition of the small real
+    symmetric tridiagonal matrix ``T``. This is JIT-compatible on the JAX
+    backend when ``max_iter`` is static.
+
+    The returned residual estimate is
+    :math:`|\beta_m \phi_{m-1}|`, where ``phi`` is the projected exponential
+    vector. Callers that need the true residual can perform one additional
+    operator application.
+
+    Examples
+    --------
+    Apply the exponential of a diagonal operator.
+
+    >>> import numpy as np
+    >>> import spacecore as sc
+    >>> ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    >>> X = sc.VectorSpace((2,), ctx)
+    >>> A = sc.DiagonalLinOp(ctx.asarray([0.0, 1.0]), X, ctx)
+    >>> v = ctx.asarray([2.0, 3.0])
+    >>> result = sc.expm_multiply(A, v, t=0.5, max_iter=2)
+    >>> np.allclose(result.result, [2.0, 3.0 * np.exp(0.5)])
+    True
     """
     A = require_linop(A)
     require_square(A, "expm_multiply")

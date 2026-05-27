@@ -9,7 +9,22 @@ from ._utils import result_repr, threshold
 
 
 class LSQRResult(NamedTuple):
-    """Result returned by :func:`lsqr`."""
+    """
+    Store the result returned by :func:`lsqr`.
+
+    Parameters
+    ----------
+    x : array-like
+        Approximate least-squares solution in ``A.domain``.
+    converged : bool-like
+        Whether the normal-equation residual satisfied the requested tolerance.
+    num_iters : int-like
+        Number of LSQR iterations executed.
+    residual_norm : scalar
+        Norm of ``A x - b`` in ``A.codomain``.
+    normal_residual_norm : scalar
+        Norm of ``A.H @ (A x - b)`` in ``A.domain``.
+    """
 
     x: Any
     converged: Any
@@ -41,16 +56,89 @@ def lsqr(
     maxiter: int | None = None,
     check_every: int = DEFAULT_CONVERGENCE_CHECK_INTERVAL,
 ) -> LSQRResult:
-    """
-    Solve ``min_x ||A x - b||_2`` by the LSQR Krylov iteration.
+    r"""
+    Solve :math:`\min_x \|A x - b\|` by LSQR.
 
-    The operator may be rectangular or square. The method uses ``A.apply`` for
-    forward products and ``A.H.apply`` for adjoint products, so the normal
-    equations are represented implicitly and no dense matrix is formed.
-    Convergence is tested against ``atol + tol * ||b||`` using
-    ``||A.H @ (A x - b)||``. That normal-equation residual is refreshed only
-    every ``check_every`` iterations, and always on the final iteration, so the
-    expensive stopping diagnostic is not evaluated on every Krylov step.
+    Allow ``A`` to be rectangular or square. The method uses
+    :meth:`LinOp.apply` for forward products and ``A.H.apply`` for adjoint
+    products, so the normal equations are represented implicitly and no dense
+    matrix is formed.
+
+    Parameters
+    ----------
+    A : LinOp
+        Linear operator defining the least-squares problem.
+    b : array-like
+        Right-hand side in ``A.codomain``.
+    x0 : array-like or None, optional
+        Initial guess in ``A.domain``. Default is the zero vector.
+    tol : float, optional
+        Relative tolerance for the normal-equation residual. Default is 1e-6.
+    atol : float, optional
+        Absolute tolerance for the normal-equation residual. Default is 0.0.
+    maxiter : int or None, optional
+        Maximum number of iterations. Default is ``prod(A.domain.shape)``.
+    check_every : int, optional
+        Refresh residual diagnostics every this many iterations and always on
+        the final iteration. Default is
+        ``DEFAULT_CONVERGENCE_CHECK_INTERVAL``.
+
+    Returns
+    -------
+    LSQRResult
+        Named tuple with fields:
+
+        - ``x``: approximate least-squares solution in ``A.domain``
+        - ``converged``: whether the requested tolerance was met
+        - ``num_iters``: number of iterations executed
+        - ``residual_norm``: final residual norm
+        - ``normal_residual_norm``: final normal-equation residual norm
+
+    Raises
+    ------
+    TypeError
+        If ``A`` is not a :class:`LinOp`.
+    ValueError
+        If iteration parameters are invalid.
+
+    See Also
+    --------
+    cg : Solve square Hermitian positive-definite systems.
+    power_iteration : Estimate a dominant eigenpair.
+
+    Notes
+    -----
+    Convergence is tested using
+    :math:`\|A^*(A x - b)\| < \text{atol} + \text{tol}\|b\|`.
+    The normal-equation residual is refreshed only every ``check_every``
+    iterations, and always on the final iteration. This function is
+    JIT-compatible on the JAX backend when ``maxiter`` and ``check_every`` are
+    static arguments.
+
+    Works on real and complex operators. For complex operators, ``A.H`` uses
+    the conjugate adjoint.
+
+    References
+    ----------
+    .. [1] Paige, C. C. and Saunders, M. A., "LSQR: An Algorithm for Sparse
+       Linear Equations and Sparse Least Squares," ACM Trans. Math. Soft.,
+       8 (1982), 43-71.
+
+    Examples
+    --------
+    Solve a small overdetermined least-squares problem.
+
+    >>> import numpy as np
+    >>> import spacecore as sc
+    >>> ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    >>> X = sc.VectorSpace((2,), ctx)
+    >>> Y = sc.VectorSpace((3,), ctx)
+    >>> M = ctx.asarray([[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]])
+    >>> A = sc.DenseLinOp(M, X, Y, ctx)
+    >>> b = ctx.asarray([1.0, 2.0, 3.0])
+    >>> result = sc.lsqr(A, b, tol=1e-10)
+    >>> np.allclose(result.x, [1.0, 2.0])
+    True
     """
     A = require_linop(A)
     A.codomain.check_member(b)

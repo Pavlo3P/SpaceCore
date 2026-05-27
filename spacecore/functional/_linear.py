@@ -10,6 +10,7 @@ from ..space import Space
 
 
 def _convert_space_element(space: Space, value: Any) -> Any:
+    """Convert a value recursively into a possibly product-valued space."""
     if hasattr(space, "spaces") and isinstance(value, tuple):
         if len(value) != len(space.spaces):
             raise ValueError(
@@ -23,7 +24,16 @@ def _convert_space_element(space: Space, value: Any) -> Any:
 
 
 class LinearFunctional(Functional[Domain]):
-    """Linear scalar-valued map ``ell : X -> K``."""
+    r"""
+    Represent a linear scalar-valued map.
+
+    Parameters
+    ----------
+    dom : Space
+        Domain space.
+    ctx : Context, str, or None, optional
+        Backend context specification. Default is resolved from ``dom``.
+    """
 
     @property
     @abstractmethod
@@ -38,10 +48,25 @@ class LinearFunctional(Functional[Domain]):
 
 @jax_pytree_class
 class InnerProductFunctional(LinearFunctional[Domain]):
-    """
+    r"""
     Linear functional represented by a domain element.
 
-    ``InnerProductFunctional(c, X)`` evaluates ``ell_c(x) = <c, x>_X``.
+    ``InnerProductFunctional(c, X)`` evaluates
+    :math:`\ell_c(x) = \langle c, x\rangle_X`.
+
+    Parameters
+    ----------
+    c : array-like
+        Riesz representer in ``dom``.
+    dom : Space
+        Domain space.
+    ctx : Context, str, or None, optional
+        Backend context specification. Default is resolved from ``dom``.
+
+    Attributes
+    ----------
+    representer : array-like
+        Stored domain element ``c``.
     """
 
     def __init__(
@@ -66,6 +91,7 @@ class InnerProductFunctional(LinearFunctional[Domain]):
         return self.domain.inner(self._c, x)
 
     def __eq__(self, other: Any) -> bool:
+        """Return whether another inner-product functional has the same representer."""
         if type(other) is type(self):
             return self.domain == other.domain and self.ops.allclose(
                 self.domain.flatten(self._c),
@@ -74,17 +100,20 @@ class InnerProductFunctional(LinearFunctional[Domain]):
         return False
 
     def tree_flatten(self):
+        """Flatten this functional for pytree registration."""
         children = (self._c,)
         aux = (self.domain, self.ctx)
         return children, aux
 
     @classmethod
     def tree_unflatten(cls, aux, children):
+        """Rebuild this functional from pytree data."""
         domain, ctx = aux
         c = children[0]
         return cls(c, domain, ctx)
 
     def _convert(self, new_ctx: Context) -> InnerProductFunctional:
+        """Convert the domain and representer to ``new_ctx``."""
         return InnerProductFunctional(self._c, self.domain.convert(new_ctx), new_ctx)
 
 
@@ -98,15 +127,15 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
 
     Parameters
     ----------
-    value:
+    value : callable
         Callable with signature ``value(x: Any) -> Any`` accepting an element of
         ``dom`` and returning a scalar-like backend value.
-    dom:
+    dom : Space
         Domain space of the functional.
-    ctx:
+    ctx : Context, str, or None, optional
         Optional context specification. An explicit context wins over inferred
         and default contexts.
-    vvalue:
+    vvalue : callable or None, optional
         Optional callable with signature ``vvalue(xs: Any) -> Any`` for batched
         evaluation. If omitted, backend ``vmap`` fallback is used.
 
@@ -222,6 +251,7 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
         return values
 
     def __eq__(self, other: Any) -> bool:
+        """Return whether another matrix-free functional uses the same callables."""
         if type(other) is type(self):
             return (
                 self.domain == other.domain
@@ -231,12 +261,14 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
         return False
 
     def tree_flatten(self):
+        """Flatten this functional for pytree registration."""
         children = ()
         aux = (self.value_fn, self.domain, self.ctx, self.vvalue_fn)
         return children, aux
 
     @classmethod
     def tree_unflatten(cls, aux, children):
+        """Rebuild this functional from pytree data."""
         value_fn, domain, ctx, vvalue_fn = aux
         return cls(value_fn, domain, ctx, vvalue_fn)
 

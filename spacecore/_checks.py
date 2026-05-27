@@ -4,7 +4,11 @@ from functools import wraps
 from typing import Any, Callable
 
 
-def _as_positions(arg_pos: int | None, arg_positions: int | tuple[int, ...] | None) -> tuple[int, ...]:
+def _as_positions(
+    arg_pos: int | None,
+    arg_positions: int | tuple[int, ...] | None,
+) -> tuple[int, ...]:
+    """Normalize legacy and multi-position argument selectors."""
     if arg_pos is not None and arg_positions is not None:
         raise TypeError("Use either arg_pos or arg_positions, not both.")
     if arg_positions is None:
@@ -15,6 +19,7 @@ def _as_positions(arg_pos: int | None, arg_positions: int | tuple[int, ...] | No
 
 
 def _space_target(self: Any, space_name: str) -> Any:
+    """Return the space object named by ``space_name``."""
     return self if space_name == "self" else getattr(self, space_name)
 
 
@@ -30,17 +35,17 @@ def checked_method(
 
     Parameters
     ----------
-    in_space:
+    in_space : str or None, optional
         Name of the attribute on ``self`` containing the input
         :class:`~spacecore.space.Space`, ``"self"`` to validate against the
         receiver itself, or ``None`` to skip input validation.
-    out_space:
+    out_space : str or None, optional
         Name of the attribute on ``self`` containing the output
         :class:`~spacecore.space.Space`, ``"self"`` to validate against the
         receiver itself, or ``None`` to skip output validation.
-    arg_pos:
+    arg_pos : int or None, optional
         Deprecated alias for a single entry in ``arg_positions``.
-    arg_positions:
+    arg_positions : int, tuple of int, or None, optional
         Zero-based positions in ``*args`` of input values that should be checked
         against ``in_space``. Defaults to ``(0,)``.
 

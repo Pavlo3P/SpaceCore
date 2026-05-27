@@ -1,3 +1,5 @@
+"""Linear operators that map to or from product spaces."""
+
 from ._base import ProductLinOp
 from ._block import BlockDiagonalLinOp
 from ._from_single import StackedLinOp

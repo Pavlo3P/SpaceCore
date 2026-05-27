@@ -12,16 +12,26 @@ from ...backend import jax_pytree_class
 
 @jax_pytree_class
 class BlockDiagonalLinOp(ProductLinOp[ProductSpace, ProductSpace]):
-    """
+    r"""
     Block-diagonal operator between product spaces.
 
-    dom = X1 × ... × Xk
-    cod = Y1 × ... × Yk
+    If ``dom = X1 x ... x Xk`` and ``cod = Y1 x ... x Yk``, component
+    ``parts[i]`` maps ``Xi`` to ``Yi``.
 
-    ops[i] : Xi -> Yi
+    Parameters
+    ----------
+    dom : ProductSpace
+        Product domain.
+    cod : ProductSpace
+        Product codomain.
+    parts : sequence of LinOp
+        Component operators with matching product incidence.
+    ctx : Context, str, or None, optional
+        Backend context specification.
     """
 
     def _check_layout(self) -> None:
+        """Check that each component maps the matching product component."""
         if not isinstance(self.dom, ProductSpace) or not isinstance(self.cod, ProductSpace):
             raise TypeError("BlockDiagonalLinOp expects dom and cod to be ProductSpace.")
 
@@ -36,23 +46,28 @@ class BlockDiagonalLinOp(ProductLinOp[ProductSpace, ProductSpace]):
 
     @checked_method(in_space="dom", out_space="cod")
     def apply(self, x: Any) -> Any:
+        """Apply each block to the matching product component."""
         return self._apply_unchecked(x)
 
     def _apply_unchecked(self, x: Any) -> Any:
+        """Apply each block without membership checks."""
         if self._num_parts == 2:
             return self._apply_parts[0](x[0]), self._apply_parts[1](x[1])
         return tuple(apply(xi) for apply, xi in zip(self._apply_parts, x))
 
     @checked_method(in_space="cod", out_space="dom")
     def rapply(self, y: Any) -> Any:
+        """Apply each adjoint block to the matching product component."""
         return self._rapply_unchecked(y)
 
     def _rapply_unchecked(self, y: Any) -> Any:
+        """Apply each adjoint block without membership checks."""
         if self._num_parts == 2:
             return self._rapply_parts[0](y[0]), self._rapply_parts[1](y[1])
         return tuple(rapply(yi) for rapply, yi in zip(self._rapply_parts, y))
 
     def vapply(self, x: Any, batch_space=None) -> Any:
+        """Apply this block-diagonal operator over a product batch."""
         in_space = self._input_batch_space(self.domain, x, batch_space)
         if self._enable_checks:
             in_space._check_member(x)
@@ -64,6 +79,7 @@ class BlockDiagonalLinOp(ProductLinOp[ProductSpace, ProductSpace]):
         )
 
     def rvapply(self, y: Any, batch_space=None) -> Any:
+        """Apply the adjoint over a product batch."""
         in_space = self._input_batch_space(self.codomain, y, batch_space)
         if self._enable_checks:
             in_space._check_member(y)
@@ -76,6 +92,7 @@ class BlockDiagonalLinOp(ProductLinOp[ProductSpace, ProductSpace]):
 
     @classmethod
     def from_operators(cls, parts: Tuple[LinOp, ...]) -> BlockDiagonalLinOp:
+        """Build a block-diagonal operator from component operators."""
         if not parts:
             raise ValueError("Parts must be non-empty.")
 
@@ -84,6 +101,7 @@ class BlockDiagonalLinOp(ProductLinOp[ProductSpace, ProductSpace]):
         return cls(dom, cod, parts)
 
     def _convert(self, new_ctx: Context) -> BlockDiagonalLinOp:
+        """Convert spaces and component operators to ``new_ctx``."""
         new_dom = self.dom.convert(new_ctx)
         new_cod = self.cod.convert(new_ctx)
         new_parts = [op.convert(new_ctx) for op in self.parts]

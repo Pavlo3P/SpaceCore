@@ -22,6 +22,7 @@ class TorchOps(BackendOps):
         torch.Tensor with a PyTorch sparse layout
 
     Methods
+    -------
         Most methods mirror the corresponding PyTorch public API signatures and
         delegate to ``torch`` or ``torch.linalg``. Backend-specific behavior,
         dtype promotion, broadcasting, device placement, autograd tracking, and
@@ -34,6 +35,7 @@ class TorchOps(BackendOps):
             portable API does not expose a required PyTorch feature.
 
     Notes
+    -----
         Code intended to remain backend-portable should prefer ``BackendOps``
         methods. Direct use of ``ops.torch`` is an explicit PyTorch-specific
         escape hatch.
@@ -77,7 +79,8 @@ class TorchOps(BackendOps):
         """
         Dense array type using PyTorch.
 
-        Returns:
+        Returns
+        -------
             Concrete dense tensor class accepted by this backend.
 
         See:
@@ -90,7 +93,8 @@ class TorchOps(BackendOps):
         """
         Sparse array type tuple using PyTorch.
 
-        Returns:
+        Returns
+        -------
             Tensor class accepted by this backend for sparse tensor layouts.
 
         See:

@@ -16,9 +16,9 @@ def _same_context_for_conversion(left: Context, right: Context) -> bool:
 
     Parameters
     ----------
-    left:
+    left : Context
         First context to compare.
-    right:
+    right : Context
         Second context to compare.
 
     Returns
@@ -46,9 +46,9 @@ def _same_context_for_algebra(left: Context, right: Context) -> bool:
 
     Parameters
     ----------
-    left:
+    left : Context
         First context to compare.
-    right:
+    right : Context
         Second context to compare.
 
     Returns
@@ -79,7 +79,7 @@ class ContextBound(ABC):
 
     Parameters
     ----------
-    ctx:
+    ctx : Context, str, or None, optional
         Context specification passed to :meth:`__init__`. This may be a
         concrete :class:`~spacecore.backend.Context`, a backend-family string,
         or ``None`` to use the current default context.
@@ -96,7 +96,7 @@ class ContextBound(ABC):
 
         Parameters
         ----------
-        ctx:
+        ctx : Context, str, or None, optional
             Context specification for the object. This may be a concrete
             :class:`~spacecore.backend.Context`, a backend-family string, or
             ``None`` to use the current default context.
@@ -168,7 +168,7 @@ class ContextBound(ABC):
 
         Parameters
         ----------
-        new_ctx:
+        new_ctx : Context
             Concrete target context in which the subclass should rebuild its
             owned arrays, spaces, operators, or nested context-bound objects.
 
@@ -185,7 +185,7 @@ class ContextBound(ABC):
 
         Parameters
         ----------
-        new_ctx:
+        new_ctx : Context, BackendFamily, str, or None, optional
             Target context specification. ``None`` resolves according to the
             current conversion policy and default context.
 

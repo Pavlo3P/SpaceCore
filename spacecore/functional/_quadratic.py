@@ -12,7 +12,16 @@ from ..space import Space
 
 
 class QuadraticForm(Functional[Domain]):
-    """Scalar quadratic objective on a space."""
+    """
+    Represent a scalar quadratic objective on a space.
+
+    Parameters
+    ----------
+    dom : Space
+        Domain space.
+    ctx : Context, str, or None, optional
+        Backend context specification. Default is resolved from ``dom``.
+    """
 
     def hess_apply(self, x: Any) -> Any:
         """Apply the Hessian action at ``x`` when available."""
@@ -36,8 +45,8 @@ class QuadraticForm(Functional[Domain]):
 
 @jax_pytree_class
 class LinOpQuadraticForm(QuadraticForm[Domain]):
-    """
-    Quadratic form f(x) = 0.5 * <x, Qx>.
+    r"""
+    Represent a quadratic form backed by a linear operator.
 
     Assumption:
         Q is Hermitian/self-adjoint. Under this assumption,
@@ -50,6 +59,27 @@ class LinOpQuadraticForm(QuadraticForm[Domain]):
     ``Q : X -> X``. Structurally available dense and diagonal operators are
     checked at construction. Matrix-free operators are not validated; correctness
     is the caller's responsibility.
+
+    Parameters
+    ----------
+    Q : LinOp
+        Hermitian operator from a space to itself.
+    linear : LinearFunctional or None, optional
+        Optional linear term on ``Q.domain``.
+    a : scalar-like, optional
+        Constant scalar offset. Default is 0.
+    ctx : Context, str, or None, optional
+        Backend context specification. Default is resolved from ``Q`` and
+        ``linear``.
+
+    Attributes
+    ----------
+    Q : LinOp
+        Stored Hermitian operator.
+    linear : LinearFunctional or None
+        Stored linear term.
+    a : scalar-like
+        Stored scalar offset.
     """
 
     def __init__(
@@ -84,6 +114,7 @@ class LinOpQuadraticForm(QuadraticForm[Domain]):
 
     @staticmethod
     def _check_hermitian_structure(Q: LinOp[Domain, Domain]) -> None:
+        """Raise when ``Q`` is structurally known to be non-Hermitian."""
         result = Q.is_hermitian()
         if result is False:
             raise ValueError("LinOpQuadraticForm requires Q to be Hermitian/self-adjoint.")
@@ -116,6 +147,7 @@ class LinOpQuadraticForm(QuadraticForm[Domain]):
         return self.Q.apply(x)
 
     def __eq__(self, other: Any) -> bool:
+        """Return whether another quadratic form has the same stored terms."""
         if type(other) is type(self):
             return (
                 self.Q == other.Q
@@ -125,15 +157,18 @@ class LinOpQuadraticForm(QuadraticForm[Domain]):
         return False
 
     def tree_flatten(self):
+        """Flatten this quadratic form for pytree registration."""
         children = (self.Q, self.linear, self.a)
         aux = ()
         return children, aux
 
     @classmethod
     def tree_unflatten(cls, aux, children):
+        """Rebuild this quadratic form from pytree data."""
         Q, linear, a = children
         return cls(Q, linear, a, Q.ctx)
 
     def _convert(self, new_ctx: Context) -> LinOpQuadraticForm:
+        """Convert stored terms to ``new_ctx``."""
         linear = None if self.linear is None else self.linear.convert(new_ctx)
         return LinOpQuadraticForm(self.Q.convert(new_ctx), linear, self.a, new_ctx)

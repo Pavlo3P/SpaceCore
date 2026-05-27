@@ -10,6 +10,7 @@ class SpaceValidationError(ValueError, TypeError):
 
 
 def _shape_of(space: Any, x: Any) -> tuple[int, ...] | None:
+    """Return the backend-visible shape of ``x`` when available."""
     try:
         return tuple(space.ops.shape(x))
     except Exception:
@@ -18,6 +19,7 @@ def _shape_of(space: Any, x: Any) -> tuple[int, ...] | None:
 
 
 def _dtype_of(space: Any, x: Any) -> Any:
+    """Return the backend-visible dtype of ``x`` when available."""
     try:
         return space.ops.get_dtype(x)
     except Exception:
@@ -26,23 +28,44 @@ def _dtype_of(space: Any, x: Any) -> Any:
 
 @dataclass(frozen=True)
 class SpaceCheck(ABC):
+    """
+    Define a membership check for :class:`Space` objects.
+
+    Parameters
+    ----------
+    name : str
+        Human-readable check name used in diagnostics.
+    """
+
     name: str
 
     def __call__(self, space: Any, x: Any) -> None:
+        """Raise :class:`SpaceValidationError` when ``x`` is invalid."""
         if not self.is_valid(space, x):
             raise SpaceValidationError(self.error_message(space, x))
 
     @abstractmethod
     def is_valid(self, space: Any, x: Any) -> bool:
+        """Return whether ``x`` is valid for ``space``."""
         ...
 
     @abstractmethod
     def error_message(self, space: Any, x: Any) -> str:
+        """Return a diagnostic for an invalid ``x``."""
         ...
 
 
 @dataclass(frozen=True)
 class BackendCheck(SpaceCheck):
+    """
+    Check that a value is a dense array for a space backend.
+
+    Parameters
+    ----------
+    name : str, optional
+        Check name. Default is ``"backend"``.
+    """
+
     name: str = "backend"
 
     def is_valid(self, space: Any, x: Any) -> bool:
@@ -54,6 +77,15 @@ class BackendCheck(SpaceCheck):
 
 @dataclass(frozen=True)
 class ShapeCheck(SpaceCheck):
+    """
+    Check that a value has the canonical shape of a space.
+
+    Parameters
+    ----------
+    name : str, optional
+        Check name. Default is ``"shape"``.
+    """
+
     name: str = "shape"
 
     def is_valid(self, space: Any, x: Any) -> bool:
@@ -65,6 +97,15 @@ class ShapeCheck(SpaceCheck):
 
 @dataclass(frozen=True)
 class DTypeCheck(SpaceCheck):
+    """
+    Check that a value has the dtype required by a space context.
+
+    Parameters
+    ----------
+    name : str, optional
+        Check name. Default is ``"dtype"``.
+    """
+
     name: str = "dtype"
 
     def is_valid(self, space: Any, x: Any) -> bool:
@@ -76,6 +117,15 @@ class DTypeCheck(SpaceCheck):
 
 @dataclass(frozen=True)
 class SquareMatrixCheck(SpaceCheck):
+    """
+    Check that a value has square trailing matrix axes.
+
+    Parameters
+    ----------
+    name : str, optional
+        Check name. Default is ``"square_matrix"``.
+    """
+
     name: str = "square_matrix"
 
     def is_valid(self, space: Any, x: Any) -> bool:
@@ -88,6 +138,21 @@ class SquareMatrixCheck(SpaceCheck):
 
 @dataclass(frozen=True)
 class HermitianCheck(SpaceCheck):
+    """
+    Check that a value is Hermitian within tolerances.
+
+    Parameters
+    ----------
+    name : str, optional
+        Check name. Default is ``"hermitian"``.
+    atol : float, optional
+        Absolute tolerance for Hermitian comparison.
+    rtol : float, optional
+        Relative tolerance for Hermitian comparison.
+    enforce : bool, optional
+        Whether to enforce the Hermitian comparison.
+    """
+
     name: str = "hermitian"
     atol: float = 1e-8
     rtol: float = 1e-8
@@ -113,6 +178,15 @@ class HermitianCheck(SpaceCheck):
 
 @dataclass(frozen=True)
 class ProductStructureCheck(SpaceCheck):
+    """
+    Check that a product-space value is a tuple of the right length.
+
+    Parameters
+    ----------
+    name : str, optional
+        Check name. Default is ``"product_structure"``.
+    """
+
     name: str = "product_structure"
 
     def is_valid(self, space: Any, x: Any) -> bool:
@@ -126,6 +200,15 @@ class ProductStructureCheck(SpaceCheck):
 
 @dataclass(frozen=True)
 class ProductComponentCheck(SpaceCheck):
+    """
+    Check each component of a product-space value.
+
+    Parameters
+    ----------
+    name : str, optional
+        Check name. Default is ``"product_components"``.
+    """
+
     name: str = "product_components"
 
     def is_valid(self, space: Any, x: Any) -> bool:

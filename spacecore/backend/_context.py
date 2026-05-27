@@ -9,7 +9,7 @@ from .._contextual import normalize_ops
 @dataclass(frozen=True, slots=True)
 class Context:
     """
-    Backend execution context for SpaceCore objects.
+    Select backend operations, dtype, and validation policy.
 
     A context collects the backend operations object, default dtype, and runtime
     validation policy used by spaces, linear operators, and context-bound
@@ -19,17 +19,26 @@ class Context:
 
     Parameters
     ----------
-    ops:
+    ops : BackendOps
         Backend operations implementation. This must be an instance of
         :class:`spacecore.backend.BackendOps`, such as
         :class:`spacecore.backend.NumpyOps` or
         :class:`spacecore.backend.JaxOps`.
-    dtype:
+    dtype : dtype-like or None, optional
         Default dtype used by :meth:`asarray` and :meth:`assparse`. The value is
         normalized through ``ops.sanitize_dtype`` during initialization.
-    enable_checks:
+    enable_checks : bool, optional
         Whether spaces and linear operators using this context should perform
         membership and compatibility checks before operations.
+
+    Attributes
+    ----------
+    ops : BackendOps
+        Normalized backend operations instance.
+    dtype : dtype-like
+        Backend-native dtype used by array constructors.
+    enable_checks : bool
+        Runtime validation flag propagated to spaces and operators.
 
     Notes
     -----
@@ -38,6 +47,17 @@ class Context:
 
     Equality compares backend family and ``enable_checks``. It currently does
     not compare ``dtype``.
+
+    Examples
+    --------
+    Create a NumPy context and convert a Python list to a backend array.
+
+    >>> import numpy as np
+    >>> import spacecore as sc
+    >>> ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    >>> x = ctx.asarray([1.0, 2.0])
+    >>> x.dtype == np.dtype("float64")
+    True
     """
 
     ops: BackendOps

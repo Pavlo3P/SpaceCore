@@ -11,9 +11,9 @@ from ._checks import SpaceCheck
 
 class Space(ContextBound):
     """
-    Abstract Space.
+    Define the geometry and linear structure of a vector space.
 
-    A Space owns the *geometry* (inner product, norm) and the basic linear
+    A space owns the geometry (inner product, norm) and the basic linear
     structure (add/scale/axpy) for its elements.
 
     Membership validation is exposed through ``check_member``, which respects
@@ -21,7 +21,35 @@ class Space(ContextBound):
     checked that policy may call ``_check_member`` to run the concrete checks
     exactly once.
 
-    Solvers should use only this API.
+    Parameters
+    ----------
+    shape : tuple of int
+        Canonical coordinate shape for elements of the space.
+    ctx : Context, str, or None, optional
+        Backend context specification. Default resolves to the global context.
+
+    Attributes
+    ----------
+    shape : tuple of int
+        Canonical element shape.
+    ctx : Context
+        Resolved backend context inherited from :class:`ContextBound`.
+
+    Notes
+    -----
+    Solvers use only this API. Concrete spaces define storage constraints,
+    membership checks, and flattening rules.
+
+    Examples
+    --------
+    Instantiate the concrete :class:`VectorSpace` subclass.
+
+    >>> import numpy as np
+    >>> import spacecore as sc
+    >>> ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    >>> X = sc.VectorSpace((2,), ctx)
+    >>> X.shape
+    (2,)
     """
 
     checks: ClassVar[tuple[SpaceCheck, ...]] = ()
@@ -46,15 +74,7 @@ class Space(ContextBound):
         return tuple(checks)
 
     def _check_member(self, x: Any) -> None:
-        """
-        Raise if `x` is not a valid element of this space.
-
-        Typical checks:
-          - x.space is self (if your elements carry a .space)
-          - backend family consistency (via ctx)
-          - representation is supported
-          - shape/structure constraints (Hermitian, block sizes, etc.)
-        """
+        """Raise if ``x`` is not a valid element of this space."""
         for check in self.member_checks():
             check(self, x)
 
@@ -80,18 +100,16 @@ class Space(ContextBound):
 
     @abstractmethod
     def inner(self, x: Any, y: Any) -> Any:
-        """
-        Inner product ⟨x, y⟩ for elements of this space.
-        """
+        r"""Return :math:`\langle x, y \rangle_X` for elements of this space."""
 
     def norm(self, x: Any) -> Any:
-        """Induced norm ||x|| = sqrt(real(⟨x,x⟩)). Override if you can do better."""
+        r"""Return the induced norm :math:`\sqrt{\operatorname{Re}\langle x, x\rangle_X}`."""
         v = self.ctx.ops.real(self.inner(x, x))
         return self.ctx.ops.sqrt(v)
 
     @abstractmethod
     def eigh(self, x: Any, k: int = None) -> Any:
-        """Eigendecomposition of x (if applicable).)"""
+        """Return an eigendecomposition of ``x`` when the space defines one."""
 
     @abstractmethod
     def flatten(self, x: Any) -> DenseArray:

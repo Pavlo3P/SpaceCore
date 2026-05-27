@@ -22,6 +22,7 @@ class NumpyOps(BackendOps):
         scipy.sparse.sparray
 
     Methods
+    -------
         Most methods mirror the corresponding NumPy or SciPy signatures and
         delegate directly to NumPy/SciPy implementations. Backend-specific
         behavior, dtype promotion, broadcasting, memory layout, and error modes
@@ -38,6 +39,7 @@ class NumpyOps(BackendOps):
         `ops.sp`. Advanced users may use it for SciPy-specific functionality.
 
     Notes
+    -----
         Code intended to remain backend-portable should prefer `BackendOps`
         methods. Direct use of `ops.np` or `ops.sp` is an explicit
         NumPy/SciPy-specific escape hatch.
@@ -46,6 +48,7 @@ class NumpyOps(BackendOps):
         When supplied, it must be `"cpu"` or `None`; see the corresponding NumPy
         documentation for each method.
     """
+
     import numpy as np
     import scipy as sp
     import array_api_compat.numpy as xp
@@ -61,7 +64,8 @@ class NumpyOps(BackendOps):
         """
         Dense array type using NumPy.
 
-        Returns:
+        Returns
+        -------
             Concrete dense array class accepted by this backend.
 
         See:
@@ -74,7 +78,8 @@ class NumpyOps(BackendOps):
         """
         Sparse array type tuple using SciPy.
 
-        Returns:
+        Returns
+        -------
             Concrete sparse array classes accepted by this backend, or None.
 
         See:
@@ -102,7 +107,6 @@ class NumpyOps(BackendOps):
         See:
             https://numpy.org/doc/stable/reference/generated/numpy.dtype.html
         """
-
         if dtype is None:
             return self.np.float64
         return self.np.dtype(dtype)
@@ -211,7 +215,7 @@ class NumpyOps(BackendOps):
             return x
 
     def ix_(self, *args: Any) -> Any:
-        """
+        r"""
         Build open mesh index arrays using NumPy.
 
         Input:
@@ -299,9 +303,7 @@ class NumpyOps(BackendOps):
         return f(*trees)
 
     def _tree_take0(self, xs: Any) -> Any:
-        """
-        Grab a representative leaf to infer leading length.
-        """
+        """Grab a representative leaf to infer leading length."""
         if isinstance(xs, dict):
             return self._tree_take0(next(iter(xs.values())))
         if isinstance(xs, (tuple, list)):
@@ -309,9 +311,7 @@ class NumpyOps(BackendOps):
         return xs
 
     def _tree_index(self, xs: Any, i: int) -> Any:
-        """
-        Take per-step slice xs[i] along axis=0 for each leaf.
-        """
+        """Take per-step slice ``xs[i]`` along axis 0 for each leaf."""
 
         def _idx(a: Any) -> Any:
             # If it's an ndarray-like with leading axis, slice it; else treat as scalar leaf.
@@ -323,9 +323,9 @@ class NumpyOps(BackendOps):
         return self._tree_map(_idx, xs)
 
     def _tree_stack(self, ys_list: Sequence[Any]) -> Any:
-        """
-        Stack a list of per-step outputs into a single pytree of arrays
-        by stacking leaves along axis=0.
+        """Stack per-step outputs into a single pytree of arrays.
+
+        Leaves are stacked along axis 0.
         """
         if not ys_list:
             # JAX would return empty stacked outputs when length == 0

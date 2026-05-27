@@ -601,7 +601,7 @@ class BackendOps(ABC):
         return self.sum(self.diagonal(x))
 
     def argsort(self, x: DenseArray, axis: int = -1) -> DenseArray:
-        """Indices that sort x (delegates to xp.argsort)."""
+        """Return indices that sort ``x`` along an axis."""
         return self.xp.argsort(x, axis=axis)
 
     def sort(self, x: DenseArray, axis: int = -1) -> DenseArray:
@@ -609,17 +609,18 @@ class BackendOps(ABC):
         return self.xp.sort(x, axis=axis)
 
     def argmin(self, x: DenseArray, axis: int | None = None, keepdims: bool = False) -> DenseArray:
-        """Indices of minima (delegates to xp.argmin)."""
+        """Return indices of minima along an axis."""
         return self.xp.argmin(x, axis=axis, keepdims=keepdims)
 
     def argmax(self, x: DenseArray, axis: int | None = None, keepdims: bool = False) -> DenseArray:
-        """Indices of maxima (delegates to xp.argmax)."""
+        """Return indices of maxima along an axis."""
         return self.xp.argmax(x, axis=axis, keepdims=keepdims)
 
     def vdot(self, x: DenseArray, y: DenseArray) -> DenseArray:
-        """
-        Returns sum(conj(x) * y). Matches numpy/jax/torch vdot and Array API
-        vecdot. DenseLinOp.rapply relies on this for complex inputs.
+        """Return ``sum(conj(x) * y)`` over flattened inputs.
+
+        Matches NumPy, JAX, and Torch ``vdot`` semantics. ``DenseLinOp.rapply``
+        relies on this convention for complex inputs.
         """
         x_flat = self.ravel(x)
         y_flat = self.ravel(y)

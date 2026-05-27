@@ -1,3 +1,5 @@
+"""Linear operator abstractions, concrete operators, and algebra helpers."""
+
 from ._base import LinOp
 from ._algebra import (
     ComposedLinOp,

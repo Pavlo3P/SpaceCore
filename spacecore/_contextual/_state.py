@@ -24,9 +24,8 @@ except ImportError:
 
 
 class Contextual:
-    """
-    Backend resolver.
-    """
+    """Resolve contexts, backend registrations, and conversion policies."""
+
     _default_ctx: Context
     _available_ops: Dict[str, type[BackendOps]]
     _resolution_policy: ContextPolicy

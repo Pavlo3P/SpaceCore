@@ -13,7 +13,22 @@ from ._utils import result_repr
 
 
 class LanczosResult(NamedTuple):
-    """Result returned by :func:`lanczos_smallest`."""
+    """
+    Store the result returned by :func:`lanczos_smallest`.
+
+    Parameters
+    ----------
+    eigenvalue : scalar
+        Ritz approximation to the smallest eigenvalue.
+    eigenvector : array-like
+        Ritz vector in ``A.domain``.
+    residual_norm : scalar
+        Standard Ritz residual estimate.
+    krylov_dim : int-like
+        Krylov dimension reached before breakdown or ``max_iter``.
+    converged : bool-like
+        Whether ``residual_norm < tol``.
+    """
 
     eigenvalue: Any
     eigenvector: Any
@@ -39,6 +54,8 @@ StochasticLanczosResult = LanczosResult
 
 
 class _LanczosBasisResult(NamedTuple):
+    """Store fixed-size Lanczos basis data and tridiagonal projection."""
+
     V: DenseArray
     T: DenseArray
     alphas: DenseArray
@@ -50,6 +67,7 @@ class _LanczosBasisResult(NamedTuple):
 
 
 def _check_lanczos_max_iter(max_iter: int) -> int:
+    """Validate and normalize the maximum Lanczos iteration count."""
     max_iter = int(max_iter)
     if max_iter < 1:
         raise ValueError("max_iter must be positive.")
@@ -64,6 +82,7 @@ def _build_tridiagonal(
     m: Any,
     real_dtype: Any,
 ) -> DenseArray:
+    """Build the fixed-size tridiagonal Lanczos projection."""
     idx = ops.arange(max_iter)
     full_indices = ops.arange(max_iter + 1)
     mask_alpha = idx < m
@@ -99,6 +118,7 @@ def _lanczos_basis_and_tridiag(
     real_dtype: Any,
     check_every: int,
 ) -> _LanczosBasisResult:
+    """Build a Lanczos basis and tridiagonal projection."""
     ops = A.ops
     ctx = A.ctx
     use_euclidean_reorth = type(A.domain) is VectorSpace
@@ -220,7 +240,8 @@ def lanczos_smallest(
     tol: float = 1e-6,
     check_every: int = DEFAULT_CONVERGENCE_CHECK_INTERVAL,
 ) -> LanczosResult:
-    r"""Approximate the smallest eigenpair of a Hermitian operator.
+    r"""
+    Approximate the smallest eigenpair of a Hermitian operator.
 
     The operator is supplied as a square ``LinOp`` and ``initial_vector`` is an
     element of ``A.domain``. The implementation keeps fixed-size coordinate
@@ -229,27 +250,81 @@ def lanczos_smallest(
     reconstructed Ritz vector in the original space.
 
     Mathematically, Lanczos builds an orthonormal Krylov basis ``V`` for
-    ``span{v, T v, T^2 v, ...}`` and a tridiagonal projection
-    :math:`T_k = V^\dagger T V`. The returned vector is the Ritz vector
-    reconstructed in the original coordinates, and the returned scalar is the
-    Rayleigh quotient
-    :math:`(x^\dagger T x) / (x^\dagger x)`.
+    ``span{v, A v, A^2 v, ...}`` and a tridiagonal projection
+    :math:`T_k = V^* A V`. The returned vector is the Ritz vector reconstructed
+    in the original coordinates, and the returned scalar is the Rayleigh
+    quotient :math:`\langle x, A x \rangle_X / \langle x, x \rangle_X`.
 
-    Args:
-        A: Square Hermitian linear operator.
-        initial_vector: Starting vector in ``A.domain``.
-        max_iter: Maximum number of Lanczos steps.
-        tol: Breakdown tolerance for the off-diagonal Lanczos coefficient.
-        check_every: Refresh the breakdown-based stopping decision only every
-            this many iterations, and always on the final iteration.
+    Parameters
+    ----------
+    A : LinOp
+        Square Hermitian linear operator.
+    initial_vector : array-like
+        Starting vector in ``A.domain``. If it is numerically zero, the
+        algorithm falls back to a deterministic coordinate vector.
+    max_iter : int, optional
+        Maximum Krylov dimension. Default is 100.
+    tol : float, optional
+        Breakdown tolerance for the off-diagonal Lanczos coefficient. Default
+        is 1e-6.
+    check_every : int, optional
+        Refresh the breakdown-based stopping decision every this many
+        iterations and always on the final iteration. Default is
+        ``DEFAULT_CONVERGENCE_CHECK_INTERVAL``.
 
-    Returns:
-        ``LanczosResult`` containing the smallest approximated eigenpair, the
-        standard Ritz residual estimate ``beta[m] * abs(y[m - 1])``, the
-        Krylov dimension reached, and a convergence flag. The residual estimate
-        is computed from the tridiagonal recurrence; callers that need the true
-        residual can evaluate ``A.apply(eigenvector) - eigenvalue * eigenvector``
-        once more in the original space.
+    Returns
+    -------
+    LanczosResult
+        Named tuple with fields:
+
+        - ``eigenvalue``: smallest Ritz eigenvalue estimate
+        - ``eigenvector``: associated Ritz vector in ``A.domain``
+        - ``residual_norm``: standard Ritz residual estimate
+        - ``krylov_dim``: actual Krylov dimension reached
+        - ``converged``: whether ``residual_norm < tol``
+
+    Raises
+    ------
+    TypeError
+        If ``A`` is not a :class:`LinOp`.
+    ValueError
+        If ``A`` is not square or if ``max_iter`` is invalid.
+
+    See Also
+    --------
+    power_iteration : Estimate the dominant eigenpair.
+    expm_multiply : Apply a matrix exponential using the Lanczos basis.
+
+    Notes
+    -----
+    The residual estimate is computed from the tridiagonal recurrence as
+    :math:`\beta_m |y_{m-1}|`. Callers that need the true residual can evaluate
+    ``A.apply(eigenvector) - eigenvalue * eigenvector`` once more in the
+    original space.
+
+    This function is JIT-compatible on the JAX backend when ``max_iter`` and
+    ``check_every`` are static arguments. For plain :class:`VectorSpace`
+    domains, Euclidean reorthogonalization is vectorized; custom spaces use
+    :meth:`Space.inner` to preserve the declared geometry.
+
+    References
+    ----------
+    .. [1] Lanczos, C., "An Iteration Method for the Solution of the Eigenvalue
+       Problem of Linear Differential and Integral Operators," J. Res. Natl.
+       Bur. Stand., 45 (1950), 255-282.
+
+    Examples
+    --------
+    Approximate the smallest eigenpair of a diagonal operator.
+
+    >>> import numpy as np
+    >>> import spacecore as sc
+    >>> ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    >>> X = sc.VectorSpace((3,), ctx)
+    >>> A = sc.DiagonalLinOp(ctx.asarray([1.0, 2.0, 4.0]), X, ctx)
+    >>> result = sc.lanczos_smallest(A, ctx.asarray([1.0, 1.0, 1.0]), max_iter=3)
+    >>> np.allclose(result.eigenvalue, 1.0)
+    True
     """
     A = require_linop(A)
     require_square(A, "lanczos_smallest")
@@ -309,12 +384,30 @@ def stochastic_lanczos(
     check_every: int = DEFAULT_CONVERGENCE_CHECK_INTERVAL,
 ) -> LanczosResult:
     """
-    Deprecated alias for :func:`lanczos_smallest`.
+    Call :func:`lanczos_smallest` through a deprecated alias.
+
+    Parameters
+    ----------
+    A : LinOp
+        Square Hermitian linear operator.
+    initial_vector : array-like
+        Starting vector in ``A.domain``.
+    max_iter : int, optional
+        Maximum Krylov dimension. Default is 100.
+    tol : float, optional
+        Breakdown tolerance. Default is 1e-6.
+    check_every : int, optional
+        Iteration interval for convergence checks.
 
     Returns
     -------
     LanczosResult
         Result from :func:`lanczos_smallest`.
+
+    Warns
+    -----
+    DeprecationWarning
+        Always emitted because this alias will be removed in a future release.
     """
     warn(
         "stochastic_lanczos is deprecated; use lanczos_smallest instead.",

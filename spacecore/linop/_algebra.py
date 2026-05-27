@@ -21,6 +21,7 @@ def is_scalar_like(value: Any) -> bool:
 
 
 def _conjugate_scalar(value: Any) -> Any:
+    """Return the scalar conjugate when the value supports conjugation."""
     if hasattr(value, "conjugate"):
         return value.conjugate()
     if hasattr(value, "conj"):
@@ -29,6 +30,7 @@ def _conjugate_scalar(value: Any) -> Any:
 
 
 def _require_same_context(ops: Sequence[LinOp]) -> Context:
+    """Return the common context for algebra operands or raise."""
     ctx = ops[0].ctx
     for i, op in enumerate(ops[1:], start=1):
         if not _same_context_for_algebra(ops[0].ctx, op.ctx):
@@ -40,6 +42,7 @@ def _require_same_context(ops: Sequence[LinOp]) -> Context:
 
 
 def _same_space_for_algebra(left: Any, right: Any) -> bool:
+    """Return whether two spaces are compatible for algebraic composition."""
     if type(left) is not type(right):
         return False
     if tuple(left.shape) != tuple(right.shape):
@@ -56,12 +59,14 @@ def _same_space_for_algebra(left: Any, right: Any) -> bool:
 
 
 def _require_linop(op: Any, name: str) -> LinOp:
+    """Return ``op`` as a linear operator or raise a typed error."""
     if not isinstance(op, LinOp):
         raise TypeError(f"{name} must be a LinOp, got {type(op).__name__}.")
     return op
 
 
 def _scalar_equal(value: Any, target: Any) -> bool:
+    """Return whether two scalar-like values compare equal."""
     try:
         return bool(value == target)
     except Exception:
@@ -69,14 +74,17 @@ def _scalar_equal(value: Any, target: Any) -> bool:
 
 
 def _is_zero_scalar(value: Any) -> bool:
+    """Return whether ``value`` is scalar-like zero."""
     return _scalar_equal(value, 0)
 
 
 def _is_one_scalar(value: Any) -> bool:
+    """Return whether ``value`` is scalar-like one."""
     return _scalar_equal(value, 1)
 
 
 def _flatten_sum_terms(ops: Sequence[LinOp]) -> tuple[LinOp, ...]:
+    """Flatten nested lazy sums into a tuple of terms."""
     terms: list[LinOp] = []
     for i, op in enumerate(ops):
         op = _require_linop(op, f"ops[{i}]")
@@ -96,6 +104,16 @@ def make_sum(ops: Sequence[LinOp]) -> LinOp:
     does not collect like terms, reorder operands, or attempt full symbolic
     optimization. All operands must have the same context, domain, and codomain
     before a simplified operator is returned.
+
+    Parameters
+    ----------
+    ops : sequence of LinOp
+        Nonempty sequence of operators with common domain and codomain.
+
+    Returns
+    -------
+    LinOp
+        Simplified lazy sum, a single operand, or a zero operator.
     """
     if not ops:
         raise ValueError("make_sum requires a nonempty sequence of LinOp operands.")
@@ -132,6 +150,18 @@ def make_scaled(scalar: Any, op: LinOp) -> LinOp:
     scalar. It does not distribute scaling over sums or perform full symbolic
     optimization. Complex scalars retain the usual conjugated coefficient in
     ``rapply`` through ``ScaledLinOp``.
+
+    Parameters
+    ----------
+    scalar : scalar-like
+        Scalar coefficient multiplying ``op``.
+    op : LinOp
+        Operator to scale.
+
+    Returns
+    -------
+    LinOp
+        Simplified scalar multiple.
     """
     op = _require_linop(op, "op")
     if not is_scalar_like(scalar):
@@ -158,6 +188,18 @@ def make_composed(left: LinOp, right: LinOp) -> LinOp:
     multi-factor chains or attempt full symbolic optimization. Operands must
     have the same context and compatible middle spaces before a simplified
     operator is returned.
+
+    Parameters
+    ----------
+    left : LinOp
+        Operator applied second.
+    right : LinOp
+        Operator applied first.
+
+    Returns
+    -------
+    LinOp
+        Simplified lazy composition representing ``left @ right``.
     """
     left = _require_linop(left, "left")
     right = _require_linop(right, "right")
@@ -181,7 +223,7 @@ def make_composed(left: LinOp, right: LinOp) -> LinOp:
 
 @jax_pytree_class
 class ScaledLinOp(LinOp[Domain, Codomain]):
-    """
+    r"""
     Lazy scalar multiple of a linear operator.
 
     ``ScaledLinOp(alpha, A)`` represents the mathematical operator
@@ -193,6 +235,20 @@ class ScaledLinOp(LinOp[Domain, Codomain]):
     ``x in A.domain``. The reverse action is
     ``rapply(y) = conj(alpha) * A.rapply(y)`` for ``y in A.codomain``, so
     complex scalars use the conjugated coefficient.
+
+    Parameters
+    ----------
+    scalar : scalar-like
+        Scalar multiplier.
+    op : LinOp
+        Operator being scaled.
+
+    Attributes
+    ----------
+    scalar : scalar-like
+        Stored scalar multiplier.
+    op : LinOp
+        Stored operand.
     """
 
     def __init__(self, scalar: Any, op: LinOp[Domain, Codomain]) -> None:
@@ -222,27 +278,31 @@ class ScaledLinOp(LinOp[Domain, Codomain]):
         return _conjugate_scalar(self.scalar) * self.op.rvapply(ys, batch_space)
 
     def __eq__(self, other: Any) -> bool:
+        """Return whether another scaled operator has the same scalar and operand."""
         if type(other) is type(self):
             return self.scalar == other.scalar and self.op == other.op
         return False
 
     def tree_flatten(self):
+        """Flatten this operator for pytree registration."""
         children = (self.scalar, self.op)
         aux = ()
         return children, aux
 
     @classmethod
     def tree_unflatten(cls, aux, children):
+        """Rebuild this operator from pytree data."""
         scalar, op = children
         return cls(scalar, op)
 
     def _convert(self, new_ctx: Context) -> ScaledLinOp:
+        """Convert the operand to ``new_ctx`` while preserving the scalar."""
         return ScaledLinOp(self.scalar, self.op.convert(new_ctx))
 
 
 @jax_pytree_class
 class SumLinOp(LinOp[Domain, Codomain]):
-    """
+    r"""
     Lazy finite sum of linear operators with common spaces.
 
     ``SumLinOp((A1, ..., Ak))`` represents ``A1 + ... + Ak`` for a nonempty
@@ -253,6 +313,17 @@ class SumLinOp(LinOp[Domain, Codomain]):
     The forward action is ``apply(x) = sum_i Ai.apply(x)`` for the shared
     domain element ``x``. The reverse action is
     ``rapply(y) = sum_i Ai.rapply(y)`` for the shared codomain element ``y``.
+
+    Parameters
+    ----------
+    ops : sequence of LinOp
+        Nonempty sequence of operators with common context, domain, and
+        codomain.
+
+    Attributes
+    ----------
+    parts : tuple of LinOp
+        Stored operands in the lazy sum.
     """
 
     def __init__(self, ops: Sequence[LinOp[Domain, Codomain]]) -> None:
@@ -315,26 +386,30 @@ class SumLinOp(LinOp[Domain, Codomain]):
         return acc
 
     def __eq__(self, other: Any) -> bool:
+        """Return whether another sum has the same operands."""
         if type(other) is type(self):
             return self.ops_tuple == other.ops_tuple
         return False
 
     def tree_flatten(self):
+        """Flatten this operator for pytree registration."""
         children = self.ops_tuple
         aux = ()
         return children, aux
 
     @classmethod
     def tree_unflatten(cls, aux, children):
+        """Rebuild this operator from pytree data."""
         return cls(tuple(children))
 
     def _convert(self, new_ctx: Context) -> SumLinOp:
+        """Convert all operands to ``new_ctx``."""
         return SumLinOp(tuple(op.convert(new_ctx) for op in self.ops_tuple))
 
 
 @jax_pytree_class
 class ComposedLinOp(LinOp[Domain, Codomain]):
-    """
+    r"""
     Lazy composition of two linear operators.
 
     ``ComposedLinOp(A, B)`` represents ``A @ B = A circ B``. The operands must
@@ -345,6 +420,20 @@ class ComposedLinOp(LinOp[Domain, Codomain]):
     The forward action is ``apply(x) = A.apply(B.apply(x))`` for
     ``x in B.domain``. The reverse action is ``rapply(z) = B.rapply(A.rapply(z))``
     for ``z in A.codomain``.
+
+    Parameters
+    ----------
+    left : LinOp
+        Operator applied second.
+    right : LinOp
+        Operator applied first.
+
+    Attributes
+    ----------
+    left : LinOp
+        Left operand.
+    right : LinOp
+        Right operand.
     """
 
     def __init__(self, left: LinOp, right: LinOp) -> None:
@@ -383,27 +472,31 @@ class ComposedLinOp(LinOp[Domain, Codomain]):
         return self.right.rvapply(self.left.rvapply(zs, in_space), middle)
 
     def __eq__(self, other: Any) -> bool:
+        """Return whether another composition has the same operands."""
         if type(other) is type(self):
             return self.left == other.left and self.right == other.right
         return False
 
     def tree_flatten(self):
+        """Flatten this operator for pytree registration."""
         children = (self.left, self.right)
         aux = ()
         return children, aux
 
     @classmethod
     def tree_unflatten(cls, aux, children):
+        """Rebuild this operator from pytree data."""
         left, right = children
         return cls(left, right)
 
     def _convert(self, new_ctx: Context) -> ComposedLinOp:
+        """Convert both operands to ``new_ctx``."""
         return ComposedLinOp(self.left.convert(new_ctx), self.right.convert(new_ctx))
 
 
 @jax_pytree_class
 class ZeroLinOp(LinOp[Domain, Codomain]):
-    """
+    r"""
     Lazy zero map between two spaces.
 
     ``ZeroLinOp(X, Y)`` represents the linear map ``0 : X -> Y``. The context is
@@ -413,6 +506,15 @@ class ZeroLinOp(LinOp[Domain, Codomain]):
 
     The forward action is ``apply(x) = 0_Y`` for ``x in X``. The reverse action
     is ``rapply(y) = 0_X`` for ``y in Y``.
+
+    Parameters
+    ----------
+    dom : Space
+        Domain space.
+    cod : Space
+        Codomain space.
+    ctx : Context, str, or None, optional
+        Backend context specification. Default is resolved from the spaces.
     """
 
     def __init__(
@@ -429,6 +531,7 @@ class ZeroLinOp(LinOp[Domain, Codomain]):
         return self._apply_unchecked(x)
 
     def _apply_unchecked(self, x: Any) -> Any:
+        """Return the codomain zero without membership checks."""
         return self.codomain.zeros()
 
     @checked_method(in_space="codomain", out_space="domain")
@@ -437,6 +540,7 @@ class ZeroLinOp(LinOp[Domain, Codomain]):
         return self._rapply_unchecked(y)
 
     def _rapply_unchecked(self, y: Any) -> Any:
+        """Return the domain zero without membership checks."""
         return self.domain.zeros()
 
     def vapply(self, xs: Any, batch_space=None) -> Any:
@@ -473,27 +577,31 @@ class ZeroLinOp(LinOp[Domain, Codomain]):
         return self.domain == self.codomain
 
     def __eq__(self, other: Any) -> bool:
+        """Return whether another zero map has the same spaces."""
         if type(other) is type(self):
             return self.domain == other.domain and self.codomain == other.codomain
         return False
 
     def tree_flatten(self):
+        """Flatten this operator for pytree registration."""
         children = ()
         aux = (self.domain, self.codomain, self.ctx)
         return children, aux
 
     @classmethod
     def tree_unflatten(cls, aux, children):
+        """Rebuild this operator from pytree data."""
         domain, codomain, ctx = aux
         return cls(domain, codomain, ctx)
 
     def _convert(self, new_ctx: Context) -> ZeroLinOp:
+        """Convert domain and codomain spaces to ``new_ctx``."""
         return ZeroLinOp(self.domain.convert(new_ctx), self.codomain.convert(new_ctx), new_ctx)
 
 
 @jax_pytree_class
 class IdentityLinOp(LinOp[Domain, Domain]):
-    """
+    r"""
     Lazy identity map on a space.
 
     ``IdentityLinOp(X)`` represents the identity operator ``I_X : X -> X``. The
@@ -502,6 +610,13 @@ class IdentityLinOp(LinOp[Domain, Domain]):
 
     The forward action is ``apply(x) = x`` for ``x in X``. The reverse action is
     ``rapply(x) = x`` for ``x in X``.
+
+    Parameters
+    ----------
+    space : Space
+        Domain and codomain space.
+    ctx : Context, str, or None, optional
+        Backend context specification. Default is resolved from ``space``.
     """
 
     def __init__(self, space: Domain, ctx: Context | str | None = None) -> None:
@@ -513,6 +628,7 @@ class IdentityLinOp(LinOp[Domain, Domain]):
         return self._apply_unchecked(x)
 
     def _apply_unchecked(self, x: Any) -> Any:
+        """Return ``x`` without membership checks."""
         return x
 
     @checked_method(in_space="codomain", out_space="domain")
@@ -521,6 +637,7 @@ class IdentityLinOp(LinOp[Domain, Domain]):
         return self._rapply_unchecked(x)
 
     def _rapply_unchecked(self, x: Any) -> Any:
+        """Return ``x`` without membership checks."""
         return x
 
     def vapply(self, xs: Any, batch_space=None) -> Any:
@@ -561,21 +678,25 @@ class IdentityLinOp(LinOp[Domain, Domain]):
         return True
 
     def __eq__(self, other: Any) -> bool:
+        """Return whether another identity map has the same space."""
         if type(other) is type(self):
             return self.domain == other.domain
         return False
 
     def tree_flatten(self):
+        """Flatten this operator for pytree registration."""
         children = ()
         aux = (self.domain, self.ctx)
         return children, aux
 
     @classmethod
     def tree_unflatten(cls, aux, children):
+        """Rebuild this operator from pytree data."""
         domain, ctx = aux
         return cls(domain, ctx)
 
     def _convert(self, new_ctx: Context) -> IdentityLinOp:
+        """Convert the identity space to ``new_ctx``."""
         return IdentityLinOp(self.domain.convert(new_ctx), new_ctx)
 
 
@@ -596,25 +717,25 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
 
     Parameters
     ----------
-    apply:
+    apply : callable
         Callable with signature ``apply(x: Any) -> Any`` implementing the
         forward map from ``dom`` to ``cod``.
-    rapply:
+    rapply : callable
         Callable with signature ``rapply(y: Any) -> Any`` implementing the
         adjoint map from ``cod`` back to ``dom``.
-    dom:
+    dom : Space
         Domain space containing valid inputs for ``apply`` and outputs from
         ``rapply``.
-    cod:
+    cod : Space
         Codomain space containing outputs from ``apply`` and valid inputs for
         ``rapply``.
-    ctx:
+    ctx : Context, str, or None, optional
         Optional context specification. An explicit context wins over inferred
         contexts from ``dom`` and ``cod``.
-    vapply:
+    vapply : callable or None, optional
         Optional callable with signature ``vapply(xs: Any) -> Any`` for batched
         forward application. If omitted, backend ``vmap`` fallback is used.
-    rvapply:
+    rvapply : callable or None, optional
         Optional callable with signature ``rvapply(ys: Any) -> Any`` for
         batched adjoint application. If omitted, backend ``vmap`` fallback is
         used.

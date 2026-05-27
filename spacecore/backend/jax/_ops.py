@@ -24,6 +24,7 @@ class JaxOps(BackendOps):
         jax.experimental.sparse.BCSR
 
     Methods
+    -------
         Most methods mirror the corresponding JAX public API signatures and
         delegate to `jax.numpy`, `jax.numpy.linalg`, `jax.scipy`, or
         `jax.experimental.sparse`. Backend-specific behavior, tracing rules,
@@ -45,6 +46,7 @@ class JaxOps(BackendOps):
             through instances as `ops.jsparse`.
 
     Notes
+    -----
         Code intended to remain backend-portable should prefer `BackendOps`
         methods. Direct use of `ops.jax`, `ops.jnp`, or `ops.jsparse` is an
         explicit JAX-specific escape hatch.
@@ -53,6 +55,7 @@ class JaxOps(BackendOps):
         JAX ignores them. Array-creation routines may expose `device` and
         `out_sharding` for explicit placement or sharding.
     """
+
     import jax
     import jax.numpy as jnp
     import jax.experimental.sparse as jsparse
@@ -120,7 +123,8 @@ class JaxOps(BackendOps):
         """
         Dense array type using JAX.
 
-        Returns:
+        Returns
+        -------
             Concrete dense array class accepted by this backend.
 
         See:
@@ -133,7 +137,8 @@ class JaxOps(BackendOps):
         """
         Sparse array type tuple using JAX.
 
-        Returns:
+        Returns
+        -------
             Concrete sparse array classes accepted by this backend, or None.
 
         See:
@@ -279,7 +284,7 @@ class JaxOps(BackendOps):
         return x.at[index].set(values)
 
     def ix_(self, *args: Any) -> Any:
-        """
+        r"""
         Build open mesh index arrays using JAX.
 
         Input:
