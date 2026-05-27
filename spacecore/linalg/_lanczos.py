@@ -50,9 +50,6 @@ class LanczosResult(NamedTuple):
         )
 
 
-StochasticLanczosResult = LanczosResult
-
-
 class _LanczosBasisResult(NamedTuple):
     """Store fixed-size Lanczos basis data and tridiagonal projection."""
 
@@ -398,51 +395,3 @@ def lanczos_smallest(
     lam = num / den
 
     return LanczosResult(lam, x, residual_norm, m, converged)
-
-
-def stochastic_lanczos(
-    A: LinOp,
-    initial_vector: Any,
-    *,
-    max_iter: int = 100,
-    tol: float = 1e-6,
-    check_every: int = DEFAULT_CONVERGENCE_CHECK_INTERVAL,
-) -> LanczosResult:
-    """
-    Call :func:`lanczos_smallest` through a deprecated alias.
-
-    Parameters
-    ----------
-    A : LinOp
-        Square Hermitian linear operator.
-    initial_vector : array-like
-        Starting vector in ``A.domain``.
-    max_iter : int, optional
-        Maximum Krylov dimension. Default is 100.
-    tol : float, optional
-        Breakdown tolerance. Default is 1e-6.
-    check_every : int, optional
-        Iteration interval for convergence checks.
-
-    Returns
-    -------
-    LanczosResult
-        Result from :func:`lanczos_smallest`.
-
-    Warns
-    -----
-    DeprecationWarning
-        Always emitted because this alias will be removed in a future release.
-    """
-    warn(
-        "stochastic_lanczos is deprecated; use lanczos_smallest instead.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    return lanczos_smallest(
-        A,
-        initial_vector,
-        max_iter=max_iter,
-        tol=tol,
-        check_every=check_every,
-    )

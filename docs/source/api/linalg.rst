@@ -12,13 +12,11 @@ method explicitly projects to a small Krylov subspace.
    spacecore.linalg.cg
    spacecore.linalg.lsqr
    spacecore.linalg.lanczos_smallest
-   spacecore.linalg.stochastic_lanczos
    spacecore.linalg.power_iteration
    spacecore.linalg.expm_multiply
    spacecore.linalg.CGResult
    spacecore.linalg.LSQRResult
    spacecore.linalg.LanczosResult
-   spacecore.linalg.StochasticLanczosResult
    spacecore.linalg.PowerIterationResult
    spacecore.linalg.ExpmMultiplyResult
 
@@ -42,13 +40,7 @@ Eigenvalue algorithms
 
 .. autofunction:: spacecore.linalg.lanczos_smallest
 
-.. autofunction:: spacecore.linalg.stochastic_lanczos
-
 .. autoclass:: spacecore.linalg.LanczosResult
-   :members:
-   :undoc-members:
-
-.. autoclass:: spacecore.linalg.StochasticLanczosResult
    :members:
    :undoc-members:
 
