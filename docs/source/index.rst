@@ -4,24 +4,26 @@ SpaceCore
 SpaceCore exists for writing numerical algorithms once, independently of the
 array backend.
 
-For example, the same algorithm can run with NumPy for debugging, JAX for
-JIT/autodiff, and Torch for tensor workflows, while preserving the same
+For example, the same algorithm can run with NumPy for debugging, CuPy for
+eager GPU execution, JAX for JIT/autodiff, and Torch for tensor workflows,
+while preserving the same
 mathematical spaces and linear operators.
 
 What problem does SpaceCore solve?
 ----------------------------------
 
 Numerical algorithms often start as clear NumPy code and later need to move to
-JAX, Torch, or another array system. Without a backend boundary, that migration
-usually leaks through the whole implementation: array constructors, dtype
-handling, inner products, sparse support, and linear-operator conventions all
-become backend-specific.
+CuPy, JAX, Torch, or another array system. Without a backend boundary, that
+migration usually leaks through the whole implementation: array constructors,
+dtype handling, inner products, sparse support, and linear-operator conventions
+all become backend-specific.
 
 SpaceCore keeps those choices in a ``Context``, while algorithms work with
 mathematical objects:
 
 * a ``Space`` knows the structure and geometry of its elements;
 * a ``LinOp`` maps one space to another;
+* a ``Functional`` maps a space element to a scalar;
 * backend-specific array creation and operations live behind ``BackendOps``.
 
 The result is ordinary Python code whose core numerical logic is not tied to
@@ -31,13 +33,14 @@ Mental model:
 
 .. code-block:: text
 
-   BackendOps -> Context -> Space/LinOp -> Algorithm
+   BackendOps -> Context -> Space/LinOp/Functional -> Algorithm
 
 Write once, run twice
 ---------------------
 
 This gradient descent loop uses only the ``Space`` and ``LinOp`` APIs. It does
-not know whether the arrays are NumPy arrays, JAX arrays, or Torch tensors.
+not know whether the arrays are NumPy arrays, CuPy arrays, JAX arrays, or Torch
+tensors.
 
 .. code-block:: python
 
@@ -140,7 +143,7 @@ Core concepts
 
 A ``Context`` specifies how objects are represented:
 
-* backend operations (``NumpyOps``, ``JaxOps``, ``TorchOps``, etc.);
+* backend operations (``NumpyOps``, ``CuPyOps``, ``JaxOps``, ``TorchOps``, etc.);
 * default dtype;
 * runtime validation behavior.
 
@@ -157,6 +160,8 @@ A ``Space`` describes the structure and geometry of values:
 * ``VectorSpace`` for Euclidean vectors and tensors;
 * ``HermitianSpace`` for Hermitian or symmetric matrices;
 * ``ProductSpace`` for Cartesian products of spaces.
+* ``BatchSpace`` for batched elements such as ``X.batch((B,), (0,))``,
+  representing ``B`` independent copies of ``X``.
 
 Algorithms should use space methods such as ``zeros``, ``add``, ``scale``,
 ``axpy``, ``inner``, ``norm``, ``flatten``, and ``unflatten`` instead of
@@ -168,13 +173,45 @@ hard-coding backend array operations.
 A ``LinOp`` represents a linear operator between spaces:
 
 * ``DenseLinOp`` for dense matrix or tensor operators;
+* ``DiagonalLinOp`` for coordinatewise diagonal operators;
 * ``SparseLinOp`` for sparse operators;
+* ``MatrixFreeLinOp`` for callable-backed operators without stored matrices;
+* ``IdentityLinOp`` and ``ZeroLinOp`` for canonical identity and zero maps;
+* ``ScaledLinOp``, ``SumLinOp``, and ``ComposedLinOp`` for lazy operator
+  algebra;
 * ``BlockDiagonalLinOp`` for block-diagonal product-space operators;
 * ``StackedLinOp`` for operators from one space into a product space;
 * ``SumToSingleLinOp`` for operators from a product space into one space.
 
 Operators expose ``apply`` and ``rapply``, so algorithms can use a linear map
 and its adjoint without depending on the storage format.
+
+For batched inputs, ``vapply(xs)`` and ``rvapply(ys)`` lift the operator over
+the leading batch axis:
+
+.. code-block:: python
+
+   XB = X.batch(batch_shape=(B,), batch_axes=(0,))
+   YB = Y.batch(batch_shape=(B,), batch_axes=(0,))
+
+   ys = A.vapply(xs, batch_space=XB)    # xs in XB, ys in YB
+   xs2 = A.rvapply(ys, batch_space=YB)  # ys in YB, xs2 in XB
+
+The fallback uses backend ``vmap``; dense, sparse, diagonal, identity, zero,
+algebraic, and product-structured operators provide specialized batched paths.
+
+``Functional``
+~~~~~~~~~~~~~~
+
+A ``Functional`` represents a scalar-valued map on a space.
+``LinearFunctional`` covers maps such as ``<c, x>``,
+``MatrixFreeLinearFunctional`` wraps a callable without storing a representer,
+and ``LinOpQuadraticForm`` represents objectives such as
+``0.5 * <x, Qx> + ell(x) + a``.
+
+For batched inputs, ``vvalue(xs)`` evaluates independently over leading batch
+axes. Quadratic forms that define gradients also expose ``grad(x)`` and
+``vgrad(xs)``.
 
 Who should use this?
 --------------------
@@ -201,6 +238,12 @@ With JAX support:
 
    pip install "spacecore[jax]"
 
+With CuPy support:
+
+.. code-block:: bash
+
+   pip install "spacecore[cupy]"
+
 With PyTorch support:
 
 .. code-block:: bash
@@ -210,6 +253,10 @@ With PyTorch support:
 * ``spacecore[jax]`` installs optional JAX support.
 * GPU users should install the appropriate CUDA-enabled JAX build first,
   following the official JAX installation guide.
+* ``spacecore[cupy]`` installs optional CuPy support for ``cupy.ndarray`` and
+  ``cupyx.scipy.sparse`` backends.
+* GPU users should install the appropriate CUDA-enabled CuPy package first,
+  following the official CuPy installation guide.
 * ``spacecore[torch]`` installs optional PyTorch support for ``torch.Tensor``
   backends.
 * GPU users should install the appropriate CUDA-enabled PyTorch build first,

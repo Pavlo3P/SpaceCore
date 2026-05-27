@@ -4,24 +4,34 @@ from typing import Any, Tuple
 
 from ._base import ProductLinOp
 from .._base import LinOp, Domain
+from ..._checks import checked_method
 from ...space import ProductSpace, VectorSpace
 from ...backend import jax_pytree_class, Context
 
 
 @jax_pytree_class
 class StackedLinOp(ProductLinOp[Domain, ProductSpace]):
-    """
+    r"""
     Stack of operators from a single domain into a product codomain.
 
-    dom = X
-    cod = Y1 × ... × Yk
+    If ``dom = X`` and ``cod = Y1 x ... x Yk``, component ``parts[i]`` maps
+    ``X`` to ``Yi``. Forward application returns a tuple of component outputs;
+    adjoint application sums component adjoints in ``X``.
 
-    ``ops[i] : X -> Yi``
-    ``apply(x)  = (ops[i](x))_i``
-    ``rapply(y) = sum_i ops[i]^*(y_i)``
+    Parameters
+    ----------
+    dom : Space
+        Shared component domain.
+    cod : ProductSpace
+        Product codomain.
+    parts : sequence of LinOp
+        Operators from ``dom`` to each component of ``cod``.
+    ctx : Context, str, or None, optional
+        Backend context specification.
     """
 
     def _check_layout(self) -> None:
+        """Check that every component maps the shared domain to one codomain part."""
         if not isinstance(self.cod, ProductSpace):
             raise TypeError("StackedLinOp expects cod to be ProductSpace.")
 
@@ -34,22 +44,24 @@ class StackedLinOp(ProductLinOp[Domain, ProductSpace]):
             else:
                 raise TypeError(f"Component op {i} must map dom -> cod.spaces[{i}].")
 
+    @checked_method(in_space="dom", out_space="cod")
     def apply(self, x: Any) -> Any:
-        if self._enable_checks:
-            self.dom._check_member(x)
+        """Apply each component operator to the same input."""
         return self._apply_unchecked(x)
 
     def _apply_unchecked(self, x: Any) -> Any:
+        """Apply component operators without membership checks."""
         if self._num_parts == 2:
             return self._apply_parts[0](x), self._apply_parts[1](x)
         return tuple(apply(x) for apply in self._apply_parts)
 
+    @checked_method(in_space="cod", out_space="dom")
     def rapply(self, y: Any) -> Any:
-        if self._enable_checks:
-            self.cod._check_member(y)
+        """Apply component adjoints and sum in the shared domain."""
         return self._rapply_unchecked(y)
 
     def _rapply_unchecked(self, y: Any) -> Any:
+        """Apply component adjoints without membership checks."""
         if self._num_parts == 2:
             x0 = self._rapply_parts[0](y[0])
             x1 = self._rapply_parts[1](y[1])
@@ -61,8 +73,35 @@ class StackedLinOp(ProductLinOp[Domain, ProductSpace]):
             acc = xi if acc is None else (acc + xi if use_direct_add else self.dom.add(xi, acc))
         return acc
 
+    def vapply(self, x: Any, batch_space=None) -> Any:
+        """Apply this stacked operator over a batch."""
+        in_space = self._input_batch_space(self.domain, x, batch_space)
+        if self._enable_checks:
+            in_space._check_member(x)
+        batch_shape = in_space.batch_shape
+        batch_axes = in_space.batch_axes
+        return tuple(
+            op.vapply(x, op.domain.batch(batch_shape, batch_axes))
+            for op in self.parts
+        )
+
+    def rvapply(self, y: Any, batch_space=None) -> Any:
+        """Apply the adjoint stacked operator over a product batch."""
+        in_space = self._input_batch_space(self.codomain, y, batch_space)
+        if self._enable_checks:
+            in_space._check_member(y)
+        batch_shape = in_space.batch_shape
+        batch_axes = in_space.batch_axes
+        out_space = self.domain.batch(batch_shape, batch_axes)
+        acc = None
+        for op, yi in zip(self.parts, y):
+            xi = op.rvapply(yi, op.codomain.batch(batch_shape, batch_axes))
+            acc = xi if acc is None else out_space.add(acc, xi)
+        return acc
+
     @classmethod
     def from_operators(cls, parts: Tuple[LinOp, ...]) -> StackedLinOp:
+        """Build a stacked operator from component operators."""
         if not parts:
             raise ValueError("Parts must be non-empty.")
 
@@ -72,6 +111,7 @@ class StackedLinOp(ProductLinOp[Domain, ProductSpace]):
         return cls(dom, cod, parts)
 
     def _convert(self, new_ctx: Context) -> StackedLinOp:
+        """Convert spaces and component operators to ``new_ctx``."""
         new_dom = self.dom.convert(new_ctx)
         new_cod = self.cod.convert(new_ctx)
         new_parts = [op.convert(new_ctx) for op in self.parts]

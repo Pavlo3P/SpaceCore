@@ -32,6 +32,55 @@ def test_public_resolve_context_priority_wrapper():
         sc.set_context(original)
 
 
+def test_resolve_context_priority_uses_explicit_ctx_before_inferred_ctx():
+    sc = importlib.import_module("spacecore")
+    original = sc.get_context()
+    default = sc.Context(sc.NumpyOps(), dtype=np.float16, enable_checks=True)
+    inferred = sc.Context(sc.NumpyOps(), dtype=np.float32, enable_checks=True)
+    explicit = sc.Context(sc.NumpyOps(), dtype=np.float64, enable_checks=False)
+    try:
+        sc.set_context(default)
+        X = sc.VectorSpace((2,), inferred)
+
+        resolved = sc.resolve_context_priority(explicit, X)
+
+        assert resolved == explicit
+        assert resolved.dtype == np.dtype(np.float64)
+        assert resolved.enable_checks is False
+    finally:
+        sc.set_context(original)
+
+
+def test_resolve_context_priority_uses_inferred_ctx_only_without_explicit_ctx():
+    sc = importlib.import_module("spacecore")
+    original = sc.get_context()
+    default = sc.Context(sc.NumpyOps(), dtype=np.float64, enable_checks=True)
+    inferred = sc.Context(sc.NumpyOps(), dtype=np.float32, enable_checks=False)
+    try:
+        sc.set_context(default)
+        X = sc.VectorSpace((2,), inferred)
+
+        resolved = sc.resolve_context_priority(None, X)
+
+        assert resolved.ops.family == inferred.ops.family
+        assert resolved.dtype == np.dtype(np.float32)
+        assert resolved.enable_checks is False
+    finally:
+        sc.set_context(original)
+
+
+def test_resolve_context_priority_uses_default_only_without_explicit_or_inferred_ctx():
+    sc = importlib.import_module("spacecore")
+    original = sc.get_context()
+    default = sc.Context(sc.NumpyOps(), dtype=np.float32, enable_checks=True)
+    try:
+        sc.set_context(default)
+
+        assert sc.resolve_context_priority(None) == default
+    finally:
+        sc.set_context(original)
+
+
 def test_default_context_used_when_none_given():
     sc = importlib.import_module("spacecore")
     original = sc.get_context()

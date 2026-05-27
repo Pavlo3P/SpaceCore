@@ -5,13 +5,15 @@ from typing import Any, Tuple, List, Sequence, Callable
 from ._base import Space
 from ._checks import ProductComponentCheck, ProductStructureCheck
 from ._vector import VectorSpace
+from .._checks import checked_method
 from ..types import DenseArray
 from ..backend import Context
 
-from .._contextual.manager import ctx_manager
+from .._contextual import resolve_context_priority
 
 
 def _prod_int(shape: Tuple[int, ...]) -> int:
+    """Return the integer product of a shape tuple."""
     p = 1
     for d in shape:
         p *= int(d)
@@ -19,27 +21,41 @@ def _prod_int(shape: Tuple[int, ...]) -> int:
 
 
 class ProductSpace(Space):
-    """
-    Cartesian product space X = X1 × ... × Xk.
+    r"""
+    Represent a Cartesian product of spaces.
 
-    Elements are tuples:
-        x = (x1, ..., xk) with xi ∈ Xi
+    Elements are tuples ``(x1, ..., xk)`` with ``xi`` in ``spaces[i]``.
+    Dense coordinates concatenate the flattened coordinates of each component.
 
-    Canonical dense coordinates:
-        flatten(x) = concat(flatten_i(xi))
+    Parameters
+    ----------
+    spaces : tuple of Space
+        Nonempty tuple of component spaces.
+    ctx : Context, str, or None, optional
+        Backend context specification. Default is resolved from components.
 
-    Notes:
-      - `shape` for this space is the *1D coordinate length* of the concatenated flattening.
-      - `eigh` has no canonical meaning here and raises by default.
+    Attributes
+    ----------
+    spaces : tuple of Space
+        Component spaces converted to ``ctx``.
+    arity : int
+        Number of component spaces.
+
+    Notes
+    -----
+    ``shape`` is the one-dimensional coordinate length of the concatenated
+    flattening. ``eigh`` has no canonical meaning and raises by default.
     """
 
     def _convert(self, new_ctx: Context) -> Space:
+        """Convert all component spaces to ``new_ctx``."""
         new_spaces = []
         for sp in self.spaces:
             new_spaces.append(sp.convert(new_ctx))
         return ProductSpace(tuple(new_spaces), new_ctx)
 
     def _local_checks(self):
+        """Return membership checks local to product spaces."""
         return ProductStructureCheck(), ProductComponentCheck()
 
     def __init__(self, spaces: Tuple[Space, ...], ctx: Context | str | None = None) -> None:
@@ -47,7 +63,7 @@ class ProductSpace(Space):
             raise ValueError("ProductSpace requires at least one subspace.")
 
         spaces = self._validate_spaces(spaces)
-        ctx = ctx_manager.resolve_context_priority(ctx, *spaces)
+        ctx = resolve_context_priority(ctx, *spaces)
 
         dims = tuple(_prod_int(s.shape) for s in spaces)
         offsets: List[int] = [0]
@@ -95,6 +111,7 @@ class ProductSpace(Space):
             self._is_flat1 = self._component_is_flat[1]
 
     def _validate_spaces(self, spaces: Any) -> Tuple[Space, ...]:
+        """Validate and normalize product component spaces."""
         if isinstance(spaces, Sequence):
             spaces = tuple(spaces)
             for i, sp in enumerate(spaces):
@@ -108,27 +125,26 @@ class ProductSpace(Space):
 
     @property
     def arity(self) -> int:
+        """Number of component spaces."""
         return self._arity
 
     def zeros(self) -> Tuple[Any, ...]:
+        """Return the product-space zero tuple."""
         return tuple(s.zeros() for s in self.spaces)
 
+    @checked_method(in_space="self", arg_positions=(0, 1))
     def add(self, x: Tuple[Any, ...], y: Tuple[Any, ...]) -> Tuple[Any, ...]:
-        if self._enable_checks:
-            self._check_member(x)
-            self._check_member(y)
+        """Return the componentwise product-space sum."""
         return tuple(s.add(xi, yi) for s, xi, yi in zip(self.spaces, x, y))
 
+    @checked_method(in_space="self", arg_positions=(1,))
     def scale(self, a: Any, x: Tuple[Any, ...]) -> Tuple[Any, ...]:
-        if self._enable_checks:
-            self._check_member(x)
+        """Return the componentwise scalar product."""
         return tuple(s.scale(a, xi) for s, xi in zip(self.spaces, x))
 
+    @checked_method(in_space="self", arg_positions=(0, 1))
     def inner(self, x: Tuple[Any, ...], y: Tuple[Any, ...]) -> Any:
-        if self._enable_checks:
-            self._check_member(x)
-            self._check_member(y)
-
+        r"""Return the sum of component inner products."""
         # Accumulate via backend ops (vdot works for scalars too, but sum is enough)
         acc = None
         for s, xi, yi in zip(self.spaces, x, y):
@@ -137,15 +153,15 @@ class ProductSpace(Space):
         return acc
 
     def eigh(self, x: Any, k: int = None) -> Any:
+        """Raise because product spaces do not define a canonical eigendecomposition."""
         raise NotImplementedError(
             "ProductSpace.eigh is not defined. "
             "Call eigh on a specific component space, or define a custom convention."
         )
 
+    @checked_method(in_space="self")
     def flatten(self, x: Tuple[Any, ...]) -> DenseArray:
-        if self._enable_checks:
-            self._check_member(x)
-
+        """Concatenate component coordinate vectors into one dense vector."""
         if self._vector_fast_path:
             if self._arity == 1:
                 return x[0] if self._component_is_flat[0] else x[0].reshape((-1,))
@@ -178,6 +194,7 @@ class ProductSpace(Space):
         return self._concatenate(parts, axis=0)
 
     def unflatten(self, v: DenseArray) -> Tuple[Any, ...]:
+        """Split dense coordinates into component-space elements."""
         if self._enable_checks:
             v = self.ctx.assert_dense(v)
             v1 = v if tuple(getattr(v, "shape", ())) == self.shape else v.reshape((-1,))
@@ -210,6 +227,7 @@ class ProductSpace(Space):
 
         return tuple(xs)
 
+    @checked_method(in_space="self", out_space="self")
     def apply(self, x: Tuple[Any, ...], f: Callable[[Any], Any]) -> Tuple[Any, ...]:
         r"""
         Apply a function to each component of a product-space element.
@@ -257,8 +275,6 @@ class ProductSpace(Space):
         product space. It applies the existing functional calculus of each
         factor space independently, component by component.
         """
-        if self._enable_checks:
-            self._check_member(x)
         if self._arity == 2:
             return self.spaces[0].apply(x[0], f), self.spaces[1].apply(x[1], f)
         return tuple(s.apply(xi, f) for s, xi in zip(self.spaces, x))

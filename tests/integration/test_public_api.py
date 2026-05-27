@@ -2,7 +2,7 @@ import importlib
 import tomllib
 from pathlib import Path
 
-from tests._helpers import has_jax, has_torch
+from tests._helpers import has_cupy, has_jax, has_torch
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -19,15 +19,25 @@ def test_expected_names_are_exported():
     sc = importlib.import_module("spacecore")
     expected = {
         "Context", "BackendOps", "NumpyOps", "DenseLinOp", "SparseLinOp",
+        "ScaledLinOp", "SumLinOp", "ComposedLinOp", "ZeroLinOp",
+        "IdentityLinOp", "MatrixFreeLinOp", "make_sum", "make_scaled",
+        "make_composed",
         "BlockDiagonalLinOp", "StackedLinOp", "SumToSingleLinOp",
+        "Functional", "LinearFunctional", "InnerProductFunctional",
+        "ComposedFunctional", "MatrixFreeLinearFunctional", "QuadraticForm",
+        "LinOpQuadraticForm", "make_functional_composed",
         "VectorSpace", "HermitianSpace", "ProductSpace", "Space",
         "DenseArray", "SparseArray", "ArrayLike",
         "set_context", "get_context", "resolve_context_priority", "register_ops",
         "set_resolution_policy", "set_dtype_resolution_policy",
         "get_resolution_policy", "get_dtype_resolution_policy",
+        "LanczosResult", "lanczos_smallest",
+        "ExpmMultiplyResult", "expm_multiply",
     }
     if has_jax():
         expected |= {"JaxOps", "jax_pytree_class"}
+    if has_cupy():
+        expected |= {"CuPyOps"}
     if has_torch():
         expected |= {"TorchOps"}
     assert expected.issubset(set(sc.__all__))
@@ -38,17 +48,27 @@ def test_top_level_objects_match_source_modules():
     backend = importlib.import_module("spacecore.backend")
     space = importlib.import_module("spacecore.space")
     linop = importlib.import_module("spacecore.linop")
-    manager = importlib.import_module("spacecore._contextual.manager")
+    functional = importlib.import_module("spacecore.functional")
+    linalg = importlib.import_module("spacecore.linalg")
+    contextual = importlib.import_module("spacecore._contextual")
 
     assert sc.Context is backend.Context
     assert sc.NumpyOps is backend.NumpyOps
+    if has_cupy():
+        assert sc.CuPyOps is backend.CuPyOps
     if has_torch():
         assert sc.TorchOps is backend.TorchOps
     assert sc.Space is space.Space
     assert sc.VectorSpace is space.VectorSpace
     assert sc.DenseLinOp is linop.DenseLinOp
-    assert sc.get_context is manager.get_context
-    assert sc.resolve_context_priority is manager.resolve_context_priority
+    assert sc.Functional is functional.Functional
+    assert sc.ComposedFunctional is functional.ComposedFunctional
+    assert sc.InnerProductFunctional is functional.InnerProductFunctional
+    assert sc.LanczosResult is linalg.LanczosResult
+    assert sc.ExpmMultiplyResult is linalg.ExpmMultiplyResult
+    assert sc.expm_multiply is linalg.expm_multiply
+    assert sc.get_context is contextual.get_context
+    assert sc.resolve_context_priority is contextual.resolve_context_priority
 
 
 def test_package_version_matches_project_metadata():

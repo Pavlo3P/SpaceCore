@@ -9,11 +9,20 @@ Shape: TypeAlias = Sequence[int]
 
 @runtime_checkable
 class ArrayLike(Protocol):
-    """Minimal array-like object accepted by public backend helpers.
+    """
+    Define the minimal array-like object accepted by backend helpers.
 
     This intentionally only models common metadata. NumPy arrays, JAX arrays,
     PyTorch tensors, sparse arrays, scalar-like backend arrays, and array
     wrappers can satisfy this without implementing every dense-array method.
+
+    Parameters
+    ----------
+    *args : Any
+        Construction arguments accepted by concrete array implementations.
+    **kwargs : Any
+        Keyword construction arguments accepted by concrete array
+        implementations.
     """
 
     @property
@@ -24,12 +33,22 @@ class ArrayLike(Protocol):
 
 
 class SparseArray(ArrayLike, Protocol):
-    """Portable sparse-array surface used by sparse linear operators.
+    """
+    Define the portable sparse-array surface used by sparse operators.
 
     Backend-specific sparse APIs such as SciPy ``tocsr()``, JAX sparse
     ``indices``/``data``, and Torch ``to_dense()`` are intentionally not part
     of this protocol. Concrete backends may use those after checking that the
     object belongs to their sparse family.
+
+    Parameters
+    ----------
+    *args : Any
+        Construction arguments accepted by concrete sparse array
+        implementations.
+    **kwargs : Any
+        Keyword construction arguments accepted by concrete sparse array
+        implementations.
     """
 
     @property
@@ -41,12 +60,21 @@ class SparseArray(ArrayLike, Protocol):
 
 
 class DenseArray(ArrayLike, Protocol):
-    """Portable dense-array surface covering NumPy, JAX, and PyTorch arrays.
+    """
+    Define the portable dense-array surface used by core abstractions.
 
     The protocol includes only operations that SpaceCore core abstractions use
     directly on dense arrays. Backend-specific metadata such as device,
     sharding, layout, strides, and gradient state belongs to concrete backend
     implementations, not to this portable type.
+
+    Parameters
+    ----------
+    *args : Any
+        Construction arguments accepted by concrete dense array implementations.
+    **kwargs : Any
+        Keyword construction arguments accepted by concrete dense array
+        implementations.
     """
 
     @property

@@ -1,11 +1,27 @@
-from typing import Any
+from __future__ import annotations
 
-from ..backend import Context, BackendOps
-from .contextual import Contextual, ContextPolicy, DtypePreservePolicy
-from ..backend import BackendFamily
+from typing import TYPE_CHECKING, Any
+
+from ..backend._family import BackendFamily
+from ..backend._ops import BackendOps
+from ._policies import ContextPolicy, DtypePreservePolicy
+
+if TYPE_CHECKING:
+    from ..backend._context import Context
 
 
-ctx_manager = Contextual()
+_cached_state = None
+
+
+def _state():
+    """Return the cached contextual singleton."""
+    global _cached_state
+    if _cached_state is not None:
+        return _cached_state
+    from ._state import _contextual
+
+    _cached_state = _contextual
+    return _cached_state
 
 
 def set_context(
@@ -18,14 +34,14 @@ def set_context(
 
     Parameters
     ----------
-    ctx:
+    ctx : Context, BackendFamily, str, or None, optional
         Context specification to make default. This may be a concrete
         :class:`spacecore.backend.Context`, a backend family enum, a backend
         family string such as ``"numpy"`` or ``"jax"``, or ``None``.
-    dtype:
+    dtype : dtype-like, optional
         Optional dtype used when ``ctx`` is a backend family string or enum.
         Ignored when ``ctx`` is ``None`` or already a concrete ``Context``.
-    enable_checks:
+    enable_checks : bool or None, optional
         Optional validation flag used when constructing a context from a backend
         family. Ignored when ``ctx`` is ``None`` or already a concrete
         ``Context``.
@@ -35,8 +51,8 @@ def set_context(
     Objects created without an explicit context use this default context.
     Existing spaces, operators, and contexts are not modified.
     """
-    ctx = ctx_manager.normalize_context(ctx, dtype=dtype, enable_checks=enable_checks)
-    ctx_manager.default_ctx = ctx
+    ctx = _state().normalize_context(ctx, dtype=dtype, enable_checks=enable_checks)
+    _state().default_ctx = ctx
 
 
 def get_context() -> Context:
@@ -49,7 +65,7 @@ def get_context() -> Context:
         The default context used by constructors when no explicit context can
         be inferred or provided.
     """
-    return ctx_manager.default_ctx
+    return _state().default_ctx
 
 
 def resolve_context_priority(
@@ -61,10 +77,10 @@ def resolve_context_priority(
 
     Parameters
     ----------
-    priority_ctx:
+    priority_ctx : Context, BackendFamily, str, or None, optional
         Explicit context supplied by the caller. If this is not ``None``, it
         wins over every inferred context.
-    *other_ctx:
+    *other_ctx : object
         Objects that may carry a ``ctx`` attribute or be backend-native arrays.
         These are used for context inference when no explicit context is
         supplied.
@@ -80,7 +96,7 @@ def resolve_context_priority(
     User code should call this function instead of accessing the internal
     context manager singleton.
     """
-    return ctx_manager.resolve_context_priority(priority_ctx, *other_ctx)
+    return _state().resolve_context_priority(priority_ctx, *other_ctx)
 
 
 def register_ops(ops: type[BackendOps]) -> type[BackendOps]:
@@ -89,7 +105,7 @@ def register_ops(ops: type[BackendOps]) -> type[BackendOps]:
 
     Parameters
     ----------
-    ops:
+    ops : type[BackendOps]
         Backend operations class to register. It must be a subclass of
         :class:`spacecore.backend.BackendOps` and define a unique backend
         family key.
@@ -115,7 +131,61 @@ def register_ops(ops: type[BackendOps]) -> type[BackendOps]:
         class MyOps(BackendOps):
             ...
     """
-    return ctx_manager.register_ops(ops)
+    return _state().register_ops(ops)
+
+
+def normalize_context(
+    ctx: Context | BackendFamily | str | None = None,
+    dtype: Any = None,
+    enable_checks: bool | None = None,
+) -> Context:
+    """
+    Normalize a context specification through the process-wide state.
+
+    Parameters
+    ----------
+    ctx : Context, BackendFamily, str, or None, optional
+        Context specification to normalize.
+    dtype : dtype-like, optional
+        Optional dtype used when constructing a context from backend family.
+    enable_checks : bool or None, optional
+        Optional validation flag.
+
+    Returns
+    -------
+    Context
+        Normalized context.
+    """
+    return _state().normalize_context(ctx, dtype=dtype, enable_checks=enable_checks)
+
+
+def normalize_ops(
+    ops: str | BackendFamily | BackendOps | type[BackendOps] | Context
+) -> BackendOps:
+    """
+    Normalize backend operations through the process-wide state.
+
+    Parameters
+    ----------
+    ops : str, BackendFamily, BackendOps, type[BackendOps], or Context
+        Backend operations specification.
+
+    Returns
+    -------
+    BackendOps
+        Backend operations instance.
+    """
+    if isinstance(ops, BackendOps):
+        return ops
+    return _state().get_ops(ops)
+
+
+def enforce_convert_policy(
+    x: Any,
+    to: Context | BackendFamily | str | None = None,
+) -> tuple[Any, Context]:
+    """Resolve a conversion target and enforce the configured policy."""
+    return _state().enforce_convert_policy(x, to)
 
 
 def set_resolution_policy(policy: ContextPolicy | str | None = None) -> None:
@@ -124,7 +194,7 @@ def set_resolution_policy(policy: ContextPolicy | str | None = None) -> None:
 
     Parameters
     ----------
-    policy:
+    policy : ContextPolicy, str, or None, optional
         Conversion policy to use. Accepted values are ``"warning"``,
         ``"error"``, ``"silent"``, matching :class:`ContextPolicy`, or
         ``None`` to restore the default policy.
@@ -141,7 +211,7 @@ def set_resolution_policy(policy: ContextPolicy | str | None = None) -> None:
     * ``"error"``: reject backend conversion.
     * ``"silent"``: allow backend conversion without warning.
     """
-    ctx_manager.resolution_policy = policy
+    _state().resolution_policy = policy
 
 
 def get_resolution_policy() -> str:
@@ -153,7 +223,7 @@ def get_resolution_policy() -> str:
     str
         Policy name, one of ``"warning"``, ``"error"``, or ``"silent"``.
     """
-    return ctx_manager.resolution_policy.value
+    return _state().resolution_policy.value
 
 
 def set_dtype_resolution_policy(
@@ -164,7 +234,7 @@ def set_dtype_resolution_policy(
 
     Parameters
     ----------
-    policy:
+    policy : DtypePreservePolicy, str, or None, optional
         Dtype policy to use. Accepted values are ``"keep_native"`` and
         ``"convert"``, matching :class:`DtypePreservePolicy`, or ``None`` to
         restore the default policy.
@@ -181,7 +251,7 @@ def set_dtype_resolution_policy(
       equivalent dtype in the target backend.
     * ``"convert"``: use the dtype provided by the resolved target context.
     """
-    ctx_manager.dtype_resolution_policy = policy
+    _state().dtype_resolution_policy = policy
 
 
 def get_dtype_resolution_policy() -> str:
@@ -193,4 +263,4 @@ def get_dtype_resolution_policy() -> str:
     str
         Policy name, one of ``"keep_native"`` or ``"convert"``.
     """
-    return ctx_manager.dtype_resolution_policy.value
+    return _state().dtype_resolution_policy.value

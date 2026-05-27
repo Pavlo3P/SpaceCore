@@ -38,6 +38,26 @@ def test_dense_linop_jit_apply_and_rapply_with_operator_argument():
     np.testing.assert_allclose(to_numpy(rapply_jit(op, y)), [8., 10.])
 
 
+def test_decorated_apply_rapply_value_and_grad_jit_compile():
+    jax = pytest.importorskip("jax")
+
+    ctx = _jax_ctx()
+    space = sc.VectorSpace((2,), ctx)
+    op = sc.DenseLinOp(ctx.asarray([[2.0, 1.0], [1.0, 4.0]]), space, space, ctx)
+    q = sc.LinOpQuadraticForm(op, ctx=ctx)
+    x = ctx.asarray([3.0, -1.0])
+
+    apply_jit = jax.jit(lambda A, z: A.apply(z))
+    rapply_jit = jax.jit(lambda A, z: A.rapply(z))
+    value_jit = jax.jit(lambda functional, z: functional.value(z))
+    grad_jit = jax.jit(lambda functional, z: functional.grad(z))
+
+    np.testing.assert_allclose(to_numpy(apply_jit(op, x)), to_numpy(op.apply(x)))
+    np.testing.assert_allclose(to_numpy(rapply_jit(op, x)), to_numpy(op.rapply(x)))
+    np.testing.assert_allclose(to_numpy(value_jit(q, x)), to_numpy(q.value(x)))
+    np.testing.assert_allclose(to_numpy(grad_jit(q, x)), to_numpy(q.grad(x)))
+
+
 def test_tensor_dense_linop_jit_preserves_shapes():
     jax = pytest.importorskip("jax")
 

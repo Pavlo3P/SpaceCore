@@ -5,3 +5,4 @@ class BackendFamily(StrEnum):
     numpy = auto()
     jax = auto()
     torch = auto()
+    cupy = auto()

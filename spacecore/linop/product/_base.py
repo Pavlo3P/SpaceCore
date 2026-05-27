@@ -10,7 +10,19 @@ from ...backend import jax_pytree_class, Context
 @jax_pytree_class
 class ProductLinOp(LinOp[Domain, Codomain]):
     """
-    Base class for linear operators assembled from component operators.
+    Define a base class for operators assembled from component operators.
+
+    Parameters
+    ----------
+    dom : Space
+        Domain space of the assembled operator.
+    cod : Space
+        Codomain space of the assembled operator.
+    parts : sequence of LinOp
+        Nonempty sequence of component operators.
+    ctx : Context, str, or None, optional
+        Backend context specification. Default is resolved from ``dom`` and
+        ``cod``.
     """
 
     parts: Tuple[LinOp, ...]
@@ -31,25 +43,20 @@ class ProductLinOp(LinOp[Domain, Codomain]):
         self._apply_parts = tuple(getattr(op, "_apply_unchecked", op.apply) for op in self.parts)
         self._rapply_parts = tuple(getattr(op, "_rapply_unchecked", op.rapply) for op in self.parts)
         self._check_layout()
-        unchecked_apply = getattr(self, "_apply_unchecked", None)
-        unchecked_rapply = getattr(self, "_rapply_unchecked", None)
-        if not self._enable_checks and unchecked_apply is not None and unchecked_rapply is not None:
-            self.apply = unchecked_apply
-            self.rapply = unchecked_rapply
 
     @abstractmethod
     def _check_layout(self) -> None:
-        """
-        Check incidence compatibility between self.parts and self.dom/self.cod.
-        """
+        """Check incidence compatibility between parts and endpoint spaces."""
         raise NotImplementedError
 
     @classmethod
     @abstractmethod
     def from_operators(cls, parts: Tuple[LinOp, ...]) -> ProductLinOp:
+        """Build a product operator from component operators."""
         ...
 
     def __eq__(self, x: Any) -> bool:
+        """Return whether another product operator has the same layout."""
         if type(x) is type(self):
             return (self.dom == x.dom
                 and self.cod == x.cod
@@ -59,11 +66,13 @@ class ProductLinOp(LinOp[Domain, Codomain]):
         return False
 
     def tree_flatten(self):
+        """Flatten this operator for pytree registration."""
         children = self.parts
         aux = (self.dom, self.cod, self.ctx)
         return children, aux
 
     @classmethod
     def tree_unflatten(cls, aux, children):
+        """Rebuild this operator from pytree data."""
         dom, cod, ctx = aux
         return cls(dom, cod, tuple(children), ctx)

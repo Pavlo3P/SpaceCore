@@ -24,8 +24,11 @@ jobs:
 
       - run: python -m pip install --upgrade pip
       - run: pip install -e ".[jax,torch,dev]"
-      - run: pytest
+      - run: pytest --cov=spacecore --cov-report=term-missing --cov-fail-under=70
+      - run: python scripts/jit_audit.py --check
       - run: ruff check .
+      - run: ruff check --select D spacecore/ || true
+      - run: python scripts/docstring_audit.py || true
 
   publish:
     if: startsWith(github.ref, 'refs/tags/')

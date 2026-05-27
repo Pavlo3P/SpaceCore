@@ -5,21 +5,42 @@ from typing import Any, Tuple, Callable
 
 from ._base import Space
 from ._checks import BackendCheck, DTypeCheck, ShapeCheck
+from .._checks import checked_method
 from ..types import DenseArray
 from ..backend import Context
 
 
 class VectorSpace(Space):
-    """
-    Dense vector space R^{n1, ..., nK} or C^{n1, ..., nK}.
+    r"""
+    Represent dense backend arrays with Euclidean geometry.
 
-    Elements:
-      - backend-native dense arrays;
-      - canonical shape is (n1, ..., nK).
+    Elements are backend-native dense arrays with canonical shape ``shape``.
+    The inner product is :math:`\langle x, y\rangle_X = \operatorname{vdot}(x,y)`,
+    where the backend conjugates the first argument for complex arrays.
 
-    Geometry:
-      - Euclidean / ℓ2 inner product
-            ⟨x, y⟩ = vdot(x, y).
+    Parameters
+    ----------
+    shape : tuple of int
+        Canonical coordinate shape for elements of the space.
+    ctx : Context, str, or None, optional
+        Backend context specification. Default resolves to the global context.
+
+    Attributes
+    ----------
+    shape : tuple of int
+        Canonical element shape.
+    ctx : Context
+        Resolved backend context.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> import spacecore as sc
+    >>> ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    >>> X = sc.VectorSpace((2,), ctx)
+    >>> x = ctx.asarray([1.0, 2.0])
+    >>> X.inner(x, x)
+    np.float64(5.0)
     """
 
     def __init__(self, shape: Tuple[int, ...], ctx: Context | str | None = None) -> None:
@@ -28,46 +49,50 @@ class VectorSpace(Space):
         self._is_flat_shape = self.shape == (self._size,)
 
     def _local_checks(self):
+        """Return membership checks local to dense vector spaces."""
         return BackendCheck(), ShapeCheck(), DTypeCheck()
 
     def zeros(self) -> DenseArray:
+        """Return the zero vector in this space."""
         return self.ops.zeros(self.shape, dtype=self.dtype)
 
+    @checked_method(in_space="self", arg_positions=(0, 1))
     def add(self, x: Any, y: Any) -> DenseArray:
-        if self._enable_checks:
-            self._check_member(x)
-            self._check_member(y)
+        """Return the vector-space sum ``x + y``."""
         return x + y
 
+    @checked_method(in_space="self", arg_positions=(1,))
     def scale(self, a: Any, x: Any) -> DenseArray:
-        if self._enable_checks:
-            self._check_member(x)
+        """Return the scalar product ``a * x``."""
         return a * x
 
+    @checked_method(in_space="self", arg_positions=(0, 1))
     def inner(self, x: Any, y: Any) -> Any:
-        if self._enable_checks:
-            self._check_member(x)
-            self._check_member(y)
+        r"""Return :math:`\langle x, y\rangle_X` using backend ``vdot``."""
         return self.ops.vdot(x, y)
 
     def eigh(self, x: Any, k: int = None) -> Any:
+        """Raise because vector elements do not have a canonical eigendecomposition."""
         raise TypeError(
             f"{type(self).__name__}.eigh is not defined for vector spaces."
         )
 
+    @checked_method(in_space="self")
     def flatten(self, X: DenseArray) -> DenseArray:
-        if self._enable_checks:
-            self._check_member(X)
+        """Return ``X`` as a dense one-dimensional coordinate vector."""
         return X if self._is_flat_shape else X.reshape((-1,))
 
     def unflatten(self, v: DenseArray) -> DenseArray:
+        """Reshape a flat coordinate vector into this space's canonical shape."""
         V = self.ctx.assert_dense(v) if self._enable_checks else v
         return V if self._is_flat_shape else V.reshape(self.shape)
 
     def _convert(self, new_ctx: Context) -> VectorSpace:
+        """Convert this vector space to ``new_ctx`` without changing shape."""
         return VectorSpace(self.shape, new_ctx)
 
     def _apply_entrywise(self, x: DenseArray, f: Callable[[DenseArray], DenseArray]) -> DenseArray:
+        """Apply ``f`` entrywise and verify that shape is preserved."""
         try:
             y = f(x)
         except Exception:
@@ -78,6 +103,7 @@ class VectorSpace(Space):
                 raise ValueError("Function application changed shape.")
         return y
 
+    @checked_method(in_space="self", out_space="self")
     def apply(self, x: DenseArray, f: Callable[[DenseArray], DenseArray]) -> DenseArray:
         r"""
         Apply a scalar function to a vector-space element entrywise.
@@ -121,7 +147,5 @@ class VectorSpace(Space):
         application is performed entrywise in the distinguished coordinate
         representation.
         """
-        if self._enable_checks:
-            self._check_member(x)
         y = self._apply_entrywise(x, f)
         return y

@@ -1,6 +1,240 @@
 Release notes
 =============
 
+Version 0.2.0
+-------------
+
+SpaceCore 0.2.0 is a major API expansion. The backend layer now sits on the
+Array API standard. Operators gained a lazy algebra with adjoint views,
+composition, sums, and scaling. A new :class:`Functional` hierarchy provides
+scalar-valued maps with gradients and pull-backs. A new :mod:`spacecore.linalg`
+module ships four JIT-compatible iterative solvers. Spaces, operators, and
+functionals share a single validation pattern via ``checked_method``, and the
+public API is documented to numpydoc standard with doctest coverage.
+
+This release introduces breaking renames; see :ref:`migration-0-2`.
+
+Highlights
+~~~~~~~~~~
+
+* Array API backend layer with optional CuPy support.
+* Lazy operator algebra: ``A @ B``, ``A + B``, ``A.H``, plus
+  :class:`IdentityLinOp`, :class:`ZeroLinOp`, :class:`MatrixFreeLinOp`, and
+  ``make_*`` factories with algebraic simplification.
+* :class:`Functional` hierarchy with linear and quadratic forms, plus
+  ``Functional.compose`` for pull-back along linear operators.
+* New :mod:`spacecore.linalg` module with iterative solvers: :func:`cg`,
+  :func:`lsqr`, :func:`power_iteration`, :func:`lanczos_smallest`,
+  :func:`expm_multiply`.
+* Geometry-aware solvers honor the declared ``Space.inner`` instead of assuming
+  Euclidean.
+* Unified ``checked_method`` decorator across :class:`Space`, :class:`LinOp`,
+  and :class:`Functional`.
+* Comprehensive numpydoc-style docstrings, doctests, and a JAX integration
+  design note.
+
+Backend
+~~~~~~~
+
+* Migrated :class:`BackendOps` to the Array API standard via
+  ``array-api-compat``.
+* Added :class:`CuPyOps` and the ``cupy`` backend family as an optional install
+  (``pip install 'spacecore[cupy]'``).
+* Centralized complex-dtype handling on :class:`BackendOps`:
+
+  * :meth:`BackendOps.is_complex_dtype` for backend-aware complex detection.
+  * :meth:`BackendOps.real_dtype` for extracting the real dtype matching a
+    complex one.
+
+* Broadened backend coverage for array creation, dtype conversion, sparse
+  conversion, indexing, reductions, linear algebra, loop primitives
+  (``fori_loop``, ``while_loop``, ``cond``), tree helpers, and vectorized
+  mapping.
+* Registered JAX pytrees for operator, space, and functional types so they pass
+  through ``jax.jit``, ``jax.vmap``, and ``jax.grad`` boundaries.
+
+Context and checking
+~~~~~~~~~~~~~~~~~~~~
+
+* Restructured ``_contextual`` to hide implementation details while keeping the
+  public free-function API (:func:`set_context`, :func:`get_context`,
+  :func:`resolve_context_priority`, :func:`register_ops`, and the
+  resolution-policy accessors).
+* Extended :func:`~spacecore._checks.checked_method` to support validation
+  against ``self`` and multiple input argument positions.
+* Replaced manual ``if self._enable_checks`` guards with ``checked_method``
+  across :class:`Space`, :class:`LinOp`, and :class:`Functional`. Inline guards
+  are now reserved for non-membership checks such as dense-array assertions and
+  custom output-shape checks.
+* Added reusable space-validation checks documented at
+  ``docs/source/design/checking_policy.rst``: backend, dtype, shape, Hermitian,
+  square-matrix, product-structure, and product-component checks.
+
+Spaces
+~~~~~~
+
+* Added :class:`BatchSpace` for batched elements with explicit batch shape and
+  batch-axis metadata.
+* Improved :class:`VectorSpace`, :class:`HermitianSpace`, and
+  :class:`ProductSpace` conversion behavior, validation, batching support, and
+  docstrings.
+
+Linear operators
+~~~~~~~~~~~~~~~~
+
+* **Lazy operator algebra.** Added composition, addition, scaling, and adjoint
+  view with algebraic simplification:
+
+  * ``A @ B`` composes operators.
+  * ``A + B`` sums operators.
+  * ``alpha * A`` scales an operator.
+  * ``A.H`` returns a cached adjoint view satisfying ``A.H.H is A``.
+
+  Simplification rules eliminate ``I``, ``Zero``, ``alpha = 0``, ``alpha = 1``,
+  and flatten nested sums.
+
+* Added :class:`IdentityLinOp`, :class:`ZeroLinOp`, :class:`MatrixFreeLinOp`,
+  and :class:`DiagonalLinOp`.
+* Added structural :meth:`LinOp.is_hermitian` reporting ``True``, ``False``,
+  or ``None`` (unknown) without applying incorrect Euclidean assumptions for
+  custom space geometries.
+* Added :meth:`LinOp.to_dense` for materializing operators as backend arrays.
+* Added product-structured operators and batched lifting:
+
+  * :class:`ProductLinOp`
+  * :class:`BlockDiagonalLinOp`
+  * :class:`StackedLinOp`
+  * :class:`SumToSingleLinOp`
+  * ``vapply`` / ``rvapply`` paths for batched operator application.
+
+* Improved linear-operator equality, representation, conversion, and JAX
+  pytree behavior.
+
+Functionals
+~~~~~~~~~~~
+
+* Added :class:`Functional` as an abstract base for scalar-valued maps on
+  spaces, with :meth:`value`, :meth:`grad`, :meth:`hess_apply`, and batched
+  counterparts.
+* Added linear functional implementations:
+
+  * :class:`LinearFunctional`
+  * :class:`InnerProductFunctional`
+  * :class:`MatrixFreeLinearFunctional`
+
+* Added quadratic forms:
+
+  * :class:`QuadraticForm`
+  * :class:`LinOpQuadraticForm`
+
+* Added :meth:`Functional.compose` and :class:`ComposedFunctional` for
+  pull-backs along linear operators, with specializations that preserve the
+  concrete functional type when possible.
+
+Linear algebra
+~~~~~~~~~~~~~~
+
+The :mod:`spacecore.linalg` module is new in 0.2.0. It provides
+JIT-compatible iterative solvers and structured result types.
+
+* Added iterative solvers:
+
+  * :func:`cg` for Hermitian positive-definite systems.
+  * :func:`lsqr` for rectangular least-squares problems.
+  * :func:`power_iteration` for dominant-eigenpair estimates of a
+    :class:`LinOp` or :class:`QuadraticForm`.
+  * :func:`lanczos_smallest` for smallest-Ritz-eigenpair estimates of
+    Hermitian operators.
+  * :func:`expm_multiply` for Krylov matrix-exponential actions
+    ``exp(t A) v`` on Hermitian operators, with complex ``t`` supported for
+    Schrodinger-type evolution.
+
+* Added structured result types :class:`CGResult`, :class:`LSQRResult`,
+  :class:`PowerIterationResult`, :class:`LanczosResult`, and
+  :class:`ExpmMultiplyResult`, each carrying convergence diagnostics and a
+  compact ``__repr__``.
+* Solvers are geometry-aware: norms, inner products, and the default initial
+  vector use ``Space.inner`` and ``Space.norm`` rather than assuming Euclidean
+  geometry. This makes the solvers correct on custom inner products such as
+  RKHS or weighted spaces.
+
+Documentation
+~~~~~~~~~~~~~
+
+* Reworked public docstrings to numpydoc standard with runnable doctests for
+  solvers, spaces, operators, functionals, backends, and contextual helpers.
+* Clarified solver contracts: ``domain == codomain`` square requirements,
+  Hermiticity enforcement, tolerance semantics, JAX static arguments, complex
+  scalar behavior, ill-conditioning caveats, and convergence assumptions.
+* Added API reference pages for backend ops, spaces, linear operators,
+  functionals, and linear algebra.
+* Added a JAX integration design note documenting trace-time operator algebra
+  and recommended JIT usage at
+  ``docs/source/design/jax_integration.rst``.
+* Added tutorials for backend operations, linear operators, and matrix-free
+  linalg workflows.
+
+Testing and CI
+~~~~~~~~~~~~~~
+
+* Added cross-backend tests covering NumPy, JAX, Torch, and optional CuPy.
+* Added tests for backend ops delegation, backend loop primitives, CuPy ops,
+  context resolution, ``checked_method``, functionals, linalg solvers,
+  operator algebra, batched lifting, dense materialization, diagonal
+  operators, and JAX pytree/JIT behavior.
+* Added CI execution of a JIT-traceability audit script in ``--check`` mode
+  and a coverage floor of 70% via ``pytest-cov``.
+* Added nonblocking documentation lint and audit steps for the docstring
+  migration.
+
+Packaging
+~~~~~~~~~
+
+* Bumped the package version to ``0.2.0``.
+* ``spacecore.__version__`` now resolves from package metadata via
+  ``importlib.metadata`` instead of a hand-maintained constant.
+* Added optional dependency groups: ``[jax]``, ``[torch]``, ``[cupy]``,
+  ``[examples]``, ``[docs]``, ``[dev]``.
+* Added an explicit ``__all__`` at the top level covering new backends,
+  operators, functionals, solvers, result types, validation checks, and
+  contextual helpers.
+
+.. _migration-0-2:
+
+Migration from 0.1.x
+~~~~~~~~~~~~~~~~~~~~
+
+* ``BackendOps.eps`` is now a method ``eps(dtype)`` rather than a property.
+  Callers must pass a dtype, typically ``ctx.dtype``.
+* The implementation attribute ``DenseLinOp.A`` is now a
+  :class:`functools.cached_property` backed by ``_A``. The public attribute
+  access ``op.A`` is unchanged.
+* :meth:`LinOp.__eq__` now returns ``NotImplemented`` instead of raising
+  ``NotImplementedError`` on the base class, so ``op == None`` and
+  ``op in some_list`` no longer raise.
+* Several module-internal helpers in ``spacecore._contextual`` moved to
+  private modules. Use the public functions re-exported from
+  :mod:`spacecore._contextual` (``set_context``, ``get_context``,
+  ``resolve_context_priority``, ``register_ops``, ``set_resolution_policy``,
+  and the dtype-policy accessors) rather than importing from internal modules.
+
+Known limitations
+~~~~~~~~~~~~~~~~~
+
+* :func:`cg`, :func:`lsqr`, and :func:`power_iteration` do not structurally
+  validate operator properties (positive-definiteness, full Hermiticity) and
+  may silently produce incorrect results on inputs that violate their
+  preconditions. See each function's ``Notes`` section for details.
+* Operator algebra runs Python-level simplification at construction time. For
+  maximum JIT efficiency, assemble operator expressions outside the
+  ``jax.jit`` boundary; see the JAX integration design note.
+* :class:`MatrixFreeLinOp` stores its callables in pytree auxiliary data.
+  Constructing one inside a JIT-traced function with a new lambda each call
+  triggers retracing. Construct outside the traced region with a stable
+  callable reference.
+* The CuPy backend is provided as a preview. Coverage of non-standard
+  operations and sparse handling may evolve in a subsequent release.
+
 Version 0.1.4
 -------------
 

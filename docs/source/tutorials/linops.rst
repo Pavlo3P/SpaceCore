@@ -7,7 +7,14 @@ the abstraction for linear maps between spaces.
 Current implemented operator types are:
 
 * ``DenseLinOp``
+* ``DiagonalLinOp``
 * ``SparseLinOp``
+* ``MatrixFreeLinOp``
+* ``IdentityLinOp``
+* ``ZeroLinOp``
+* ``ScaledLinOp``
+* ``SumLinOp``
+* ``ComposedLinOp``
 * ``BlockDiagonalLinOp``
 * ``StackedLinOp``
 * ``SumToSingleLinOp``
@@ -60,6 +67,38 @@ operator :math:`A^* : Y \to X`, satisfying
 
    \langle Ax, y\rangle_Y = \langle x, A^*y\rangle_X.
 
+Batched lifting
+---------------
+
+For a batch of elements, use ``Space.batch`` to describe the batched space and
+``vapply`` or ``rvapply`` to lift the operator:
+
+.. math::
+
+   A : X \to Y,
+   \qquad
+   A^{(B)} : X^B \to Y^B.
+
+.. code-block:: python
+
+   B = 8
+   XB = X.batch(batch_shape=(B,), batch_axes=(0,))
+   YB = Y.batch(batch_shape=(B,), batch_axes=(0,))
+
+   xs = ctx.asarray(np.ones((B,) + X.shape))
+   ys = op.vapply(xs, batch_space=XB)
+   xs_back = op.rvapply(ys, batch_space=YB)
+
+This is equivalent to stacking scalar applications:
+
+.. code-block:: python
+
+   ys_ref = ctx.ops.stack(tuple(op.apply(x) for x in xs), axis=0)
+
+The base fallback uses backend ``vmap``. Structured operators override this
+path when they can use matrix multiplication, sparse multi-vector products,
+broadcasting, or componentwise product-space batching.
+
 DenseLinOp
 ----------
 
@@ -106,6 +145,42 @@ of the operator structure.
    ]))
 
    op_sparse = sc.SparseLinOp(A_sparse, X, Y, ctx=ctx)
+
+MatrixFreeLinOp
+---------------
+
+``MatrixFreeLinOp`` stores callables for forward and adjoint actions instead
+of matrix entries. Use it when a linear map has a fast procedural
+implementation or when materializing a matrix is too expensive.
+
+.. code-block:: python
+
+   def apply(x):
+       return ctx.asarray([x[0] + x[1], x[0] - x[1]])
+
+   def rapply(y):
+       return ctx.asarray([y[0] + y[1], y[0] - y[1]])
+
+   op_free = sc.MatrixFreeLinOp(apply, rapply, X, X, ctx=ctx)
+
+Canonical and algebraic operators
+---------------------------------
+
+``IdentityLinOp`` and ``ZeroLinOp`` represent the canonical identity and zero
+maps on spaces. Operator algebra creates lazy operators without immediately
+materializing dense storage:
+
+.. code-block:: python
+
+   I = sc.IdentityLinOp(X, ctx=ctx)
+   Z = sc.ZeroLinOp(X, Y, ctx=ctx)
+
+   scaled = 2.0 * I                 # ScaledLinOp
+   summed = I + scaled              # SumLinOp
+   composed = summed @ I            # ComposedLinOp
+
+The helper constructors ``make_scaled``, ``make_sum``, and ``make_composed``
+perform the same simplifications used by the Python operators.
 
 Product operators
 -----------------

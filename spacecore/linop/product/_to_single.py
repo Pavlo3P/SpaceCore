@@ -4,24 +4,34 @@ from typing import Any, Tuple
 
 from ._base import ProductLinOp
 from .._base import LinOp, Codomain
+from ..._checks import checked_method
 from ...space import ProductSpace, VectorSpace
 from ...backend import jax_pytree_class, Context
 
 
 @jax_pytree_class
 class SumToSingleLinOp(ProductLinOp[ProductSpace, Codomain]):
-    """
+    r"""
     Sum of component operators from a product domain into a single codomain.
 
-    dom = X1 × ... × Xk
-    cod = Y
+    If ``dom = X1 x ... x Xk`` and ``cod = Y``, component ``parts[i]`` maps
+    ``Xi`` to ``Y``. Forward application sums component outputs in ``Y``;
+    adjoint application returns the tuple of component adjoints.
 
-    ``ops[i] : Xi -> Y``
-    ``apply(x)  = sum_i ops[i](x_i)``
-    ``rapply(y) = (ops[i]^*(y))_i``
+    Parameters
+    ----------
+    dom : ProductSpace
+        Product domain.
+    cod : Space
+        Shared codomain.
+    parts : sequence of LinOp
+        Operators from each product component to ``cod``.
+    ctx : Context, str, or None, optional
+        Backend context specification.
     """
 
     def _check_layout(self) -> None:
+        """Check that every component maps one product part to the shared codomain."""
         if not isinstance(self.dom, ProductSpace):
             raise TypeError("SumToSingleLinOp expects dom to be ProductSpace.")
 
@@ -34,12 +44,13 @@ class SumToSingleLinOp(ProductLinOp[ProductSpace, Codomain]):
             else:
                 raise TypeError(f"Component op {i} must map dom.spaces[{i}] -> cod.")
 
+    @checked_method(in_space="dom", out_space="cod")
     def apply(self, x: Any) -> Any:
-        if self._enable_checks:
-            self.dom._check_member(x)
+        """Apply component operators and sum in the codomain."""
         return self._apply_unchecked(x)
 
     def _apply_unchecked(self, x: Any) -> Any:
+        """Apply component operators without membership checks."""
         if self._num_parts == 2:
             y0 = self._apply_parts[0](x[0])
             y1 = self._apply_parts[1](x[1])
@@ -51,18 +62,46 @@ class SumToSingleLinOp(ProductLinOp[ProductSpace, Codomain]):
             acc = yi if acc is None else (acc + yi if use_direct_add else self.cod.add(yi, acc))
         return acc
 
+    @checked_method(in_space="cod", out_space="dom")
     def rapply(self, y: Any) -> Any:
-        if self._enable_checks:
-            self.cod._check_member(y)
+        """Apply each component adjoint to the shared codomain element."""
         return self._rapply_unchecked(y)
 
     def _rapply_unchecked(self, y: Any) -> Any:
+        """Apply component adjoints without membership checks."""
         if self._num_parts == 2:
             return self._rapply_parts[0](y), self._rapply_parts[1](y)
         return tuple(rapply(y) for rapply in self._rapply_parts)
 
+    def vapply(self, x: Any, batch_space=None) -> Any:
+        """Apply this sum-to-single operator over a product batch."""
+        in_space = self._input_batch_space(self.domain, x, batch_space)
+        if self._enable_checks:
+            in_space._check_member(x)
+        batch_shape = in_space.batch_shape
+        batch_axes = in_space.batch_axes
+        out_space = self.codomain.batch(batch_shape, batch_axes)
+        acc = None
+        for op, xi in zip(self.parts, x):
+            yi = op.vapply(xi, op.domain.batch(batch_shape, batch_axes))
+            acc = yi if acc is None else out_space.add(acc, yi)
+        return acc
+
+    def rvapply(self, y: Any, batch_space=None) -> Any:
+        """Apply the adjoint over a codomain batch."""
+        in_space = self._input_batch_space(self.codomain, y, batch_space)
+        if self._enable_checks:
+            in_space._check_member(y)
+        batch_shape = in_space.batch_shape
+        batch_axes = in_space.batch_axes
+        return tuple(
+            op.rvapply(y, op.codomain.batch(batch_shape, batch_axes))
+            for op in self.parts
+        )
+
     @classmethod
     def from_operators(cls, parts: Tuple[LinOp, ...]) -> SumToSingleLinOp:
+        """Build a sum-to-single operator from component operators."""
         if not parts:
             raise ValueError("Parts must be non-empty.")
 
@@ -72,6 +111,7 @@ class SumToSingleLinOp(ProductLinOp[ProductSpace, Codomain]):
         return cls(dom, cod, parts)
 
     def _convert(self, new_ctx: Context) -> SumToSingleLinOp:
+        """Convert spaces and component operators to ``new_ctx``."""
         new_dom = self.dom.convert(new_ctx)
         new_cod = self.cod.convert(new_ctx)
         new_parts = [op.convert(new_ctx) for op in self.parts]
