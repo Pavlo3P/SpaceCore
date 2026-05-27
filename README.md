@@ -1,275 +1,206 @@
 # SpaceCore
 
-SpaceCore exists for writing numerical algorithms once, independently of the
-array backend.
+[![CI](https://github.com/Pavlo3P/SpaceCore/actions/workflows/ci.yml/badge.svg)](https://github.com/Pavlo3P/SpaceCore/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/spacecore.svg)](https://pypi.org/project/spacecore/)
+[![Python](https://img.shields.io/pypi/pyversions/spacecore.svg)](https://pypi.org/project/spacecore/)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-For example, the same algorithm can run with NumPy for debugging, JAX for
-JIT/autodiff, and Torch for tensor workflows, while preserving the same
-mathematical spaces and linear operators.
+**Backend-agnostic vector spaces, linear operators, and iterative solvers for scientific computing.**
 
-## What problem does SpaceCore solve?
-
-Numerical algorithms often start as clear NumPy code and later need to move to
-JAX, Torch, or another array system. Without a backend boundary, that migration
-usually leaks through the whole implementation: array constructors, dtype
-handling, inner products, sparse support, and linear-operator conventions all
-become backend-specific.
-
-SpaceCore keeps those choices in a `Context`, while algorithms work with
-mathematical objects:
-
-- a `Space` knows the structure and geometry of its elements;
-- a `LinOp` maps one space to another;
-- a `Functional` maps a space element to a scalar;
-- backend-specific array creation and operations live behind `BackendOps`.
-
-The result is ordinary Python code whose core numerical logic is not tied to
-one array library.
-
-Mental model:
-
-```text
-BackendOps -> Context -> Space/LinOp/Functional -> Algorithm
-```
-
-## Write once, run twice
-
-This gradient descent loop uses only the `Space` and `LinOp` APIs. It does not
-know whether the arrays are NumPy arrays, JAX arrays, or Torch tensors.
+Write your algorithm once. Run it on NumPy for development, JAX for GPU acceleration and autodiff, or PyTorch for ML pipelines — without changing a line.
 
 ```python
+import spacecore as sc
 import numpy as np
+
+# Define a space, a linear operator, and solve Ax = b
+ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+X = sc.VectorSpace((100,), ctx)
+A = sc.DenseLinOp(np.random.randn(100, 100) @ np.random.randn(100, 100).T + np.eye(100), X, X, ctx)
+b = ctx.asarray(np.random.randn(100))
+
+result = sc.cg(A, b, tol=1e-8)
+print(f"Converged in {result.num_iters} iterations.")
+```
+
+Same code on JAX with GPU?
+
+```python
+ctx = sc.Context(sc.JaxOps(), dtype=jnp.float64)
+# ... build A and b the same way using jax arrays ...
+result = sc.cg(A, b, tol=1e-8)   # runs on GPU, JIT-compiled
+```
+
+## Install
+
+```bash
+pip install spacecore                # core (numpy only)
+pip install "spacecore[jax]"         # add JAX backend
+pip install "spacecore[torch]"       # add PyTorch backend
+pip install "spacecore[jax,torch]"   # both
+```
+
+Python 3.11+. Built on the [Python Array API](https://data-apis.org/array-api/) standard.
+
+## What is SpaceCore for?
+
+SpaceCore is for people writing numerical algorithms — optimization, inverse problems, eigensolvers, quantum simulation, computational geometry — who don't want to choose between NumPy, JAX, and PyTorch.
+
+### Three things SpaceCore does well
+
+**1. Matrix-free linear operators with algebra.** Write your operator once as `apply` and `adjoint` callables, then compose them:
+
+```python
+# An FFT-based convolution operator, never materialized as a matrix
+K = sc.MatrixFreeLinOp(apply=fft_convolve, rapply=fft_convolve_adjoint, dom=X, cod=X, ctx=ctx)
+grad = sc.MatrixFreeLinOp(apply=finite_diff, rapply=neg_div, dom=X, cod=Y, ctx=ctx)
+
+# Build the regularized system operator using algebra
+lam = 0.01
+system = K.H @ K + lam * grad.H @ grad     # SumLinOp of ComposedLinOps
+rhs = K.H.apply(b)
+
+# Solve — no matrices were assembled
+solution = sc.cg(system, rhs).x
+```
+
+**2. Cross-backend iterative solvers.** CG, LSQR, Lanczos, power iteration — all work uniformly across NumPy, JAX, and PyTorch. JAX backends JIT-compile:
+
+```python
+ctx = sc.Context(sc.JaxOps(), dtype=jnp.complex128)
+A = build_hermitian_operator(ctx)
+
+# Find the smallest eigenpair via Lanczos
+result = sc.lanczos_smallest(A, initial_vector, max_iter=50)
+print(f"E_0 = {result.eigenvalue}, converged={result.converged}")
+```
+
+**3. Custom Hilbert spaces with non-Euclidean geometry.** Subclass `VectorSpace`, override `inner`, and every solver respects your geometry:
+
+```python
+class WeightedL2(sc.VectorSpace):
+    def __init__(self, shape, weights, ctx=None):
+        super().__init__(shape, ctx)
+        self.weights = self.ctx.asarray(weights)
+
+    def inner(self, x, y):
+        return self.ops.vdot(x, self.weights * y)
+
+# CG, LSQR, Lanczos all use this inner product automatically
+```
+
+This is the basis for RKHS spaces, truncated Fock spaces (quantum many-body), function spaces with quadrature, and anything else where the geometry isn't `sum(x * y)`.
+
+## Quick examples
+
+### Conjugate gradient on a symmetric positive-definite system
+
+```python
 import spacecore as sc
 
+ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+X = sc.VectorSpace((1000,), ctx)
+A = sc.DenseLinOp(make_spd_matrix(), X, X, ctx)
+b = ctx.asarray(rhs)
 
-def as_numpy(x):
-    if hasattr(x, "detach"):
-        return x.detach().cpu().numpy()
-    return np.asarray(x)
-
-
-def make_problem(ctx):
-    X = sc.VectorSpace((3,), ctx)
-    Y = sc.VectorSpace((2,), ctx)
-
-    A = sc.DenseLinOp(
-        ctx.asarray([[1.0, 2.0, 3.0], [0.0, 1.0, 0.0]]),
-        dom=X,
-        cod=Y,
-        ctx=ctx,
-    )
-    x = ctx.asarray([1.0, 0.0, -1.0])
-    b = ctx.asarray([0.5, 0.25])
-    return X, Y, A, x, b
-
-
-def gradient_step(X, A, x, b, eta):
-    r = A.apply(x) - b
-    grad = A.rapply(r)
-    return X.axpy(-eta, grad, x)
-
-
-def run_gradient_descent(X, A, x, b, eta, steps):
-    for _ in range(steps):
-        x = gradient_step(X, A, x, b, eta)
-    return x
+result = sc.cg(A, b, tol=1e-10, maxiter=500)
+print(f"x = {result.x}, residual = {result.residual_norm}")
 ```
 
-Run it with NumPy:
+### Least-squares with regularization
 
 ```python
-np_ctx = sc.Context(sc.NumpyOps(), dtype="float64")
-X, Y, A, x, b = make_problem(np_ctx)
-x_numpy = run_gradient_descent(X, A, x, b, eta=0.1, steps=5)
-print(as_numpy(x_numpy))
+# min ||Ax - b||^2 + λ||x||^2  via normal equations
+I = sc.IdentityLinOp(X)
+system = A.H @ A + lam * I
+rhs = A.H.apply(b)
+x_hat = sc.cg(system, rhs).x
 ```
 
-Later, run the same problem and the same `run_gradient_descent` with JAX:
+### Smallest eigenpair of a Hermitian operator
 
 ```python
-import jax
-
-jax.config.update("jax_enable_x64", True)
-
-jax_ctx = sc.Context(sc.JaxOps(), dtype="float64")
-X, Y, A, x, b = make_problem(jax_ctx)
-x_jax = run_gradient_descent(X, A, x, b, eta=0.1, steps=5)
-print(as_numpy(x_jax))
-
-print(np.allclose(as_numpy(x_numpy), as_numpy(x_jax)))
+result = sc.lanczos_smallest(A, initial_vector, max_iter=100)
+print(f"E_0 ≈ {result.eigenvalue}")
+print(f"Krylov dimension used: {result.krylov_dim}")
+print(f"Converged: {result.converged}")
 ```
 
-Run it the same way with Torch:
+### Building a custom operator
 
 ```python
-torch_ctx = sc.Context(sc.TorchOps(), dtype="float64")
-X, Y, A, x, b = make_problem(torch_ctx)
-x_torch = run_gradient_descent(X, A, x, b, eta=0.1, steps=5)
-print(as_numpy(x_torch))
+class Convolution(sc.LinOp):
+    def __init__(self, kernel, space, ctx):
+        super().__init__(space, space, ctx)
+        self.kernel = kernel
 
-print(np.allclose(as_numpy(x_numpy), as_numpy(x_torch)))
+    def apply(self, x):
+        return self.ops.real(self.ops.fft.ifft(self.ops.fft.fft(x) * self.ops.fft.fft(self.kernel)))
+
+    def rapply(self, y):
+        return self.ops.real(self.ops.fft.ifft(self.ops.fft.fft(y) * self.ops.conj(self.ops.fft.fft(self.kernel))))
 ```
 
-All three backends produce the same result:
+This operator works on NumPy, JAX, and PyTorch backends without modification.
 
-```text
-[ 1.184125   0.3411875 -0.447625 ]
-[ 1.184125   0.3411875 -0.447625 ]
-True
-[ 1.184125   0.3411875 -0.447625 ]
-True
-```
+## How is SpaceCore different from...?
 
-If you do not want to enable JAX 64-bit mode, use a supported dtype such as
-`"float32"`.
+**...`scipy.sparse.linalg`?** SciPy's iterative solvers are great but tied to NumPy/SciPy. SpaceCore gives you the same algorithms across NumPy, JAX, and PyTorch, plus operator algebra (`A @ B + lam * I` actually returns a usable operator), plus first-class custom Hilbert spaces.
 
-## What SpaceCore is not
+**...PyLops?** PyLops is excellent for inverse problems but assumes Euclidean vectors and is tied to NumPy/CuPy. SpaceCore handles non-Euclidean geometry (RKHS, weighted spaces, function spaces) and works on JAX/PyTorch for autodiff and ML pipelines.
 
-SpaceCore is not an optimizer and not a NumPy/JAX/Torch replacement. It provides
-backend-aware spaces, operators, and context handling so you can write your own
-algorithms without wiring them to one array library.
+**...QuTiP?** QuTiP is the standard for quantum optics on top of SciPy. SpaceCore lets you build the same quantum operators on JAX or PyTorch for GPU acceleration and gradient-based parameter learning. Less prebuilt, more composable.
 
-## Core concepts
-
-### `Context`
-
-A `Context` specifies how objects are represented:
-
-- backend operations (`NumpyOps`, `JaxOps`, `TorchOps`, etc.);
-- default dtype;
-- runtime validation behavior.
-
-Constructors resolve contexts in priority order: explicit `ctx=...`, then
-contexts inferred from inputs, then the global default context. Advanced code
-that needs this resolution step directly can call
-`spacecore.resolve_context_priority(...)`.
-
-### `Space`
-
-A `Space` describes the structure and geometry of values:
-
-- `VectorSpace` for Euclidean vectors and tensors;
-- `HermitianSpace` for Hermitian or symmetric matrices;
-- `ProductSpace` for Cartesian products of spaces.
-- `BatchSpace` for batched elements such as `X.batch((B,), (0,))`,
-  representing `B` independent copies of `X`.
-
-Algorithms should use space methods such as `zeros`, `add`, `scale`, `axpy`,
-`inner`, `norm`, `flatten`, and `unflatten` instead of hard-coding backend array
-operations.
-
-### `LinOp`
-
-A `LinOp` represents a linear operator between spaces:
-
-- `DenseLinOp` for dense matrix or tensor operators;
-- `SparseLinOp` for sparse operators;
-- `BlockDiagonalLinOp` for block-diagonal product-space operators;
-- `StackedLinOp` for operators from one space into a product space;
-- `SumToSingleLinOp` for operators from a product space into one space.
-
-Operators expose `apply` and `rapply`, so algorithms can use a linear map and
-its adjoint without depending on the storage format.
-
-For batched inputs, `vapply(xs)` and `rvapply(ys)` lift the operator over the
-leading batch axis:
-
-```python
-XB = X.batch(batch_shape=(B,), batch_axes=(0,))
-YB = Y.batch(batch_shape=(B,), batch_axes=(0,))
-
-ys = A.vapply(xs, batch_space=XB)    # xs in XB, ys in YB
-xs2 = A.rvapply(ys, batch_space=YB)  # ys in YB, xs2 in XB
-```
-
-The fallback uses backend `vmap`; dense, sparse, diagonal, identity, zero,
-algebraic, and product-structured operators provide specialized batched paths.
-
-### `Functional`
-
-A `Functional` represents a scalar-valued map on a space. `LinearFunctional`
-covers maps such as `<c, x>`, `MatrixFreeLinearFunctional` wraps a callable
-without storing a representer, and `LinOpQuadraticForm` represents objectives
-such as `0.5 * <x, Qx> + ell(x) + a`.
-
-For batched inputs, `vvalue(xs)` evaluates independently over leading batch
-axes. Quadratic forms that define gradients also expose `grad(x)` and
-`vgrad(xs)`.
-
-## Who should use this?
-
-SpaceCore is aimed at people writing optimization, inverse-problem, optimal
-transport, semidefinite programming, or scientific ML algorithms that should not
-be tied to one backend.
-
-It is most useful when you want the mathematical model to stay stable while the
-execution backend changes.
-
-## Installation
-
-Base install:
-
-```bash
-pip install spacecore
-```
-
-With JAX support:
-
-```bash
-pip install "spacecore[jax]"
-```
-
-With PyTorch support:
-
-```bash
-pip install "spacecore[torch]"
-```
-
-- `spacecore[jax]` installs optional JAX support.
-- GPU users should install the appropriate CUDA-enabled JAX build first,
-  following the official JAX installation guide.
-- `spacecore[torch]` installs optional PyTorch support for `torch.Tensor`
-  backends.
-- GPU users should install the appropriate CUDA-enabled PyTorch build first,
-  following the official PyTorch installation guide.
-
-For local development:
-
-```bash
-python -m pip install -e ".[dev]"
-```
-
-## Full example
-
-For a complete example of regularized optimal transport problem, [see](https://pavlo3p.github.io/SpaceCore/tutorials/regularized_ot.html) 
-the model is written once and solved with NumPy/JAX backends and 
-its [notebook](https://github.com/Pavlo3P/SpaceCore/blob/master/tutorials/6_Regularized_Opt_Transport.ipynb).
+**...`array_api_compat`?** That package gives you portable arrays. SpaceCore builds on top of it to give you portable *vector spaces, linear operators, and iterative algorithms* — the abstractions one level up from arrays.
 
 ## Documentation
 
-The hosted documentation is available [here](https://pavlo3p.github.io/SpaceCore/).
-JAX integration notes are available
-[here](https://pavlo3p.github.io/SpaceCore/design/jax_integration.html).
+[//]: # (- **[Quick Start]&#40;https://pavlo3p.github.io/SpaceCore/quickstart.html&#41;** — 20-line introduction)
+[//]: # (- **[Concepts]&#40;https://pavlo3p.github.io/SpaceCore/concepts.html&#41;** — Spaces, operators, contexts)
+[//]: # (- **[Tutorials]&#40;https://pavlo3p.github.io/SpaceCore/tutorials/index.html&#41;** — Image deblurring, Jaynes-Cummings model, kernel ridge regression)
+- **[API Reference](https://pavlo3p.github.io/SpaceCore/api/index.html)** — Full documentation
 
-The documentation website is built with Sphinx from `docs/source`.
+## Features at a glance
 
-Install the documentation dependencies:
+**Spaces.** `VectorSpace`, `HermitianSpace`, `ProductSpace`, `BatchSpace`. All easy to subclass for custom geometry.
 
-```bash
-python -m pip install -e ".[docs]"
-```
+**Linear operators.** `DenseLinOp`, `SparseLinOp`, `DiagonalLinOp`, `MatrixFreeLinOp`, plus operator algebra (`A @ B`, `A + B`, `2 * A`, `A.H`, `IdentityLinOp`, `ZeroLinOp`).
 
-Build the local HTML documentation:
+**Functionals.** `LinearFunctional`, `QuadraticForm`, with `value`, `grad`, `hess_apply`, and `compose(linop)` for pull-back.
 
-```bash
-sphinx-build -b html docs/source docs/build/html
-```
+**Iterative solvers.** `cg`, `lsqr`, `lanczos_smallest`, `power_iteration`.
 
-## Status
+**Backends.** NumPy (always), JAX (`spacecore[jax]`), PyTorch (`spacecore[torch]`), CuPy (`spacecore[cupy]`). Adding a backend is ~100 LOC; the registry is public.
 
-SpaceCore is currently experimental and under active development. The public API
-may still evolve.
+## Project status
+
+**v0.2 alpha.** API may still change in minor ways. Core abstractions are stable. Suitable for research code; not yet recommended for production deployment.
+
+The library is being developed in the open and is looking for early users and feedback. If you try it on your problem, please open an issue with what worked and what didn't — that's the single most valuable contribution right now.
+
+## Contributing
+
+Bug reports, feature requests, and PRs welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+Specific areas where help is wanted:
+
+- **Tutorials.** If SpaceCore solves your problem, a notebook example helps everyone.
+- **Backends.** CuPy and Dask integration is partial; adding a new backend is well-scoped (~100 LOC).
+- **Performance.** Cross-backend benchmarks on real workloads.
+- **Documentation.** Concept pages, FAQ, gotchas.
 
 ## License
 
-Apache License 2.0
+Apache 2.0. See [LICENSE](LICENSE).
+
+## Citation
+
+If SpaceCore is useful in your research, a citation is appreciated:
+
+```bibtex
+@software{spacecore,
+  author = {Pavlo, Pelikh},
+  title = {SpaceCore: Backend-agnostic vector spaces and linear operators},
+  url = {https://github.com/Pavlo3P/SpaceCore},
+  year = {2026},
+}
