@@ -118,6 +118,12 @@ def cg(
     flow. ``maxiter`` and ``check_every`` should be treated as static JAX
     arguments.
 
+    Iteration also stops when no numerically useful CG update remains: either
+    the squared residual is at machine-precision scale or the curvature
+    ``inner(p, A p)`` is nonpositive/tiny relative to the residual scale. The
+    residual is refreshed before this early exit, so ``converged`` still
+    reflects the returned iterate.
+
     For complex operators, residual norms and step sizes are computed from the
     real part of ``A.domain.inner(x, y)``. SpaceCore's complex inner-product
     convention conjugates the first argument; custom :class:`Space` subclasses
@@ -160,16 +166,17 @@ def cg(
     residual_norm = A.domain.norm(r)
     threshold_value = threshold(A.codomain.norm(b), tol, atol)
     eps = A.ops.asarray(A.ops.eps(A.dtype), dtype=A.dtype)
+    eps2 = eps * eps
 
-    def cond_fun(carry: tuple[Any, Any, Any, Any, Any, int]) -> Any:
-        _x, _r, _p, _rs, res_norm, k = carry
-        return (k < maxiter) & (res_norm > threshold_value)
+    def cond_fun(carry: tuple[Any, Any, Any, Any, Any, int, Any]) -> Any:
+        _x, _r, _p, _rs, res_norm, k, active = carry
+        return (k < maxiter) & (res_norm > threshold_value) & active
 
-    def body_fun(carry: tuple[Any, Any, Any, Any, Any, int]) -> tuple[Any, Any, Any, Any, Any, int]:
-        x, r, p, rs, _residual_norm, k = carry
+    def body_fun(carry: tuple[Any, Any, Any, Any, Any, int, Any]) -> tuple[Any, Any, Any, Any, Any, int, Any]:
+        x, r, p, rs, _residual_norm, k, _active = carry
         Ap = A.apply(p)
         pAp = real_inner(A.domain, p, Ap)
-        active = (rs > eps) & (pAp > eps)
+        active = (rs > eps2) & (pAp > eps * rs)
         alpha = A.ops.where(active, rs * safe_inverse_nonneg(A.ops, pAp), A.ops.zeros_like(rs))
         x_next = A.domain.axpy(alpha, p, x)
         r_next = A.codomain.axpy(-alpha, Ap, r)
@@ -177,18 +184,18 @@ def cg(
         beta = A.ops.where(active, rs_next * safe_inverse_nonneg(A.ops, rs), A.ops.zeros_like(rs_next))
         p_next = A.domain.axpy(beta, p, r_next)
         k_next = k + 1
-        current_residual_norm = A.domain.norm(r_next)
+        should_refresh_residual = should_check_iteration(k_next, maxiter, check_every) | (~active)
         residual_norm_next = A.ops.cond(
-            should_check_iteration(k_next, maxiter, check_every),
-            lambda _: current_residual_norm,
+            should_refresh_residual,
+            lambda _: A.ops.sqrt(rs_next),
             lambda _: _residual_norm,
             A.ops.asarray(0.0, dtype=A.dtype),
         )
-        return x_next, r_next, p_next, rs_next, residual_norm_next, k_next
+        return x_next, r_next, p_next, rs_next, residual_norm_next, k_next, active
 
-    x, _r, _p, _rs, residual_norm, num_iters = A.ops.while_loop(
+    x, _r, _p, _rs, residual_norm, num_iters, _active = A.ops.while_loop(
         cond_fun,
         body_fun,
-        (x, r, p, rs, residual_norm, 0),
+        (x, r, p, rs, residual_norm, 0, A.ops.asarray(True)),
     )
     return CGResult(x, is_converged(residual_norm, threshold_value), num_iters, residual_norm)

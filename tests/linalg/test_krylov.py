@@ -127,6 +127,57 @@ def test_cg_solves_complex_hermitian_positive_definite_system():
     assert bool(to_numpy(result.converged))
 
 
+def test_cg_float64_spd_reaches_residual_below_one_e_minus_ten():
+    sc = importlib.import_module("spacecore")
+    ctx = _ctx(dtype=np.float64)
+    space = sc.VectorSpace((4,), ctx)
+    matrix = np.array(
+        [
+            [6.0, 1.0, 0.5, 0.0],
+            [1.0, 5.0, 0.0, 0.25],
+            [0.5, 0.0, 4.0, 0.75],
+            [0.0, 0.25, 0.75, 3.0],
+        ],
+        dtype=np.float64,
+    )
+    A = sc.DenseLinOp(ctx.asarray(matrix), space, space, ctx)
+    b = ctx.asarray([1.0, -2.0, 0.5, 3.0])
+
+    result = sc.cg(A, b, tol=1e-13, maxiter=20, check_every=1)
+
+    residual = space.norm(A.apply(result.x) - b)
+    assert bool(to_numpy(result.converged))
+    assert float(to_numpy(residual)) < 1e-10
+
+
+def test_cg_regression_removes_sqrt_epsilon_residual_floor():
+    sc = importlib.import_module("spacecore")
+    ctx = _ctx(dtype=np.float64)
+    space = sc.VectorSpace((2,), ctx)
+    A = sc.DiagonalLinOp(ctx.asarray([1.0, 1.0e4]), space, ctx)
+    b = ctx.asarray([1.0, 1.0e-12])
+
+    result = sc.cg(A, b, tol=1e-13, maxiter=4, check_every=1)
+
+    residual = space.norm(A.apply(result.x) - b)
+    assert bool(to_numpy(result.converged))
+    assert float(to_numpy(residual)) < 1e-10
+
+
+def test_cg_final_iteration_refreshes_residual_with_sparse_checks():
+    sc = importlib.import_module("spacecore")
+    ctx = _ctx(dtype=np.float64)
+    space = sc.VectorSpace((2,), ctx)
+    A = sc.DenseLinOp(ctx.asarray([[4.0, 1.0], [1.0, 3.0]]), space, space, ctx)
+    b = ctx.asarray([1.0, 2.0])
+
+    result = sc.cg(A, b, tol=1e-12, maxiter=2, check_every=10)
+
+    actual_residual = space.norm(A.apply(result.x) - b)
+    assert bool(to_numpy(result.converged))
+    np.testing.assert_allclose(to_numpy(result.residual_norm), to_numpy(actual_residual), atol=1e-14)
+
+
 def test_lsqr_solves_complex_least_squares():
     sc = importlib.import_module("spacecore")
     ctx = _ctx(dtype=np.complex128)
@@ -415,7 +466,7 @@ def test_iterative_solvers_poll_convergence_on_check_interval():
     lsqr_result = sc.lsqr(rectangular, ctx.asarray([1.0, 2.0, 3.0]), maxiter=65)
     power_result = sc.power_iteration(diagonal, x0=ctx.asarray([1.0, 1.0]), maxiter=65)
 
-    assert cg_result.num_iters == 64
+    assert cg_result.num_iters < 64
     assert lsqr_result.num_iters == 64
     assert power_result.num_iters == 64
     np.testing.assert_allclose(cg_result.residual_norm, 0.0, atol=1e-12)
