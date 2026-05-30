@@ -32,6 +32,18 @@ def _backend_params():
     ]
 
 
+def _numpy_jax_params():
+    return [
+        pytest.param("numpy", np.float64, id="numpy"),
+        pytest.param(
+            "jax",
+            jax_real_dtype(),
+            marks=pytest.mark.skipif(not has_jax(), reason="jax is not installed"),
+            id="jax",
+        ),
+    ]
+
+
 def _ops_for_backend(name):
     sc = importlib.import_module("spacecore")
     if name == "numpy":
@@ -303,6 +315,49 @@ def test_lanczos_smallest_approximates_smallest_eigenpair(backend_name, dtype):
     assert bool(to_numpy(result.converged))
     np.testing.assert_allclose(to_numpy(result.residual_norm), 0.0, atol=1e-5)
     assert int(to_numpy(result.krylov_dim)) == 2
+
+
+@pytest.mark.parametrize("backend_name,dtype", _numpy_jax_params())
+def test_lanczos_smallest_uses_true_krylov_dim_after_delayed_breakdown(backend_name, dtype):
+    sc = importlib.import_module("spacecore")
+    ctx = _ctx(backend_name, dtype)
+    space = sc.VectorSpace((3,), ctx)
+    op = sc.DiagonalLinOp(ctx.asarray([1.5, 2.0, 3.0]), space, ctx)
+
+    result = sc.lanczos_smallest(
+        op,
+        ctx.asarray([1.0, 1.0, 1.0]),
+        max_iter=20,
+        tol=1e-5,
+        check_every=10,
+    )
+
+    assert int(to_numpy(result.krylov_dim)) <= 3
+    np.testing.assert_allclose(to_numpy(result.eigenvalue), 1.5, rtol=1e-5, atol=1e-5)
+
+
+@pytest.mark.parametrize("backend_name,dtype", _numpy_jax_params())
+def test_lanczos_basis_sentinel_masks_ghost_iterations_after_breakdown(backend_name, dtype):
+    sc = importlib.import_module("spacecore")
+    lanczos_mod = importlib.import_module("spacecore.linalg._lanczos")
+    ctx = _ctx(backend_name, dtype)
+    space = sc.VectorSpace((3,), ctx)
+    op = sc.DiagonalLinOp(ctx.asarray([1.5, 2.0, 3.0]), space, ctx)
+
+    basis = lanczos_mod._lanczos_basis_and_tridiag(
+        op,
+        ctx.asarray([1.0, 1.0, 1.0]),
+        max_iter=20,
+        tol=1e-5,
+        real_dtype=ctx.ops.real_dtype(ctx.dtype),
+        check_every=10,
+    )
+
+    krylov_dim = int(to_numpy(basis.krylov_dim))
+    T_diag = np.diag(to_numpy(basis.T))
+    assert krylov_dim == 3
+    assert np.all(T_diag[krylov_dim:] > 3.0)
+    np.testing.assert_allclose(np.linalg.eigvalsh(to_numpy(basis.T))[0], 1.5, rtol=1e-5, atol=1e-5)
 
 
 def test_lanczos_smallest_returns_result_object():

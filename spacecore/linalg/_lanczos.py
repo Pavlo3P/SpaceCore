@@ -150,17 +150,18 @@ def _lanczos_basis_and_tridiag(
 
     beta0 = ops.asarray(1.0, dtype=real_dtype)
     i0 = 0
+    m_true0 = ops.asarray(max_iter)
     keep_going0 = ops.asarray(True)
 
     full_indices = ops.arange(max_iter + 1)
     coeffs_zero = ops.zeros((max_iter + 1,), dtype=ctx.dtype)
 
-    def cond_fun(state: tuple[Any, Any, Any, Any, Any, Any]) -> Any:
-        i, _V, _alphas, _betas, _beta, keep_going = state
+    def cond_fun(state: tuple[Any, Any, Any, Any, Any, Any, Any]) -> Any:
+        i, _V, _alphas, _betas, _beta, m_true, keep_going = state
         return (i < max_iter) & keep_going
 
-    def body_fun(state: tuple[Any, Any, Any, Any, Any, Any]) -> tuple[Any, Any, Any, Any, Any, Any]:
-        i, V_, alphas_, betas_, beta, keep_going = state
+    def body_fun(state: tuple[Any, Any, Any, Any, Any, Any, Any]) -> tuple[Any, Any, Any, Any, Any, Any, Any]:
+        i, V_, alphas_, betas_, beta, m_true, keep_going = state
 
         v_i = V_[i]
         v_i_member = A.domain.unflatten(v_i)
@@ -205,6 +206,8 @@ def _lanczos_basis_and_tridiag(
         w_member = A.domain.unflatten(w)
         beta_new = A.domain.norm(w_member)
         betas_ = ops.index_set(betas_, (i + 1,), beta_new, copy=True)
+        breakdown = beta_new < tol_s
+        m_true_next = ops.where(breakdown & (m_true == max_iter), i + 1, m_true)
 
         def set_next(V_in: DenseArray) -> DenseArray:
             w_unit = A.domain.flatten(A.domain.scale(safe_inverse_nonneg(ops, beta_new), w_member))
@@ -219,13 +222,14 @@ def _lanczos_basis_and_tridiag(
             ops.asarray(0.0, dtype=real_dtype),
         )
 
-        return i_next, V_, alphas_, betas_, beta_new, keep_going_next
+        return i_next, V_, alphas_, betas_, beta_new, m_true_next, keep_going_next
 
-    i_final, V, alphas, betas, _beta_final, _keep_going = ops.while_loop(
-        cond_fun, body_fun, (i0, V, alphas, betas, beta0, keep_going0)
+    i_final, V, alphas, betas, _beta_final, m_true, _keep_going = ops.while_loop(
+        cond_fun, body_fun, (i0, V, alphas, betas, beta0, m_true0, keep_going0)
     )
-    T = _build_tridiagonal(ops, alphas, betas, max_iter, i_final, real_dtype)
-    return _LanczosBasisResult(V, T, alphas, betas, i_final, v0_norm, tol_s, e0_unit)
+    m = ops.minimum(m_true, ops.asarray(i_final))
+    T = _build_tridiagonal(ops, alphas, betas, max_iter, m, real_dtype)
+    return _LanczosBasisResult(V, T, alphas, betas, m, v0_norm, tol_s, e0_unit)
 
 
 def lanczos_smallest(
