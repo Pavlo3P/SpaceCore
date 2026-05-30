@@ -88,7 +88,7 @@ class Contextual:
         else:
             raise TypeError(f'Expected Context, BackendFamily, str, or None, got {type(ctx)}.')
 
-    def ctx_like(self, base: Context | None, ctx: Context) -> Context:
+    def ctx_with_preserved_base_dtype(self, base: Context | None, ctx: Context) -> Context:
         if isinstance(base, Context):
             return Context(
                 ops=ctx.ops,
@@ -97,7 +97,7 @@ class Contextual:
             )
         return self.default_ctx
 
-    def normalize_context_like(self, base: Context | None, ctx: Context | BackendFamily | str | None = None) -> Context:
+    def normalize_context_enforcing_dtype_policy(self, base: Context | None, ctx: Context | BackendFamily | str | None = None) -> Context:
         """
         Normalize a target context while applying the dtype resolution policy.
 
@@ -126,9 +126,9 @@ class Contextual:
         """
         if self.dtype_resolution_policy is DtypePreservePolicy.keep_native and isinstance(base, Context):
             if ctx is None:
-                return self.ctx_like(base, self.default_ctx)
+                return self.ctx_with_preserved_base_dtype(base, self.default_ctx)
             if isinstance(ctx, Context):
-                return self.ctx_like(base, ctx)
+                return self.ctx_with_preserved_base_dtype(base, ctx)
             if isinstance(ctx, (str, BackendFamily)):
                 ctx = self._backend_key(ctx)
                 ops = self.get_ops(ctx)
@@ -404,10 +404,10 @@ class Contextual:
         * ``silent``: allow backend conversion without warning.
 
         Dtype choice is handled independently by ``dtype_resolution_policy`` via
-        :meth:`normalize_context_like`.
+        :meth:`normalize_context_enforcing_dtype_policy`.
         """
         native_ctx = self.infer_context(x)
-        ctx = self.normalize_context_like(native_ctx, to)
+        ctx = self.normalize_context_enforcing_dtype_policy(native_ctx, to)
         if self.resolution_policy is not ContextPolicy.silent:
             if native_ctx is not None and not self.are_compatible_contexts(native_ctx, ctx):
                 if self.resolution_policy is ContextPolicy.warning:
