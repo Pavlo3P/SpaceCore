@@ -73,31 +73,17 @@ class SumToSingleLinOp(ProductLinOp[ProductSpace, Codomain]):
             return self._rapply_parts[0](y), self._rapply_parts[1](y)
         return tuple(rapply(y) for rapply in self._rapply_parts)
 
-    def vapply(self, x: Any, batch_space=None) -> Any:
+    def vapply(self, x: Any) -> Any:
         """Apply this sum-to-single operator over a product batch."""
-        in_space = self._input_batch_space(self.domain, x, batch_space)
-        if self._enable_checks:
-            in_space._check_member(x)
-        batch_shape = in_space.batch_shape
-        batch_axes = in_space.batch_axes
-        out_space = self.codomain.batch(batch_shape, batch_axes)
         acc = None
         for op, xi in zip(self.parts, x):
-            yi = op.vapply(xi, op.domain.batch(batch_shape, batch_axes))
-            acc = yi if acc is None else out_space.add(acc, yi)
+            yi = op.vapply(xi)
+            acc = yi if acc is None else acc + yi
         return acc
 
-    def rvapply(self, y: Any, batch_space=None) -> Any:
+    def rvapply(self, y: Any) -> Any:
         """Apply the adjoint over a codomain batch."""
-        in_space = self._input_batch_space(self.codomain, y, batch_space)
-        if self._enable_checks:
-            in_space._check_member(y)
-        batch_shape = in_space.batch_shape
-        batch_axes = in_space.batch_axes
-        return tuple(
-            op.rvapply(y, op.codomain.batch(batch_shape, batch_axes))
-            for op in self.parts
-        )
+        return tuple(op.rvapply(y) for op in self.parts)
 
     @classmethod
     def from_operators(cls, parts: Tuple[LinOp, ...]) -> SumToSingleLinOp:

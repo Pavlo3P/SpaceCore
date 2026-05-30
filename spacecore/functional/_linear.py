@@ -3,7 +3,8 @@ from __future__ import annotations
 from abc import abstractmethod
 from typing import Any, Callable
 
-from ._base import Domain, Functional
+from ._base import Domain, Functional, _check_scalar_shape
+from .._batching import _check_batched
 from .._checks import checked_method
 from ..backend import Context, jax_pytree_class
 from ..space import Space
@@ -219,10 +220,10 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
         """
         y = self.value_fn(x)
         if self._enable_checks:
-            self._check_scalar_batch(y, ())
+            _check_scalar_shape(y, ())
         return y
 
-    def vvalue(self, xs: Any, batch_space: Space | None = None) -> Any:
+    def vvalue(self, xs: Any) -> Any:
         """
         Evaluate the scalar functional over a batch of domain elements.
 
@@ -230,8 +231,6 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
         ----------
         xs:
             Batched element of ``self.domain``.
-        batch_space:
-            Optional batch-space descriptor for ``xs``.
 
         Returns
         -------
@@ -240,14 +239,15 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
             batch shape.
         """
         if self.vvalue_fn is None:
-            return super().vvalue(xs, batch_space)
-        in_space = self._input_batch_space(self.domain, xs, batch_space)
-        batch_shape = self._require_leading_batch_axes(in_space)
+            return super().vvalue(xs)
         if self._enable_checks:
-            in_space._check_member(xs)
+            _check_batched(self.domain, xs)
         values = self.vvalue_fn(xs)
         if self._enable_checks:
-            self._check_scalar_batch(values, batch_shape)
+            shape = tuple(getattr(xs, "shape", ()))
+            base = tuple(self.domain.shape)
+            leading = shape if not base else shape[: len(shape) - len(base)]
+            _check_scalar_shape(values, leading)
         return values
 
     def __eq__(self, other: Any) -> bool:

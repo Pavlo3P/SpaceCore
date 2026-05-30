@@ -50,30 +50,16 @@ def test_complex_diagonal_satisfies_adjoint_identity_and_hermitian_predicate():
     assert non_hermitian.is_hermitian() is False
 
 
-def test_vapply_and_rvapply_with_leading_batch_space():
+def test_vapply_and_rvapply_with_leading_batch():
     sc = importlib.import_module("spacecore")
     ctx = _ctx()
     space = sc.VectorSpace((3,), ctx)
     op = sc.DiagonalLinOp(ctx.asarray([1.0, 2.0, 3.0]), space, ctx)
     xs = ctx.asarray([[1.0, 2.0, 3.0], [4.0, -1.0, 0.5]])
-    batch_space = space.batch((2,), (0,))
 
     expected = ctx.asarray([[1.0, 4.0, 9.0], [4.0, -2.0, 1.5]])
-    np.testing.assert_allclose(op.vapply(xs, batch_space), expected)
-    np.testing.assert_allclose(op.rvapply(xs, batch_space), expected)
-
-
-def test_vapply_and_rvapply_with_non_leading_batch_space():
-    sc = importlib.import_module("spacecore")
-    ctx = _ctx()
-    space = sc.VectorSpace((3,), ctx)
-    op = sc.DiagonalLinOp(ctx.asarray([1.0, 2.0, 3.0]), space, ctx)
-    xs = ctx.asarray([[1.0, 4.0], [2.0, -1.0], [3.0, 0.5]])
-    batch_space = space.batch((2,), (1,))
-
-    expected = ctx.asarray([[1.0, 4.0], [4.0, -2.0], [9.0, 1.5]])
-    np.testing.assert_allclose(op.vapply(xs, batch_space), expected)
-    np.testing.assert_allclose(op.rvapply(xs, batch_space), expected)
+    np.testing.assert_allclose(op.vapply(xs), expected)
+    np.testing.assert_allclose(op.rvapply(xs), expected)
 
 
 def test_to_dense_matches_numpy_diagonal_for_tensor_space():

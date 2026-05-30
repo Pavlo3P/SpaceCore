@@ -58,7 +58,6 @@ from .linalg import (
     power_iteration,
 )
 from .space import (
-    BatchSpace,
     BackendCheck,
     DTypeCheck,
     HermitianCheck,
@@ -81,8 +80,6 @@ from ._contextual import (
     set_context, get_context,
     resolve_context_priority,
     register_ops,
-    set_resolution_policy, set_dtype_resolution_policy,
-    get_resolution_policy, get_dtype_resolution_policy,
     normalize_ops, normalize_context,
 )
 
@@ -137,7 +134,6 @@ __all__ = [
     "ProductComponentCheck",
     "ProductStructureCheck",
     "ShapeCheck",
-    "BatchSpace",
     "VectorSpace",
     "HermitianSpace",
     "ProductSpace",
@@ -156,10 +152,6 @@ __all__ = [
     "get_context",
     "resolve_context_priority",
     "register_ops",
-    "set_resolution_policy",
-    "set_dtype_resolution_policy",
-    "get_resolution_policy",
-    "get_dtype_resolution_policy",
     "normalize_ops",
     "normalize_context",
 ]

@@ -34,13 +34,13 @@ def test_vector_space_check_member():
         X.check_member(np.asarray([1.,2.,3.], dtype=np.float32))
 
 
-def test_vector_space_convert_changes_backend_not_native_dtype():
+def test_vector_space_convert_uses_target_dtype():
     sc = importlib.import_module("spacecore")
     src = sc.Context(sc.NumpyOps(), dtype=np.float32)
     dst = sc.Context(sc.NumpyOps(), dtype=np.float64)
     X = sc.VectorSpace((2,), src)
     Y = X.convert(dst)
-    assert Y.dtype == X.dtype
+    assert Y.dtype == dst.dtype
     assert Y.ctx.ops.family == dst.ops.family
 
 

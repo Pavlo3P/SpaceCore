@@ -37,13 +37,13 @@ def test_product_space_check_member():
         P.check_member((ctx.asarray([1.,2.]),))
 
 
-def test_product_space_preserves_component_native_dtypes():
+def test_product_space_uses_resolved_context_dtype_for_components():
     sc = importlib.import_module("spacecore")
     c1 = sc.Context(sc.NumpyOps(), dtype=np.float32)
     c2 = sc.Context(sc.NumpyOps(), dtype=np.float64)
     P = sc.ProductSpace((sc.VectorSpace((2,), c1), sc.VectorSpace((3,), c2)), c2)
     assert P.dtype == np.dtype(np.float64)
-    assert [sp.dtype for sp in P.spaces] == [np.dtype(np.float32), np.dtype(np.float64)]
+    assert [sp.dtype for sp in P.spaces] == [np.dtype(np.float64), np.dtype(np.float64)]
 
 
 def test_product_space_convert_changes_backend_only_if_supported():

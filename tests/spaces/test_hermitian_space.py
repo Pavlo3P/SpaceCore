@@ -36,11 +36,11 @@ def test_hermitian_eigh_and_psd_proj():
     assert np.min(ev) >= -1e-8
 
 
-def test_hermitian_convert_preserves_native_dtype():
+def test_hermitian_convert_uses_target_dtype():
     sc = importlib.import_module("spacecore")
     H = sc.HermitianSpace(2, ctx=sc.Context(sc.NumpyOps(), dtype=np.complex64))
     K = H.convert(sc.Context(sc.NumpyOps(), dtype=np.complex128))
-    assert K.dtype == H.dtype
+    assert K.dtype == np.dtype(np.complex128)
 
 
 def test_hermitian_convert_to_jax_if_supported():

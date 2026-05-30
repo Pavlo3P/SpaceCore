@@ -5,6 +5,7 @@ from math import prod
 from typing import Any
 
 from ._base import LinOp
+from .._batching import _check_batched
 from .._checks import checked_method
 from ..backend import Context, jax_pytree_class
 from ..space import VectorSpace
@@ -83,38 +84,17 @@ class DiagonalLinOp(LinOp[VectorSpace, VectorSpace]):
         """Apply the adjoint diagonal operator to ``y``."""
         return self._diag_adjoint * y
 
-    def _reshape_diagonal_for_batch(self, diagonal: DenseArray, batch_space: Any) -> DenseArray:
-        """Broadcast diagonal values over a batch space."""
-        batch_shape = tuple(getattr(batch_space, "batch_shape", ()))
-        batch_axes = tuple(getattr(batch_space, "batch_axes", ()))
-        total_ndim = len(self.domain.shape) + len(batch_shape)
-        base_axes = [axis for axis in range(total_ndim) if axis not in batch_axes]
-        shape = [1] * total_ndim
-        for axis, dim in zip(base_axes, self.domain.shape, strict=True):
-            shape[axis] = dim
-        return self.ops.reshape(diagonal, tuple(shape))
+    def vapply(self, xs: DenseArray) -> DenseArray:
+        """Apply over a leading batch axis. Input must have shape ``(N,) + domain.shape``; use ``moveaxis`` for other layouts."""
+        if self._enable_checks:
+            _check_batched(self.domain, xs)
+        return self.diagonal * xs
 
-    def vapply(self, xs: DenseArray, batch_space=None) -> DenseArray:
-        """Apply this diagonal operator over a batch of domain elements."""
-        in_space = self._input_batch_space(self.domain, xs, batch_space)
+    def rvapply(self, ys: DenseArray) -> DenseArray:
+        """Apply the adjoint over a leading batch axis. Input must have shape ``(N,) + codomain.shape``; use ``moveaxis`` for other layouts."""
         if self._enable_checks:
-            in_space._check_member(xs)
-        diagonal = self._reshape_diagonal_for_batch(self.diagonal, in_space)
-        ys = diagonal * xs
-        if self._enable_checks:
-            self._output_batch_space(self.codomain, in_space)._check_member(ys)
-        return ys
-
-    def rvapply(self, ys: DenseArray, batch_space=None) -> DenseArray:
-        """Apply the adjoint over a batch of codomain elements."""
-        in_space = self._input_batch_space(self.codomain, ys, batch_space)
-        if self._enable_checks:
-            in_space._check_member(ys)
-        diagonal = self._reshape_diagonal_for_batch(self._diag_adjoint, in_space)
-        xs = diagonal * ys
-        if self._enable_checks:
-            self._output_batch_space(self.domain, in_space)._check_member(xs)
-        return xs
+            _check_batched(self.codomain, ys)
+        return self._diag_adjoint * ys
 
     def to_dense(self) -> DenseArray:
         """Return a dense tensor representation of this diagonal operator."""

@@ -5,6 +5,7 @@ from math import prod
 from typing import Any
 
 from ._base import LinOp, Domain, Codomain
+from .._batching import _check_batched
 from .._checks import checked_method
 from ..space import VectorSpace
 from ..types import DenseArray, SparseArray
@@ -122,94 +123,21 @@ class SparseLinOp(LinOp):
             return x1 if self._dom_is_flat else x1.reshape(self.dom.shape)
         return self.dom.unflatten(x1)
 
-    @staticmethod
-    def _batch_shape_from_input(value: DenseArray, base_ndim: int) -> tuple[int, ...]:
-        shape = tuple(value.shape)
-        return shape if base_ndim == 0 else shape[:-base_ndim]
-
-    @staticmethod
-    def _is_leading_batch(batch_space: Any) -> bool:
-        if batch_space is None:
-            return True
-        batch_shape = tuple(getattr(batch_space, "batch_shape", ()))
-        batch_axes = tuple(getattr(batch_space, "batch_axes", ()))
-        return batch_axes == tuple(range(len(batch_shape)))
-
-    @staticmethod
-    def _batch_shape_from_space(batch_space: Any) -> tuple[int, ...]:
-        return tuple(getattr(batch_space, "batch_shape"))
-
-    def _vapply_unchecked_leading(
-        self,
-        xs: DenseArray,
-        batch_shape: tuple[int, ...],
-    ) -> DenseArray:
+    def vapply(self, xs: DenseArray) -> DenseArray:
+        if self._enable_checks:
+            _check_batched(self.domain, xs)
+        lead = tuple(xs.shape[: len(xs.shape) - len(self.dom.shape)])
         xs2 = xs.reshape((-1, self._dom_size))
         ys2 = (self.A @ xs2.T).T
-        if self._cod_vector_fast_path:
-            if self._cod_is_flat and tuple(ys2.shape[:-1]) == batch_shape:
-                return ys2
-            return ys2.reshape(batch_shape + tuple(self.cod.shape))
-        ys_flat = ys2.reshape(batch_shape + (self._cod_size,))
-        return self.cod.batch(batch_shape, tuple(range(len(batch_shape)))).unflatten(ys_flat)
+        return ys2.reshape(lead + tuple(self.cod.shape))
 
-    def _rvapply_unchecked_leading(
-        self,
-        ys: DenseArray,
-        batch_shape: tuple[int, ...],
-    ) -> DenseArray:
+    def rvapply(self, ys: DenseArray) -> DenseArray:
+        if self._enable_checks:
+            _check_batched(self.codomain, ys)
+        lead = tuple(ys.shape[: len(ys.shape) - len(self.cod.shape)])
         ys2 = ys.reshape((-1, self._cod_size))
         xs2 = (self._AH @ ys2.T).T
-        if self._dom_vector_fast_path:
-            if self._dom_is_flat and tuple(xs2.shape[:-1]) == batch_shape:
-                return xs2
-            return xs2.reshape(batch_shape + tuple(self.dom.shape))
-        xs_flat = xs2.reshape(batch_shape + (self._dom_size,))
-        return self.dom.batch(batch_shape, tuple(range(len(batch_shape)))).unflatten(xs_flat)
-
-    def _vapply_unchecked(self, xs: DenseArray, batch_space=None) -> DenseArray:
-        if not self._is_leading_batch(batch_space):
-            return self._fallback_vapply(xs, batch_space)
-        batch_shape = (
-            self._batch_shape_from_input(xs, len(self.domain.shape))
-            if batch_space is None
-            else self._batch_shape_from_space(batch_space)
-        )
-        return self._vapply_unchecked_leading(xs, batch_shape)
-
-    def _rvapply_unchecked(self, ys: DenseArray, batch_space=None) -> DenseArray:
-        if not self._is_leading_batch(batch_space):
-            return self._fallback_rvapply(ys, batch_space)
-        batch_shape = (
-            self._batch_shape_from_input(ys, len(self.codomain.shape))
-            if batch_space is None
-            else self._batch_shape_from_space(batch_space)
-        )
-        return self._rvapply_unchecked_leading(ys, batch_shape)
-
-    def vapply(self, xs: DenseArray, batch_space=None) -> DenseArray:
-        in_space = self._input_batch_space(self.domain, xs, batch_space)
-        if tuple(getattr(in_space, "batch_axes", ())) != tuple(range(len(in_space.batch_shape))):
-            return self._fallback_vapply(xs, batch_space)
-        if self._enable_checks:
-            in_space._check_member(xs)
-        batch_shape = tuple(in_space.batch_shape)
-        ys = self._vapply_unchecked_leading(xs, batch_shape)
-        if self._enable_checks:
-            self._output_batch_space(self.codomain, in_space)._check_member(ys)
-        return ys
-
-    def rvapply(self, ys: DenseArray, batch_space=None) -> DenseArray:
-        in_space = self._input_batch_space(self.codomain, ys, batch_space)
-        if tuple(getattr(in_space, "batch_axes", ())) != tuple(range(len(in_space.batch_shape))):
-            return self._fallback_rvapply(ys, batch_space)
-        if self._enable_checks:
-            in_space._check_member(ys)
-        batch_shape = tuple(in_space.batch_shape)
-        xs = self._rvapply_unchecked_leading(ys, batch_shape)
-        if self._enable_checks:
-            self._output_batch_space(self.domain, in_space)._check_member(xs)
-        return xs
+        return xs2.reshape(lead + tuple(self.dom.shape))
 
     def to_dense(self) -> DenseArray:
         """

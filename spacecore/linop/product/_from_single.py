@@ -73,30 +73,16 @@ class StackedLinOp(ProductLinOp[Domain, ProductSpace]):
             acc = xi if acc is None else (acc + xi if use_direct_add else self.dom.add(xi, acc))
         return acc
 
-    def vapply(self, x: Any, batch_space=None) -> Any:
+    def vapply(self, x: Any) -> Any:
         """Apply this stacked operator over a batch."""
-        in_space = self._input_batch_space(self.domain, x, batch_space)
-        if self._enable_checks:
-            in_space._check_member(x)
-        batch_shape = in_space.batch_shape
-        batch_axes = in_space.batch_axes
-        return tuple(
-            op.vapply(x, op.domain.batch(batch_shape, batch_axes))
-            for op in self.parts
-        )
+        return tuple(op.vapply(x) for op in self.parts)
 
-    def rvapply(self, y: Any, batch_space=None) -> Any:
+    def rvapply(self, y: Any) -> Any:
         """Apply the adjoint stacked operator over a product batch."""
-        in_space = self._input_batch_space(self.codomain, y, batch_space)
-        if self._enable_checks:
-            in_space._check_member(y)
-        batch_shape = in_space.batch_shape
-        batch_axes = in_space.batch_axes
-        out_space = self.domain.batch(batch_shape, batch_axes)
         acc = None
         for op, yi in zip(self.parts, y):
-            xi = op.rvapply(yi, op.codomain.batch(batch_shape, batch_axes))
-            acc = xi if acc is None else out_space.add(acc, xi)
+            xi = op.rvapply(yi)
+            acc = xi if acc is None else acc + xi
         return acc
 
     @classmethod

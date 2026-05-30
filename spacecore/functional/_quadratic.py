@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from ._base import Domain, Functional
+from ._base import Domain, Functional, _check_scalar_shape
 from ._linear import LinearFunctional
+from .._batching import _check_batched
 from .._checks import checked_method
 from .._contextual import resolve_context_priority
 from ..backend import Context, jax_pytree_class
 from ..linop import LinOp
-from ..space import Space
 
 
 class QuadraticForm(Functional[Domain]):
@@ -31,15 +31,13 @@ class QuadraticForm(Functional[Domain]):
         """Gradient at ``x`` when available."""
         raise NotImplementedError(f"{type(self).__name__} does not define grad.")
 
-    def vgrad(self, xs: Any, batch_space: Space | None = None) -> Any:
+    def vgrad(self, xs: Any) -> Any:
         """Evaluate ``grad`` independently over leading batch axes."""
-        in_space = self._input_batch_space(self.domain, xs, batch_space)
-        batch_shape = self._require_leading_batch_axes(in_space)
         if self._enable_checks:
-            in_space._check_member(xs)
-        grads = self._vmap_leading(self.grad, len(batch_shape))(xs)
+            _check_batched(self.domain, xs)
+        grads = self.ops.vmap(self.grad, in_axes=0, out_axes=0)(xs)
         if self._enable_checks:
-            self._output_batch_space(self.domain, in_space)._check_member(grads)
+            _check_batched(self.domain, grads)
         return grads
 
 
@@ -110,7 +108,7 @@ class LinOpQuadraticForm(QuadraticForm[Domain]):
         self.Q = Q
         self.linear = linear
         self.a = self.ctx.asarray(a)
-        self._check_scalar_batch(self.a, ())
+        _check_scalar_shape(self.a, ())
 
     @staticmethod
     def _check_hermitian_structure(Q: LinOp[Domain, Domain]) -> None:

@@ -2,7 +2,6 @@ import numpy as np
 import pytest
 
 import spacecore as sc
-from spacecore._contextual import ContextConversionError
 
 from tests._helpers import has_jax, jax_real_dtype
 
@@ -114,20 +113,6 @@ def test_enable_checks_rejects_invalid_conversion_target():
 
     with pytest.raises(TypeError, match="Expected Context, BackendFamily, str, or None"):
         space.convert(object())
-
-
-@pytest.mark.skipif(not has_jax(), reason="jax is not installed")
-def test_enable_checks_rejects_forbidden_cross_backend_conversion():
-    original_policy = sc.get_resolution_policy()
-    try:
-        sc.set_resolution_policy("error")
-        ctx = _checked_ctx(jax_real_dtype())
-        space = sc.VectorSpace((2,), ctx)
-
-        with pytest.raises(ContextConversionError, match="Conversion from .* is forbidden"):
-            space.convert(sc.Context(sc.JaxOps(), dtype=jax_real_dtype(), enable_checks=True))
-    finally:
-        sc.set_resolution_policy(original_policy)
 
 
 def test_disabled_checks_skip_space_membership_validations():

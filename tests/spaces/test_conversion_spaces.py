@@ -3,16 +3,16 @@ import numpy as np
 from tests._helpers import has_jax, jax_real_dtype
 
 
-def test_vector_and_hermitian_conversion_preserve_shape_and_native_dtype():
+def test_vector_and_hermitian_conversion_use_target_dtype():
     sc = importlib.import_module("spacecore")
     src = sc.Context(sc.NumpyOps(), dtype=np.float32)
     dst = sc.Context(sc.NumpyOps(), dtype=np.float64)
     X = sc.VectorSpace((2,3), src)
     Y = X.convert(dst)
-    assert Y.shape == X.shape and Y.dtype == X.dtype
+    assert Y.shape == X.shape and Y.dtype == dst.dtype
     H = sc.HermitianSpace(2, ctx=src)
     K = H.convert(dst)
-    assert K.shape == H.shape and K.dtype == H.dtype
+    assert K.shape == H.shape and K.dtype == dst.dtype
 
 
 def test_product_conversion_preserves_component_shapes():

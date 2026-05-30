@@ -59,15 +59,13 @@ def test_dense_and_sparse_batched_lifting_fast_paths_without_checks():
     sparse = ctx.assparse(sps.csr_matrix([[1.0, 0.0], [0.0, 4.0], [5.0, 6.0]]))
     dense_op = sc.DenseLinOp(matrix, dom, cod, ctx)
     sparse_op = sc.SparseLinOp(sparse, dom, cod, ctx)
-    batch_dom = dom.batch((3,), (0,))
-    batch_cod = cod.batch((2,), (0,))
     xs = ctx.asarray([[7.0, 8.0], [1.0, -1.0], [0.5, 2.0]])
     ys = ctx.asarray([[1.0, -1.0, 2.0], [0.0, 3.0, -2.0]])
 
-    assert np.allclose(dense_op.vapply(xs, batch_dom), np.asarray(xs) @ np.asarray(matrix).T)
-    assert np.allclose(dense_op.rvapply(ys, batch_cod), np.asarray(ys) @ np.asarray(matrix))
-    assert np.allclose(sparse_op.vapply(xs, batch_dom), (sparse @ np.asarray(xs).T).T)
-    assert np.allclose(sparse_op.rvapply(ys, batch_cod), (sparse.T @ np.asarray(ys).T).T)
+    assert np.allclose(dense_op.vapply(xs), np.asarray(xs) @ np.asarray(matrix).T)
+    assert np.allclose(dense_op.rvapply(ys), np.asarray(ys) @ np.asarray(matrix))
+    assert np.allclose(sparse_op.vapply(xs), (sparse @ np.asarray(xs).T).T)
+    assert np.allclose(sparse_op.rvapply(ys), (sparse.T @ np.asarray(ys).T).T)
 
 
 def test_diagonal_identity_zero_sum_composed_and_adjoint_batched_lifting():

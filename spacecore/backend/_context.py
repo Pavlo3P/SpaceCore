@@ -3,7 +3,6 @@ from typing import Any
 
 from ._ops import BackendOps
 from ..types import DenseArray, SparseArray, DType, ArrayLike
-from .._contextual import normalize_ops
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,8 +44,7 @@ class Context:
     ``Context`` is frozen and slot-based. Methods that convert values return new
     backend arrays or sparse objects; they do not mutate the context itself.
 
-    Equality compares backend family and ``enable_checks``. It currently does
-    not compare ``dtype``.
+    Equality compares backend family, dtype, and ``enable_checks``.
 
     Examples
     --------
@@ -73,6 +71,8 @@ class Context:
         TypeError
             If ``ops`` is not a :class:`BackendOps` instance.
         """
+        from .._contextual._state import normalize_ops
+
         try:
             ops = normalize_ops(self.ops)
         except TypeError:
@@ -199,7 +199,7 @@ class Context:
 
     def __eq__(self, other: Any) -> bool:
         """
-        Return whether another object has the same effective backend policy.
+        Return whether another object has the same execution context.
 
         Parameters
         ----------
@@ -210,8 +210,12 @@ class Context:
         -------
         bool
             ``True`` when ``other`` is a ``Context`` with equal backend
-            operations and equal ``enable_checks``.
+            operations, dtype, and ``enable_checks``.
         """
         if isinstance(other, Context):
-            return self.ops == other.ops and self.enable_checks == other.enable_checks
+            return (
+                self.ops == other.ops
+                and self.dtype == other.dtype
+                and self.enable_checks == other.enable_checks
+            )
         return False

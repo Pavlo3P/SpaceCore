@@ -29,8 +29,6 @@ def test_expected_names_are_exported():
         "VectorSpace", "HermitianSpace", "ProductSpace", "Space",
         "DenseArray", "SparseArray", "ArrayLike",
         "set_context", "get_context", "resolve_context_priority", "register_ops",
-        "set_resolution_policy", "set_dtype_resolution_policy",
-        "get_resolution_policy", "get_dtype_resolution_policy",
         "LanczosResult", "lanczos_smallest",
         "ExpmMultiplyResult", "expm_multiply",
     }
