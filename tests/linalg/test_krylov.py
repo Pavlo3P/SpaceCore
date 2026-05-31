@@ -303,6 +303,76 @@ def test_power_iteration_estimates_dominant_eigenpair(backend_name, dtype):
     assert bool(to_numpy(result.converged))
 
 
+def test_power_iteration_uses_one_application_per_iteration_after_initial_product():
+    sc = importlib.import_module("spacecore")
+    ctx = _ctx()
+    space = sc.VectorSpace((2,), ctx)
+    matrix = ctx.asarray([[2.0, 0.0], [0.0, 5.0]])
+    calls = {"apply": 0}
+
+    def apply(x):
+        calls["apply"] += 1
+        return matrix @ x
+
+    A = sc.MatrixFreeLinOp(apply, apply, space, space, ctx)
+
+    result = sc.power_iteration(A, x0=ctx.asarray([1.0, 1.0]), tol=1e-4, maxiter=60, check_every=1000)
+
+    assert calls["apply"] == int(result.num_iters) + 1
+    np.testing.assert_allclose(to_numpy(result.eigenvalue), 5.0, rtol=1e-4, atol=1e-4)
+    assert bool(to_numpy(result.converged))
+
+
+def test_power_iteration_converges_for_negative_dominant_eigenvalue():
+    sc = importlib.import_module("spacecore")
+    ctx = _ctx()
+    space = sc.VectorSpace((2,), ctx)
+    A = sc.DiagonalLinOp(ctx.asarray([-7.0, 2.0]), space, ctx)
+
+    result = sc.power_iteration(A, x0=ctx.asarray([1.0, 1.0]), tol=1e-8, maxiter=60)
+
+    np.testing.assert_allclose(to_numpy(result.eigenvalue), -7.0, rtol=1e-8, atol=1e-8)
+    np.testing.assert_allclose(np.abs(to_numpy(result.eigenvector)), [1.0, 0.0], atol=1e-8)
+    assert bool(to_numpy(result.converged))
+
+
+def test_power_iteration_zero_operator_does_not_produce_nan():
+    sc = importlib.import_module("spacecore")
+    ctx = _ctx()
+    space = sc.VectorSpace((2,), ctx)
+    A = sc.DiagonalLinOp(ctx.asarray([0.0, 0.0]), space, ctx)
+
+    result = sc.power_iteration(A, x0=ctx.asarray([1.0, 1.0]), tol=1e-8, maxiter=10)
+
+    assert np.all(np.isfinite(to_numpy(result.eigenvector)))
+    np.testing.assert_allclose(to_numpy(result.eigenvalue), 0.0, atol=1e-12)
+    np.testing.assert_allclose(to_numpy(result.residual_norm), 0.0, atol=1e-12)
+    assert bool(to_numpy(result.converged))
+
+
+def test_power_iteration_rejects_known_non_hermitian_operator():
+    sc = importlib.import_module("spacecore")
+    ctx = _ctx()
+    space = sc.VectorSpace((2,), ctx)
+    A = sc.DenseLinOp(ctx.asarray([[1.0, 2.0], [0.0, 3.0]]), space, space, ctx)
+
+    with pytest.raises(ValueError, match="Hermitian"):
+        sc.power_iteration(A)
+
+
+def test_power_iteration_large_check_every_no_longer_delays_convergence():
+    sc = importlib.import_module("spacecore")
+    ctx = _ctx()
+    space = sc.VectorSpace((2,), ctx)
+    A = sc.DiagonalLinOp(ctx.asarray([1.0, 5.0]), space, ctx)
+
+    result = sc.power_iteration(A, x0=ctx.asarray([0.0, 1.0]), tol=1e-12, maxiter=65, check_every=10_000)
+
+    assert int(to_numpy(result.num_iters)) == 1
+    np.testing.assert_allclose(to_numpy(result.eigenvalue), 5.0, rtol=1e-12, atol=1e-12)
+    assert bool(to_numpy(result.converged))
+
+
 def test_power_iteration_accepts_quadratic_form_hessian_action():
     sc = importlib.import_module("spacecore")
     ctx = _ctx()
@@ -323,6 +393,145 @@ def test_power_iteration_accepts_quadratic_form_hessian_action():
     )
 
 
+def test_power_iteration_quadratic_form_uses_fast_scalar_diagnostics():
+    sc = importlib.import_module("spacecore")
+    ctx = _ctx()
+    space = sc.VectorSpace((2,), ctx)
+
+    class CountingQuadraticForm(sc.QuadraticForm):
+        def __init__(self):
+            super().__init__(space, ctx)
+            self.diagonal = ctx.asarray([2.0, 5.0])
+            self.calls = {"hess_apply": 0, "hess_quad": 0, "hess_residual_norm": 0}
+
+        def value(self, x):
+            return 0.5 * self.domain.inner(x, self.hess_apply(x))
+
+        def grad(self, x):
+            return self.hess_apply(x)
+
+        def hess_apply(self, x):
+            self.calls["hess_apply"] += 1
+            return self.diagonal * x
+
+        def hess_quad(self, x, Hx=None):
+            self.calls["hess_quad"] += 1
+            if Hx is None:
+                Hx = self.diagonal * x
+            np.testing.assert_allclose(to_numpy(Hx), to_numpy(self.diagonal * x))
+            return self.domain.inner(x, Hx)
+
+        def hess_residual_norm(self, x, Hx, eigenvalue):
+            self.calls["hess_residual_norm"] += 1
+            return self.domain.norm(Hx - eigenvalue * x)
+
+        def tree_flatten(self):
+            return (), ()
+
+        @classmethod
+        def tree_unflatten(cls, aux, children):
+            return cls()
+
+    q = CountingQuadraticForm()
+
+    result = sc.power_iteration(q, x0=ctx.asarray([1.0, 1.0]), tol=1e-4, maxiter=60)
+
+    assert q.calls["hess_apply"] == int(result.num_iters) + 1
+    assert q.calls["hess_quad"] == int(result.num_iters)
+    assert q.calls["hess_residual_norm"] == int(result.num_iters)
+    np.testing.assert_allclose(to_numpy(result.eigenvalue), 5.0, rtol=1e-4, atol=1e-4)
+    assert bool(to_numpy(result.converged))
+
+
+def test_power_iteration_quadratic_form_falls_back_to_domain_inner():
+    sc = importlib.import_module("spacecore")
+    ctx = _ctx()
+
+    class CountingVectorSpace(sc.VectorSpace):
+        def __init__(self, shape, ctx):
+            super().__init__(shape, ctx)
+            self.inner_calls = 0
+
+        def inner(self, x, y):
+            self.inner_calls += 1
+            return super().inner(x, y)
+
+        def _convert(self, new_ctx):
+            if new_ctx == self.ctx:
+                return self
+            return CountingVectorSpace(self.shape, new_ctx)
+
+    space = CountingVectorSpace((2,), ctx)
+
+    class FallbackQuadraticForm(sc.QuadraticForm):
+        def __init__(self):
+            super().__init__(space, ctx)
+            self.diagonal = ctx.asarray([2.0, 5.0])
+            self.hess_apply_calls = 0
+
+        def value(self, x):
+            return 0.5 * self.domain.inner(x, self.hess_apply(x))
+
+        def grad(self, x):
+            return self.hess_apply(x)
+
+        def hess_apply(self, x):
+            self.hess_apply_calls += 1
+            return self.diagonal * x
+
+        def tree_flatten(self):
+            return (), ()
+
+        @classmethod
+        def tree_unflatten(cls, aux, children):
+            return cls()
+
+    q = FallbackQuadraticForm()
+
+    result = sc.power_iteration(q, x0=ctx.asarray([1.0, 1.0]), tol=1e-4, maxiter=60)
+
+    assert q.hess_apply_calls == int(result.num_iters) + 1
+    assert q.domain.inner_calls >= int(result.num_iters)
+    np.testing.assert_allclose(to_numpy(result.eigenvalue), 5.0, rtol=1e-4, atol=1e-4)
+
+
+def test_power_iteration_quadratic_form_fast_diagnostics_match_dense_diagonal():
+    sc = importlib.import_module("spacecore")
+    ctx = _ctx()
+    space = sc.VectorSpace((3,), ctx)
+    diagonal = ctx.asarray([1.0, 3.0, 7.0])
+
+    class FastDiagonalQuadraticForm(sc.QuadraticForm):
+        def value(self, x):
+            return 0.5 * self.domain.inner(x, self.hess_apply(x))
+
+        def grad(self, x):
+            return self.hess_apply(x)
+
+        def hess_apply(self, x):
+            return diagonal * x
+
+        def hess_quad(self, x, Hx=None):
+            if Hx is None:
+                Hx = diagonal * x
+            return self.domain.inner(x, Hx)
+
+        def tree_flatten(self):
+            return (), ()
+
+        @classmethod
+        def tree_unflatten(cls, aux, children):
+            return cls(space, ctx)
+
+    q = FastDiagonalQuadraticForm(space, ctx)
+
+    result = sc.power_iteration(q, x0=ctx.asarray([1.0, 1.0, 1.0]), tol=1e-8, maxiter=80)
+
+    np.testing.assert_allclose(to_numpy(result.eigenvalue), 7.0, rtol=1e-8, atol=1e-8)
+    np.testing.assert_allclose(np.abs(to_numpy(result.eigenvector)), [0.0, 0.0, 1.0], atol=1e-8)
+    assert bool(to_numpy(result.converged))
+
+
 def test_power_iteration_dispatches_quadratic_form_before_core(monkeypatch):
     sc = importlib.import_module("spacecore")
     power_mod = importlib.import_module("spacecore.linalg._power")
@@ -333,7 +542,7 @@ def test_power_iteration_dispatches_quadratic_form_before_core(monkeypatch):
     x0 = ctx.asarray([1.0, 0.0])
     captured = {}
 
-    def fake_core(action, x, tol, maxiter, check_every):
+    def fake_core(action, x, tol, maxiter):
         captured["action"] = action
         captured["x"] = x
         return ctx.asarray(0.0), x, ctx.asarray(True), 0, ctx.asarray(0.0)
@@ -357,6 +566,23 @@ def test_power_iteration_core_has_no_dispatch_logic():
     assert "getattr" not in source
     assert "_SelfAdjointAction(" not in source
     assert "PowerIterationResult(" not in source
+
+
+def test_power_iteration_core_has_no_check_every_argument():
+    power_mod = importlib.import_module("spacecore.linalg._power")
+
+    assert "check_every" not in inspect.signature(power_mod._power_iteration_core).parameters
+
+
+def test_power_iteration_validates_check_every_for_backward_compatibility():
+    sc = importlib.import_module("spacecore")
+    ctx = _ctx()
+    space = sc.VectorSpace((2,), ctx)
+    A = sc.DiagonalLinOp(ctx.asarray([1.0, 2.0]), space, ctx)
+
+    sc.power_iteration(A, check_every=1, maxiter=1)
+    with pytest.raises(ValueError, match="check_every"):
+        sc.power_iteration(A, check_every=0, maxiter=1)
 
 
 @pytest.mark.parametrize("backend_name,dtype", _backend_params())
@@ -592,10 +818,10 @@ def test_iterative_solvers_poll_convergence_on_check_interval():
 
     assert cg_result.num_iters < 64
     assert lsqr_result.num_iters == 64
-    assert power_result.num_iters == 64
+    assert power_result.num_iters < 64
     np.testing.assert_allclose(cg_result.residual_norm, 0.0, atol=1e-12)
     np.testing.assert_allclose(lsqr_result.normal_residual_norm, 0.0, atol=1e-12)
-    np.testing.assert_allclose(power_result.residual_norm, 0.0, atol=1e-12)
+    assert to_numpy(power_result.residual_norm) < 1e-6
 
 
 @pytest.mark.skipif(not has_jax(), reason="jax is not installed")
