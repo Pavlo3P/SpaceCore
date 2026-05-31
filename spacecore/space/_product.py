@@ -227,6 +227,24 @@ class ProductSpace(Space):
 
         return tuple(xs)
 
+    def flatten_batch(self, xs: Tuple[Any, ...]) -> DenseArray:
+        """Concatenate a leading-axis batch of product elements to ``(N, size)``."""
+        parts = tuple(s.flatten_batch(xi) for s, xi in zip(self.spaces, xs))
+        if len(parts) == 1:
+            return parts[0]
+        if self._concatenate_uses_dim:
+            return self._concatenate(parts, dim=1)
+        return self._concatenate(parts, axis=1)
+
+    def unflatten_batch(self, vs: DenseArray) -> Tuple[Any, ...]:
+        """Split rows of shape ``(N, size)`` into batched component elements."""
+        if self._enable_checks:
+            vs = self.ctx.assert_dense(vs)
+        return tuple(
+            s.unflatten_batch(vs[:, slc])
+            for s, slc in zip(self.spaces, self._slices)
+        )
+
     @checked_method(in_space="self", out_space="self")
     def apply(self, x: Tuple[Any, ...], f: Callable[[Any], Any]) -> Tuple[Any, ...]:
         r"""

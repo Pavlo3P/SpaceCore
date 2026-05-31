@@ -87,6 +87,16 @@ class VectorSpace(Space):
         V = self.ctx.assert_dense(v) if self._enable_checks else v
         return V if self._is_flat_shape else V.reshape(self.shape)
 
+    def flatten_batch(self, xs: DenseArray) -> DenseArray:
+        """Flatten a leading-axis batch of dense elements to ``(N, size)``."""
+        xs = self.ctx.assert_dense(xs) if self._enable_checks else xs
+        return xs if self._is_flat_shape else xs.reshape((xs.shape[0], -1))
+
+    def unflatten_batch(self, vs: DenseArray) -> DenseArray:
+        """Unflatten rows of shape ``(N, size)`` into dense space elements."""
+        vs = self.ctx.assert_dense(vs) if self._enable_checks else vs
+        return vs if self._is_flat_shape else vs.reshape((vs.shape[0],) + self.shape)
+
     def _convert(self, new_ctx: Context) -> VectorSpace:
         """Convert this vector space to ``new_ctx`` without changing shape."""
         return VectorSpace(self.shape, new_ctx)

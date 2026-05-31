@@ -100,7 +100,106 @@ def test_matrix_free_linop_to_dense_matches_apply():
     )
 
     assert np.allclose(op.to_dense(), dense)
+    assert op.to_matrix().shape == (3, 2)
+    assert np.allclose(op.to_matrix(), dense)
     _assert_to_dense_matches_apply(op, ctx.asarray([7.0, 8.0]))
+
+
+def test_default_to_matrix_uses_batched_vapply_path():
+    sc = importlib.import_module("spacecore")
+    ctx = _ctx()
+    dom = sc.VectorSpace((2,), ctx)
+    cod = sc.VectorSpace((3,), ctx)
+    dense = ctx.asarray([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])
+
+    class BatchedMaterializationLinOp(sc.LinOp):
+        def __init__(self):
+            super().__init__(dom, cod, ctx)
+            self.apply_calls = 0
+            self.vapply_calls = 0
+
+        def apply(self, x):
+            self.apply_calls += 1
+            return dense @ x
+
+        def rapply(self, y):
+            return dense.T @ y
+
+        def vapply(self, xs):
+            self.vapply_calls += 1
+            return xs @ dense.T
+
+        def tree_flatten(self):
+            return (), (self.domain, self.codomain, self.ctx)
+
+        @classmethod
+        def tree_unflatten(cls, aux, children):
+            return cls()
+
+    op = BatchedMaterializationLinOp()
+
+    matrix = op.to_matrix()
+
+    assert op.vapply_calls == 1
+    assert op.apply_calls == 0
+    assert matrix.shape == (3, 2)
+    assert np.allclose(matrix, dense)
+    assert np.allclose(op.to_dense(), dense)
+
+
+def test_default_to_matrix_falls_back_when_batch_helpers_unavailable():
+    sc = importlib.import_module("spacecore")
+    ctx = _ctx()
+
+    class NoBatchVectorSpace(sc.VectorSpace):
+        def flatten_batch(self, xs):
+            raise NotImplementedError
+
+        def unflatten_batch(self, vs):
+            raise NotImplementedError
+
+        def _convert(self, new_ctx):
+            if new_ctx == self.ctx:
+                return self
+            return NoBatchVectorSpace(self.shape, new_ctx)
+
+    dom = NoBatchVectorSpace((2,), ctx)
+    cod = sc.VectorSpace((3,), ctx)
+    dense = ctx.asarray([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])
+
+    class FallbackMaterializationLinOp(sc.LinOp):
+        def __init__(self):
+            super().__init__(dom, cod, ctx)
+            self.apply_calls = 0
+            self.vapply_calls = 0
+
+        def apply(self, x):
+            self.apply_calls += 1
+            return dense @ x
+
+        def rapply(self, y):
+            return dense.T @ y
+
+        def vapply(self, xs):
+            self.vapply_calls += 1
+            return super().vapply(xs)
+
+        def tree_flatten(self):
+            return (), (self.domain, self.codomain, self.ctx)
+
+        @classmethod
+        def tree_unflatten(cls, aux, children):
+            return cls()
+
+    op = FallbackMaterializationLinOp()
+
+    matrix = op.to_matrix()
+
+    assert op.vapply_calls == 0
+    assert op.apply_calls == 2
+    assert matrix.shape == (3, 2)
+    assert np.allclose(matrix, dense)
+    assert np.allclose(op.to_dense(), dense)
 
 
 def test_matrix_free_linop_A_is_not_implemented_by_default():

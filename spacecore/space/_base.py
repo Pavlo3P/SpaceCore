@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from abc import abstractmethod
+from math import prod
 from typing import Any, Callable, ClassVar, Tuple
 
 from ..backend import Context
@@ -123,6 +124,23 @@ class Space(ContextBound):
     def unflatten(self, v: DenseArray) -> Any:
         """Inverse of flatten; returns an element in the requested representation."""
         raise NotImplementedError
+
+    def flatten_batch(self, xs: Any) -> DenseArray:
+        """Flatten a leading-axis batch of space elements to shape ``(N, size)``."""
+        n = int(getattr(xs, "shape", (len(xs),))[0])
+        rows = tuple(self.flatten(xs[i]) for i in range(n))
+        return self.ops.stack(rows, axis=0)
+
+    def unflatten_batch(self, vs: DenseArray) -> Any:
+        """Unflatten rows of shape ``(N, size)`` into a leading-axis batch."""
+        n = int(getattr(vs, "shape", (len(vs),))[0])
+        xs = tuple(self.unflatten(vs[i]) for i in range(n))
+        return self.ops.stack(xs, axis=0)
+
+    @property
+    def size(self) -> int:
+        """Return the flat coordinate dimension of this space."""
+        return prod(self.shape)
 
     def _convert(self, new_ctx: Context) -> Space:
         raise NotImplementedError()
