@@ -769,8 +769,14 @@ def test_lanczos_smallest_uses_domain_geometry_for_weighted_inner_product():
     space = WeightedVectorSpace([1.0, 4.0], ctx)
     assert type(space) is not sc.VectorSpace
 
-    matrix = np.array([[2.0, 1.0], [0.25, 0.75]])
-    op = sc.DenseLinOp(ctx.asarray(matrix), space, space, ctx)
+    matrix = ctx.asarray([[2.0, 1.0], [0.25, 0.75]])
+    op = sc.MatrixFreeLinOp(
+        lambda x: matrix @ x,
+        lambda x: matrix @ x,
+        space,
+        space,
+        ctx,
+    )
 
     result = sc.lanczos_smallest(
         op,
@@ -779,7 +785,7 @@ def test_lanczos_smallest_uses_domain_geometry_for_weighted_inner_product():
         tol=1e-12,
     )
 
-    expected = np.min(np.linalg.eigvals(matrix).real)
+    expected = np.min(np.linalg.eigvals(to_numpy(matrix)).real)
     np.testing.assert_allclose(to_numpy(result.eigenvalue), expected, rtol=1e-7, atol=1e-7)
     np.testing.assert_allclose(
         to_numpy(op.apply(result.eigenvector)),
