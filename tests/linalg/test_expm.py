@@ -37,6 +37,18 @@ def _backend_params():
     ]
 
 
+def _numpy_jax_params():
+    return [
+        pytest.param("numpy", np.float64, id="numpy"),
+        pytest.param(
+            "jax",
+            jax_real_dtype(),
+            marks=pytest.mark.skipif(not has_jax(), reason="jax is not installed"),
+            id="jax",
+        ),
+    ]
+
+
 def _ctx(backend_name="numpy", dtype=np.float64, enable_checks=False):
     sc = importlib.import_module("spacecore")
     return sc.Context(_ops_for_backend(backend_name), dtype=dtype, enable_checks=enable_checks)
@@ -50,6 +62,10 @@ def _operator(ctx, matrix):
 
 def _ground_truth(matrix, vector, t):
     return scipy.linalg.expm(t * matrix) @ vector
+
+
+def _diagonal_expm_truth(diagonal, vector, t):
+    return np.exp(t * diagonal) * vector
 
 
 def test_expm_multiply_t_zero_returns_input():
@@ -93,6 +109,29 @@ def test_expm_multiply_matches_dense_ground_truth(backend_name, dtype):
         atol=1e-5,
     )
     assert bool(to_numpy(result.converged))
+
+
+@pytest.mark.parametrize("backend_name,dtype", _numpy_jax_params())
+def test_expm_multiply_masks_inactive_sentinel_for_early_breakdown(backend_name, dtype):
+    sc = importlib.import_module("spacecore")
+    ctx = _ctx(backend_name, dtype)
+    diagonal = np.array([1.5, 2.0, 3.0], dtype=np.float64)
+    space = sc.VectorSpace((3,), ctx)
+    A = sc.DiagonalLinOp(ctx.asarray(diagonal), space, ctx)
+    v_np = np.array([1.0, -2.0, 0.5], dtype=np.float64)
+    v = ctx.asarray(v_np)
+
+    result = sc.expm_multiply(A, v, t=1.0, max_iter=20, tol=1e-5)
+    result_np = to_numpy(result.result)
+
+    assert int(to_numpy(result.krylov_dim)) == 3
+    assert np.all(np.isfinite(result_np))
+    np.testing.assert_allclose(
+        result_np,
+        _diagonal_expm_truth(diagonal, v_np, 1.0),
+        rtol=1e-5,
+        atol=1e-5,
+    )
 
 
 def test_expm_multiply_is_linear_in_vector():
@@ -160,6 +199,30 @@ def test_expm_multiply_complex_time_matches_dense_truth():
         _ground_truth(matrix, v_np, -0.5j),
         rtol=1e-10,
         atol=1e-10,
+    )
+
+
+@pytest.mark.parametrize("backend_name,dtype", _numpy_jax_params())
+def test_expm_multiply_masks_inactive_sentinel_for_complex_time(backend_name, dtype):
+    sc = importlib.import_module("spacecore")
+    ctx = _ctx(backend_name, dtype)
+    diagonal = np.array([1.5, 2.0, 3.0], dtype=np.float64)
+    space = sc.VectorSpace((3,), ctx)
+    A = sc.DiagonalLinOp(ctx.asarray(diagonal), space, ctx)
+    v_np = np.array([1.0, -2.0, 0.5], dtype=np.float64)
+    v = ctx.asarray(v_np)
+    t = -0.75j
+
+    result = sc.expm_multiply(A, v, t=t, max_iter=20, tol=1e-5)
+    result_np = to_numpy(result.result)
+
+    assert int(to_numpy(result.krylov_dim)) == 3
+    assert np.all(np.isfinite(result_np))
+    np.testing.assert_allclose(
+        result_np,
+        _diagonal_expm_truth(diagonal, v_np, t),
+        rtol=1e-5,
+        atol=1e-5,
     )
 
 

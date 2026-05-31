@@ -148,16 +148,23 @@ def expm_multiply(
     real_dtype = ops.real_dtype(ctx.dtype)
     basis = _lanczos_basis_and_tridiag(A, v, max_iter, tol, real_dtype, check_every=1)
 
-    eigvals, eigvecs = ops.eigh(basis.T)
+    m = basis.krylov_dim
+    idx = ops.arange(max_iter)
+    active_mask = idx < m
+    active_matrix_mask = active_mask[:, None] & active_mask[None, :]
+    T_safe = ops.where(active_matrix_mask, basis.T, ops.zeros_like(basis.T))
+
+    eigvals, eigvecs = ops.eigh(T_safe)
     exp_eigs = ops.exp(t * eigvals)
     expT_e1 = eigvecs @ (exp_eigs * eigvecs[0, :])
+    expT_e1 = ops.where(active_mask, expT_e1, ops.zeros_like(expT_e1))
 
     V_reduced = basis.V[:max_iter, :]
     result_flat = basis.initial_norm * ops.einsum("j,jn->n", expT_e1, V_reduced)
     result = A.domain.unflatten(result_flat)
 
-    last_coeff = ops.abs(expT_e1[basis.krylov_dim - 1])
-    residual_estimate = basis.betas[basis.krylov_dim] * last_coeff
+    last_coeff = ops.abs(expT_e1[m - 1])
+    residual_estimate = basis.betas[m] * last_coeff
     converged = residual_estimate < basis.tol
 
-    return ExpmMultiplyResult(result, basis.krylov_dim, residual_estimate, converged)
+    return ExpmMultiplyResult(result, m, residual_estimate, converged)
