@@ -124,6 +124,75 @@ def test_lsqr_works_with_matrix_free_linop_and_uses_rapply():
     assert calls["rapply"] > 0
 
 
+def test_lsqr_recurrence_residual_mode_avoids_extra_check_applications():
+    sc = importlib.import_module("spacecore")
+    ctx = _ctx()
+    domain = sc.VectorSpace((2,), ctx)
+    codomain = sc.VectorSpace((3,), ctx)
+    matrix = ctx.asarray([[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]])
+    b = ctx.asarray([1.0, 2.0, 4.0])
+
+    def run(mode):
+        calls = {"apply": 0, "rapply": 0}
+
+        def apply(x):
+            calls["apply"] += 1
+            return matrix @ x
+
+        def rapply(y):
+            calls["rapply"] += 1
+            return matrix.T @ y
+
+        A = sc.MatrixFreeLinOp(apply, rapply, domain, codomain, ctx)
+        sc.lsqr(A, b, tol=0.0, maxiter=1, check_every=1, residual_mode=mode)
+        return calls
+
+    exact_calls = run("exact")
+    recurrence_calls = run("recurrence")
+
+    assert exact_calls["apply"] == recurrence_calls["apply"] + 1
+    assert exact_calls["rapply"] == recurrence_calls["rapply"] + 2
+    assert recurrence_calls == {"apply": 2, "rapply": 2}
+
+
+def test_lsqr_recurrence_residual_mode_matches_exact_solution_and_diagnostics():
+    sc = importlib.import_module("spacecore")
+    ctx = _ctx()
+    domain = sc.VectorSpace((2,), ctx)
+    codomain = sc.VectorSpace((3,), ctx)
+    matrix = np.array([[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]])
+    A = sc.DenseLinOp(ctx.asarray(matrix), domain, codomain, ctx)
+    b = ctx.asarray([1.0, 2.0, 4.0])
+
+    exact = sc.lsqr(A, b, tol=1e-12, maxiter=10, check_every=1, residual_mode="exact")
+    recurrence = sc.lsqr(A, b, tol=1e-12, maxiter=10, check_every=1, residual_mode="recurrence")
+
+    np.testing.assert_allclose(to_numpy(recurrence.x), to_numpy(exact.x), rtol=1e-12, atol=1e-12)
+    np.testing.assert_allclose(
+        to_numpy(recurrence.residual_norm),
+        to_numpy(exact.residual_norm),
+        rtol=1e-12,
+        atol=1e-12,
+    )
+    np.testing.assert_allclose(
+        to_numpy(recurrence.normal_residual_norm),
+        to_numpy(exact.normal_residual_norm),
+        atol=1e-12,
+    )
+    assert bool(to_numpy(recurrence.converged))
+
+
+def test_lsqr_rejects_unknown_residual_mode():
+    sc = importlib.import_module("spacecore")
+    ctx = _ctx()
+    domain = sc.VectorSpace((2,), ctx)
+    codomain = sc.VectorSpace((3,), ctx)
+    A = sc.DenseLinOp(ctx.asarray([[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]]), domain, codomain, ctx)
+
+    with pytest.raises(ValueError, match="residual_mode"):
+        sc.lsqr(A, ctx.asarray([1.0, 2.0, 3.0]), residual_mode="cheap")
+
+
 def test_cg_solves_complex_hermitian_positive_definite_system():
     sc = importlib.import_module("spacecore")
     ctx = _ctx(dtype=np.complex128)
