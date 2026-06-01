@@ -12,7 +12,6 @@ from ._metric import (
     _warn_metric_batch_fallback,
 )
 from .._batching import _check_batched
-from .._checks import checked_method
 from ..backend import Context, jax_pytree_class
 from ..space import Space, VectorSpace
 from ..types import DenseArray
@@ -78,24 +77,59 @@ class DiagonalLinOp(LinOp[Space, Space]):
         )
         self._diag_adjoint_flat = self._diag_adjoint.reshape((prod(self.domain.shape),))
         self._vector_fast_path = type(self.domain) is VectorSpace
+        if not self._enable_checks:
+            if self._vector_fast_path:
+                diagonal = self.diagonal
+                diag_adjoint = self._diag_adjoint
+                self.apply = lambda x, diagonal=diagonal: diagonal * x
+                self.vapply = lambda xs, diagonal=diagonal: diagonal * xs
+                if self.domain.is_euclidean:
+                    self.rapply = lambda y, diag_adjoint=diag_adjoint: diag_adjoint * y
+                    self.rvapply = lambda ys, diag_adjoint=diag_adjoint: diag_adjoint * ys
+                else:
+                    self.rapply = self._rapply_unchecked
+                    self.rvapply = self._rvapply_unchecked
+            else:
+                self.apply = self._apply_unchecked
+                self.rapply = self._rapply_unchecked
+                self.vapply = self._vapply_unchecked
+                self.rvapply = self._rvapply_unchecked
 
     @cached_property
     def A(self) -> DenseArray:
         """Dense tensor representation of this diagonal operator."""
         return self.to_dense()
 
-    @checked_method(in_space="domain", out_space="codomain")
     def apply(self, x: DenseArray) -> DenseArray:
         """Apply the diagonal operator to ``x``."""
+        if not self._enable_checks and self._vector_fast_path:
+            return self.diagonal * x
+        if self._enable_checks:
+            self.domain._check_member(x)
+        y = self._apply_unchecked(x)
+        if self._enable_checks:
+            self.codomain._check_member(y)
+        return y
+
+    def _apply_unchecked(self, x: DenseArray) -> DenseArray:
+        """Apply the diagonal operator without membership checks."""
         if self._vector_fast_path:
             return self.diagonal * x
         x_flat = self.domain.flatten(x)
         y_flat = self._diag_flat * x_flat
         return self.codomain.unflatten(y_flat)
 
-    @checked_method(in_space="codomain", out_space="domain")
     def rapply(self, y: DenseArray) -> DenseArray:
         """Apply the adjoint diagonal operator to ``y``."""
+        if self._enable_checks:
+            self.codomain._check_member(y)
+        x = self._rapply_unchecked(y)
+        if self._enable_checks:
+            self.domain._check_member(x)
+        return x
+
+    def _rapply_unchecked(self, y: DenseArray) -> DenseArray:
+        """Apply the metric adjoint without membership checks."""
         if self.domain.is_euclidean:
             return self._euclidean_rapply_unchecked(y)
         yd = self.codomain.riesz(y)
@@ -114,6 +148,10 @@ class DiagonalLinOp(LinOp[Space, Space]):
         """Apply over a leading batch axis. Input must have shape ``(N,) + domain.shape``; use ``moveaxis`` for other layouts."""
         if self._enable_checks:
             _check_batched(self.domain, xs)
+        return self._vapply_unchecked(xs)
+
+    def _vapply_unchecked(self, xs: DenseArray) -> DenseArray:
+        """Apply over a leading batch axis without membership checks."""
         if self._vector_fast_path:
             return self.diagonal * xs
         xs_flat = self.domain.flatten_batch(xs)
@@ -124,14 +162,18 @@ class DiagonalLinOp(LinOp[Space, Space]):
         """Apply the adjoint over a leading batch axis. Input must have shape ``(N,) + codomain.shape``; use ``moveaxis`` for other layouts."""
         if self._enable_checks:
             _check_batched(self.codomain, ys)
+        xs = self._rvapply_unchecked(ys)
+        if self._enable_checks:
+            _check_batched(self.domain, xs)
+        return xs
+
+    def _rvapply_unchecked(self, ys: DenseArray) -> DenseArray:
+        """Apply the metric adjoint over a leading batch axis without checks."""
         if not self.domain.is_euclidean:
             try:
                 yd = self.codomain.riesz(ys)
                 tmp = self._euclidean_rvapply_unchecked(yd)
-                xs = self.domain.riesz_inverse(tmp)
-                if self._enable_checks:
-                    _check_batched(self.domain, xs)
-                return xs
+                return self.domain.riesz_inverse(tmp)
             except _METRIC_BATCH_FALLBACK_ERRORS as err:
                 _warn_metric_batch_fallback(type(self).__name__, err)
                 return self.ops.vmap(self.rapply, in_axes=0, out_axes=0)(ys)

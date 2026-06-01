@@ -10,6 +10,7 @@ from .._checks import checked_method
 from .._contextual import resolve_context_priority
 from .._contextual._bound import _same_math_context
 from ..backend import Context, jax_pytree_class
+from ..space import VectorSpace
 
 
 def is_scalar_like(value: Any) -> bool:
@@ -375,20 +376,28 @@ class SumLinOp(LinOp[Domain, Codomain]):
         """Operators in this lazy sum."""
         return self.ops_tuple
 
-    @checked_method(in_space="domain", out_space="codomain")
     def apply(self, x: Any) -> Any:
         """Return ``sum_i ops[i].apply(x)``."""
+        if self._enable_checks:
+            self.domain._check_member(x)
         acc = self.ops_tuple[0].apply(x)
         for op in self.ops_tuple[1:]:
-            acc = self.codomain.add(acc, op.apply(x))
+            yi = op.apply(x)
+            acc = acc + yi if type(self.codomain) is VectorSpace else self.codomain.add(acc, yi)
+        if self._enable_checks:
+            self.codomain._check_member(acc)
         return acc
 
-    @checked_method(in_space="codomain", out_space="domain")
     def rapply(self, y: Any) -> Any:
         """Return ``sum_i ops[i].rapply(y)``."""
+        if self._enable_checks:
+            self.codomain._check_member(y)
         acc = self.ops_tuple[0].rapply(y)
         for op in self.ops_tuple[1:]:
-            acc = self.domain.add(acc, op.rapply(y))
+            xi = op.rapply(y)
+            acc = acc + xi if type(self.domain) is VectorSpace else self.domain.add(acc, xi)
+        if self._enable_checks:
+            self.domain._check_member(acc)
         return acc
 
     def vapply(self, xs: Any) -> Any:
@@ -397,7 +406,8 @@ class SumLinOp(LinOp[Domain, Codomain]):
             _check_batched(self.domain, xs)
         acc = self.ops_tuple[0].vapply(xs)
         for op in self.ops_tuple[1:]:
-            acc = self.codomain.add_batch(acc, op.vapply(xs))
+            yi = op.vapply(xs)
+            acc = acc + yi if type(self.codomain) is VectorSpace else self.codomain.add_batch(acc, yi)
         if self._enable_checks:
             _check_batched(self.codomain, acc)
         return acc
@@ -408,7 +418,8 @@ class SumLinOp(LinOp[Domain, Codomain]):
             _check_batched(self.codomain, ys)
         acc = self.ops_tuple[0].rvapply(ys)
         for op in self.ops_tuple[1:]:
-            acc = self.domain.add_batch(acc, op.rvapply(ys))
+            xi = op.rvapply(ys)
+            acc = acc + xi if type(self.domain) is VectorSpace else self.domain.add_batch(acc, xi)
         if self._enable_checks:
             _check_batched(self.domain, acc)
         return acc

@@ -193,9 +193,10 @@ class ProductSpace(Space):
             "Call eigh on a specific component space, or define a custom convention."
         )
 
-    @checked_method(in_space="self")
     def flatten(self, x: Tuple[Any, ...]) -> DenseArray:
         """Concatenate component coordinate vectors into one dense vector."""
+        if self._enable_checks:
+            self._check_member(x)
         if self._vector_fast_path:
             if self._arity == 1:
                 return x[0] if self._component_is_flat[0] else x[0].reshape((-1,))

@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-from typing import Any, Tuple
+from typing import Any, Sequence, Tuple
 
 from ._base import ProductLinOp
 from .._base import LinOp, Domain
 from ..._batching import _check_batched
-from ..._checks import checked_method
-from ...space import ProductSpace
+from ...space import ProductSpace, VectorSpace
 from ...backend import jax_pytree_class, Context
 
 
@@ -31,6 +30,52 @@ class StackedLinOp(ProductLinOp[Domain, ProductSpace]):
         Backend context specification.
     """
 
+    def __init__(
+        self,
+        dom: Domain,
+        cod: ProductSpace,
+        parts: Sequence[LinOp],
+        ctx: Context | str | None = None,
+    ) -> None:
+        super().__init__(dom, cod, parts, ctx)
+        self._flat_dense_rapply_mats = self._make_flat_dense_rapply_mats()
+        if not self._enable_checks:
+            if self._flat_dense_rapply_mats is not None:
+                mats = self._flat_dense_rapply_mats
+                self.rapply = (
+                    (lambda y, mats=mats: mats[0] @ y[0] + mats[1] @ y[1])
+                    if len(mats) == 2
+                    else self._rapply_unchecked
+                )
+                self.rvapply = (
+                    (lambda y, mats=mats: y[0] @ mats[0].T + y[1] @ mats[1].T)
+                    if len(mats) == 2
+                    else self._rvapply_unchecked
+                )
+            else:
+                self.rapply = self._rapply_unchecked
+                self.rvapply = self._rvapply_unchecked
+            self.apply = self._apply_unchecked
+            self.vapply = self._vapply_unchecked
+
+    def _make_flat_dense_rapply_mats(self):
+        """Return dense adjoint matrices for the exact flat-vector fast path."""
+        if type(self.dom) is not VectorSpace or not self.dom.is_euclidean:
+            return None
+        if tuple(self.dom.shape) != (self.dom._size,):
+            return None
+        mats = []
+        for op in self.parts:
+            if (
+                type(op.cod) is not VectorSpace
+                or not op.cod.is_euclidean
+                or tuple(op.cod.shape) != (op.cod._size,)
+                or not hasattr(op, "_A2H")
+            ):
+                return None
+            mats.append(op._A2H)
+        return tuple(mats)
+
     def _check_layout(self) -> None:
         """Check that every component maps the shared domain to one codomain part."""
         if not isinstance(self.cod, ProductSpace):
@@ -45,10 +90,14 @@ class StackedLinOp(ProductLinOp[Domain, ProductSpace]):
             else:
                 raise TypeError(f"Component op {i} must map dom -> cod.spaces[{i}].")
 
-    @checked_method(in_space="dom", out_space="cod")
     def apply(self, x: Any) -> Any:
         """Apply each component operator to the same input."""
-        return self._apply_unchecked(x)
+        if self._enable_checks:
+            self.dom._check_member(x)
+        y = self._apply_unchecked(x)
+        if self._enable_checks:
+            self.cod._check_member(y)
+        return y
 
     def _apply_unchecked(self, x: Any) -> Any:
         """Apply component operators without membership checks."""
@@ -56,42 +105,85 @@ class StackedLinOp(ProductLinOp[Domain, ProductSpace]):
             return self._apply_parts[0](x), self._apply_parts[1](x)
         return tuple(apply(x) for apply in self._apply_parts)
 
-    @checked_method(in_space="cod", out_space="dom")
     def rapply(self, y: Any) -> Any:
         """Apply component adjoints and sum in the shared domain."""
-        return self._rapply_unchecked(y)
+        if self._enable_checks:
+            self.cod._check_member(y)
+        x = self._rapply_unchecked(y)
+        if self._enable_checks:
+            self.dom._check_member(x)
+        return x
 
     def _rapply_unchecked(self, y: Any) -> Any:
         """Apply component adjoints without membership checks."""
+        mats = self._flat_dense_rapply_mats
+        if mats is not None:
+            if self._num_parts == 2:
+                return mats[0] @ y[0] + mats[1] @ y[1]
+            acc = mats[0] @ y[0]
+            for mat, yi in zip(mats[1:], y[1:]):
+                acc = acc + mat @ yi
+            return acc
         if self._num_parts == 2:
             x0 = self._rapply_parts[0](y[0])
             x1 = self._rapply_parts[1](y[1])
+            if type(self.dom) is VectorSpace:
+                return x0 + x1
             return self.dom.add(x0, x1)
         acc = None
         for rapply, yi in zip(self._rapply_parts, y):
             xi = rapply(yi)
-            acc = xi if acc is None else self.dom.add(acc, xi)
+            if acc is None:
+                acc = xi
+            elif type(self.dom) is VectorSpace:
+                acc = acc + xi
+            else:
+                acc = self.dom.add(acc, xi)
         return acc
 
     def vapply(self, x: Any) -> Any:
         """Apply this stacked operator over a batch."""
         if self._enable_checks:
             _check_batched(self.domain, x)
-        y = tuple(op.vapply(x) for op in self.parts)
+        y = self._vapply_unchecked(x)
         if self._enable_checks:
             _check_batched(self.codomain, y)
+        return y
+
+    def _vapply_unchecked(self, x: Any) -> Any:
+        """Apply over a batch without membership checks."""
+        y = tuple(op.vapply(x) for op in self.parts)
         return y
 
     def rvapply(self, y: Any) -> Any:
         """Apply the adjoint stacked operator over a product batch."""
         if self._enable_checks:
             _check_batched(self.codomain, y)
+        acc = self._rvapply_unchecked(y)
+        if self._enable_checks:
+            _check_batched(self.domain, acc)
+        return acc
+
+    def _rvapply_unchecked(self, y: Any) -> Any:
+        """Apply the adjoint over a product batch without membership checks."""
+        mats = self._flat_dense_rapply_mats
+        if mats is not None:
+            if self._num_parts == 2:
+                acc = y[0] @ mats[0].T + y[1] @ mats[1].T
+            else:
+                acc = y[0] @ mats[0].T
+                for mat, yi in zip(mats[1:], y[1:]):
+                    acc = acc + yi @ mat.T
+            return acc
         acc = None
         for op, yi in zip(self.parts, y):
             xi = op.rvapply(yi)
-            acc = xi if acc is None else self.domain.add_batch(acc, xi)
-        if self._enable_checks:
-            _check_batched(self.domain, acc)
+            if acc is None:
+                acc = xi
+            elif type(self.domain) is VectorSpace:
+                acc = acc + xi
+            else:
+                acc = self.domain.add_batch(acc, xi)
         return acc
 
     @classmethod
