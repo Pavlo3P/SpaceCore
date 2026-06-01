@@ -102,16 +102,21 @@ class DiagonalLinOp(LinOp[Space, Space]):
 
     def apply(self, x: DenseArray) -> DenseArray:
         """Apply the diagonal operator to ``x``."""
-        if self._enable_checks:
+        checks = self._enable_checks
+        if checks:
             self.domain._check_member(x)
-        y = self._apply_unchecked(x)
-        if self._enable_checks:
+        y = self._apply_core(x)
+        if checks:
             self.codomain._check_member(y)
         return y
 
-    def _apply_unchecked(self, x: DenseArray) -> DenseArray:
+    def _apply_core(self, x: DenseArray) -> DenseArray:
         """Apply the diagonal operator without membership checks."""
-        if self._mode is not _DiagonalMode.GENERAL_METRIC or type(self.domain) is VectorSpace:
+        if self._mode is _DiagonalMode.EUCLIDEAN:
+            return self.diagonal * x
+        if self._mode is _DiagonalMode.WEIGHTED_FUSED:
+            return self.diagonal * x
+        if type(self.domain) is VectorSpace:
             return self.diagonal * x
         x_flat = self.domain.flatten(x)
         y_flat = self._diag_flat * x_flat
@@ -119,22 +124,29 @@ class DiagonalLinOp(LinOp[Space, Space]):
 
     def rapply(self, y: DenseArray) -> DenseArray:
         """Apply the adjoint diagonal operator to ``y``."""
-        if self._enable_checks:
+        checks = self._enable_checks
+        if checks:
             self.codomain._check_member(y)
-        x = self._rapply_unchecked(y)
-        if self._enable_checks:
+        x = self._rapply_core(y)
+        if checks:
             self.domain._check_member(x)
         return x
 
-    def _rapply_unchecked(self, y: DenseArray) -> DenseArray:
+    def _rapply_core(self, y: DenseArray) -> DenseArray:
         """Apply the metric adjoint without membership checks."""
+        if self._mode is _DiagonalMode.EUCLIDEAN:
+            return self._euclidean_rapply_core(y)
         if self._mode is _DiagonalMode.WEIGHTED_FUSED:
             return self._diag_adjoint * y
-        return metric_rapply(self.domain, self.codomain, self._euclidean_rapply_unchecked, y)
+        return metric_rapply(self.domain, self.codomain, self._euclidean_rapply_core, y)
 
-    def _euclidean_rapply_unchecked(self, y: DenseArray) -> DenseArray:
+    def _euclidean_rapply_core(self, y: DenseArray) -> DenseArray:
         """Apply the Euclidean diagonal adjoint without membership checks."""
-        if self._mode is not _DiagonalMode.GENERAL_METRIC or type(self.domain) is VectorSpace:
+        if self._mode is _DiagonalMode.EUCLIDEAN:
+            return self._diag_adjoint * y
+        if self._mode is _DiagonalMode.WEIGHTED_FUSED:
+            return self._diag_adjoint * y
+        if type(self.domain) is VectorSpace:
             return self._diag_adjoint * y
         y_flat = self.codomain.flatten(y)
         x_flat = self._diag_adjoint_flat * y_flat
@@ -142,13 +154,18 @@ class DiagonalLinOp(LinOp[Space, Space]):
 
     def vapply(self, xs: DenseArray) -> DenseArray:
         """Apply over a leading batch axis. Input must have shape ``(N,) + domain.shape``; use ``moveaxis`` for other layouts."""
-        if self._enable_checks:
+        checks = self._enable_checks
+        if checks:
             _check_batched(self.domain, xs)
-        return self._vapply_unchecked(xs)
+        return self._vapply_core(xs)
 
-    def _vapply_unchecked(self, xs: DenseArray) -> DenseArray:
+    def _vapply_core(self, xs: DenseArray) -> DenseArray:
         """Apply over a leading batch axis without membership checks."""
-        if self._mode is not _DiagonalMode.GENERAL_METRIC or type(self.domain) is VectorSpace:
+        if self._mode is _DiagonalMode.EUCLIDEAN:
+            return self.diagonal * xs
+        if self._mode is _DiagonalMode.WEIGHTED_FUSED:
+            return self.diagonal * xs
+        if type(self.domain) is VectorSpace:
             return self.diagonal * xs
         xs_flat = self.domain.flatten_batch(xs)
         ys_flat = xs_flat * self._diag_flat
@@ -156,30 +173,37 @@ class DiagonalLinOp(LinOp[Space, Space]):
 
     def rvapply(self, ys: DenseArray) -> DenseArray:
         """Apply the adjoint over a leading batch axis. Input must have shape ``(N,) + codomain.shape``; use ``moveaxis`` for other layouts."""
-        if self._enable_checks:
+        checks = self._enable_checks
+        if checks:
             _check_batched(self.codomain, ys)
-        xs = self._rvapply_unchecked(ys)
-        if self._enable_checks:
+        xs = self._rvapply_core(ys)
+        if checks:
             _check_batched(self.domain, xs)
         return xs
 
-    def _rvapply_unchecked(self, ys: DenseArray) -> DenseArray:
+    def _rvapply_core(self, ys: DenseArray) -> DenseArray:
         """Apply the metric adjoint over a leading batch axis without checks."""
+        if self._mode is _DiagonalMode.EUCLIDEAN:
+            return self._euclidean_rvapply_core(ys)
         if self._mode is _DiagonalMode.WEIGHTED_FUSED:
             return self._diag_adjoint * ys
         return metric_rvapply(
             self.domain,
             self.codomain,
-            self._euclidean_rapply_unchecked,
-            self._euclidean_rvapply_unchecked,
+            self._euclidean_rapply_core,
+            self._euclidean_rvapply_core,
             ys,
             opname=type(self).__name__,
             ops=self.ops,
         )
 
-    def _euclidean_rvapply_unchecked(self, ys: DenseArray) -> DenseArray:
+    def _euclidean_rvapply_core(self, ys: DenseArray) -> DenseArray:
         """Apply the Euclidean diagonal adjoint over a leading batch axis."""
-        if self._mode is not _DiagonalMode.GENERAL_METRIC or type(self.domain) is VectorSpace:
+        if self._mode is _DiagonalMode.EUCLIDEAN:
+            return self._diag_adjoint * ys
+        if self._mode is _DiagonalMode.WEIGHTED_FUSED:
+            return self._diag_adjoint * ys
+        if type(self.domain) is VectorSpace:
             return self._diag_adjoint * ys
         ys_flat = self.codomain.flatten_batch(ys)
         xs_flat = ys_flat * self._diag_adjoint_flat

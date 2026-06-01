@@ -167,7 +167,7 @@ def test_weighted_dense_fused_adjoint_matches_generic_metric_formula():
     np.testing.assert_allclose(to_numpy(op.rapply(y)), to_numpy(op._weighted_A2H @ y))
     np.testing.assert_allclose(
         to_numpy(op.rapply(y)),
-        to_numpy(metric_rapply(op.domain, op.codomain, op._euclidean_rapply_unchecked, y)),
+        to_numpy(metric_rapply(op.domain, op.codomain, op._euclidean_rapply_core, y)),
     )
 
 

@@ -143,14 +143,15 @@ class DenseLinOp(LinOp[Domain, Codomain]):
 
     def apply(self, x: DenseArray) -> DenseArray:
         """Apply the dense operator to ``x``."""
-        if self._enable_checks:
+        checks = self._enable_checks
+        if checks:
             self.dom._check_member(x)
-        y = self._apply_unchecked(x)
-        if self._enable_checks:
+        y = self._apply_core(x)
+        if checks:
             self.cod._check_member(y)
         return y
 
-    def _apply_unchecked(self, x: DenseArray) -> DenseArray:
+    def _apply_core(self, x: DenseArray) -> DenseArray:
         """Apply the flattened dense matrix without membership checks."""
         if self._mode is _DenseMode.EUCLIDEAN_FLAT:
             return self._A2 @ x
@@ -169,20 +170,23 @@ class DenseLinOp(LinOp[Domain, Codomain]):
         Non-Euclidean spaces apply the codomain and domain Riesz maps around
         that Euclidean adjoint.
         """
-        if self._enable_checks:
+        checks = self._enable_checks
+        if checks:
             self.cod._check_member(y)
-        x = self._rapply_unchecked(y)
-        if self._enable_checks:
+        x = self._rapply_core(y)
+        if checks:
             self.dom._check_member(x)
         return x
 
-    def _rapply_unchecked(self, y: DenseArray) -> DenseArray:
+    def _rapply_core(self, y: DenseArray) -> DenseArray:
         """Apply the metric adjoint without membership checks."""
+        if self._mode is _DenseMode.EUCLIDEAN_FLAT or self._mode is _DenseMode.EUCLIDEAN_TENSOR:
+            return self._euclidean_rapply_core(y)
         if self._mode is _DenseMode.WEIGHTED_FUSED:
             return self._weighted_A2H @ y
-        return metric_rapply(self.domain, self.codomain, self._euclidean_rapply_unchecked, y)
+        return metric_rapply(self.domain, self.codomain, self._euclidean_rapply_core, y)
 
-    def _euclidean_rapply_unchecked(self, y: DenseArray) -> DenseArray:
+    def _euclidean_rapply_core(self, y: DenseArray) -> DenseArray:
         """Apply the flattened adjoint matrix without membership checks."""
         if self._mode is _DenseMode.EUCLIDEAN_FLAT:
             return self._A2H @ y
@@ -194,11 +198,12 @@ class DenseLinOp(LinOp[Domain, Codomain]):
 
     def vapply(self, xs: DenseArray) -> DenseArray:
         """Apply over a leading batch axis. Input must have shape ``(N,) + domain.shape``; use ``moveaxis`` for other layouts."""
-        if self._enable_checks:
+        checks = self._enable_checks
+        if checks:
             _check_batched(self.domain, xs)
-        return self._vapply_unchecked(xs)
+        return self._vapply_core(xs)
 
-    def _vapply_unchecked(self, xs: DenseArray) -> DenseArray:
+    def _vapply_core(self, xs: DenseArray) -> DenseArray:
         """Apply over a leading batch axis without membership checks."""
         if self._mode is _DenseMode.EUCLIDEAN_FLAT:
             return xs.reshape((-1, self._dom_size)) @ self._A2T
@@ -215,28 +220,31 @@ class DenseLinOp(LinOp[Domain, Codomain]):
 
     def rvapply(self, ys: DenseArray) -> DenseArray:
         """Apply the adjoint over a leading batch axis. Input must have shape ``(N,) + codomain.shape``; use ``moveaxis`` for other layouts."""
-        if self._enable_checks:
+        checks = self._enable_checks
+        if checks:
             _check_batched(self.codomain, ys)
-        xs = self._rvapply_unchecked(ys)
-        if self._enable_checks:
+        xs = self._rvapply_core(ys)
+        if checks:
             _check_batched(self.domain, xs)
         return xs
 
-    def _rvapply_unchecked(self, ys: DenseArray) -> DenseArray:
+    def _rvapply_core(self, ys: DenseArray) -> DenseArray:
         """Apply the metric adjoint over leading batch axes without checks."""
+        if self._mode is _DenseMode.EUCLIDEAN_FLAT or self._mode is _DenseMode.EUCLIDEAN_TENSOR:
+            return self._euclidean_rvapply_core(ys)
         if self._mode is _DenseMode.WEIGHTED_FUSED:
             return ys @ self._weighted_A2H.T
         return metric_rvapply(
             self.domain,
             self.codomain,
-            self._euclidean_rapply_unchecked,
-            self._euclidean_rvapply_unchecked,
+            self._euclidean_rapply_core,
+            self._euclidean_rvapply_core,
             ys,
             opname=type(self).__name__,
             ops=self.ops,
         )
 
-    def _euclidean_rvapply_unchecked(self, ys: DenseArray) -> DenseArray:
+    def _euclidean_rvapply_core(self, ys: DenseArray) -> DenseArray:
         """Apply the Euclidean adjoint over leading batch axes."""
         if self._mode is _DenseMode.EUCLIDEAN_FLAT:
             return ys.reshape((-1, self._cod_size)) @ self._A2H.T
