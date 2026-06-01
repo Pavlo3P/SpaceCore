@@ -20,6 +20,11 @@ class HermitianSpace(VectorSpace):
     ``<X, Y> = vdot(vec(X), vec(Y))``, where ``vdot`` conjugates the
     first argument according to backend rules.
 
+    ``HermitianSpace`` currently uses Euclidean/Frobenius geometry in flattened
+    coordinates and does not expose custom geometry injection. Metric-aware
+    Hermitian geometries should be introduced as a separate class or explicit
+    extension.
+
     Parameters
     ----------
     n : int

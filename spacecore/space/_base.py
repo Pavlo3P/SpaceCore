@@ -8,6 +8,7 @@ from ..backend import Context
 from .._contextual import ContextBound
 from ..types import DenseArray
 from ._checks import SpaceCheck
+from ._inner import EuclideanInnerProduct, InnerProduct
 
 
 class Space(ContextBound):
@@ -28,6 +29,9 @@ class Space(ContextBound):
         Canonical coordinate shape for elements of the space.
     ctx : Context, str, or None, optional
         Backend context specification. Default resolves to the global context.
+    geometry : InnerProduct or None, optional
+        Inner-product geometry for this space, including Riesz maps used by
+        metric-aware adjoints. Defaults to Euclidean coordinate geometry.
 
     Attributes
     ----------
@@ -55,14 +59,25 @@ class Space(ContextBound):
 
     checks: ClassVar[tuple[SpaceCheck, ...]] = ()
 
-    def __init__(self, shape: Tuple[int, ...], ctx: Context | str | None = None) -> None:
+    def __init__(
+        self,
+        shape: Tuple[int, ...],
+        ctx: Context | str | None = None,
+        geometry: InnerProduct | None = None,
+    ) -> None:
         super().__init__(ctx)
         self.shape = shape
+        self.geometry: InnerProduct = geometry if geometry is not None else EuclideanInnerProduct()
         self._enable_checks = self.ctx.enable_checks
 
     def __eq__(self, other: Any) -> bool:
-        if isinstance(other, Space):
-            return self.ctx == other.ctx and self.shape == other.shape
+        if type(self) is type(other):
+            return (
+                self.ctx == other.ctx
+                and self.shape == other.shape
+                and type(self.geometry) is type(other.geometry)
+                and self.geometry == other.geometry
+            )
         return False
 
     def member_checks(self) -> tuple[SpaceCheck, ...]:
@@ -91,9 +106,17 @@ class Space(ContextBound):
     def add(self, x: Any, y: Any) -> Any:
         """Return x + y."""
 
+    def add_batch(self, x: Any, y: Any) -> Any:
+        """Return the leading-axis batch sum of ``x`` and ``y``."""
+        return self.ops.vmap(self.add, in_axes=(0, 0), out_axes=0)(x, y)
+
     @abstractmethod
     def scale(self, a: Any, x: Any) -> Any:
         """Return a * x."""
+
+    def scale_batch(self, a: Any, x: Any) -> Any:
+        """Return the leading-axis batch scalar product ``a * x``."""
+        return self.ops.vmap(lambda xi: self.scale(a, xi), in_axes=0, out_axes=0)(x)
 
     def axpy(self, a: Any, x: Any, y: Any) -> Any:
         """Return a*x + y."""
@@ -102,6 +125,19 @@ class Space(ContextBound):
     @abstractmethod
     def inner(self, x: Any, y: Any) -> Any:
         r"""Return :math:`\langle x, y \rangle_X` for elements of this space."""
+
+    def riesz(self, x: Any) -> Any:
+        """Map a coordinate element to its dual representation."""
+        return self.geometry.riesz(self.ops, x)
+
+    def riesz_inverse(self, x: Any) -> Any:
+        """Map a dual representation back to coordinate elements."""
+        return self.geometry.riesz_inverse(self.ops, x)
+
+    @property
+    def is_euclidean(self) -> bool:
+        """Return whether this space uses Euclidean coordinate geometry."""
+        return self.geometry.is_euclidean
 
     def norm(self, x: Any) -> Any:
         r"""Return the induced norm :math:`\sqrt{\operatorname{Re}\langle x, x\rangle_X}`."""

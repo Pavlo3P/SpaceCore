@@ -1,7 +1,6 @@
 import importlib
 
 import numpy as np
-import pytest
 import scipy.sparse as sps
 
 
@@ -70,21 +69,21 @@ def test_sparse_linop_complex_rapply_uses_conjugate_transpose():
     assert np.allclose(op.rapply(y), dense.conj().T @ np.asarray(y))
 
 
-def test_sparse_linop_rejects_non_plain_vector_space():
+def test_sparse_linop_accepts_euclidean_vector_space_subclass():
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
 
     class WeightedVectorSpace(sc.VectorSpace):
         pass
 
-    custom = WeightedVectorSpace((2,), ctx)
-    plain = sc.VectorSpace((2,), ctx)
+    space = WeightedVectorSpace((2,), ctx)
     matrix = ctx.assparse([[1.0, 0.0], [0.0, 1.0]])
+    op = sc.SparseLinOp(matrix, space, space, ctx)
+    x = ctx.asarray([2.0, -1.0])
 
-    with pytest.raises(TypeError, match="plain VectorSpace"):
-        sc.SparseLinOp(matrix, custom, plain, ctx)
-    with pytest.raises(TypeError, match="Metric-aware sparse"):
-        sc.SparseLinOp(matrix, plain, custom, ctx)
+    assert type(op.domain) is WeightedVectorSpace
+    assert np.allclose(op.apply(x), x)
+    assert np.allclose(op.rapply(x), x)
 
 
 def test_sparse_linop_to_sparse_returns_stored_object():

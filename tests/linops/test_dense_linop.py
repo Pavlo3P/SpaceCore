@@ -94,21 +94,21 @@ def test_dense_linop_is_hermitian_uses_euclidean_matrix():
     assert rectangular.is_hermitian() is False
 
 
-def test_dense_linop_rejects_non_plain_vector_space():
+def test_dense_linop_accepts_euclidean_vector_space_subclass():
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
 
     class WeightedVectorSpace(sc.VectorSpace):
         pass
 
-    custom = WeightedVectorSpace((2,), ctx)
-    plain = sc.VectorSpace((2,), ctx)
+    space = WeightedVectorSpace((2,), ctx)
     matrix = ctx.asarray([[1.0, 0.0], [0.0, 1.0]])
+    op = sc.DenseLinOp(matrix, space, space, ctx)
+    x = ctx.asarray([2.0, -1.0])
 
-    with pytest.raises(TypeError, match="plain VectorSpace"):
-        sc.DenseLinOp(matrix, custom, plain, ctx)
-    with pytest.raises(TypeError, match="metric-aware"):
-        sc.DenseLinOp(matrix, plain, custom, ctx)
+    assert type(op.domain) is WeightedVectorSpace
+    assert np.allclose(op.apply(x), x)
+    assert np.allclose(op.rapply(x), x)
 
 
 def test_dense_linop_reuses_cached_matrix_reshape():

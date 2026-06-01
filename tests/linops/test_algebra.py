@@ -93,6 +93,30 @@ def _assert_adjoint_identity(op, x, y, ctx):
     np.testing.assert_allclose(to_numpy(lhs), to_numpy(rhs), rtol=1e-6, atol=1e-6)
 
 
+def _slice_batch(value, i):
+    if isinstance(value, tuple):
+        return tuple(_slice_batch(part, i) for part in value)
+    return value[i]
+
+
+def _stack_rows(rows):
+    if isinstance(rows[0], tuple):
+        return tuple(_stack_rows(tuple(row[i] for row in rows)) for i in range(len(rows[0])))
+    return np.stack([to_numpy(row) for row in rows], axis=0)
+
+
+def _assert_nested_allclose(actual, expected, *, rtol=1e-7, atol=1e-7):
+    actual_np = to_numpy(actual)
+    expected_np = to_numpy(expected)
+    if isinstance(actual_np, tuple):
+        assert isinstance(expected_np, tuple)
+        assert len(actual_np) == len(expected_np)
+        for a, e in zip(actual_np, expected_np):
+            _assert_nested_allclose(a, e, rtol=rtol, atol=atol)
+        return
+    np.testing.assert_allclose(actual_np, expected_np, rtol=rtol, atol=atol)
+
+
 def _adjoint_cases(ctx):
     sc = importlib.import_module("spacecore")
     A = _dense_linop(ctx)
@@ -214,6 +238,175 @@ def test_python_sum_starts_from_zero_and_accumulates_linops():
     np.testing.assert_allclose(op.apply(x), expected)
 
 
+def test_scaled_linop_uses_space_scale_for_vectors_and_complex_adjoint():
+    sc = importlib.import_module("spacecore")
+    ctx = _ctx(dtype=np.complex128)
+    A = _dense_linop(ctx)
+    x, y = _xy(ctx)
+    alpha = 2.0 + 3.0j
+    op = alpha * A
+
+    np.testing.assert_allclose(to_numpy(op.apply(x)), to_numpy(alpha * A.apply(x)))
+    np.testing.assert_allclose(to_numpy(op.rapply(y)), to_numpy(np.conj(alpha) * A.rapply(y)))
+    _assert_adjoint_identity(op, x, y, ctx)
+
+    xs = ctx.asarray(np.stack([to_numpy(x), to_numpy(0.5 * x)], axis=0))
+    ys = ctx.asarray(np.stack([to_numpy(y), to_numpy(-2.0 * y)], axis=0))
+    np.testing.assert_allclose(to_numpy(op.vapply(xs)), to_numpy(alpha * A.vapply(xs)))
+    np.testing.assert_allclose(to_numpy(op.rvapply(ys)), to_numpy(np.conj(alpha) * A.rvapply(ys)))
+
+
+def test_scaled_linop_supports_product_space_elements_and_batches():
+    sc = importlib.import_module("spacecore")
+    ctx = _ctx(dtype=np.float64)
+    x1, x2 = sc.VectorSpace((2,), ctx), sc.VectorSpace((1,), ctx)
+    y1, y2 = sc.VectorSpace((1,), ctx), sc.VectorSpace((2,), ctx)
+    base = sc.BlockDiagonalLinOp.from_operators(
+        (
+            sc.DenseLinOp(ctx.asarray([[1.0, 2.0]]), x1, y1, ctx),
+            sc.DenseLinOp(ctx.asarray([[3.0], [-1.0]]), x2, y2, ctx),
+        )
+    )
+    op = 2.5 * base
+    x = (ctx.asarray([1.0, 2.0]), ctx.asarray([3.0]))
+    y = (ctx.asarray([5.0]), ctx.asarray([1.0, 2.0]))
+    xs = (ctx.asarray([[1.0, 2.0], [-1.0, 0.5]]), ctx.asarray([[3.0], [4.0]]))
+    ys = (ctx.asarray([[5.0], [-2.0]]), ctx.asarray([[1.0, 2.0], [0.5, -1.0]]))
+
+    _assert_nested_allclose(op.apply(x), base.codomain.scale(2.5, base.apply(x)))
+    _assert_nested_allclose(op.rapply(y), base.domain.scale(2.5, base.rapply(y)))
+
+    expected_v = _stack_rows(tuple(op.apply(_slice_batch(xs, i)) for i in range(2)))
+    expected_rv = _stack_rows(tuple(op.rapply(_slice_batch(ys, i)) for i in range(2)))
+    _assert_nested_allclose(op.vapply(xs), expected_v)
+    _assert_nested_allclose(op.rvapply(ys), expected_rv)
+
+
+def test_scaled_linop_batched_paths_use_space_scale_batch():
+    sc = importlib.import_module("spacecore")
+    ctx = _ctx(dtype=np.float64)
+
+    class CountingVectorSpace(sc.VectorSpace):
+        def __init__(self, shape, ctx, counter):
+            self.counter = counter
+            super().__init__(shape, ctx)
+
+        def scale(self, a, x):
+            self.counter["scale"] += 1
+            return super().scale(a, x)
+
+        def scale_batch(self, a, x):
+            self.counter["scale_batch"] += 1
+            return super().scale_batch(a, x)
+
+        def _convert(self, new_ctx):
+            return CountingVectorSpace(self.shape, new_ctx, self.counter)
+
+    domain_counter = {"scale": 0, "scale_batch": 0}
+    codomain_counter = {"scale": 0, "scale_batch": 0}
+    X = CountingVectorSpace((2,), ctx, domain_counter)
+    Y = CountingVectorSpace((2,), ctx, codomain_counter)
+    A = sc.DenseLinOp(ctx.asarray([[1.0, 2.0], [3.0, -1.0]]), X, Y, ctx)
+    op = 3.0 * A
+    x = ctx.asarray([1.0, -2.0])
+    y = ctx.asarray([0.5, 4.0])
+    xs = ctx.asarray([[1.0, -2.0], [0.5, 4.0]])
+    ys = ctx.asarray([[0.5, 4.0], [3.0, -1.0]])
+
+    op.apply(x)
+    assert codomain_counter["scale"] == 1
+    assert domain_counter["scale"] == 0
+
+    op.rapply(y)
+    assert domain_counter["scale"] == 1
+
+    op.vapply(xs)
+    assert codomain_counter["scale_batch"] == 1
+
+    op.rvapply(ys)
+    assert domain_counter["scale_batch"] == 1
+
+
+def test_sum_linop_vapply_and_rvapply_match_scalar_loop_for_dense_vectors():
+    sc = importlib.import_module("spacecore")
+    ctx = _ctx(dtype=np.float64)
+    X = sc.VectorSpace((2,), ctx)
+    Y = sc.VectorSpace((3,), ctx)
+    A = sc.DenseLinOp(ctx.asarray([[1.0, 2.0], [3.0, -1.0], [0.5, 4.0]]), X, Y, ctx)
+    B = sc.DenseLinOp(ctx.asarray([[0.25, -2.0], [1.5, 0.5], [-1.0, 3.0]]), X, Y, ctx)
+    op = A + B
+    xs = ctx.asarray([[1.0, -2.0], [0.5, 4.0], [-3.0, 1.0]])
+    ys = ctx.asarray([[2.0, -1.0, 0.5], [4.0, 3.0, -2.0], [0.25, -0.5, 1.5]])
+
+    expected_v = np.stack([to_numpy(op.apply(x)) for x in xs], axis=0)
+    expected_rv = np.stack([to_numpy(op.rapply(y)) for y in ys], axis=0)
+
+    np.testing.assert_allclose(to_numpy(op.vapply(xs)), expected_v)
+    np.testing.assert_allclose(to_numpy(op.rvapply(ys)), expected_rv)
+
+
+def test_sum_linop_vapply_and_rvapply_work_for_product_space_batches():
+    sc = importlib.import_module("spacecore")
+    ctx = _ctx(dtype=np.float64)
+    x1, x2 = sc.VectorSpace((2,), ctx), sc.VectorSpace((1,), ctx)
+    y1, y2 = sc.VectorSpace((1,), ctx), sc.VectorSpace((2,), ctx)
+    A = sc.BlockDiagonalLinOp.from_operators(
+        (
+            sc.DenseLinOp(ctx.asarray([[1.0, 2.0]]), x1, y1, ctx),
+            sc.DenseLinOp(ctx.asarray([[3.0], [-1.0]]), x2, y2, ctx),
+        )
+    )
+    B = sc.BlockDiagonalLinOp.from_operators(
+        (
+            sc.DenseLinOp(ctx.asarray([[0.5, -4.0]]), x1, y1, ctx),
+            sc.DenseLinOp(ctx.asarray([[2.0], [5.0]]), x2, y2, ctx),
+        )
+    )
+    op = A + B
+    xs = (ctx.asarray([[1.0, 2.0], [-1.0, 0.5]]), ctx.asarray([[3.0], [4.0]]))
+    ys = (ctx.asarray([[5.0], [-2.0]]), ctx.asarray([[1.0, 2.0], [0.5, -1.0]]))
+
+    expected_v = _stack_rows(tuple(op.apply(_slice_batch(xs, i)) for i in range(2)))
+    expected_rv = _stack_rows(tuple(op.rapply(_slice_batch(ys, i)) for i in range(2)))
+
+    _assert_nested_allclose(op.vapply(xs), expected_v)
+    _assert_nested_allclose(op.rvapply(ys), expected_rv)
+
+
+def test_sum_linop_batched_accumulation_uses_space_add_batch():
+    sc = importlib.import_module("spacecore")
+    ctx = _ctx(dtype=np.float64)
+
+    class CountingVectorSpace(sc.VectorSpace):
+        def __init__(self, shape, ctx, counter):
+            self.counter = counter
+            super().__init__(shape, ctx)
+
+        def add_batch(self, x, y):
+            self.counter["calls"] += 1
+            return super().add_batch(x, y)
+
+        def _convert(self, new_ctx):
+            return CountingVectorSpace(self.shape, new_ctx, self.counter)
+
+    domain_counter = {"calls": 0}
+    codomain_counter = {"calls": 0}
+    X = CountingVectorSpace((2,), ctx, domain_counter)
+    Y = CountingVectorSpace((2,), ctx, codomain_counter)
+    A = sc.DenseLinOp(ctx.asarray([[1.0, 2.0], [3.0, -1.0]]), X, Y, ctx)
+    B = sc.DenseLinOp(ctx.asarray([[0.5, -4.0], [2.0, 5.0]]), X, Y, ctx)
+    op = A + B
+    xs = ctx.asarray([[1.0, 2.0], [-1.0, 0.5]])
+    ys = ctx.asarray([[5.0, -2.0], [0.5, -1.0]])
+
+    op.vapply(xs)
+    assert codomain_counter["calls"] == 1
+    assert domain_counter["calls"] == 0
+
+    op.rvapply(ys)
+    assert domain_counter["calls"] == 1
+
+
 @pytest.mark.skipif(not has_jax(), reason="jax is not installed")
 @pytest.mark.parametrize("case_index", range(7))
 def test_jax_pytree_roundtrip_for_algebra_classes(case_index):
@@ -282,6 +475,53 @@ def test_factories_ignore_enable_checks_when_context_dtype_matches():
 
     assert isinstance(summed, sc.SumLinOp)
     assert isinstance(composed, sc.ComposedLinOp)
+
+
+def test_factories_reject_matching_shapes_with_different_geometry():
+    sc = importlib.import_module("spacecore")
+    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+
+    class WeightedInnerProduct(sc.InnerProduct):
+        def __init__(self, weights):
+            self.weights = weights
+
+        def inner(self, ops, x, y):
+            return ops.vdot(x, self.weights * y)
+
+        def riesz(self, ops, x):
+            return self.weights * x
+
+        def riesz_inverse(self, ops, x):
+            return x / self.weights
+
+        def __eq__(self, other):
+            return type(other) is type(self) and np.allclose(to_numpy(self.weights), to_numpy(other.weights))
+
+        @property
+        def is_euclidean(self):
+            return False
+
+    euclidean = sc.VectorSpace((2,), ctx)
+    weighted_a = sc.VectorSpace((2,), ctx, geometry=WeightedInnerProduct(ctx.asarray([2.0, 3.0])))
+    weighted_b = sc.VectorSpace((2,), ctx, geometry=WeightedInnerProduct(ctx.asarray([2.0, 3.0])))
+    differently_weighted = sc.VectorSpace((2,), ctx, geometry=WeightedInnerProduct(ctx.asarray([2.0, 4.0])))
+
+    A = sc.DenseLinOp(ctx.asarray([[1.0, 0.0], [0.0, 1.0]]), euclidean, euclidean, ctx)
+    B = sc.DenseLinOp(ctx.asarray([[2.0, 0.0], [0.0, 3.0]]), weighted_a, weighted_a, ctx)
+    C = sc.DenseLinOp(ctx.asarray([[4.0, 0.0], [0.0, 5.0]]), differently_weighted, differently_weighted, ctx)
+    B_same_geometry = sc.DenseLinOp(
+        ctx.asarray([[0.5, 0.0], [0.0, 0.25]]), weighted_b, weighted_b, ctx
+    )
+
+    with pytest.raises(ValueError, match="same domain and codomain"):
+        sc.make_sum((A, B))
+    with pytest.raises(ValueError, match="right.codomain == left.domain"):
+        sc.make_composed(A, B)
+    with pytest.raises(ValueError, match="same domain and codomain"):
+        sc.make_sum((B, C))
+
+    assert isinstance(sc.make_sum((B, B_same_geometry)), sc.SumLinOp)
+    assert isinstance(sc.make_composed(B, B_same_geometry), sc.ComposedLinOp)
 
 
 def test_factories_enforce_domain_and_codomain_compatibility():

@@ -4,8 +4,9 @@ from typing import Any, Tuple
 
 from ._base import ProductLinOp
 from .._base import LinOp, Domain
+from ..._batching import _check_batched
 from ..._checks import checked_method
-from ...space import ProductSpace, VectorSpace
+from ...space import ProductSpace
 from ...backend import jax_pytree_class, Context
 
 
@@ -65,24 +66,32 @@ class StackedLinOp(ProductLinOp[Domain, ProductSpace]):
         if self._num_parts == 2:
             x0 = self._rapply_parts[0](y[0])
             x1 = self._rapply_parts[1](y[1])
-            return x0 + x1 if type(self.dom) is VectorSpace else self.dom.add(x0, x1)
+            return self.dom.add(x0, x1)
         acc = None
-        use_direct_add = type(self.dom) is VectorSpace
         for rapply, yi in zip(self._rapply_parts, y):
             xi = rapply(yi)
-            acc = xi if acc is None else (acc + xi if use_direct_add else self.dom.add(xi, acc))
+            acc = xi if acc is None else self.dom.add(acc, xi)
         return acc
 
     def vapply(self, x: Any) -> Any:
         """Apply this stacked operator over a batch."""
-        return tuple(op.vapply(x) for op in self.parts)
+        if self._enable_checks:
+            _check_batched(self.domain, x)
+        y = tuple(op.vapply(x) for op in self.parts)
+        if self._enable_checks:
+            _check_batched(self.codomain, y)
+        return y
 
     def rvapply(self, y: Any) -> Any:
         """Apply the adjoint stacked operator over a product batch."""
+        if self._enable_checks:
+            _check_batched(self.codomain, y)
         acc = None
         for op, yi in zip(self.parts, y):
             xi = op.rvapply(yi)
-            acc = xi if acc is None else acc + xi
+            acc = xi if acc is None else self.domain.add_batch(acc, xi)
+        if self._enable_checks:
+            _check_batched(self.domain, acc)
         return acc
 
     @classmethod
@@ -101,4 +110,4 @@ class StackedLinOp(ProductLinOp[Domain, ProductSpace]):
         new_dom = self.dom.convert(new_ctx)
         new_cod = self.cod.convert(new_ctx)
         new_parts = [op.convert(new_ctx) for op in self.parts]
-        return StackedLinOp(new_dom, new_cod, new_parts)
+        return StackedLinOp(new_dom, new_cod, new_parts, new_ctx)

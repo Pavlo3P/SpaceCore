@@ -5,6 +5,7 @@ from typing import Any, Tuple, Callable
 
 from ._base import Space
 from ._checks import BackendCheck, DTypeCheck, ShapeCheck
+from ._inner import InnerProduct
 from .._checks import checked_method
 from ..types import DenseArray
 from ..backend import Context
@@ -12,11 +13,17 @@ from ..backend import Context
 
 class VectorSpace(Space):
     r"""
-    Represent dense backend arrays with Euclidean geometry.
+    Represent dense backend arrays with configurable inner-product geometry.
 
     Elements are backend-native dense arrays with canonical shape ``shape``.
-    The inner product is :math:`\langle x, y\rangle_X = \operatorname{vdot}(x,y)`,
-    where the backend conjugates the first argument for complex arrays.
+    By default, the geometry is Euclidean:
+    :math:`\langle x, y\rangle_X = \operatorname{vdot}(x,y)`, where the
+    backend conjugates the first argument for complex arrays. A custom
+    :class:`InnerProduct` may be supplied with ``geometry=...`` to define the
+    inner product and Riesz maps used by metric-aware adjoints.
+
+    The methods :meth:`inner`, :meth:`riesz`, and :meth:`riesz_inverse`
+    delegate to the geometry object.
 
     Parameters
     ----------
@@ -24,6 +31,9 @@ class VectorSpace(Space):
         Canonical coordinate shape for elements of the space.
     ctx : Context, str, or None, optional
         Backend context specification. Default resolves to the global context.
+    geometry : InnerProduct or None, optional
+        Inner-product geometry for this coordinate space. Defaults to
+        Euclidean coordinate geometry.
 
     Attributes
     ----------
@@ -43,8 +53,13 @@ class VectorSpace(Space):
     np.float64(5.0)
     """
 
-    def __init__(self, shape: Tuple[int, ...], ctx: Context | str | None = None) -> None:
-        super(VectorSpace, self).__init__(shape, ctx)
+    def __init__(
+        self,
+        shape: Tuple[int, ...],
+        ctx: Context | str | None = None,
+        geometry: InnerProduct | None = None,
+    ) -> None:
+        super(VectorSpace, self).__init__(shape, ctx, geometry=geometry)
         self._size = prod(self.shape)
         self._is_flat_shape = self.shape == (self._size,)
 
@@ -61,15 +76,23 @@ class VectorSpace(Space):
         """Return the vector-space sum ``x + y``."""
         return x + y
 
+    def add_batch(self, x: Any, y: Any) -> DenseArray:
+        """Return the leading-axis batch sum ``x + y``."""
+        return x + y
+
     @checked_method(in_space="self", arg_positions=(1,))
     def scale(self, a: Any, x: Any) -> DenseArray:
         """Return the scalar product ``a * x``."""
         return a * x
 
+    def scale_batch(self, a: Any, x: Any) -> DenseArray:
+        """Return the leading-axis batch scalar product ``a * x``."""
+        return a * x
+
     @checked_method(in_space="self", arg_positions=(0, 1))
     def inner(self, x: Any, y: Any) -> Any:
-        r"""Return :math:`\langle x, y\rangle_X` using backend ``vdot``."""
-        return self.ops.vdot(x, y)
+        r"""Return :math:`\langle x, y\rangle_X` using this space's geometry."""
+        return self.geometry.inner(self.ops, x, y)
 
     def eigh(self, x: Any, k: int = None) -> Any:
         """Raise because vector elements do not have a canonical eigendecomposition."""
@@ -99,7 +122,7 @@ class VectorSpace(Space):
 
     def _convert(self, new_ctx: Context) -> VectorSpace:
         """Convert this vector space to ``new_ctx`` without changing shape."""
-        return VectorSpace(self.shape, new_ctx)
+        return VectorSpace(self.shape, new_ctx, geometry=self.geometry.convert(new_ctx))
 
     def _apply_entrywise(self, x: DenseArray, f: Callable[[DenseArray], DenseArray]) -> DenseArray:
         """Apply ``f`` entrywise and verify that shape is preserved."""

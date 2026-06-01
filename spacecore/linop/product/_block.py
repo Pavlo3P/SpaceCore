@@ -4,6 +4,7 @@ from typing import Any, Tuple
 
 from ._base import ProductLinOp
 from .._base import LinOp
+from ..._batching import _check_batched
 from ..._checks import checked_method
 from ... import Context
 from ...space import ProductSpace
@@ -68,11 +69,21 @@ class BlockDiagonalLinOp(ProductLinOp[ProductSpace, ProductSpace]):
 
     def vapply(self, x: Any) -> Any:
         """Apply this block-diagonal operator over a product batch."""
-        return tuple(op.vapply(xi) for op, xi in zip(self.parts, x))
+        if self._enable_checks:
+            _check_batched(self.domain, x)
+        y = tuple(op.vapply(xi) for op, xi in zip(self.parts, x))
+        if self._enable_checks:
+            _check_batched(self.codomain, y)
+        return y
 
     def rvapply(self, y: Any) -> Any:
         """Apply the adjoint over a product batch."""
-        return tuple(op.rvapply(yi) for op, yi in zip(self.parts, y))
+        if self._enable_checks:
+            _check_batched(self.codomain, y)
+        x = tuple(op.rvapply(yi) for op, yi in zip(self.parts, y))
+        if self._enable_checks:
+            _check_batched(self.domain, x)
+        return x
 
     @classmethod
     def from_operators(cls, parts: Tuple[LinOp, ...]) -> BlockDiagonalLinOp:
@@ -89,4 +100,4 @@ class BlockDiagonalLinOp(ProductLinOp[ProductSpace, ProductSpace]):
         new_dom = self.dom.convert(new_ctx)
         new_cod = self.cod.convert(new_ctx)
         new_parts = [op.convert(new_ctx) for op in self.parts]
-        return BlockDiagonalLinOp(new_dom, new_cod, new_parts)
+        return BlockDiagonalLinOp(new_dom, new_cod, new_parts, new_ctx)

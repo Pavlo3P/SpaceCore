@@ -11,6 +11,32 @@ def _ctx(dtype=np.float64, enable_checks=True):
     return sc.Context(sc.NumpyOps(), dtype=dtype, enable_checks=enable_checks)
 
 
+class WeightedInnerProduct:
+    def __init__(self, weights):
+        self.weights = weights
+
+    def inner(self, ops, x, y):
+        return ops.vdot(x, self.weights * y)
+
+    def riesz(self, ops, x):
+        return self.weights * x
+
+    def riesz_inverse(self, ops, x):
+        return x / self.weights
+
+    @property
+    def is_euclidean(self):
+        return False
+
+    def __eq__(self, other):
+        return type(other) is type(self) and np.allclose(to_numpy(self.weights), to_numpy(other.weights))
+
+
+def _weighted_space(weights, ctx):
+    sc = importlib.import_module("spacecore")
+    return sc.VectorSpace(tuple(np.asarray(weights).shape), ctx, WeightedInnerProduct(ctx.asarray(weights)))
+
+
 def test_apply_and_rapply_flat_diagonal():
     sc = importlib.import_module("spacecore")
     ctx = _ctx()
@@ -48,6 +74,7 @@ def test_complex_diagonal_satisfies_adjoint_identity_and_hermitian_predicate():
     np.testing.assert_allclose(to_numpy(lhs), to_numpy(rhs))
     assert hermitian.is_hermitian() is True
     assert non_hermitian.is_hermitian() is False
+    np.testing.assert_allclose(non_hermitian.rapply(v), np.conj(np.asarray(non_hermitian.diagonal)) * np.asarray(v))
 
 
 def test_vapply_and_rvapply_with_leading_batch():
@@ -71,7 +98,51 @@ def test_to_dense_matches_numpy_diagonal_for_tensor_space():
 
     expected = np.diag(np.asarray(diagonal).reshape((4,))).reshape((2, 2, 2, 2))
 
+    np.testing.assert_allclose(op.to_matrix(), np.diag(np.asarray(diagonal).reshape((4,))))
     np.testing.assert_allclose(op.to_dense(), expected)
+
+
+def test_weighted_diagonal_satisfies_metric_adjoint_identity_and_batches():
+    sc = importlib.import_module("spacecore")
+    ctx = _ctx()
+    space = _weighted_space([2.0, 5.0, 7.0], ctx)
+    op = sc.DiagonalLinOp(ctx.asarray([1.0, -2.0, 0.5]), space, ctx)
+    x = ctx.asarray([0.25, -1.5, 2.0])
+    y = ctx.asarray([2.0, -0.5, 1.25])
+    xs = ctx.asarray([[0.25, -1.5, 2.0], [3.0, 0.5, -1.0]])
+    ys = ctx.asarray([[2.0, -0.5, 1.25], [-1.0, 4.0, 0.75]])
+
+    np.testing.assert_allclose(space.inner(op.apply(x), y), space.inner(x, op.rapply(y)))
+    np.testing.assert_allclose(to_numpy(op.vapply(xs)), np.stack([to_numpy(op.apply(xi)) for xi in xs]))
+    np.testing.assert_allclose(to_numpy(op.rvapply(ys)), np.stack([to_numpy(op.rapply(yi)) for yi in ys]))
+
+
+def test_product_space_diagonal_uses_flatten_unflatten_paths():
+    sc = importlib.import_module("spacecore")
+    ctx = _ctx()
+    x1 = sc.VectorSpace((2,), ctx)
+    x2 = sc.VectorSpace((1,), ctx)
+    space = sc.ProductSpace((x1, x2), ctx)
+    op = sc.DiagonalLinOp(ctx.asarray([2.0, -1.0, 0.5]), space, ctx)
+    x = (ctx.asarray([1.0, 3.0]), ctx.asarray([-2.0]))
+    xs = (ctx.asarray([[1.0, 3.0], [-1.0, 4.0]]), ctx.asarray([[-2.0], [0.5]]))
+    ys = (ctx.asarray([[2.0, -1.0], [0.25, 3.0]]), ctx.asarray([[4.0], [-2.0]]))
+
+    y = op.apply(x)
+    np.testing.assert_allclose(y[0], [2.0, -3.0])
+    np.testing.assert_allclose(y[1], [-1.0])
+    np.testing.assert_allclose(op.rapply(x)[0], [2.0, -3.0])
+    np.testing.assert_allclose(op.rapply(x)[1], [-1.0])
+
+    actual_v = op.vapply(xs)
+    expected_v_rows = tuple(op.apply((xs[0][i], xs[1][i])) for i in range(xs[0].shape[0]))
+    np.testing.assert_allclose(actual_v[0], np.stack([row[0] for row in expected_v_rows]))
+    np.testing.assert_allclose(actual_v[1], np.stack([row[1] for row in expected_v_rows]))
+
+    actual_rv = op.rvapply(ys)
+    expected_rv_rows = tuple(op.rapply((ys[0][i], ys[1][i])) for i in range(ys[0].shape[0]))
+    np.testing.assert_allclose(actual_rv[0], np.stack([row[0] for row in expected_rv_rows]))
+    np.testing.assert_allclose(actual_rv[1], np.stack([row[1] for row in expected_rv_rows]))
 
 
 @pytest.mark.skipif(not has_jax(), reason="jax is not installed")

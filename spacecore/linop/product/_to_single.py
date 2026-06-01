@@ -4,8 +4,9 @@ from typing import Any, Tuple
 
 from ._base import ProductLinOp
 from .._base import LinOp, Codomain
+from ..._batching import _check_batched
 from ..._checks import checked_method
-from ...space import ProductSpace, VectorSpace
+from ...space import ProductSpace
 from ...backend import jax_pytree_class, Context
 
 
@@ -54,12 +55,11 @@ class SumToSingleLinOp(ProductLinOp[ProductSpace, Codomain]):
         if self._num_parts == 2:
             y0 = self._apply_parts[0](x[0])
             y1 = self._apply_parts[1](x[1])
-            return y0 + y1 if type(self.cod) is VectorSpace else self.cod.add(y0, y1)
+            return self.cod.add(y0, y1)
         acc = None
-        use_direct_add = type(self.cod) is VectorSpace
         for apply, xi in zip(self._apply_parts, x):
             yi = apply(xi)
-            acc = yi if acc is None else (acc + yi if use_direct_add else self.cod.add(yi, acc))
+            acc = yi if acc is None else self.cod.add(acc, yi)
         return acc
 
     @checked_method(in_space="cod", out_space="dom")
@@ -75,15 +75,24 @@ class SumToSingleLinOp(ProductLinOp[ProductSpace, Codomain]):
 
     def vapply(self, x: Any) -> Any:
         """Apply this sum-to-single operator over a product batch."""
+        if self._enable_checks:
+            _check_batched(self.domain, x)
         acc = None
         for op, xi in zip(self.parts, x):
             yi = op.vapply(xi)
-            acc = yi if acc is None else acc + yi
+            acc = yi if acc is None else self.codomain.add_batch(acc, yi)
+        if self._enable_checks:
+            _check_batched(self.codomain, acc)
         return acc
 
     def rvapply(self, y: Any) -> Any:
         """Apply the adjoint over a codomain batch."""
-        return tuple(op.rvapply(y) for op in self.parts)
+        if self._enable_checks:
+            _check_batched(self.codomain, y)
+        x = tuple(op.rvapply(y) for op in self.parts)
+        if self._enable_checks:
+            _check_batched(self.domain, x)
+        return x
 
     @classmethod
     def from_operators(cls, parts: Tuple[LinOp, ...]) -> SumToSingleLinOp:
@@ -101,4 +110,4 @@ class SumToSingleLinOp(ProductLinOp[ProductSpace, Codomain]):
         new_dom = self.dom.convert(new_ctx)
         new_cod = self.cod.convert(new_ctx)
         new_parts = [op.convert(new_ctx) for op in self.parts]
-        return SumToSingleLinOp(new_dom, new_cod, new_parts)
+        return SumToSingleLinOp(new_dom, new_cod, new_parts, new_ctx)

@@ -45,6 +45,13 @@ class ProductSpace(Space):
     -----
     ``shape`` is the one-dimensional coordinate length of the concatenated
     flattening. ``eigh`` has no canonical meaning and raises by default.
+
+    The product inner product is the sum of component inner products. Riesz
+    and inverse Riesz maps are applied componentwise to product tuple elements,
+    and ``is_euclidean`` is true if and only if every component space is
+    Euclidean. Although :class:`Space` stores a ``geometry`` attribute,
+    ``ProductSpace`` uses these componentwise overrides as its effective
+    geometry.
     """
 
     def _convert(self, new_ctx: Context) -> Space:
@@ -110,6 +117,12 @@ class ProductSpace(Space):
             self._shape1 = self._component_shapes[1]
             self._is_flat1 = self._component_is_flat[1]
 
+    def __eq__(self, other: Any) -> bool:
+        """Return whether another product space has the same ordered components."""
+        if type(other) is type(self):
+            return self.ctx == other.ctx and self.spaces == other.spaces
+        return False
+
     def _validate_spaces(self, spaces: Any) -> Tuple[Space, ...]:
         """Validate and normalize product component spaces."""
         if isinstance(spaces, Sequence):
@@ -137,10 +150,18 @@ class ProductSpace(Space):
         """Return the componentwise product-space sum."""
         return tuple(s.add(xi, yi) for s, xi, yi in zip(self.spaces, x, y))
 
+    def add_batch(self, x: Tuple[Any, ...], y: Tuple[Any, ...]) -> Tuple[Any, ...]:
+        """Return the componentwise leading-axis batch sum."""
+        return tuple(s.add_batch(xi, yi) for s, xi, yi in zip(self.spaces, x, y))
+
     @checked_method(in_space="self", arg_positions=(1,))
     def scale(self, a: Any, x: Tuple[Any, ...]) -> Tuple[Any, ...]:
         """Return the componentwise scalar product."""
         return tuple(s.scale(a, xi) for s, xi in zip(self.spaces, x))
+
+    def scale_batch(self, a: Any, x: Tuple[Any, ...]) -> Tuple[Any, ...]:
+        """Return the componentwise leading-axis batch scalar product."""
+        return tuple(s.scale_batch(a, xi) for s, xi in zip(self.spaces, x))
 
     @checked_method(in_space="self", arg_positions=(0, 1))
     def inner(self, x: Tuple[Any, ...], y: Tuple[Any, ...]) -> Any:
@@ -151,6 +172,19 @@ class ProductSpace(Space):
             v = s.inner(xi, yi)
             acc = v if acc is None else (acc + v)
         return acc
+
+    def riesz(self, x: Tuple[Any, ...]) -> Tuple[Any, ...]:
+        """Apply each component space's Riesz map."""
+        return tuple(s.riesz(xi) for s, xi in zip(self.spaces, x))
+
+    def riesz_inverse(self, x: Tuple[Any, ...]) -> Tuple[Any, ...]:
+        """Apply each component space's inverse Riesz map."""
+        return tuple(s.riesz_inverse(xi) for s, xi in zip(self.spaces, x))
+
+    @property
+    def is_euclidean(self) -> bool:
+        """Return whether every product component is Euclidean."""
+        return all(s.is_euclidean for s in self.spaces)
 
     def eigh(self, x: Any, k: int = None) -> Any:
         """Raise because product spaces do not define a canonical eigendecomposition."""
