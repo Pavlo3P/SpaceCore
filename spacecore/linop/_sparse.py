@@ -1,21 +1,31 @@
 from __future__ import annotations
 
+from enum import Enum, auto
 from functools import cached_property
 from math import prod
 from typing import Any
 
 from ._base import Codomain, Domain, LinOp
 from ._metric import (
-    _METRIC_BATCH_FALLBACK_ERRORS,
     _metric_is_hermitian_by_basis,
     _requires_euclidean_or_riesz,
-    _warn_metric_batch_fallback,
+    metric_rapply,
+    metric_rvapply,
 )
 from .._batching import _check_batched
 from ..space import VectorSpace, WeightedInnerProduct
 from ..types import DenseArray, SparseArray
 from ..backend import jax_pytree_class, Context
 from .._contextual import resolve_context_priority
+
+
+class _SparseMode(Enum):
+    """Private computation modes for sparse coordinate operators."""
+
+    EUCLIDEAN_FLAT = auto()
+    EUCLIDEAN_TENSOR = auto()
+    WEIGHTED_FUSED = auto()
+    GENERAL_METRIC = auto()
 
 
 @jax_pytree_class
@@ -89,67 +99,29 @@ class SparseLinOp(LinOp[Domain, Codomain]):
         self._AH = self._sparse_conj(self._AT) if self._A_is_complex else self._AT
         self._dom_is_flat = tuple(self.dom.shape) == (self._dom_size,)
         self._cod_is_flat = tuple(self.cod.shape) == (self._cod_size,)
-        self._dom_vector_fast_path = type(self.dom) is VectorSpace
-        self._cod_vector_fast_path = type(self.cod) is VectorSpace
-        self._weighted_flat_adjoint_fast_path = (
-            self._dom_vector_fast_path
-            and self._cod_vector_fast_path
+        self._mode = self._select_mode()
+        if self._mode is _SparseMode.WEIGHTED_FUSED:
+            self._dom_weights = self.dom.geometry.weights
+            self._cod_weights = self.cod.geometry.weights
+
+    def _select_mode(self) -> _SparseMode:
+        """Select the sparse computation mode once for this operator."""
+        vector_dom = type(self.dom) is VectorSpace
+        vector_cod = type(self.cod) is VectorSpace
+        if (
+            vector_dom
+            and vector_cod
             and self._dom_is_flat
             and self._cod_is_flat
             and type(self.dom.geometry) is WeightedInnerProduct
             and type(self.cod.geometry) is WeightedInnerProduct
-        )
-        if self._weighted_flat_adjoint_fast_path:
-            self._dom_weights = self.dom.geometry.weights
-            self._cod_weights = self.cod.geometry.weights
-        if not self._enable_checks:
-            self._install_unchecked_fast_methods()
-
-    def _install_unchecked_fast_methods(self) -> None:
-        """Install direct no-check callables for exact vector-space hot paths."""
-        if not (self._dom_vector_fast_path and self._cod_vector_fast_path):
-            self.apply = self._apply_unchecked
-            self.rapply = self._rapply_unchecked
-            self.vapply = self._vapply_unchecked
-            self.rvapply = self._rvapply_unchecked
-            return
-
-        A = self._A
-        AH = self._AH
-        dom_size = self._dom_size
-        cod_size = self._cod_size
-        cod_shape = tuple(self.cod.shape)
-        dom_shape = tuple(self.dom.shape)
-        dom_is_flat = self._dom_is_flat
-        cod_is_flat = self._cod_is_flat
-        if dom_is_flat and cod_is_flat:
-            self.apply = lambda x, A=A: A @ x
-            self.vapply = lambda xs, A=A, dom_size=dom_size: (A @ xs.reshape((-1, dom_size)).T).T
-        else:
-            self.apply = lambda x, A=A, dom_size=dom_size, cod_shape=cod_shape: (A @ x.reshape((dom_size,))).reshape(cod_shape)
-            self.vapply = (
-                lambda xs, A=A, dom_size=dom_size, cod_shape=cod_shape:
-                (A @ xs.reshape((-1, dom_size)).T).T.reshape(tuple(xs.shape[: len(xs.shape) - len(dom_shape)]) + cod_shape)
-            )
-
-        if self._weighted_flat_adjoint_fast_path:
-            cod_weights = self._cod_weights
-            dom_weights = self._dom_weights
-            self.rapply = lambda y, AH=AH, cod_weights=cod_weights, dom_weights=dom_weights: (AH @ (cod_weights * y)) / dom_weights
-            self.rvapply = lambda ys, AH=AH, cod_weights=cod_weights, dom_weights=dom_weights: (AH @ (ys * cod_weights).T).T / dom_weights
-        elif self.domain.is_euclidean and self.codomain.is_euclidean:
-            if cod_is_flat and dom_is_flat:
-                self.rapply = lambda y, AH=AH: AH @ y
-                self.rvapply = lambda ys, AH=AH, cod_size=cod_size: (AH @ ys.reshape((-1, cod_size)).T).T
-            else:
-                self.rapply = lambda y, AH=AH, cod_size=cod_size, dom_shape=dom_shape: (AH @ y.reshape((cod_size,))).reshape(dom_shape)
-                self.rvapply = (
-                    lambda ys, AH=AH, cod_size=cod_size, dom_shape=dom_shape:
-                    (AH @ ys.reshape((-1, cod_size)).T).T.reshape(tuple(ys.shape[: len(ys.shape) - len(cod_shape)]) + dom_shape)
-                )
-        else:
-            self.rapply = self._rapply_unchecked
-            self.rvapply = self._rvapply_unchecked
+        ):
+            return _SparseMode.WEIGHTED_FUSED
+        if vector_dom and vector_cod and self.domain.is_euclidean and self.codomain.is_euclidean:
+            if self._dom_is_flat and self._cod_is_flat:
+                return _SparseMode.EUCLIDEAN_FLAT
+            return _SparseMode.EUCLIDEAN_TENSOR
+        return _SparseMode.GENERAL_METRIC
 
     def _sparse_conj(self, A: SparseArray) -> SparseArray:
         """Return the complex conjugate of a backend sparse array."""
@@ -183,16 +155,6 @@ class SparseLinOp(LinOp[Domain, Codomain]):
 
         x must have shape dom.shape (dense).
         """
-        if (
-            not self._enable_checks
-            and self._dom_vector_fast_path
-            and self._cod_vector_fast_path
-        ):
-            if self._dom_is_flat:
-                y1 = self._A @ x
-            else:
-                y1 = self._A @ x.reshape((self._dom_size,))
-            return y1 if self._cod_is_flat else y1.reshape(self.cod.shape)
         if self._enable_checks:
             self.dom._check_member(x)
         y = self._apply_unchecked(x)
@@ -202,13 +164,14 @@ class SparseLinOp(LinOp[Domain, Codomain]):
 
     def _apply_unchecked(self, x: DenseArray) -> DenseArray:
         """Apply the stored sparse matrix without membership checks."""
-        if self._dom_vector_fast_path:
-            x1 = x if self._dom_is_flat else x.reshape((self._dom_size,))
-        else:
-            x1 = self.dom.flatten(x)
-        y1 = self._A @ x1   # (m,)
-        if self._cod_vector_fast_path:
-            return y1 if self._cod_is_flat else y1.reshape(self.cod.shape)
+        if self._mode is _SparseMode.EUCLIDEAN_FLAT:
+            return self._A @ x
+        if self._mode is _SparseMode.EUCLIDEAN_TENSOR:
+            return (self._A @ x.reshape((self._dom_size,))).reshape(self.cod.shape)
+        if self._mode is _SparseMode.WEIGHTED_FUSED:
+            return self._A @ x
+        x1 = self.dom.flatten(x)
+        y1 = self._A @ x1
         return self.cod.unflatten(y1)
 
     def rapply(self, y: DenseArray) -> DenseArray:
@@ -226,23 +189,18 @@ class SparseLinOp(LinOp[Domain, Codomain]):
 
     def _rapply_unchecked(self, y: DenseArray) -> DenseArray:
         """Apply the metric adjoint without membership checks."""
-        if self._weighted_flat_adjoint_fast_path:
+        if self._mode is _SparseMode.WEIGHTED_FUSED:
             return (self._AH @ (self._cod_weights * y)) / self._dom_weights
-        if self.domain.is_euclidean and self.codomain.is_euclidean:
-            return self._euclidean_rapply_unchecked(y)
-        yd = self.codomain.riesz(y)
-        tmp = self._euclidean_rapply_unchecked(yd)
-        return self.domain.riesz_inverse(tmp)
+        return metric_rapply(self.domain, self.codomain, self._euclidean_rapply_unchecked, y)
 
     def _euclidean_rapply_unchecked(self, y: DenseArray) -> DenseArray:
         """Apply the stored sparse adjoint without membership checks."""
-        if self._cod_vector_fast_path:
-            y1 = y if self._cod_is_flat else y.reshape((self._cod_size,))
-        else:
-            y1 = self.cod.flatten(y)
+        if self._mode is _SparseMode.EUCLIDEAN_FLAT:
+            return self._AH @ y
+        if self._mode is _SparseMode.EUCLIDEAN_TENSOR:
+            return (self._AH @ y.reshape((self._cod_size,))).reshape(self.dom.shape)
+        y1 = self.cod.flatten(y)
         x1 = self._AH @ y1
-        if self._dom_vector_fast_path:
-            return x1 if self._dom_is_flat else x1.reshape(self.dom.shape)
         return self.dom.unflatten(x1)
 
     def vapply(self, xs: DenseArray) -> DenseArray:
@@ -252,11 +210,15 @@ class SparseLinOp(LinOp[Domain, Codomain]):
 
     def _vapply_unchecked(self, xs: DenseArray) -> DenseArray:
         """Apply over a leading batch axis without membership checks."""
-        if self._dom_vector_fast_path and self._cod_vector_fast_path:
+        if self._mode is _SparseMode.EUCLIDEAN_FLAT:
+            return (self._A @ xs.reshape((-1, self._dom_size)).T).T
+        if self._mode is _SparseMode.EUCLIDEAN_TENSOR:
             lead = tuple(xs.shape[: len(xs.shape) - len(self.dom.shape)])
             xs2 = xs.reshape((-1, self._dom_size))
             ys2 = (self._A @ xs2.T).T
             return ys2.reshape(lead + tuple(self.cod.shape))
+        if self._mode is _SparseMode.WEIGHTED_FUSED:
+            return (self._A @ xs.reshape((-1, self._dom_size)).T).T
         xs_flat = self.domain.flatten_batch(xs)
         ys_flat = (self._A @ xs_flat.T).T
         return self.codomain.unflatten_batch(ys_flat)
@@ -271,21 +233,23 @@ class SparseLinOp(LinOp[Domain, Codomain]):
 
     def _rvapply_unchecked(self, ys: DenseArray) -> DenseArray:
         """Apply the metric adjoint over leading batch axes without checks."""
-        if self._weighted_flat_adjoint_fast_path:
+        if self._mode is _SparseMode.WEIGHTED_FUSED:
             return (self._AH @ (ys * self._cod_weights).T).T / self._dom_weights
-        if not (self.domain.is_euclidean and self.codomain.is_euclidean):
-            try:
-                yd = self.codomain.riesz(ys)
-                tmp = self._euclidean_rvapply_unchecked(yd)
-                return self.domain.riesz_inverse(tmp)
-            except _METRIC_BATCH_FALLBACK_ERRORS as err:
-                _warn_metric_batch_fallback(type(self).__name__, err)
-                return self.ops.vmap(self.rapply, in_axes=0, out_axes=0)(ys)
-        return self._euclidean_rvapply_unchecked(ys)
+        return metric_rvapply(
+            self.domain,
+            self.codomain,
+            self._euclidean_rapply_unchecked,
+            self._euclidean_rvapply_unchecked,
+            ys,
+            opname=type(self).__name__,
+            ops=self.ops,
+        )
 
     def _euclidean_rvapply_unchecked(self, ys: DenseArray) -> DenseArray:
         """Apply the Euclidean sparse adjoint over leading batch axes."""
-        if self._cod_vector_fast_path and self._dom_vector_fast_path:
+        if self._mode is _SparseMode.EUCLIDEAN_FLAT:
+            return (self._AH @ ys.reshape((-1, self._cod_size)).T).T
+        if self._mode is _SparseMode.EUCLIDEAN_TENSOR:
             lead = tuple(ys.shape[: len(ys.shape) - len(self.cod.shape)])
             ys2 = ys.reshape((-1, self._cod_size))
             xs2 = (self._AH @ ys2.T).T
@@ -354,13 +318,16 @@ class SparseLinOp(LinOp[Domain, Codomain]):
         return False
 
     def tree_flatten(self):
-        aux = (self.dom, self.cod, self.ctx)
+        aux = (self.dom, self.cod, self.ctx, self._mode)
         children = (self.A,)
         return children, aux
 
     @classmethod
     def tree_unflatten(cls, aux, children):
-        dom, cod, ctx = aux
+        if len(aux) == 4:
+            dom, cod, ctx, _mode = aux
+        else:
+            dom, cod, ctx = aux
         A = children[0]
         return cls(A, dom, cod, ctx)
 

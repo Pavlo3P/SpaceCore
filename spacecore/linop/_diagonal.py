@@ -1,21 +1,30 @@
 from __future__ import annotations
 
+from enum import Enum, auto
 from functools import cached_property
 from math import prod
 from typing import Any
 
 from ._base import LinOp
 from ._metric import (
-    _METRIC_BATCH_FALLBACK_ERRORS,
     _metric_is_hermitian_by_basis,
     _requires_euclidean_or_riesz,
-    _warn_metric_batch_fallback,
+    metric_rapply,
+    metric_rvapply,
 )
 from .._batching import _check_batched
 from ..backend import Context, jax_pytree_class
-from ..space import Space, VectorSpace
+from ..space import Space, VectorSpace, WeightedInnerProduct
 from ..types import DenseArray
 from .._contextual import resolve_context_priority
+
+
+class _DiagonalMode(Enum):
+    """Private computation modes for diagonal coordinate operators."""
+
+    EUCLIDEAN = auto()
+    WEIGHTED_FUSED = auto()
+    GENERAL_METRIC = auto()
 
 
 @jax_pytree_class
@@ -76,24 +85,15 @@ class DiagonalLinOp(LinOp[Space, Space]):
             self.ops.conj(diagonal) if self.ops.is_complex_dtype(dtype) else diagonal
         )
         self._diag_adjoint_flat = self._diag_adjoint.reshape((prod(self.domain.shape),))
-        self._vector_fast_path = type(self.domain) is VectorSpace
-        if not self._enable_checks:
-            if self._vector_fast_path:
-                diagonal = self.diagonal
-                diag_adjoint = self._diag_adjoint
-                self.apply = lambda x, diagonal=diagonal: diagonal * x
-                self.vapply = lambda xs, diagonal=diagonal: diagonal * xs
-                if self.domain.is_euclidean:
-                    self.rapply = lambda y, diag_adjoint=diag_adjoint: diag_adjoint * y
-                    self.rvapply = lambda ys, diag_adjoint=diag_adjoint: diag_adjoint * ys
-                else:
-                    self.rapply = self._rapply_unchecked
-                    self.rvapply = self._rvapply_unchecked
-            else:
-                self.apply = self._apply_unchecked
-                self.rapply = self._rapply_unchecked
-                self.vapply = self._vapply_unchecked
-                self.rvapply = self._rvapply_unchecked
+        self._mode = self._select_mode()
+
+    def _select_mode(self) -> _DiagonalMode:
+        """Select the diagonal computation mode once for this operator."""
+        if type(self.domain) is VectorSpace and self.domain.is_euclidean:
+            return _DiagonalMode.EUCLIDEAN
+        if type(self.domain) is VectorSpace and type(self.domain.geometry) is WeightedInnerProduct:
+            return _DiagonalMode.WEIGHTED_FUSED
+        return _DiagonalMode.GENERAL_METRIC
 
     @cached_property
     def A(self) -> DenseArray:
@@ -102,8 +102,6 @@ class DiagonalLinOp(LinOp[Space, Space]):
 
     def apply(self, x: DenseArray) -> DenseArray:
         """Apply the diagonal operator to ``x``."""
-        if not self._enable_checks and self._vector_fast_path:
-            return self.diagonal * x
         if self._enable_checks:
             self.domain._check_member(x)
         y = self._apply_unchecked(x)
@@ -113,7 +111,7 @@ class DiagonalLinOp(LinOp[Space, Space]):
 
     def _apply_unchecked(self, x: DenseArray) -> DenseArray:
         """Apply the diagonal operator without membership checks."""
-        if self._vector_fast_path:
+        if self._mode is not _DiagonalMode.GENERAL_METRIC or type(self.domain) is VectorSpace:
             return self.diagonal * x
         x_flat = self.domain.flatten(x)
         y_flat = self._diag_flat * x_flat
@@ -130,15 +128,13 @@ class DiagonalLinOp(LinOp[Space, Space]):
 
     def _rapply_unchecked(self, y: DenseArray) -> DenseArray:
         """Apply the metric adjoint without membership checks."""
-        if self.domain.is_euclidean:
-            return self._euclidean_rapply_unchecked(y)
-        yd = self.codomain.riesz(y)
-        tmp = self._euclidean_rapply_unchecked(yd)
-        return self.domain.riesz_inverse(tmp)
+        if self._mode is _DiagonalMode.WEIGHTED_FUSED:
+            return self._diag_adjoint * y
+        return metric_rapply(self.domain, self.codomain, self._euclidean_rapply_unchecked, y)
 
     def _euclidean_rapply_unchecked(self, y: DenseArray) -> DenseArray:
         """Apply the Euclidean diagonal adjoint without membership checks."""
-        if self._vector_fast_path:
+        if self._mode is not _DiagonalMode.GENERAL_METRIC or type(self.domain) is VectorSpace:
             return self._diag_adjoint * y
         y_flat = self.codomain.flatten(y)
         x_flat = self._diag_adjoint_flat * y_flat
@@ -152,7 +148,7 @@ class DiagonalLinOp(LinOp[Space, Space]):
 
     def _vapply_unchecked(self, xs: DenseArray) -> DenseArray:
         """Apply over a leading batch axis without membership checks."""
-        if self._vector_fast_path:
+        if self._mode is not _DiagonalMode.GENERAL_METRIC or type(self.domain) is VectorSpace:
             return self.diagonal * xs
         xs_flat = self.domain.flatten_batch(xs)
         ys_flat = xs_flat * self._diag_flat
@@ -169,19 +165,21 @@ class DiagonalLinOp(LinOp[Space, Space]):
 
     def _rvapply_unchecked(self, ys: DenseArray) -> DenseArray:
         """Apply the metric adjoint over a leading batch axis without checks."""
-        if not self.domain.is_euclidean:
-            try:
-                yd = self.codomain.riesz(ys)
-                tmp = self._euclidean_rvapply_unchecked(yd)
-                return self.domain.riesz_inverse(tmp)
-            except _METRIC_BATCH_FALLBACK_ERRORS as err:
-                _warn_metric_batch_fallback(type(self).__name__, err)
-                return self.ops.vmap(self.rapply, in_axes=0, out_axes=0)(ys)
-        return self._euclidean_rvapply_unchecked(ys)
+        if self._mode is _DiagonalMode.WEIGHTED_FUSED:
+            return self._diag_adjoint * ys
+        return metric_rvapply(
+            self.domain,
+            self.codomain,
+            self._euclidean_rapply_unchecked,
+            self._euclidean_rvapply_unchecked,
+            ys,
+            opname=type(self).__name__,
+            ops=self.ops,
+        )
 
     def _euclidean_rvapply_unchecked(self, ys: DenseArray) -> DenseArray:
         """Apply the Euclidean diagonal adjoint over a leading batch axis."""
-        if self._vector_fast_path:
+        if self._mode is not _DiagonalMode.GENERAL_METRIC or type(self.domain) is VectorSpace:
             return self._diag_adjoint * ys
         ys_flat = self.codomain.flatten_batch(ys)
         xs_flat = ys_flat * self._diag_adjoint_flat
@@ -222,13 +220,16 @@ class DiagonalLinOp(LinOp[Space, Space]):
     def tree_flatten(self):
         """Flatten this operator for pytree registration."""
         children = (self.diagonal,)
-        aux = (self.domain, self.ctx)
+        aux = (self.domain, self.ctx, self._mode)
         return children, aux
 
     @classmethod
     def tree_unflatten(cls, aux, children):
         """Rebuild this operator from pytree data."""
-        domain, ctx = aux
+        if len(aux) == 3:
+            domain, ctx, _mode = aux
+        else:
+            domain, ctx = aux
         return cls(children[0], domain, ctx)
 
     def _convert(self, new_ctx: Context) -> DiagonalLinOp:

@@ -75,3 +75,39 @@ def _warn_metric_batch_fallback(opname: str, error: Exception) -> None:
         RuntimeWarning,
         stacklevel=2,
     )
+
+
+def metric_rapply(domain, codomain, euclidean_rapply, y):
+    """Apply the metric adjoint ``R_X^{-1} A^dagger R_Y`` to one element."""
+    if domain.is_euclidean and codomain.is_euclidean:
+        return euclidean_rapply(y)
+    return domain.riesz_inverse(euclidean_rapply(codomain.riesz(y)))
+
+
+def metric_rvapply(
+    domain,
+    codomain,
+    euclidean_rapply,
+    euclidean_rvapply,
+    ys,
+    *,
+    opname: str,
+    ops,
+):
+    """Apply the metric adjoint over a leading batch axis.
+
+    The fast path uses batched Riesz maps, which should broadcast over the
+    leading batch axis. If a space does not support batched Riesz maps, this
+    falls back to backend ``vmap`` over :func:`metric_rapply` and emits a
+    runtime warning.
+    """
+    if domain.is_euclidean and codomain.is_euclidean:
+        return euclidean_rvapply(ys)
+    try:
+        yd = codomain.riesz(ys)
+        tmp = euclidean_rvapply(yd)
+        return domain.riesz_inverse(tmp)
+    except _METRIC_BATCH_FALLBACK_ERRORS as err:
+        _warn_metric_batch_fallback(opname, err)
+        per_elem = lambda y: metric_rapply(domain, codomain, euclidean_rapply, y)
+        return ops.vmap(per_elem, in_axes=0, out_axes=0)(ys)

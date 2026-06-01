@@ -38,11 +38,6 @@ class BlockDiagonalLinOp(ProductLinOp[ProductSpace, ProductSpace]):
         ctx: Context | str | None = None,
     ) -> None:
         super().__init__(dom, cod, parts, ctx)
-        if not self._enable_checks:
-            self.apply = self._apply_unchecked
-            self.rapply = self._rapply_unchecked
-            self.vapply = self._vapply_unchecked
-            self.rvapply = self._rvapply_unchecked
 
     def _check_layout(self) -> None:
         """Check that each component maps the matching product component."""

@@ -28,7 +28,7 @@ class QuadraticForm(Functional[Domain]):
         raise NotImplementedError(f"{type(self).__name__} does not define hess_apply.")
 
     def grad(self, x: Any) -> Any:
-        """Gradient at ``x`` when available."""
+        """Return the gradient with respect to ``domain.inner`` when available."""
         raise NotImplementedError(f"{type(self).__name__} does not define grad.")
 
     def vgrad(self, xs: Any) -> Any:
@@ -129,7 +129,11 @@ class LinOpQuadraticForm(QuadraticForm[Domain]):
     @checked_method(in_space="domain", out_space="domain")
     def grad(self, x: Any) -> Any:
         """
-        Return the Euclidean/Riesz gradient.
+        Return the gradient with respect to ``domain.inner``.
+
+        This is the Riesz gradient: for Euclidean geometry it is the ordinary
+        coordinate gradient, while for non-Euclidean geometry it is corrected
+        by the domain inner product.
 
         ``LinOpQuadraticForm`` assumes ``Q`` is Hermitian/self-adjoint, so the
         quadratic contribution is exactly ``Q.apply(x)``.

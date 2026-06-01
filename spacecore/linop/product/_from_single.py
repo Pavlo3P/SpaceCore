@@ -39,24 +39,6 @@ class StackedLinOp(ProductLinOp[Domain, ProductSpace]):
     ) -> None:
         super().__init__(dom, cod, parts, ctx)
         self._flat_dense_rapply_mats = self._make_flat_dense_rapply_mats()
-        if not self._enable_checks:
-            if self._flat_dense_rapply_mats is not None:
-                mats = self._flat_dense_rapply_mats
-                self.rapply = (
-                    (lambda y, mats=mats: mats[0] @ y[0] + mats[1] @ y[1])
-                    if len(mats) == 2
-                    else self._rapply_unchecked
-                )
-                self.rvapply = (
-                    (lambda y, mats=mats: y[0] @ mats[0].T + y[1] @ mats[1].T)
-                    if len(mats) == 2
-                    else self._rvapply_unchecked
-                )
-            else:
-                self.rapply = self._rapply_unchecked
-                self.rvapply = self._rvapply_unchecked
-            self.apply = self._apply_unchecked
-            self.vapply = self._vapply_unchecked
 
     def _make_flat_dense_rapply_mats(self):
         """Return dense adjoint matrices for the exact flat-vector fast path."""

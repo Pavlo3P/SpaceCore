@@ -152,6 +152,133 @@ def test_weighted_vector_metric_adjoint_for_dense_sparse_and_diagonal(ctx):
     _assert_adjoint_identity(diagonal, ctx.asarray([1.0, -2.0]), ctx.asarray([3.0, 0.25]))
 
 
+def test_weighted_dense_fused_adjoint_matches_generic_metric_formula():
+    sc = importlib.import_module("spacecore")
+    from spacecore.linop._metric import metric_rapply
+
+    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    domain = sc.VectorSpace((2,), ctx, geometry=sc.WeightedInnerProduct(ctx.asarray([2.0, 5.0])))
+    codomain = sc.VectorSpace((3,), ctx, geometry=sc.WeightedInnerProduct(ctx.asarray([3.0, 7.0, 11.0])))
+    matrix = ctx.asarray([[1.0, -2.0], [0.5, 3.0], [4.0, -1.0]])
+    op = sc.DenseLinOp(matrix, domain, codomain, ctx)
+    y = ctx.asarray([2.0, -0.5, 1.25])
+
+    assert op._mode.name == "WEIGHTED_FUSED"
+    np.testing.assert_allclose(to_numpy(op.rapply(y)), to_numpy(op._weighted_A2H @ y))
+    np.testing.assert_allclose(
+        to_numpy(op.rapply(y)),
+        to_numpy(metric_rapply(op.domain, op.codomain, op._euclidean_rapply_unchecked, y)),
+    )
+
+
+@pytest.mark.parametrize("ctx", list(_contexts(False)))
+def test_weighted_composed_sum_scaled_and_adjoint_view_identity(ctx):
+    sc = importlib.import_module("spacecore")
+    WeightedVectorSpace = _weighted_space_class()
+    domain = WeightedVectorSpace([2.0, 5.0], ctx)
+    middle = WeightedVectorSpace([3.0, 7.0, 11.0], ctx)
+    codomain = WeightedVectorSpace([13.0, 17.0], ctx)
+    A = sc.DenseLinOp(
+        ctx.asarray([[1.0, -2.0], [0.5, 3.0], [4.0, -1.0]]),
+        domain,
+        middle,
+        ctx,
+    )
+    B = sc.DenseLinOp(
+        ctx.asarray([[2.0, -0.5, 1.0], [-1.5, 0.25, 3.0]]),
+        middle,
+        codomain,
+        ctx,
+    )
+    C = sc.DenseLinOp(
+        ctx.asarray([[-0.25, 2.0], [1.0, 0.5], [2.5, -1.0]]),
+        domain,
+        middle,
+        ctx,
+    )
+    x = ctx.asarray([0.25, -1.5])
+    y = ctx.asarray([2.0, -0.5, 1.25])
+    z = ctx.asarray([1.5, -0.75])
+
+    _assert_adjoint_identity(B @ A, x, z)
+    _assert_adjoint_identity(A + C, x, y)
+    _assert_adjoint_identity(2.5 * A, x, y)
+
+    adjoint = A.H
+    _assert_adjoint_identity(adjoint, y, x)
+    assert adjoint.H is A
+
+
+@pytest.mark.parametrize("ctx", list(_contexts(True)))
+def test_weighted_complex_scaled_lazily_adjoint_identity(ctx):
+    sc = importlib.import_module("spacecore")
+    domain = sc.VectorSpace(
+        (2,), ctx, geometry=sc.WeightedInnerProduct(ctx.asarray([2.0, 5.0]))
+    )
+    codomain = sc.VectorSpace(
+        (3,), ctx, geometry=sc.WeightedInnerProduct(ctx.asarray([3.0, 7.0, 11.0]))
+    )
+    op = sc.DenseLinOp(
+        ctx.asarray(
+            [[1.0 + 0.5j, -2.0j], [0.5 - 1.0j, 3.0], [4.0, -1.0 + 2.0j]]
+        ),
+        domain,
+        codomain,
+        ctx,
+    )
+    x = ctx.asarray([0.25 + 1.0j, -1.5 + 0.5j])
+    y = ctx.asarray([2.0 - 0.25j, -0.5 + 1.0j, 1.25j])
+
+    _assert_adjoint_identity((1.25 - 0.5j) * op, x, y)
+
+
+@pytest.mark.parametrize("ctx", list(_contexts(False)))
+def test_weighted_stacked_linop_adjoint_identity(ctx):
+    sc = importlib.import_module("spacecore")
+    WeightedVectorSpace = _weighted_space_class()
+    domain = WeightedVectorSpace([2.0, 5.0], ctx)
+    cod0 = WeightedVectorSpace([3.0, 7.0, 11.0], ctx)
+    cod1 = WeightedVectorSpace([13.0], ctx)
+    A0 = sc.DenseLinOp(
+        ctx.asarray([[1.0, -2.0], [0.5, 3.0], [4.0, -1.0]]),
+        domain,
+        cod0,
+        ctx,
+    )
+    A1 = sc.DenseLinOp(ctx.asarray([[2.0, -0.25]]), domain, cod1, ctx)
+    stacked = sc.StackedLinOp.from_operators((A0, A1))
+    x = ctx.asarray([0.25, -1.5])
+    y = (ctx.asarray([2.0, -0.5, 1.25]), ctx.asarray([-0.75]))
+
+    _assert_adjoint_identity(stacked, x, y)
+
+
+def test_weighted_matrix_backed_mode_recomputed_after_convert():
+    sc = importlib.import_module("spacecore")
+    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    new_ctx = sc.Context(sc.NumpyOps(), dtype=np.float32, enable_checks=False)
+    domain = sc.VectorSpace((2,), ctx, geometry=sc.WeightedInnerProduct(ctx.asarray([2.0, 5.0])))
+    codomain = sc.VectorSpace((3,), ctx, geometry=sc.WeightedInnerProduct(ctx.asarray([3.0, 7.0, 11.0])))
+    op = sc.DenseLinOp(
+        ctx.asarray([[1.0, -2.0], [0.5, 3.0], [4.0, -1.0]]),
+        domain,
+        codomain,
+        ctx,
+    )
+
+    converted = op.convert(new_ctx)
+
+    assert op._mode.name == "WEIGHTED_FUSED"
+    assert converted._mode.name == "WEIGHTED_FUSED"
+    _assert_adjoint_identity(
+        converted,
+        new_ctx.asarray([0.25, -1.5]),
+        new_ctx.asarray([2.0, -0.5, 1.25]),
+        rtol=1e-5,
+        atol=1e-5,
+    )
+
+
 def test_matrix_free_coordinate_adjoint_constructor_matches_direct_euclidean_adjoint():
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)

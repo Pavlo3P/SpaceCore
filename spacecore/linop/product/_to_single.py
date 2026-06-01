@@ -39,24 +39,6 @@ class SumToSingleLinOp(ProductLinOp[ProductSpace, Codomain]):
     ) -> None:
         super().__init__(dom, cod, parts, ctx)
         self._flat_dense_apply_mats = self._make_flat_dense_apply_mats()
-        if not self._enable_checks:
-            if self._flat_dense_apply_mats is not None:
-                mats = self._flat_dense_apply_mats
-                self.apply = (
-                    (lambda x, mats=mats: mats[0] @ x[0] + mats[1] @ x[1])
-                    if len(mats) == 2
-                    else self._apply_unchecked
-                )
-                self.vapply = (
-                    (lambda x, mats=mats: x[0] @ mats[0].T + x[1] @ mats[1].T)
-                    if len(mats) == 2
-                    else self._vapply_unchecked
-                )
-            else:
-                self.apply = self._apply_unchecked
-                self.vapply = self._vapply_unchecked
-            self.rapply = self._rapply_unchecked
-            self.rvapply = self._rvapply_unchecked
 
     def _make_flat_dense_apply_mats(self):
         """Return dense matrices for the exact flat-vector fast path."""
