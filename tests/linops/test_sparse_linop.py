@@ -1,6 +1,7 @@
 import importlib
 
 import numpy as np
+import pytest
 import scipy.sparse as sps
 
 
@@ -29,6 +30,92 @@ def test_sparse_linop_construct_apply_rapply():
 
     assert np.allclose(op.apply(x), dense @ np.asarray(x))
     assert np.allclose(op.rapply(y), dense.T @ np.asarray(y))
+    assert np.allclose(op.to_dense(), dense)
+    assert np.allclose(op.to_matrix(), dense)
+
+
+def test_sparse_linop_rectangular_batched_apply_and_rapply():
+    sc = importlib.import_module("spacecore")
+    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    dom = sc.VectorSpace((2,), ctx)
+    cod = sc.VectorSpace((3,), ctx)
+    dense = np.array([[1.0, -2.0], [3.0, 0.5], [0.25, 4.0]])
+    op = sc.SparseLinOp(ctx.assparse(dense), dom, cod, ctx)
+
+    xs = ctx.asarray([[1.0, 2.0], [-3.0, 4.0], [0.5, -1.5]])
+    ys = ctx.asarray([[2.0, -1.0, 0.5], [1.5, 3.0, -2.0]])
+
+    assert op.to_dense().shape == (3, 2)
+    assert op.to_matrix().shape == (3, 2)
+    assert np.allclose(op.apply(xs[0]), dense @ np.asarray(xs[0]))
+    assert np.allclose(op.rapply(ys[0]), dense.T @ np.asarray(ys[0]))
+    for i in range(xs.shape[0]):
+        assert np.allclose(op.vapply(xs)[i], op.apply(xs[i]))
+    for i in range(ys.shape[0]):
+        assert np.allclose(op.rvapply(ys)[i], op.rapply(ys[i]))
+
+
+def test_sparse_linop_complex_rapply_uses_conjugate_transpose():
+    sc = importlib.import_module("spacecore")
+    ctx = sc.Context(sc.NumpyOps(), dtype=np.complex128)
+    dom = sc.VectorSpace((2,), ctx)
+    cod = sc.VectorSpace((2,), ctx)
+    dense = np.array(
+        [[1.0 + 2.0j, 3.0 - 1.0j], [-2.0j, 4.0 + 0.5j]],
+        dtype=np.complex128,
+    )
+    op = sc.SparseLinOp(ctx.assparse(dense), dom, cod, ctx)
+    y = ctx.asarray([1.0 - 1.0j, 2.0 + 0.25j])
+
+    assert np.allclose(op.rapply(y), dense.conj().T @ np.asarray(y))
+
+
+def test_sparse_linop_rejects_non_plain_vector_space():
+    sc = importlib.import_module("spacecore")
+    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+
+    class WeightedVectorSpace(sc.VectorSpace):
+        pass
+
+    custom = WeightedVectorSpace((2,), ctx)
+    plain = sc.VectorSpace((2,), ctx)
+    matrix = ctx.assparse([[1.0, 0.0], [0.0, 1.0]])
+
+    with pytest.raises(TypeError, match="plain VectorSpace"):
+        sc.SparseLinOp(matrix, custom, plain, ctx)
+    with pytest.raises(TypeError, match="Metric-aware sparse"):
+        sc.SparseLinOp(matrix, plain, custom, ctx)
+
+
+def test_sparse_linop_to_sparse_returns_stored_object():
+    sc = importlib.import_module("spacecore")
+    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    dom = sc.VectorSpace((2,), ctx)
+    cod = sc.VectorSpace((3,), ctx)
+    matrix = sps.csr_matrix([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])
+    op = sc.SparseLinOp(matrix, dom, cod, ctx)
+
+    assert op.A is matrix
+    assert op.to_sparse() is matrix
+
+
+def test_sparse_linop_convert_preserves_action_and_converts_sparse_storage():
+    sc = importlib.import_module("spacecore")
+    src = sc.Context(sc.NumpyOps(), dtype=np.float32)
+    dst = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    dom = sc.VectorSpace((2,), src)
+    cod = sc.VectorSpace((3,), src)
+    dense = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
+    op = sc.SparseLinOp(src.assparse(dense), dom, cod, src)
+
+    op2 = op.convert(dst)
+    x = op2.ctx.asarray([7.0, 8.0])
+
+    assert op2 is not op
+    assert type(op2.dom) is sc.VectorSpace
+    assert type(op2.cod) is sc.VectorSpace
+    assert op2.ops.get_dtype(op2.A) == dst.dtype
+    assert np.allclose(op2.apply(x), dense.astype(np.float64) @ np.asarray(x))
 
 
 def test_sparse_linop_reuses_cached_transpose():

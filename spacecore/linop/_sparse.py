@@ -4,7 +4,7 @@ from functools import cached_property
 from math import prod
 from typing import Any
 
-from ._base import LinOp, Domain, Codomain
+from ._base import LinOp
 from .._batching import _check_batched
 from .._checks import checked_method
 from ..space import VectorSpace
@@ -14,29 +14,37 @@ from .._contextual import resolve_context_priority
 
 
 @jax_pytree_class
-class SparseLinOp(LinOp):
+class SparseLinOp(LinOp[VectorSpace, VectorSpace]):
     r"""
-    Represent a sparse matrix-backed linear operator.
+    Represent a Euclidean sparse matrix-backed linear operator.
 
-    ``SparseLinOp(A, dom, cod)`` represents a tensor map whose conceptual shape
-    is ``cod.shape + dom.shape`` while storage uses a two-dimensional sparse
+    ``SparseLinOp(A, dom, cod)`` represents a sparse coordinate matrix between
+    plain :class:`VectorSpace` instances. The conceptual operator tensor has
+    shape ``cod.shape + dom.shape`` while storage uses a two-dimensional sparse
     matrix with shape ``(prod(cod.shape), prod(dom.shape))``.
+
+    Adjoint application uses the Euclidean conjugate transpose of the stored
+    sparse matrix. Custom spaces with non-Euclidean inner products need a
+    future metric-aware sparse operator; ``SparseLinOp`` intentionally does not
+    infer Gram/Riesz maps from arbitrary spaces.
 
     Parameters
     ----------
     A : SparseArray
         Sparse backend matrix with shape ``(prod(cod.shape), prod(dom.shape))``.
-    dom : Space
-        Domain space.
-    cod : Space
-        Codomain space.
+    dom : VectorSpace
+        Plain Euclidean domain vector space.
+    cod : VectorSpace
+        Plain Euclidean codomain vector space.
     ctx : Context, str, or None, optional
         Backend context specification. Default is resolved from the spaces.
 
     Attributes
     ----------
     A : SparseArray
-        Stored sparse matrix representation.
+        Stored sparse matrix representation. The constructor keeps this object
+        without sparse conversion or copying; explicit conversion happens only
+        through :meth:`_convert`.
 
     Examples
     --------
@@ -52,12 +60,19 @@ class SparseLinOp(LinOp):
 
     def __init__(self,
                  A: SparseArray,
-                 dom: Domain,
-                 cod: Codomain,
+                 dom: VectorSpace,
+                 cod: VectorSpace,
                  ctx: Context | str | None = None
                  ) -> None:
         ctx = resolve_context_priority(ctx, dom, cod)
         ctx.assert_sparse(A)  # Check if A is sparse array of ctx
+
+        if type(dom) is not VectorSpace or type(cod) is not VectorSpace:
+            raise TypeError(
+                "SparseLinOp supports only plain VectorSpace domain and codomain "
+                "with Euclidean inner products. Metric-aware sparse operators "
+                "are not supported yet."
+            )
 
         super(SparseLinOp, self).__init__(dom, cod, ctx)
 
@@ -74,8 +89,6 @@ class SparseLinOp(LinOp):
         self._AH = self._AT.conj() if self._A_is_complex else self._AT
         self._dom_is_flat = tuple(self.dom.shape) == (self._dom_size,)
         self._cod_is_flat = tuple(self.cod.shape) == (self._cod_size,)
-        self._dom_vector_fast_path = type(self.dom) is VectorSpace
-        self._cod_vector_fast_path = type(self.cod) is VectorSpace
 
     @cached_property
     def A(self) -> SparseArray:
@@ -91,7 +104,7 @@ class SparseLinOp(LinOp):
     @checked_method(in_space="dom", out_space="cod")
     def apply(self, x: DenseArray) -> DenseArray:
         """
-        Forward action: y = A ⋅ x with y in cod.shape.
+        Forward action ``y = A @ x`` in Euclidean coordinates.
 
         x must have shape dom.shape (dense).
         """
@@ -101,14 +114,12 @@ class SparseLinOp(LinOp):
         """Apply the stored sparse matrix without membership checks."""
         x1 = x if self._dom_is_flat else x.reshape((self._dom_size,))
         y1 = self.A @ x1   # (m,)
-        if self._cod_vector_fast_path:
-            return y1 if self._cod_is_flat else y1.reshape(self.cod.shape)
-        return self.cod.unflatten(y1)
+        return y1 if self._cod_is_flat else y1.reshape(self.cod.shape)
 
     @checked_method(in_space="cod", out_space="dom")
     def rapply(self, y: DenseArray) -> DenseArray:
         """
-        Adjoint action: x = A^* ⋅ y with x in dom.shape.
+        Euclidean adjoint action ``x = A^* @ y``.
 
         y must have shape cod.shape (dense).
         """
@@ -118,10 +129,7 @@ class SparseLinOp(LinOp):
         """Apply the stored sparse adjoint without membership checks."""
         y1 = y if self._cod_is_flat else y.reshape((self._cod_size,))
         x1 = self._AH @ y1
-
-        if self._dom_vector_fast_path:
-            return x1 if self._dom_is_flat else x1.reshape(self.dom.shape)
-        return self.dom.unflatten(x1)
+        return x1 if self._dom_is_flat else x1.reshape(self.dom.shape)
 
     def vapply(self, xs: DenseArray) -> DenseArray:
         if self._enable_checks:
@@ -139,11 +147,19 @@ class SparseLinOp(LinOp):
         xs2 = (self._AH @ ys2.T).T
         return xs2.reshape(lead + tuple(self.dom.shape))
 
-    def to_dense(self) -> DenseArray:
+    def to_sparse(self) -> SparseArray:
         """
-        Materialize the stored sparse matrix as a dense operator tensor.
+        Return the stored sparse matrix representation without copying.
 
-        The returned array has shape ``self.codomain.shape + self.domain.shape``.
+        The returned object is exactly the sparse array supplied at construction.
+        """
+        return self.A
+
+    def to_matrix(self) -> DenseArray:
+        """
+        Materialize the stored sparse matrix as a dense 2D coordinate matrix.
+
+        Use :meth:`to_sparse` when sparse storage should be preserved.
         """
         if hasattr(self.A, "toarray"):
             dense = self.A.toarray()
@@ -152,25 +168,28 @@ class SparseLinOp(LinOp):
         elif hasattr(self.A, "to_dense"):
             dense = self.A.to_dense()
         else:
-            dense = super().to_dense().reshape((self._cod_size, self._dom_size))
-        return self.ops.reshape(dense, tuple(self.codomain.shape) + tuple(self.domain.shape))
+            dense = super().to_matrix()
+        return self.ops.reshape(self.ctx.asarray(dense), (self._cod_size, self._dom_size))
+
+    def to_dense(self) -> DenseArray:
+        """
+        Materialize the stored sparse matrix as a dense operator tensor.
+
+        The returned array has shape ``self.codomain.shape + self.domain.shape``.
+        """
+        return self.ops.reshape(self.to_matrix(), tuple(self.codomain.shape) + tuple(self.domain.shape))
 
     def is_hermitian(self) -> bool | None:
         """
-        Return whether this sparse operator is structurally Hermitian.
+        Return whether this Euclidean sparse operator is structurally Hermitian.
 
         Returns
         -------
         bool or None
-            ``True`` or ``False`` for plain :class:`VectorSpace` domains, where
-            Hermiticity is checked against the Euclidean sparse matrix.
-            ``None`` for custom geometries whose inner product may differ from
-            the Euclidean coordinate product.
+            ``True`` or ``False`` from the Euclidean sparse matrix.
         """
         if self.dom != self.cod:
             return False
-        if type(self.dom) is not VectorSpace:
-            return None
         try:
             return bool(self.ops.allclose_sparse(self.A, self._AH))
         except Exception:
@@ -198,5 +217,5 @@ class SparseLinOp(LinOp):
     def _convert(self, new_ctx: Context) -> SparseLinOp:
         new_dom = self.dom.convert(new_ctx)
         new_cod = self.cod.convert(new_ctx)
-        new_A = new_ctx.assparse(self.A)
+        new_A = new_ctx.ops.assparse(self.A)
         return SparseLinOp(new_A, new_dom, new_cod, new_ctx)
