@@ -117,7 +117,7 @@ def _lanczos_basis_and_tridiag(
     """Build a Lanczos basis and tridiagonal projection."""
     ops = A.ops
     ctx = A.ctx
-    use_euclidean_reorth = type(A.domain) is VectorSpace
+    use_euclidean_reorth = type(A.domain) is VectorSpace and A.domain.is_euclidean
 
     v0 = A.domain.flatten(initial_vector)
     v0 = ctx.assert_dense(v0)
@@ -329,6 +329,10 @@ def lanczos_smallest(
     ``check_every`` are static arguments. For plain :class:`VectorSpace`
     domains, Euclidean reorthogonalization is vectorized; custom spaces use
     :meth:`Space.inner` to preserve the declared geometry.
+
+    Inner products and norms use ``A.domain.inner`` and ``A.domain.norm``.
+    The method is correct on non-Euclidean geometries when the space supplies
+    Riesz maps and ``A`` is self-adjoint in that geometry.
 
     References
     ----------

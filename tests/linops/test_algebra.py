@@ -481,30 +481,10 @@ def test_factories_reject_matching_shapes_with_different_geometry():
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
 
-    class WeightedInnerProduct(sc.InnerProduct):
-        def __init__(self, weights):
-            self.weights = weights
-
-        def inner(self, ops, x, y):
-            return ops.vdot(x, self.weights * y)
-
-        def riesz(self, ops, x):
-            return self.weights * x
-
-        def riesz_inverse(self, ops, x):
-            return x / self.weights
-
-        def __eq__(self, other):
-            return type(other) is type(self) and np.allclose(to_numpy(self.weights), to_numpy(other.weights))
-
-        @property
-        def is_euclidean(self):
-            return False
-
     euclidean = sc.VectorSpace((2,), ctx)
-    weighted_a = sc.VectorSpace((2,), ctx, geometry=WeightedInnerProduct(ctx.asarray([2.0, 3.0])))
-    weighted_b = sc.VectorSpace((2,), ctx, geometry=WeightedInnerProduct(ctx.asarray([2.0, 3.0])))
-    differently_weighted = sc.VectorSpace((2,), ctx, geometry=WeightedInnerProduct(ctx.asarray([2.0, 4.0])))
+    weighted_a = sc.VectorSpace((2,), ctx, geometry=sc.WeightedInnerProduct(ctx.asarray([2.0, 3.0])))
+    weighted_b = sc.VectorSpace((2,), ctx, geometry=sc.WeightedInnerProduct(ctx.asarray([2.0, 3.0])))
+    differently_weighted = sc.VectorSpace((2,), ctx, geometry=sc.WeightedInnerProduct(ctx.asarray([2.0, 4.0])))
 
     A = sc.DenseLinOp(ctx.asarray([[1.0, 0.0], [0.0, 1.0]]), euclidean, euclidean, ctx)
     B = sc.DenseLinOp(ctx.asarray([[2.0, 0.0], [0.0, 3.0]]), weighted_a, weighted_a, ctx)

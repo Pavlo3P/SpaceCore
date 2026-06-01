@@ -46,6 +46,17 @@ class LinearFunctional(Functional[Domain]):
         raise ``NotImplementedError``.
         """
 
+    @checked_method(in_space="domain", out_space="domain")
+    def grad(self, x: Any) -> Any:
+        """
+        Return the constant Riesz gradient of this linear functional.
+
+        For ``ell(x) = <c, x>_X``, the gradient is the space element ``c``.
+        Matrix-free functionals without a stored representer inherit the
+        ``NotImplementedError`` raised by :attr:`representer`.
+        """
+        return self.representer
+
 
 @jax_pytree_class
 class InnerProductFunctional(LinearFunctional[Domain]):

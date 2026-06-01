@@ -11,30 +11,9 @@ def _ctx(dtype=np.float64, enable_checks=True):
     return sc.Context(sc.NumpyOps(), dtype=dtype, enable_checks=enable_checks)
 
 
-class WeightedInnerProduct:
-    def __init__(self, weights):
-        self.weights = weights
-
-    def inner(self, ops, x, y):
-        return ops.vdot(x, self.weights * y)
-
-    def riesz(self, ops, x):
-        return self.weights * x
-
-    def riesz_inverse(self, ops, x):
-        return x / self.weights
-
-    @property
-    def is_euclidean(self):
-        return False
-
-    def __eq__(self, other):
-        return type(other) is type(self) and np.allclose(to_numpy(self.weights), to_numpy(other.weights))
-
-
 def _weighted_space(weights, ctx):
     sc = importlib.import_module("spacecore")
-    return sc.VectorSpace(tuple(np.asarray(weights).shape), ctx, WeightedInnerProduct(ctx.asarray(weights)))
+    return sc.VectorSpace(tuple(np.asarray(weights).shape), ctx, sc.WeightedInnerProduct(ctx.asarray(weights)))
 
 
 def test_apply_and_rapply_flat_diagonal():

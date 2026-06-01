@@ -148,6 +148,12 @@ def lsqr(
     Works on real and complex operators. For complex operators, ``A.H`` uses
     the conjugate adjoint.
 
+    Inner products and norms use ``A.domain.inner`` / ``A.domain.norm`` for
+    domain-space quantities and ``A.codomain.norm`` for least-squares
+    residuals. The method is therefore correct on non-Euclidean geometries
+    when the spaces provide Riesz maps and ``A.rapply`` is the true metric
+    adjoint.
+
     References
     ----------
     Paige, C. C. and Saunders, M. A., "LSQR: An Algorithm for Sparse

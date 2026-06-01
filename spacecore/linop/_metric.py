@@ -8,6 +8,10 @@ from ..space._inner import InnerProduct
 
 _METRIC_BATCH_FALLBACK_ERRORS = (TypeError, ValueError, NotImplementedError)
 
+# Metric Hermiticity checks apply the operator to every coordinate basis vector.
+# Above this size, return "unknown" instead of doing O(n) work implicitly.
+_METRIC_HERMITIAN_BASIS_CHECK_MAX_SIZE = 1024
+
 
 def space_has_riesz_maps(space) -> bool:
     """Return whether ``space`` exposes usable Riesz maps for metric adjoints."""
@@ -44,6 +48,8 @@ def _metric_is_hermitian_by_basis(op) -> bool | None:
     """Check self-adjointness by comparing forward and adjoint basis actions."""
     if op.domain != op.codomain:
         return False
+    if op.domain.size > _METRIC_HERMITIAN_BASIS_CHECK_MAX_SIZE:
+        return None
     try:
         size = op.domain.size
         eye = op.ops.eye(size, dtype=op.dtype)

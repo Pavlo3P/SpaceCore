@@ -129,6 +129,10 @@ def cg(
     convention conjugates the first argument; custom :class:`Space` subclasses
     must follow that convention for CG to converge correctly.
 
+    Inner products and norms use ``A.domain.inner`` and ``A.domain.norm``.
+    The method is correct on non-Euclidean geometries when the space supplies
+    Riesz maps and ``A`` is Hermitian positive-definite in that geometry.
+
     References
     ----------
     Hestenes, M. R. and Stiefel, E., "Methods of Conjugate Gradients

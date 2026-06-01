@@ -186,6 +186,11 @@ def power_iteration(
     longer used. This function is JIT-compatible on the JAX backend when
     ``maxiter`` is static.
 
+    Inner products and norms use ``domain.inner`` and ``domain.norm`` through
+    the normalized self-adjoint action. The method is correct on
+    non-Euclidean geometries when the space supplies Riesz maps and the action
+    is self-adjoint in that geometry.
+
     For operators with eigenvalues of mixed sign, the dominant eigenvalue is
     the one with largest absolute value, which may be negative. Convergence
     requires that this eigenvalue be separated from the rest in absolute value.

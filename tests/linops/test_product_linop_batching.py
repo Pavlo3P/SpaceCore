@@ -9,31 +9,8 @@ from tests._helpers import to_numpy
 sc = importlib.import_module("spacecore")
 
 
-class WeightedInnerProduct(sc.InnerProduct):
-    def __init__(self, weights):
-        self.weights = weights
-
-    def inner(self, ops, x, y):
-        return ops.vdot(x, self.weights * y)
-
-    def riesz(self, ops, x):
-        return self.weights * x
-
-    def riesz_inverse(self, ops, x):
-        return x / self.weights
-
-    @property
-    def is_euclidean(self):
-        return False
-
-    def __eq__(self, other):
-        return type(other) is type(self) and np.allclose(
-            to_numpy(self.weights), to_numpy(other.weights)
-        )
-
-
 def _weighted_space(weights, ctx):
-    return sc.VectorSpace(tuple(np.asarray(weights).shape), ctx, WeightedInnerProduct(ctx.asarray(weights)))
+    return sc.VectorSpace(tuple(np.asarray(weights).shape), ctx, sc.WeightedInnerProduct(ctx.asarray(weights)))
 
 
 def _assert_product_allclose(actual, expected):

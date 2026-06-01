@@ -12,7 +12,7 @@ from ._checks import (
     SquareMatrixCheck,
 )
 from ._base import Space
-from ._inner import EuclideanInnerProduct, InnerProduct
+from ._inner import EuclideanInnerProduct, InnerProduct, WeightedInnerProduct
 from ._herm import HermitianSpace
 from ._vector import VectorSpace
 from ._product import ProductSpace
@@ -26,6 +26,7 @@ __all__ = [
     "ShapeCheck",
     "InnerProduct",
     "EuclideanInnerProduct",
+    "WeightedInnerProduct",
     "Space",
     "SpaceCheck",
     "SpaceValidationError",

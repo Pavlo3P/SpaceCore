@@ -80,6 +80,26 @@ def test_vector_space_accepts_custom_geometry():
     assert np.allclose(space.riesz_inverse(space.riesz(x)), x)
 
 
+def test_weighted_inner_product_geometry_is_shipped_and_converts():
+    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    new_ctx = sc.Context(sc.NumpyOps(), dtype=np.float32, enable_checks=False)
+    geometry = sc.WeightedInnerProduct(ctx.asarray([2.0, 3.0]))
+    space = sc.VectorSpace((2,), ctx, geometry=geometry)
+    x = ctx.asarray([1.0, 4.0])
+    y = ctx.asarray([5.0, 6.0])
+    xb = ctx.asarray([[1.0, 4.0], [2.0, 3.0]])
+
+    assert space.is_euclidean is False
+    assert np.allclose(space.inner(x, y), np.vdot(to_numpy(x), [10.0, 18.0]))
+    assert np.allclose(space.riesz(x), [2.0, 12.0])
+    assert np.allclose(space.riesz_inverse(space.riesz(x)), x)
+    assert np.allclose(space.riesz(xb), [[2.0, 12.0], [4.0, 9.0]])
+
+    converted = geometry.convert(new_ctx)
+    assert isinstance(converted, sc.WeightedInnerProduct)
+    assert converted == sc.WeightedInnerProduct(new_ctx.asarray([2.0, 3.0]))
+
+
 def test_space_equality_includes_geometry():
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)

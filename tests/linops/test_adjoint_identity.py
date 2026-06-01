@@ -1,4 +1,5 @@
 import importlib
+import warnings
 
 import numpy as np
 import pytest
@@ -26,33 +27,10 @@ def _assert_adjoint_identity(op, x, y, rtol=1e-6, atol=1e-6):
 def _weighted_space_class():
     sc = importlib.import_module("spacecore")
 
-    class WeightedInnerProduct(sc.InnerProduct):
-        def __init__(self, weights):
-            self.weights = weights
-
-        def inner(self, ops, x, y):
-            return ops.vdot(x, self.weights * y)
-
-        def riesz(self, ops, x):
-            return self.weights * x
-
-        def riesz_inverse(self, ops, x):
-            return x / self.weights
-
-        @property
-        def is_euclidean(self):
-            return False
-
-        def __eq__(self, other):
-            return type(other) is type(self) and np.allclose(
-                to_numpy(self.weights), to_numpy(other.weights)
-            )
-
     class WeightedVectorSpace(sc.VectorSpace):
         def __init__(self, weights, ctx):
             self.weights = ctx.asarray(weights)
-            super().__init__(tuple(self.weights.shape), ctx)
-            self.geometry = WeightedInnerProduct(self.weights)
+            super().__init__(tuple(self.weights.shape), ctx, geometry=sc.WeightedInnerProduct(self.weights))
 
         def _convert(self, new_ctx):
             return WeightedVectorSpace(new_ctx.asarray(self.weights), new_ctx)
@@ -540,6 +518,24 @@ def test_weighted_batched_apply_and_adjoint_match_loops(ctx):
     _assert_rvapply_loop(sparse, ys)
 
 
+def test_weighted_batched_adjoint_uses_broadcast_riesz_without_fallback_warning():
+    sc = importlib.import_module("spacecore")
+    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    domain = sc.VectorSpace((2,), ctx, geometry=sc.WeightedInnerProduct(ctx.asarray([2.0, 5.0])))
+    codomain = sc.VectorSpace((3,), ctx, geometry=sc.WeightedInnerProduct(ctx.asarray([3.0, 7.0, 11.0])))
+    matrix = np.array([[1.0, -2.0], [0.5, 3.0], [4.0, -1.0]])
+    op = sc.DenseLinOp(ctx.asarray(matrix), domain, codomain, ctx)
+    ys = ctx.asarray([[2.0, -0.5, 1.25], [-1.0, 3.0, 0.75]])
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always", RuntimeWarning)
+        actual = op.rvapply(ys)
+
+    assert not [w for w in caught if issubclass(w.category, RuntimeWarning)]
+    expected = np.stack([to_numpy(op.rapply(y)) for y in ys], axis=0)
+    np.testing.assert_allclose(to_numpy(actual), expected)
+
+
 def test_product_space_batched_forward_uses_space_batch_helpers():
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
@@ -695,3 +691,18 @@ def test_metric_hermitian_detection_uses_weighted_adjoint():
 
     assert weighted_self_adjoint.is_hermitian() is True
     assert coordinate_symmetric_only.is_hermitian() is False
+
+
+def test_large_metric_hermitian_check_returns_unknown_without_applying_operator():
+    sc = importlib.import_module("spacecore")
+    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    n = 1025
+    space = sc.VectorSpace((n,), ctx, geometry=sc.WeightedInnerProduct(ctx.asarray(np.ones(n))))
+    op = sc.DiagonalLinOp(ctx.asarray(np.ones(n)), space, ctx)
+
+    def fail_apply(_x):
+        raise AssertionError("is_hermitian should not apply large metric operators")
+
+    op.apply = fail_apply
+
+    assert op.is_hermitian() is None
