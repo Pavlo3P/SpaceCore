@@ -2,7 +2,7 @@ import importlib
 import numpy as np
 import pytest
 from tests._helpers import has_jax, jax_real_dtype, to_numpy
-from test_generators.linop._dense import bare_dense_linop, make_dense_linop_data
+from test_generators.linop._dense import bare_dense_linop, check_dense_linop, make_dense_linop_data
 
 
 class ReshapeCountingArray(np.ndarray):
@@ -244,3 +244,60 @@ def test_dense_linop_bare_reference_jax_jit_timing_if_supported():
     timed = bare_dense_linop(ctx.ops, data, "vapply", time=True, jit=True)
     assert np.allclose(to_numpy(timed), to_numpy(op.vapply(data.xs)))
     assert data.bare_time_s["vapply:jit"] >= 0.0
+
+
+@pytest.mark.parametrize("batch", [None, 4])
+@pytest.mark.parametrize("weighted", [False, True])
+@pytest.mark.parametrize("domain_shape", [(5,), (2, 3)])
+@pytest.mark.parametrize("codomain_shape", [(7,), (3, 2)])
+@pytest.mark.parametrize("kind", ["apply", "rapply", "vapply", "rvapply"])
+def test_check_dense_linop_covers_shapes_batches_and_geometry(
+    batch,
+    weighted,
+    domain_shape,
+    codomain_shape,
+    kind,
+):
+    if batch is None and kind in {"vapply", "rvapply"}:
+        pytest.skip("batched checks require generated batch data")
+    sc = importlib.import_module("spacecore")
+    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    data = make_dense_linop_data(
+        ctx,
+        domain_shape=domain_shape,
+        codomain_shape=codomain_shape,
+        batch=batch,
+        weighted=weighted,
+        seed=(
+            (0 if batch is None else batch)
+            + 10 * int(weighted)
+            + 100 * (1 if domain_shape == (2, 3) else 0)
+            + 1_000 * (1 if codomain_shape == (3, 2) else 0)
+            + 10_000 * ["apply", "rapply", "vapply", "rvapply"].index(kind)
+        ),
+    )
+
+    assert check_dense_linop(data, kind)
+    assert kind in data.bare_outputs
+    assert kind in data.spacecore_outputs
+
+
+def test_check_dense_linop_records_bare_and_spacecore_timing():
+    sc = importlib.import_module("spacecore")
+    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    data = make_dense_linop_data(
+        ctx,
+        domain_shape=(5,),
+        codomain_shape=(7,),
+        batch=4,
+        weighted=True,
+        seed=22,
+    )
+
+    assert check_dense_linop(data, "rvapply", time=True)
+    assert "rvapply" in data.bare_time_s
+    assert "rvapply" in data.spacecore_time_s
+    assert "rvapply" in data.bare_outputs
+    assert "rvapply" in data.spacecore_outputs
+    assert data.bare_time_s["rvapply"] >= 0.0
+    assert data.spacecore_time_s["rvapply"] >= 0.0

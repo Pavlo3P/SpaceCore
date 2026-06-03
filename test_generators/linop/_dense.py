@@ -8,6 +8,7 @@ from typing import Any, Literal
 import numpy as np
 
 from spacecore.backend import BackendOps, Context
+from spacecore.linop import DenseLinOp
 from spacecore.space import Space, VectorSpace, WeightedInnerProduct
 from spacecore.types import DenseArray
 
@@ -25,6 +26,9 @@ class LinOpTestData:
     domain_weights: DenseArray | None = None
     codomain_weights: DenseArray | None = None
     bare_time_s: dict[str, float] = field(default_factory=dict)
+    spacecore_time_s: dict[str, float] = field(default_factory=dict)
+    bare_outputs: dict[str, DenseArray] = field(default_factory=dict)
+    spacecore_outputs: dict[str, DenseArray] = field(default_factory=dict)
 
 
 def make_dense_linop_data(
@@ -180,6 +184,33 @@ def bare_dense_linop(
     return result_flat.reshape(out_shape)
 
 
+def check_dense_linop(
+    data: LinOpTestData,
+    kind: Literal["apply", "rapply", "vapply", "rvapply"],
+    *,
+    time: bool = False,
+    jit: bool = False,
+    rtol: float = 1e-7,
+    atol: float = 1e-9,
+) -> bool:
+    """Run DenseLinOp and backend-only references, storing outputs and timings."""
+    op = DenseLinOp(data.operator, data.domain, data.codomain, data.ctx)
+    key = kind if not jit else f"{kind}:jit"
+    bare = bare_dense_linop(data.ctx.ops, data, kind, time=time, jit=jit)
+    kernel, arg = _spacecore_kernel(op, data, kind, jit=jit)
+
+    if time:
+        actual, elapsed = _time_kernel(kernel, arg)
+        data.spacecore_time_s[key] = elapsed
+    else:
+        actual = kernel(arg)
+        _sync(actual)
+
+    data.bare_outputs[key] = bare
+    data.spacecore_outputs[key] = actual
+    return bool(data.ctx.ops.allclose(actual, bare, rtol=rtol, atol=atol))
+
+
 def _shape(shape: tuple[int, ...], name: str) -> tuple[int, ...]:
     if not isinstance(shape, tuple) or not shape:
         raise TypeError(f"{name} must be a nonempty tuple[int, ...], got {shape!r}.")
@@ -201,6 +232,41 @@ def _time_kernel(kernel: Any, *args: Any) -> tuple[Any, float]:
     return result, perf_counter() - start
 
 
+def _spacecore_kernel(
+    op: DenseLinOp,
+    data: LinOpTestData,
+    kind: Literal["apply", "rapply", "vapply", "rvapply"],
+    *,
+    jit: bool,
+) -> tuple[Any, DenseArray]:
+    if kind == "apply":
+        method = op._apply_core if jit else op.apply
+        arg = data.x
+    elif kind == "rapply":
+        method = op._rapply_core if jit else op.rapply
+        arg = data.y
+    elif kind == "vapply":
+        if data.xs is None:
+            raise ValueError("check_dense_linop(kind='vapply') requires data.xs.")
+        method = op._vapply_core if jit else op.vapply
+        arg = data.xs
+    elif kind == "rvapply":
+        if data.ys is None:
+            raise ValueError("check_dense_linop(kind='rvapply') requires data.ys.")
+        method = op._rvapply_core if jit else op.rvapply
+        arg = data.ys
+    else:
+        raise ValueError(f"Unknown dense reference kind: {kind!r}.")
+
+    if jit:
+        jax = getattr(data.ctx.ops, "jax", None)
+        if jax is None:
+            raise TypeError("jit=True is supported only for JAX contexts.")
+        core_method = method
+        method = jax.jit(lambda z: core_method(z))
+    return method, arg
+
+
 def _jit_kernel(ops: BackendOps, kernel: Any) -> Any:
     jax = getattr(ops, "jax", None)
     if jax is None:
@@ -212,4 +278,5 @@ __all__ = [
     "LinOpTestData",
     "make_dense_linop_data",
     "bare_dense_linop",
+    "check_dense_linop",
 ]
