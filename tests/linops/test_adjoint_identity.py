@@ -672,10 +672,10 @@ def test_product_space_batched_forward_uses_space_batch_helpers():
     xs = (ctx.asarray([[1.0, 2.0], [-1.0, 0.5]]), ctx.asarray([[3.0], [4.0]]))
 
     dense = sc.DenseLinOp(ctx.asarray(matrix), domain, codomain, ctx)
-    sparse = sc.SparseLinOp(ctx.assparse(matrix), domain, codomain, ctx)
 
     _assert_vapply_loop(dense, xs)
-    _assert_vapply_loop(sparse, xs)
+    with pytest.raises(TypeError, match="SparseLinOp.*VectorSpace.*MatrixFreeLinOp"):
+        sc.SparseLinOp(ctx.assparse(matrix), domain, codomain, ctx)
 
 
 def test_matrix_backed_ops_accept_euclidean_product_space():
@@ -688,12 +688,12 @@ def test_matrix_backed_ops_accept_euclidean_product_space():
     y = (ctx.asarray([3.0, 0.25]), ctx.asarray([-1.5]))
 
     dense = sc.DenseLinOp(matrix, space, space, ctx)
-    sparse = sc.SparseLinOp(ctx.assparse(np.eye(3)), space, space, ctx)
     diagonal_op = sc.DiagonalLinOp(diagonal, space, ctx)
 
     _assert_adjoint_identity(dense, x, y)
-    _assert_adjoint_identity(sparse, x, y)
     _assert_adjoint_identity(diagonal_op, x, y)
+    with pytest.raises(TypeError, match="SparseLinOp.*VectorSpace.*MatrixFreeLinOp"):
+        sc.SparseLinOp(ctx.assparse(np.eye(3)), space, space, ctx)
 
 
 def test_matrix_backed_ops_accept_weighted_product_space_and_satisfy_adjoint_identity():
@@ -707,10 +707,10 @@ def test_matrix_backed_ops_accept_weighted_product_space_and_satisfy_adjoint_ide
     y = (ctx.asarray([-0.5]), ctx.asarray([2.0, 1.25]))
 
     dense = sc.DenseLinOp(ctx.asarray(matrix), domain, codomain, ctx)
-    sparse = sc.SparseLinOp(ctx.assparse(matrix), domain, codomain, ctx)
 
     _assert_adjoint_identity(dense, x, y)
-    _assert_adjoint_identity(sparse, x, y)
+    with pytest.raises(TypeError, match="SparseLinOp.*VectorSpace.*MatrixFreeLinOp"):
+        sc.SparseLinOp(ctx.assparse(matrix), domain, codomain, ctx)
 
     diagonal_space = sc.ProductSpace(
         (WeightedVectorSpace([11.0, 13.0], ctx), sc.VectorSpace((1,), ctx)), ctx
@@ -797,7 +797,7 @@ def test_product_space_with_component_missing_riesz_maps_is_rejected():
 
     with pytest.raises(TypeError, match="Riesz maps"):
         sc.DenseLinOp(ctx.asarray(np.eye(3)), product, product, ctx)
-    with pytest.raises(TypeError, match="Riesz maps"):
+    with pytest.raises(TypeError, match="SparseLinOp.*VectorSpace.*MatrixFreeLinOp"):
         sc.SparseLinOp(ctx.assparse(np.eye(3)), product, product, ctx)
     with pytest.raises(TypeError, match="Riesz maps"):
         sc.DiagonalLinOp(ctx.asarray([1.0, 2.0, 3.0]), product, ctx)

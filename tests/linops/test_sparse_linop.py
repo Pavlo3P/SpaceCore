@@ -1,7 +1,9 @@
 import importlib
 
 import numpy as np
+import pytest
 import scipy.sparse as sps
+from tests._helpers import to_numpy
 
 
 class TransposeCountingCSR(sps.csr_matrix):
@@ -54,6 +56,32 @@ def test_sparse_linop_rectangular_batched_apply_and_rapply():
         assert np.allclose(op.rvapply(ys)[i], op.rapply(ys[i]))
 
 
+def test_sparse_linop_tensor_shaped_euclidean_behavior():
+    sc = importlib.import_module("spacecore")
+    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    dom = sc.VectorSpace((2, 2), ctx)
+    cod = sc.VectorSpace((3,), ctx)
+    dense = np.array(
+        [
+            [1.0, -2.0, 0.5, 3.0],
+            [0.25, 4.0, -1.0, 2.0],
+            [3.0, 0.5, 2.0, -0.75],
+        ]
+    )
+    op = sc.SparseLinOp(ctx.assparse(dense), dom, cod, ctx)
+    x = ctx.asarray([[1.0, 2.0], [-3.0, 0.5]])
+    y = ctx.asarray([2.0, -1.0, 0.25])
+    xs = ctx.asarray([[[1.0, 0.0], [2.0, -1.0]], [[0.5, 3.0], [-2.0, 1.5]]])
+    ys = ctx.asarray([[2.0, -1.0, 0.25], [0.5, 3.0, -2.0]])
+
+    np.testing.assert_allclose(op.apply(x), dense @ np.asarray(x).reshape(-1))
+    np.testing.assert_allclose(op.rapply(y), (dense.T @ np.asarray(y)).reshape((2, 2)))
+    for i in range(xs.shape[0]):
+        np.testing.assert_allclose(op.vapply(xs)[i], op.apply(xs[i]))
+    for i in range(ys.shape[0]):
+        np.testing.assert_allclose(op.rvapply(ys)[i], op.rapply(ys[i]))
+
+
 def test_sparse_linop_complex_rapply_uses_conjugate_transpose():
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.NumpyOps(), dtype=np.complex128)
@@ -84,6 +112,67 @@ def test_sparse_linop_accepts_euclidean_vector_space_subclass():
     assert type(op.domain) is WeightedVectorSpace
     assert np.allclose(op.apply(x), x)
     assert np.allclose(op.rapply(x), x)
+
+
+def test_sparse_linop_rejects_non_vector_spaces():
+    sc = importlib.import_module("spacecore")
+    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    vector = sc.VectorSpace((2,), ctx)
+    product = sc.ProductSpace((sc.VectorSpace((1,), ctx), sc.VectorSpace((1,), ctx)), ctx)
+    matrix = ctx.assparse(np.eye(2))
+
+    with pytest.raises(TypeError, match="SparseLinOp.*VectorSpace.*MatrixFreeLinOp"):
+        sc.SparseLinOp(matrix, product, vector, ctx)
+    with pytest.raises(TypeError, match="SparseLinOp.*VectorSpace.*MatrixFreeLinOp"):
+        sc.SparseLinOp(matrix, vector, product, ctx)
+
+
+def test_sparse_linop_weighted_metric_adjoint_identity():
+    sc = importlib.import_module("spacecore")
+    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    domain = sc.VectorSpace((2,), ctx, geometry=sc.WeightedInnerProduct(ctx.asarray([2.0, 5.0])))
+    codomain = sc.VectorSpace((3,), ctx, geometry=sc.WeightedInnerProduct(ctx.asarray([3.0, 7.0, 11.0])))
+    dense = np.array([[1.0, -2.0], [0.5, 3.0], [4.0, -1.0]])
+    op = sc.SparseLinOp(ctx.assparse(dense), domain, codomain, ctx)
+    x = ctx.asarray([0.25, -1.5])
+    y = ctx.asarray([2.0, -0.5, 1.25])
+
+    lhs = op.codomain.inner(op.apply(x), y)
+    rhs = op.domain.inner(x, op.rapply(y))
+    np.testing.assert_allclose(to_numpy(lhs), to_numpy(rhs))
+
+
+def test_sparse_linop_general_metric_adjoint_identity():
+    sc = importlib.import_module("spacecore")
+    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+
+    class ScalingInnerProduct(sc.InnerProduct):
+        def __init__(self, weights):
+            self.weights = weights
+
+        def inner(self, ops, x, y):
+            return ops.vdot(x, self.weights * y)
+
+        def riesz(self, ops, x):
+            return self.weights * x
+
+        def riesz_inverse(self, ops, x):
+            return x / self.weights
+
+        @property
+        def is_euclidean(self):
+            return False
+
+    domain = sc.VectorSpace((2,), ctx, geometry=ScalingInnerProduct(ctx.asarray([2.0, 5.0])))
+    codomain = sc.VectorSpace((3,), ctx, geometry=ScalingInnerProduct(ctx.asarray([3.0, 7.0, 11.0])))
+    dense = np.array([[1.0, -2.0], [0.5, 3.0], [4.0, -1.0]])
+    op = sc.SparseLinOp(ctx.assparse(dense), domain, codomain, ctx)
+    x = ctx.asarray([0.25, -1.5])
+    y = ctx.asarray([2.0, -0.5, 1.25])
+
+    lhs = op.codomain.inner(op.apply(x), y)
+    rhs = op.domain.inner(x, op.rapply(y))
+    np.testing.assert_allclose(to_numpy(lhs), to_numpy(rhs))
 
 
 def test_sparse_linop_to_sparse_returns_stored_object():

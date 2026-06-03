@@ -5,7 +5,7 @@ from functools import cached_property
 from math import prod
 from typing import Any
 
-from ._base import Codomain, Domain, LinOp
+from ._base import LinOp
 from ._metric import (
     _metric_is_hermitian_by_basis,
     _requires_euclidean_or_riesz,
@@ -28,14 +28,23 @@ class _SparseMode(Enum):
     GENERAL_METRIC = auto()
 
 
+_VECTOR_SPACE_ONLY = (
+    "SparseLinOp is only for coordinate sparse matrices acting between "
+    "VectorSpace objects. Non-vector or exotic spaces should use "
+    "MatrixFreeLinOp with explicit forward and adjoint callbacks."
+)
+
+
 @jax_pytree_class
-class SparseLinOp(LinOp[Domain, Codomain]):
+class SparseLinOp(LinOp[VectorSpace, VectorSpace]):
     r"""
     Represent a sparse coordinate matrix-backed linear operator.
 
     ``SparseLinOp(A, dom, cod)`` represents a sparse coordinate matrix between
-    spaces. The conceptual operator tensor has shape ``cod.shape + dom.shape``
-    while storage uses a two-dimensional sparse matrix with shape
+    vector spaces. Subclasses of :class:`VectorSpace` are supported, but product
+    spaces and other non-vector spaces are intentionally rejected. The
+    conceptual operator tensor has shape ``cod.shape + dom.shape`` while
+    storage uses a two-dimensional sparse matrix with shape
     ``(prod(cod.shape), prod(dom.shape))``.
 
     Forward application is the raw coordinate matrix action. Adjoint
@@ -47,10 +56,10 @@ class SparseLinOp(LinOp[Domain, Codomain]):
     ----------
     A : SparseArray
         Sparse backend matrix with shape ``(prod(cod.shape), prod(dom.shape))``.
-    dom : Space
-        Domain space.
-    cod : Space
-        Codomain space.
+    dom : VectorSpace
+        Domain vector space, or a subclass of ``VectorSpace``.
+    cod : VectorSpace
+        Codomain vector space, or a subclass of ``VectorSpace``.
     ctx : Context, str, or None, optional
         Backend context specification. Default is resolved from the spaces.
 
@@ -75,12 +84,14 @@ class SparseLinOp(LinOp[Domain, Codomain]):
 
     def __init__(self,
                  A: SparseArray,
-                 dom: Domain,
-                 cod: Codomain,
+                 dom: VectorSpace,
+                 cod: VectorSpace,
                  ctx: Context | str | None = None
                  ) -> None:
         ctx = resolve_context_priority(ctx, dom, cod)
         ctx.assert_sparse(A)  # Check if A is sparse array of ctx
+        if not isinstance(dom, VectorSpace) or not isinstance(cod, VectorSpace):
+            raise TypeError(_VECTOR_SPACE_ONLY)
 
         _requires_euclidean_or_riesz(dom, cod, "SparseLinOp")
 
@@ -106,18 +117,14 @@ class SparseLinOp(LinOp[Domain, Codomain]):
 
     def _select_mode(self) -> _SparseMode:
         """Select the sparse computation mode once for this operator."""
-        vector_dom = type(self.dom) is VectorSpace
-        vector_cod = type(self.cod) is VectorSpace
         if (
-            vector_dom
-            and vector_cod
-            and self._dom_is_flat
+            self._dom_is_flat
             and self._cod_is_flat
             and type(self.dom.geometry) is WeightedInnerProduct
             and type(self.cod.geometry) is WeightedInnerProduct
         ):
             return _SparseMode.WEIGHTED_FUSED
-        if vector_dom and vector_cod and self.domain.is_euclidean and self.codomain.is_euclidean:
+        if self.domain.is_euclidean and self.codomain.is_euclidean:
             if self._dom_is_flat and self._cod_is_flat:
                 return _SparseMode.EUCLIDEAN_FLAT
             return _SparseMode.EUCLIDEAN_TENSOR
