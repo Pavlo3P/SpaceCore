@@ -16,6 +16,7 @@ from ._inner import EuclideanInnerProduct, InnerProduct, WeightedInnerProduct
 from ._herm import HermitianSpace
 from ._vector import VectorSpace
 from ._product import ProductSpace
+from ._stacked import StackedSpace
 
 __all__ = [
     "BackendCheck",
@@ -34,4 +35,5 @@ __all__ = [
     "HermitianSpace",
     "VectorSpace",
     "ProductSpace",
+    "StackedSpace",
 ]

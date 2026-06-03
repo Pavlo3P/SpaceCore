@@ -1,4 +1,5 @@
 import importlib
+import warnings
 
 import numpy as np
 import pytest
@@ -125,3 +126,103 @@ def test_inner_product_functional_compose_uses_metric_adjoint_pullback(ctx, eps,
         atol=atol,
     )
     _assert_gradient_identity(composed, x, v, eps, atol)
+
+
+@pytest.mark.parametrize("ctx,eps,atol", list(_contexts()))
+@pytest.mark.parametrize("weighted", [False, True])
+def test_inner_product_functional_vectorized_batches_match_elementwise(ctx, eps, atol, weighted):
+    sc = importlib.import_module("spacecore")
+    space = _weighted_space(ctx) if weighted else sc.VectorSpace((3,), ctx)
+    c = ctx.asarray([0.25, -1.5, 2.0])
+    functional = sc.InnerProductFunctional(c, space, ctx)
+    xs = ctx.asarray(
+        [
+            [0.5, -1.0, 2.0],
+            [1.25, 0.75, -0.5],
+            [-2.0, 0.25, 1.5],
+        ]
+    )
+
+    expected_values = functional.ops.stack(tuple(functional.value(x) for x in xs), axis=0)
+    expected_grads = functional.ops.stack(tuple(functional.grad(x) for x in xs), axis=0)
+
+    np.testing.assert_allclose(to_numpy(functional.vvalue(xs)), to_numpy(expected_values), rtol=5e-6, atol=atol)
+    np.testing.assert_allclose(to_numpy(functional.vgrad(xs)), to_numpy(expected_grads), rtol=5e-6, atol=atol)
+
+
+@pytest.mark.parametrize("ctx,eps,atol", list(_contexts()))
+@pytest.mark.parametrize("weighted", [False, True])
+def test_linop_quadratic_form_vectorized_batches_match_elementwise(ctx, eps, atol, weighted):
+    sc = importlib.import_module("spacecore")
+    space = _weighted_space(ctx) if weighted else sc.VectorSpace((3,), ctx)
+    matrix = _self_adjoint_metric_matrix(ctx) if weighted else ctx.asarray(
+        [
+            [4.0, 1.0, -0.5],
+            [1.0, 6.0, 2.0],
+            [-0.5, 2.0, 3.0],
+        ]
+    )
+    Q = sc.DenseLinOp(matrix, space, space, ctx)
+    linear = sc.InnerProductFunctional(ctx.asarray([0.25, -1.5, 2.0]), space, ctx)
+    functional = sc.LinOpQuadraticForm(Q, linear, 1.25, ctx)
+    xs = ctx.asarray(
+        [
+            [0.5, -1.0, 2.0],
+            [1.25, 0.75, -0.5],
+            [-2.0, 0.25, 1.5],
+        ]
+    )
+
+    expected_values = functional.ops.stack(tuple(functional.value(x) for x in xs), axis=0)
+    expected_grads = functional.ops.stack(tuple(functional.grad(x) for x in xs), axis=0)
+
+    np.testing.assert_allclose(to_numpy(functional.vvalue(xs)), to_numpy(expected_values), rtol=5e-6, atol=atol)
+    np.testing.assert_allclose(to_numpy(functional.vgrad(xs)), to_numpy(expected_grads), rtol=5e-6, atol=atol)
+
+
+def test_matrix_free_functional_vvalue_python_loop_warns_once_on_numpy():
+    sc = importlib.import_module("spacecore")
+    base = importlib.import_module("spacecore.functional._base")
+    base._VMAP_FALLBACK_WARNED.clear()
+    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, enable_checks=False)
+    space = sc.VectorSpace((2,), ctx)
+    c = ctx.asarray([1.0, -2.0])
+    functional = sc.MatrixFreeLinearFunctional(lambda x: space.inner(c, x), space, ctx)
+    xs = ctx.asarray(np.arange(80.0).reshape(40, 2))
+
+    with pytest.warns(RuntimeWarning, match="falls back to a Python loop"):
+        functional.vvalue(xs)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        functional.vvalue(xs)
+    assert caught == []
+
+
+def test_vectorized_functionals_do_not_warn_on_numpy():
+    sc = importlib.import_module("spacecore")
+    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, enable_checks=False)
+    space = sc.VectorSpace((2,), ctx)
+    c = ctx.asarray([1.0, -2.0])
+    functional = sc.InnerProductFunctional(c, space, ctx)
+    xs = ctx.asarray(np.arange(80.0).reshape(40, 2))
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        functional.vvalue(xs)
+        functional.vgrad(xs)
+    assert caught == []
+
+
+@pytest.mark.skipif(not has_jax(), reason="jax is not installed")
+def test_matrix_free_functional_vvalue_does_not_warn_on_native_vmap_backend():
+    sc = importlib.import_module("spacecore")
+    ctx = sc.Context(sc.JaxOps(), dtype=jax_real_dtype(), enable_checks=False)
+    space = sc.VectorSpace((2,), ctx)
+    c = ctx.asarray([1.0, -2.0])
+    functional = sc.MatrixFreeLinearFunctional(lambda x: space.inner(c, x), space, ctx)
+    xs = ctx.asarray(np.arange(80.0).reshape(40, 2))
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        functional.vvalue(xs)
+    assert caught == []

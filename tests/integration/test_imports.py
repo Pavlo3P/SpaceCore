@@ -10,7 +10,7 @@ def test_top_level_exports_exist():
     sc = importlib.import_module("spacecore")
     for name in [
         "Context", "BackendOps", "NumpyOps", "DenseLinOp",
-        "VectorSpace", "HermitianSpace", "ProductSpace",
+        "VectorSpace", "HermitianSpace", "ProductSpace", "StackedSpace",
         "set_context", "get_context", "register_ops",
     ]:
         assert hasattr(sc, name)

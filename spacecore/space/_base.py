@@ -118,6 +118,12 @@ class Space(ContextBound):
         """Return the leading-axis batch scalar product ``a * x``."""
         return self.ops.vmap(lambda xi: self.scale(a, xi), in_axes=0, out_axes=0)(x)
 
+    def stacked(self, count: int) -> Space:
+        """Return ``count`` leading-axis copies of this leaf space as one space."""
+        from ._stacked import StackedSpace
+
+        return StackedSpace(self, count, self.ctx)
+
     def axpy(self, a: Any, x: Any, y: Any) -> Any:
         """Return a*x + y."""
         return self.add(self.scale(a, x), y)

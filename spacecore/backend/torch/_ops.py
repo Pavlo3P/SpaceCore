@@ -431,6 +431,11 @@ class TorchOps(BackendOps):
             return super().vmap(fn, in_axes=in_axes, out_axes=out_axes)
         return vmap(fn, in_dims=in_axes, out_dims=out_axes)
 
+    @property
+    def has_native_vmap(self) -> bool:
+        """Return ``True`` because supported PyTorch versions provide native ``vmap``."""
+        return True
+
     def eigh(
         self,
         x: DenseArray,

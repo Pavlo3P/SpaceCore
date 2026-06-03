@@ -245,6 +245,11 @@ class JaxOps(BackendOps):
         """Vectorize a function using ``jax.vmap``."""
         return self.jax.vmap(fn, in_axes=in_axes, out_axes=out_axes)
 
+    @property
+    def has_native_vmap(self) -> bool:
+        """Return ``True`` because JAX provides native ``vmap``."""
+        return True
+
     def logsumexp(self, a: DenseArray, axis: int | Sequence[int] | None = None, b: DenseArray | None = None, keepdims: bool = False,
                   return_sign: bool = False, where: DenseArray | None = None) -> DenseArray | Tuple[DenseArray, DenseArray]:
         """

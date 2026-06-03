@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from abc import abstractmethod
 from typing import TYPE_CHECKING, Any, Generic, TypeVar
+import warnings
 
 from .._batching import _check_batched
 from .._contextual import ContextBound, resolve_context_priority
@@ -13,6 +14,8 @@ if TYPE_CHECKING:
 
 
 Domain = TypeVar("Domain", bound=Space)
+_VMAP_FALLBACK_WARNED: set[tuple[type, str]] = set()
+_VMAP_FALLBACK_WARN_BATCH = 32
 
 
 def _check_scalar_shape(values: Any, shape: tuple[int, ...]) -> None:
@@ -20,6 +23,36 @@ def _check_scalar_shape(values: Any, shape: tuple[int, ...]) -> None:
     value_shape = tuple(getattr(values, "shape", ()))
     if value_shape != shape:
         raise ValueError(f"Expected scalar batch output with shape {shape}, got {value_shape}.")
+
+
+def _leading_batch_size(space: Space, xs: Any) -> int:
+    """Return the leading batch size for dense-array batches."""
+    if isinstance(xs, tuple) and xs:
+        return _leading_batch_size(getattr(space, "spaces", (space,))[0], xs[0])
+    shape = tuple(getattr(xs, "shape", ()))
+    base = tuple(space.shape)
+    if not shape:
+        return 0
+    if base:
+        return int(shape[0])
+    return int(shape[0])
+
+
+def _warn_vmap_fallback_once(obj: Any, method: str, batch_size: int) -> None:
+    """Warn once per class/method for NumPy-style Python-loop batched fallback."""
+    if batch_size <= _VMAP_FALLBACK_WARN_BATCH or obj.ops.has_native_vmap:
+        return
+    key = (type(obj), method)
+    if key in _VMAP_FALLBACK_WARNED:
+        return
+    _VMAP_FALLBACK_WARNED.add(key)
+    warnings.warn(
+        f"{type(obj).__name__}.{method} falls back to a Python loop on this backend "
+        "(no native vmap); this is O(batch). Provide a vectorized batched override, "
+        "or use JAX/Torch.",
+        RuntimeWarning,
+        stacklevel=3,
+    )
 
 
 class Functional(ContextBound, Generic[Domain]):
@@ -87,6 +120,7 @@ class Functional(ContextBound, Generic[Domain]):
         """Evaluate over a leading batch axis. Input must have shape ``(N,) + domain.shape``; use ``moveaxis`` for other layouts."""
         if self._enable_checks:
             _check_batched(self.domain, xs)
+        _warn_vmap_fallback_once(self, "vvalue", _leading_batch_size(self.domain, xs))
         return self.ops.vmap(self.value, in_axes=0, out_axes=0)(xs)
 
     def assert_domain(self, x: Any) -> None:

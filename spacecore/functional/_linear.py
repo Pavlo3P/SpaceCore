@@ -24,6 +24,17 @@ def _convert_space_element(space: Space, value: Any) -> Any:
     return space.ctx.asarray(value)
 
 
+def _broadcast_space_element(space: Space, value: Any, n: int) -> Any:
+    """Broadcast a single space element to a leading-axis batch."""
+    parts = getattr(space, "spaces", None)
+    if parts is not None:
+        return tuple(
+            _broadcast_space_element(part, component, n)
+            for part, component in zip(parts, value)
+        )
+    return space.ops.broadcast_to(value, (n,) + tuple(space.shape))
+
+
 class LinearFunctional(Functional[Domain]):
     r"""
     Represent a linear scalar-valued map.
@@ -56,6 +67,18 @@ class LinearFunctional(Functional[Domain]):
         ``NotImplementedError`` raised by :attr:`representer`.
         """
         return self.representer
+
+    def vgrad(self, xs: Any) -> Any:
+        """Return the constant Riesz gradient over a leading batch axis."""
+        dom = self.dom
+        checks = self._enable_checks
+        if checks:
+            _check_batched(dom, xs)
+        n = int(getattr(xs[0] if isinstance(xs, tuple) else xs, "shape", (0,))[0])
+        grads = _broadcast_space_element(dom, self.representer, n)
+        if checks:
+            _check_batched(dom, grads)
+        return grads
 
 
 @jax_pytree_class
@@ -101,6 +124,25 @@ class InnerProductFunctional(LinearFunctional[Domain]):
     def value(self, x: Any) -> Any:
         """Return ``domain.inner(representer, x)``."""
         return self.domain.inner(self._c, x)
+
+    def vvalue(self, xs: Any) -> Any:
+        """Evaluate ``domain.inner(representer, xs[i])`` without a Python loop."""
+        dom = self.dom
+        ops = self.ctx.ops
+        checks = self._enable_checks
+        if checks:
+            _check_batched(dom, xs)
+        if dom.is_euclidean and len(tuple(dom.shape)) == 1:
+            xs_flat = xs
+            c_flat = ops.conj(self._c)
+        else:
+            c_dual = self._c if dom.is_euclidean else dom.riesz(self._c)
+            c_flat = ops.conj(dom.flatten(c_dual))
+            xs_flat = dom.flatten_batch(xs)
+        values = xs_flat @ c_flat
+        if checks:
+            _check_scalar_shape(values, (xs_flat.shape[0],))
+        return values
 
     def __eq__(self, other: Any) -> bool:
         """Return whether another inner-product functional has the same representer."""

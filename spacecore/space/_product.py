@@ -163,6 +163,10 @@ class ProductSpace(Space):
         """Return the componentwise leading-axis batch scalar product."""
         return tuple(s.scale_batch(a, xi) for s, xi in zip(self.spaces, x))
 
+    def stacked(self, count: int) -> ProductSpace:
+        """Return a product whose components are stacked leaf spaces."""
+        return ProductSpace(tuple(s.stacked(count) for s in self.spaces), self.ctx)
+
     @checked_method(in_space="self", arg_positions=(0, 1))
     def inner(self, x: Tuple[Any, ...], y: Tuple[Any, ...]) -> Any:
         r"""Return the sum of component inner products."""

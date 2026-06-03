@@ -54,6 +54,11 @@ class BackendOps(ABC):
         """Whether this backend supports sparse arrays."""
         return self._allow_sparse
 
+    @property
+    def has_native_vmap(self) -> bool:
+        """Whether ``vmap`` is implemented by the backend rather than a Python loop."""
+        return False
+
     def __eq__(self, other: Any) -> bool:
         if isinstance(other, BackendOps):
             return self.family == other.family

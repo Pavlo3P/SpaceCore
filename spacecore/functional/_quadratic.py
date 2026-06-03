@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from ._base import Domain, Functional, _check_scalar_shape
+from ._base import Domain, Functional, _check_scalar_shape, _leading_batch_size, _warn_vmap_fallback_once
 from ._linear import LinearFunctional
-from .._batching import _check_batched
+from .._batching import _batched_inner, _check_batched
 from .._checks import checked_method
 from .._contextual import resolve_context_priority
 from ..backend import Context, jax_pytree_class
@@ -35,6 +35,7 @@ class QuadraticForm(Functional[Domain]):
         """Evaluate ``grad`` independently over leading batch axes."""
         if self._enable_checks:
             _check_batched(self.domain, xs)
+        _warn_vmap_fallback_once(self, "vgrad", _leading_batch_size(self.domain, xs))
         grads = self.ops.vmap(self.grad, in_axes=0, out_axes=0)(xs)
         if self._enable_checks:
             _check_batched(self.domain, grads)
@@ -147,6 +148,34 @@ class LinOpQuadraticForm(QuadraticForm[Domain]):
     def hess_apply(self, x: Any) -> Any:
         """Return the Hessian action ``Q x`` under the Hermitian assumption."""
         return self.Q.apply(x)
+
+    def vvalue(self, xs: Any) -> Any:
+        """Evaluate the quadratic objective over a leading batch axis."""
+        if self._enable_checks:
+            _check_batched(self.domain, xs)
+        qxs = self.Q.vapply(xs)
+        if self.domain.is_euclidean and hasattr(xs, "shape"):
+            axes = tuple(range(1, len(tuple(xs.shape))))
+            values = 0.5 * self.ops.sum(self.ops.conj(xs) * qxs, axis=axes)
+        else:
+            values = 0.5 * _batched_inner(self.domain, xs, qxs)
+        if self.linear is not None:
+            values = values + self.linear.vvalue(xs)
+        values = values + self.a
+        if self._enable_checks:
+            _check_scalar_shape(values, (_leading_batch_size(self.domain, xs),))
+        return values
+
+    def vgrad(self, xs: Any) -> Any:
+        """Evaluate the Riesz gradient over a leading batch axis."""
+        if self._enable_checks:
+            _check_batched(self.domain, xs)
+        grads = self.Q.vapply(xs)
+        if self.linear is not None:
+            grads = self.domain.add_batch(grads, self.linear.vgrad(xs))
+        if self._enable_checks:
+            _check_batched(self.domain, grads)
+        return grads
 
     def __eq__(self, other: Any) -> bool:
         """Return whether another quadratic form has the same stored terms."""
