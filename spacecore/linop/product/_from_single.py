@@ -4,7 +4,7 @@ from typing import Any, Sequence, Tuple
 
 from ._base import ProductLinOp
 from .._base import LinOp, Domain
-from ..._batching import _check_batched
+from ..._checks import checked_method
 from ...space import ProductSpace, VectorSpace
 from ...backend import jax_pytree_class, Context
 
@@ -72,14 +72,10 @@ class StackedLinOp(ProductLinOp[Domain, ProductSpace]):
             else:
                 raise TypeError(f"Component op {i} must map dom -> cod.spaces[{i}].")
 
+    @checked_method(in_space="domain", out_space="codomain")
     def apply(self, x: Any) -> Any:
         """Apply each component operator to the same input."""
-        if self._enable_checks:
-            self.dom._check_member(x)
-        y = self._apply_unchecked(x)
-        if self._enable_checks:
-            self.cod._check_member(y)
-        return y
+        return self._apply_unchecked(x)
 
     def _apply_unchecked(self, x: Any) -> Any:
         """Apply component operators without membership checks."""
@@ -87,14 +83,10 @@ class StackedLinOp(ProductLinOp[Domain, ProductSpace]):
             return self._apply_parts[0](x), self._apply_parts[1](x)
         return tuple(apply(x) for apply in self._apply_parts)
 
+    @checked_method(in_space="codomain", out_space="domain")
     def rapply(self, y: Any) -> Any:
         """Apply component adjoints and sum in the shared domain."""
-        if self._enable_checks:
-            self.cod._check_member(y)
-        x = self._rapply_unchecked(y)
-        if self._enable_checks:
-            self.dom._check_member(x)
-        return x
+        return self._rapply_unchecked(y)
 
     def _rapply_unchecked(self, y: Any) -> Any:
         """Apply component adjoints without membership checks."""
@@ -123,28 +115,20 @@ class StackedLinOp(ProductLinOp[Domain, ProductSpace]):
                 acc = self.dom.add(acc, xi)
         return acc
 
+    @checked_method(in_space="domain", out_space="codomain", in_batched=True, out_batched=True)
     def vapply(self, x: Any) -> Any:
         """Apply this stacked operator over a batch."""
-        if self._enable_checks:
-            _check_batched(self.domain, x)
-        y = self._vapply_unchecked(x)
-        if self._enable_checks:
-            _check_batched(self.codomain, y)
-        return y
+        return self._vapply_unchecked(x)
 
     def _vapply_unchecked(self, x: Any) -> Any:
         """Apply over a batch without membership checks."""
         y = tuple(op.vapply(x) for op in self.parts)
         return y
 
+    @checked_method(in_space="codomain", out_space="domain", in_batched=True, out_batched=True)
     def rvapply(self, y: Any) -> Any:
         """Apply the adjoint stacked operator over a product batch."""
-        if self._enable_checks:
-            _check_batched(self.codomain, y)
-        acc = self._rvapply_unchecked(y)
-        if self._enable_checks:
-            _check_batched(self.domain, acc)
-        return acc
+        return self._rvapply_unchecked(y)
 
     def _rvapply_unchecked(self, y: Any) -> Any:
         """Apply the adjoint over a product batch without membership checks."""

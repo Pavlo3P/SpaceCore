@@ -5,7 +5,6 @@ from typing import Any, Callable, Sequence
 
 from ._base import LinOp, Domain, Codomain
 from ._metric import _requires_euclidean_or_riesz
-from .._batching import _check_batched
 from .._checks import checked_method
 from .._contextual import resolve_context_priority
 from .._contextual._bound import _same_math_context
@@ -376,52 +375,40 @@ class SumLinOp(LinOp[Domain, Codomain]):
         """Operators in this lazy sum."""
         return self.ops_tuple
 
+    @checked_method(in_space="domain", out_space="codomain")
     def apply(self, x: Any) -> Any:
         """Return ``sum_i ops[i].apply(x)``."""
-        if self._enable_checks:
-            self.domain._check_member(x)
         acc = self.ops_tuple[0].apply(x)
         for op in self.ops_tuple[1:]:
             yi = op.apply(x)
             acc = acc + yi if type(self.codomain) is VectorSpace else self.codomain.add(acc, yi)
-        if self._enable_checks:
-            self.codomain._check_member(acc)
         return acc
 
+    @checked_method(in_space="codomain", out_space="domain")
     def rapply(self, y: Any) -> Any:
         """Return ``sum_i ops[i].rapply(y)``."""
-        if self._enable_checks:
-            self.codomain._check_member(y)
         acc = self.ops_tuple[0].rapply(y)
         for op in self.ops_tuple[1:]:
             xi = op.rapply(y)
             acc = acc + xi if type(self.domain) is VectorSpace else self.domain.add(acc, xi)
-        if self._enable_checks:
-            self.domain._check_member(acc)
         return acc
 
+    @checked_method(in_space="domain", out_space="codomain", in_batched=True, out_batched=True)
     def vapply(self, xs: Any) -> Any:
         """Return ``sum_i ops[i].vapply(xs)``."""
-        if self._enable_checks:
-            _check_batched(self.domain, xs)
         acc = self.ops_tuple[0].vapply(xs)
         for op in self.ops_tuple[1:]:
             yi = op.vapply(xs)
             acc = acc + yi if type(self.codomain) is VectorSpace else self.codomain.add_batch(acc, yi)
-        if self._enable_checks:
-            _check_batched(self.codomain, acc)
         return acc
 
+    @checked_method(in_space="codomain", out_space="domain", in_batched=True, out_batched=True)
     def rvapply(self, ys: Any) -> Any:
         """Return ``sum_i ops[i].rvapply(ys)``."""
-        if self._enable_checks:
-            _check_batched(self.codomain, ys)
         acc = self.ops_tuple[0].rvapply(ys)
         for op in self.ops_tuple[1:]:
             xi = op.rvapply(ys)
             acc = acc + xi if type(self.domain) is VectorSpace else self.domain.add_batch(acc, xi)
-        if self._enable_checks:
-            _check_batched(self.domain, acc)
         return acc
 
     def __eq__(self, other: Any) -> bool:
@@ -578,16 +565,14 @@ class ZeroLinOp(LinOp[Domain, Codomain]):
         """Return the domain zero without membership checks."""
         return self.domain.zeros()
 
+    @checked_method(in_space="domain", in_batched=True)
     def vapply(self, xs: Any) -> Any:
         """Return the batched zero element of the codomain."""
-        if self._enable_checks:
-            _check_batched(self.domain, xs)
         return _batched_zeros(self.codomain, _leading_shape(self.domain, xs))
 
+    @checked_method(in_space="codomain", in_batched=True)
     def rvapply(self, ys: Any) -> Any:
         """Return the batched zero element of the domain."""
-        if self._enable_checks:
-            _check_batched(self.codomain, ys)
         return _batched_zeros(self.domain, _leading_shape(self.codomain, ys))
 
     def to_dense(self) -> Any:
@@ -673,16 +658,14 @@ class IdentityLinOp(LinOp[Domain, Domain]):
         """Return ``x`` without membership checks."""
         return x
 
+    @checked_method(in_space="domain", in_batched=True)
     def vapply(self, xs: Any) -> Any:
         """Return ``xs`` after batched domain validation."""
-        if self._enable_checks:
-            _check_batched(self.domain, xs)
         return xs
 
+    @checked_method(in_space="codomain", in_batched=True)
     def rvapply(self, xs: Any) -> Any:
         """Return ``xs`` after batched codomain validation."""
-        if self._enable_checks:
-            _check_batched(self.codomain, xs)
         return xs
 
     def to_dense(self) -> Any:
@@ -1008,6 +991,7 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
         """
         return self.rapply_fn(y)
 
+    @checked_method(in_space="domain", out_space="codomain", in_batched=True, out_batched=True)
     def vapply(self, xs: Any) -> Any:
         """
         Apply this operator to a batch of domain elements.
@@ -1024,13 +1008,9 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
         """
         if self.vapply_fn is None:
             return super().vapply(xs)
-        if self._enable_checks:
-            _check_batched(self.domain, xs)
-        ys = self.vapply_fn(xs)
-        if self._enable_checks:
-            _check_batched(self.codomain, ys)
-        return ys
+        return self.vapply_fn(xs)
 
+    @checked_method(in_space="codomain", out_space="domain", in_batched=True, out_batched=True)
     def rvapply(self, ys: Any) -> Any:
         """
         Apply the adjoint operator to a batch of codomain elements.
@@ -1047,12 +1027,7 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
         """
         if self.rvapply_fn is None:
             return super().rvapply(ys)
-        if self._enable_checks:
-            _check_batched(self.codomain, ys)
-        xs = self.rvapply_fn(ys)
-        if self._enable_checks:
-            _check_batched(self.domain, xs)
-        return xs
+        return self.rvapply_fn(ys)
 
     def __eq__(self, other: Any) -> bool:
         if type(other) is type(self):

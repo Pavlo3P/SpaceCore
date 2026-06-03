@@ -6,13 +6,13 @@ from math import prod
 from typing import Any
 
 from ._base import Codomain, Domain, LinOp
+from .._checks import checked_method
 from ._metric import (
     _metric_is_hermitian_by_basis,
     _requires_euclidean_or_riesz,
     metric_rapply,
     metric_rvapply,
 )
-from .._batching import _check_batched
 from ..space import VectorSpace, WeightedInnerProduct
 from ..types import DenseArray
 from ..backend import jax_pytree_class, Context
@@ -93,7 +93,7 @@ class DenseLinOp(LinOp[Domain, Codomain]):
         if tuple(A.shape) != expected:
             raise TypeError(f"Expected A.shape == cod.shape + dom.shape == {expected}, got {A.shape}")
 
-        self._A = A  # Intentionally no dtype/backend conversion to avoid extra memory use.
+        self._A = A  # Intentionally no dtype conversion to avoid extra memory use.
         self._cod_size = prod(self.cod.shape)
         self._dom_size = prod(self.dom.shape)
         self._matrix_shape = (self._cod_size, self._dom_size)
@@ -141,15 +141,10 @@ class DenseLinOp(LinOp[Domain, Codomain]):
         """
         return self._A
 
+    @checked_method(in_space="domain", out_space="codomain")
     def apply(self, x: DenseArray) -> DenseArray:
         """Apply the dense operator to ``x``."""
-        checks = self._enable_checks
-        if checks:
-            self.dom._check_member(x)
-        y = self._apply_core(x)
-        if checks:
-            self.cod._check_member(y)
-        return y
+        return self._apply_core(x)
 
     def _apply_core(self, x: DenseArray) -> DenseArray:
         """Apply the flattened dense matrix without membership checks."""
@@ -163,6 +158,7 @@ class DenseLinOp(LinOp[Domain, Codomain]):
         y1 = self._A2 @ x1
         return self.cod.unflatten(y1)
 
+    @checked_method(in_space="codomain", out_space="domain")
     def rapply(self, y: DenseArray) -> DenseArray:
         r"""Apply the adjoint dense operator to ``y``.
 
@@ -170,13 +166,7 @@ class DenseLinOp(LinOp[Domain, Codomain]):
         Non-Euclidean spaces apply the codomain and domain Riesz maps around
         that Euclidean adjoint.
         """
-        checks = self._enable_checks
-        if checks:
-            self.cod._check_member(y)
-        x = self._rapply_core(y)
-        if checks:
-            self.dom._check_member(x)
-        return x
+        return self._rapply_core(y)
 
     def _rapply_core(self, y: DenseArray) -> DenseArray:
         """Apply the metric adjoint without membership checks."""
@@ -196,11 +186,9 @@ class DenseLinOp(LinOp[Domain, Codomain]):
         x1 = self._A2H @ y1
         return self.dom.unflatten(x1)
 
+    @checked_method(in_space="domain", in_batched=True)
     def vapply(self, xs: DenseArray) -> DenseArray:
         """Apply over a leading batch axis. Input must have shape ``(N,) + domain.shape``; use ``moveaxis`` for other layouts."""
-        checks = self._enable_checks
-        if checks:
-            _check_batched(self.domain, xs)
         return self._vapply_core(xs)
 
     def _vapply_core(self, xs: DenseArray) -> DenseArray:
@@ -218,15 +206,10 @@ class DenseLinOp(LinOp[Domain, Codomain]):
         ys_flat = xs_flat @ self._A2T
         return self.codomain.unflatten_batch(ys_flat)
 
+    @checked_method(in_space="codomain", out_space="domain", in_batched=True, out_batched=True)
     def rvapply(self, ys: DenseArray) -> DenseArray:
         """Apply the adjoint over a leading batch axis. Input must have shape ``(N,) + codomain.shape``; use ``moveaxis`` for other layouts."""
-        checks = self._enable_checks
-        if checks:
-            _check_batched(self.codomain, ys)
-        xs = self._rvapply_core(ys)
-        if checks:
-            _check_batched(self.domain, xs)
-        return xs
+        return self._rvapply_core(ys)
 
     def _rvapply_core(self, ys: DenseArray) -> DenseArray:
         """Apply the metric adjoint over leading batch axes without checks."""

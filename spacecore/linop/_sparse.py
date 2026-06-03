@@ -12,7 +12,7 @@ from ._metric import (
     metric_rapply,
     metric_rvapply,
 )
-from .._batching import _check_batched
+from .._checks import checked_method
 from ..space import VectorSpace, WeightedInnerProduct
 from ..types import DenseArray, SparseArray
 from ..backend import jax_pytree_class, Context
@@ -149,19 +149,14 @@ class SparseLinOp(LinOp[Domain, Codomain]):
         """
         return self._A
 
+    @checked_method(in_space="domain", out_space="codomain")
     def apply(self, x: DenseArray) -> DenseArray:
         """
         Forward action ``y = A @ x`` in Euclidean coordinates.
 
         x must have shape dom.shape (dense).
         """
-        checks = self._enable_checks
-        if checks:
-            self.dom._check_member(x)
-        y = self._apply_core(x)
-        if checks:
-            self.cod._check_member(y)
-        return y
+        return self._apply_core(x)
 
     def _apply_core(self, x: DenseArray) -> DenseArray:
         """Apply the stored sparse matrix without membership checks."""
@@ -175,19 +170,14 @@ class SparseLinOp(LinOp[Domain, Codomain]):
         y1 = self._A @ x1
         return self.cod.unflatten(y1)
 
+    @checked_method(in_space="codomain", out_space="domain")
     def rapply(self, y: DenseArray) -> DenseArray:
         """
         Metric-aware adjoint action.
 
         y must have shape cod.shape (dense).
         """
-        checks = self._enable_checks
-        if checks:
-            self.cod._check_member(y)
-        x = self._rapply_core(y)
-        if checks:
-            self.dom._check_member(x)
-        return x
+        return self._rapply_core(y)
 
     def _rapply_core(self, y: DenseArray) -> DenseArray:
         """Apply the metric adjoint without membership checks."""
@@ -207,10 +197,8 @@ class SparseLinOp(LinOp[Domain, Codomain]):
         x1 = self._AH @ y1
         return self.dom.unflatten(x1)
 
+    @checked_method(in_space="domain", in_batched=True)
     def vapply(self, xs: DenseArray) -> DenseArray:
-        checks = self._enable_checks
-        if checks:
-            _check_batched(self.domain, xs)
         return self._vapply_core(xs)
 
     def _vapply_core(self, xs: DenseArray) -> DenseArray:
@@ -228,14 +216,9 @@ class SparseLinOp(LinOp[Domain, Codomain]):
         ys_flat = (self._A @ xs_flat.T).T
         return self.codomain.unflatten_batch(ys_flat)
 
+    @checked_method(in_space="codomain", out_space="domain", in_batched=True, out_batched=True)
     def rvapply(self, ys: DenseArray) -> DenseArray:
-        checks = self._enable_checks
-        if checks:
-            _check_batched(self.codomain, ys)
-        xs = self._rvapply_core(ys)
-        if checks:
-            _check_batched(self.domain, xs)
-        return xs
+        return self._rvapply_core(ys)
 
     def _rvapply_core(self, ys: DenseArray) -> DenseArray:
         """Apply the metric adjoint over leading batch axes without checks."""

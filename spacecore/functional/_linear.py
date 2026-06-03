@@ -4,7 +4,6 @@ from abc import abstractmethod
 from typing import Any, Callable
 
 from ._base import Domain, Functional, _check_scalar_shape
-from .._batching import _check_batched
 from .._checks import checked_method
 from ..backend import Context, jax_pytree_class
 from ..space import Space
@@ -68,17 +67,12 @@ class LinearFunctional(Functional[Domain]):
         """
         return self.representer
 
+    @checked_method(in_space="domain", out_space="domain", in_batched=True, out_batched=True)
     def vgrad(self, xs: Any) -> Any:
         """Return the constant Riesz gradient over a leading batch axis."""
         dom = self.dom
-        checks = self._enable_checks
-        if checks:
-            _check_batched(dom, xs)
         n = int(getattr(xs[0] if isinstance(xs, tuple) else xs, "shape", (0,))[0])
-        grads = _broadcast_space_element(dom, self.representer, n)
-        if checks:
-            _check_batched(dom, grads)
-        return grads
+        return _broadcast_space_element(dom, self.representer, n)
 
 
 @jax_pytree_class
@@ -125,13 +119,11 @@ class InnerProductFunctional(LinearFunctional[Domain]):
         """Return ``domain.inner(representer, x)``."""
         return self.domain.inner(self._c, x)
 
+    @checked_method(in_space="domain", in_batched=True)
     def vvalue(self, xs: Any) -> Any:
         """Evaluate ``domain.inner(representer, xs[i])`` without a Python loop."""
         dom = self.dom
         ops = self.ctx.ops
-        checks = self._enable_checks
-        if checks:
-            _check_batched(dom, xs)
         if dom.is_euclidean and len(tuple(dom.shape)) == 1:
             xs_flat = xs
             c_flat = ops.conj(self._c)
@@ -140,7 +132,7 @@ class InnerProductFunctional(LinearFunctional[Domain]):
             c_flat = ops.conj(dom.flatten(c_dual))
             xs_flat = dom.flatten_batch(xs)
         values = xs_flat @ c_flat
-        if checks:
+        if self._enable_checks:
             _check_scalar_shape(values, (xs_flat.shape[0],))
         return values
 
@@ -276,6 +268,7 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
             _check_scalar_shape(y, ())
         return y
 
+    @checked_method(in_space="domain", in_batched=True)
     def vvalue(self, xs: Any) -> Any:
         """
         Evaluate the scalar functional over a batch of domain elements.
@@ -293,8 +286,6 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
         """
         if self.vvalue_fn is None:
             return super().vvalue(xs)
-        if self._enable_checks:
-            _check_batched(self.domain, xs)
         values = self.vvalue_fn(xs)
         if self._enable_checks:
             shape = tuple(getattr(xs, "shape", ()))

@@ -12,7 +12,7 @@ from ._metric import (
     metric_rapply,
     metric_rvapply,
 )
-from .._batching import _check_batched
+from .._checks import checked_method
 from ..backend import Context, jax_pytree_class
 from ..space import Space, VectorSpace, WeightedInnerProduct
 from ..types import DenseArray
@@ -100,15 +100,10 @@ class DiagonalLinOp(LinOp[Space, Space]):
         """Dense tensor representation of this diagonal operator."""
         return self.to_dense()
 
+    @checked_method(in_space="domain", out_space="codomain")
     def apply(self, x: DenseArray) -> DenseArray:
         """Apply the diagonal operator to ``x``."""
-        checks = self._enable_checks
-        if checks:
-            self.domain._check_member(x)
-        y = self._apply_core(x)
-        if checks:
-            self.codomain._check_member(y)
-        return y
+        return self._apply_core(x)
 
     def _apply_core(self, x: DenseArray) -> DenseArray:
         """Apply the diagonal operator without membership checks."""
@@ -122,15 +117,10 @@ class DiagonalLinOp(LinOp[Space, Space]):
         y_flat = self._diag_flat * x_flat
         return self.codomain.unflatten(y_flat)
 
+    @checked_method(in_space="codomain", out_space="domain")
     def rapply(self, y: DenseArray) -> DenseArray:
         """Apply the adjoint diagonal operator to ``y``."""
-        checks = self._enable_checks
-        if checks:
-            self.codomain._check_member(y)
-        x = self._rapply_core(y)
-        if checks:
-            self.domain._check_member(x)
-        return x
+        return self._rapply_core(y)
 
     def _rapply_core(self, y: DenseArray) -> DenseArray:
         """Apply the metric adjoint without membership checks."""
@@ -152,11 +142,9 @@ class DiagonalLinOp(LinOp[Space, Space]):
         x_flat = self._diag_adjoint_flat * y_flat
         return self.domain.unflatten(x_flat)
 
+    @checked_method(in_space="domain", in_batched=True)
     def vapply(self, xs: DenseArray) -> DenseArray:
         """Apply over a leading batch axis. Input must have shape ``(N,) + domain.shape``; use ``moveaxis`` for other layouts."""
-        checks = self._enable_checks
-        if checks:
-            _check_batched(self.domain, xs)
         return self._vapply_core(xs)
 
     def _vapply_core(self, xs: DenseArray) -> DenseArray:
@@ -171,15 +159,10 @@ class DiagonalLinOp(LinOp[Space, Space]):
         ys_flat = xs_flat * self._diag_flat
         return self.codomain.unflatten_batch(ys_flat)
 
+    @checked_method(in_space="codomain", out_space="domain", in_batched=True, out_batched=True)
     def rvapply(self, ys: DenseArray) -> DenseArray:
         """Apply the adjoint over a leading batch axis. Input must have shape ``(N,) + codomain.shape``; use ``moveaxis`` for other layouts."""
-        checks = self._enable_checks
-        if checks:
-            _check_batched(self.codomain, ys)
-        xs = self._rvapply_core(ys)
-        if checks:
-            _check_batched(self.domain, xs)
-        return xs
+        return self._rvapply_core(ys)
 
     def _rvapply_core(self, ys: DenseArray) -> DenseArray:
         """Apply the metric adjoint over a leading batch axis without checks."""

@@ -4,7 +4,7 @@ from typing import Any
 
 from ._base import Domain, Functional, _check_scalar_shape, _leading_batch_size, _warn_vmap_fallback_once
 from ._linear import LinearFunctional
-from .._batching import _batched_inner, _check_batched
+from .._batching import _batched_inner
 from .._checks import checked_method
 from .._contextual import resolve_context_priority
 from ..backend import Context, jax_pytree_class
@@ -31,15 +31,11 @@ class QuadraticForm(Functional[Domain]):
         """Return the gradient with respect to ``domain.inner`` when available."""
         raise NotImplementedError(f"{type(self).__name__} does not define grad.")
 
+    @checked_method(in_space="domain", out_space="domain", in_batched=True, out_batched=True)
     def vgrad(self, xs: Any) -> Any:
         """Evaluate ``grad`` independently over leading batch axes."""
-        if self._enable_checks:
-            _check_batched(self.domain, xs)
         _warn_vmap_fallback_once(self, "vgrad", _leading_batch_size(self.domain, xs))
-        grads = self.ops.vmap(self.grad, in_axes=0, out_axes=0)(xs)
-        if self._enable_checks:
-            _check_batched(self.domain, grads)
-        return grads
+        return self.ops.vmap(self.grad, in_axes=0, out_axes=0)(xs)
 
 
 @jax_pytree_class
@@ -149,10 +145,9 @@ class LinOpQuadraticForm(QuadraticForm[Domain]):
         """Return the Hessian action ``Q x`` under the Hermitian assumption."""
         return self.Q.apply(x)
 
+    @checked_method(in_space="domain", in_batched=True)
     def vvalue(self, xs: Any) -> Any:
         """Evaluate the quadratic objective over a leading batch axis."""
-        if self._enable_checks:
-            _check_batched(self.domain, xs)
         qxs = self.Q.vapply(xs)
         if self.domain.is_euclidean and hasattr(xs, "shape"):
             axes = tuple(range(1, len(tuple(xs.shape))))
@@ -166,15 +161,12 @@ class LinOpQuadraticForm(QuadraticForm[Domain]):
             _check_scalar_shape(values, (_leading_batch_size(self.domain, xs),))
         return values
 
+    @checked_method(in_space="domain", out_space="domain", in_batched=True, out_batched=True)
     def vgrad(self, xs: Any) -> Any:
         """Evaluate the Riesz gradient over a leading batch axis."""
-        if self._enable_checks:
-            _check_batched(self.domain, xs)
         grads = self.Q.vapply(xs)
         if self.linear is not None:
             grads = self.domain.add_batch(grads, self.linear.vgrad(xs))
-        if self._enable_checks:
-            _check_batched(self.domain, grads)
         return grads
 
     def __eq__(self, other: Any) -> bool:

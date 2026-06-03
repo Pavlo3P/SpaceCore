@@ -7,7 +7,7 @@ from math import prod
 from numbers import Number
 from typing import Any, Generic, TypeVar
 
-from .._batching import _check_batched
+from .._checks import checked_method
 from ..space import Space
 from ..backend import Context
 from .._contextual import ContextBound, resolve_context_priority
@@ -121,16 +121,14 @@ class LinOp(ContextBound, Generic[Domain, Codomain]):
         """
         return None
 
+    @checked_method(in_space="domain", in_batched=True)
     def vapply(self, xs: Any) -> Any:
         """Apply over a leading batch axis. Input must have shape ``(N,) + domain.shape``; use ``moveaxis`` for other layouts."""
-        if self._enable_checks:
-            _check_batched(self.domain, xs)
         return self.ops.vmap(self.apply, in_axes=0, out_axes=0)(xs)
 
+    @checked_method(in_space="codomain", in_batched=True)
     def rvapply(self, ys: Any) -> Any:
         """Apply the adjoint over a leading batch axis. Input must have shape ``(N,) + codomain.shape``; use ``moveaxis`` for other layouts."""
-        if self._enable_checks:
-            _check_batched(self.codomain, ys)
         return self.ops.vmap(self.rapply, in_axes=0, out_axes=0)(ys)
 
     @property

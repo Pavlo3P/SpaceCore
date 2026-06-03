@@ -6,6 +6,7 @@ from ._base import Space
 from ._product import ProductSpace
 from ._vector import VectorSpace
 from ..backend import Context, jax_pytree_class
+from .._checks import checked_method
 from .._contextual import resolve_context_priority
 from ..types import DenseArray
 
@@ -52,32 +53,27 @@ class StackedSpace(VectorSpace):
         """Return the stacked all-ones element."""
         return self.ops.ones(self.shape, dtype=self.dtype)
 
+    @checked_method(in_space="self", arg_positions=(0, 1))
     def add(self, x: Any, y: Any) -> DenseArray:
         """Return the stacked sum ``x + y``."""
-        if self._enable_checks:
-            self._check_member(x)
-            self._check_member(y)
         return x + y
 
     def add_batch(self, x: Any, y: Any) -> DenseArray:
         """Return the leading-axis batch sum of stacked elements."""
         return x + y
 
+    @checked_method(in_space="self", arg_positions=(1,))
     def scale(self, a: Any, x: Any) -> DenseArray:
         """Return the stacked scalar product ``a * x``."""
-        if self._enable_checks:
-            self._check_member(x)
         return a * x
 
     def scale_batch(self, a: Any, x: Any) -> DenseArray:
         """Return the leading-axis batch scalar product of stacked elements."""
         return a * x
 
+    @checked_method(in_space="self", arg_positions=(0, 1))
     def inner(self, x: Any, y: Any) -> Any:
         """Return ``sum_i base.inner(x[i], y[i])`` as a scalar."""
-        if self._enable_checks:
-            self._check_member(x)
-            self._check_member(y)
         if self.base.is_euclidean:
             return self.ops.vdot(x, y)
         try:
@@ -110,10 +106,9 @@ class StackedSpace(VectorSpace):
         """Return whether the base geometry is Euclidean."""
         return self.base.is_euclidean
 
+    @checked_method(in_space="self")
     def flatten(self, x: Any) -> DenseArray:
         """Flatten the whole stacked element to one coordinate vector."""
-        if self._enable_checks:
-            self._check_member(x)
         return x.reshape((-1,))
 
     def unflatten(self, v: DenseArray) -> DenseArray:

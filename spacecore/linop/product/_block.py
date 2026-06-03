@@ -4,7 +4,7 @@ from typing import Any, Tuple
 
 from ._base import ProductLinOp
 from .._base import LinOp
-from ..._batching import _check_batched
+from ..._checks import checked_method
 from ... import Context
 from ...space import ProductSpace
 from ...backend import jax_pytree_class
@@ -53,14 +53,10 @@ class BlockDiagonalLinOp(ProductLinOp[ProductSpace, ProductSpace]):
             else:
                 raise TypeError(f"Component op {i} has incompatible dom/cod spaces.")
 
+    @checked_method(in_space="domain", out_space="codomain")
     def apply(self, x: Any) -> Any:
         """Apply each block to the matching product component."""
-        if self._enable_checks:
-            self.dom._check_member(x)
-        y = self._apply_unchecked(x)
-        if self._enable_checks:
-            self.cod._check_member(y)
-        return y
+        return self._apply_unchecked(x)
 
     def _apply_unchecked(self, x: Any) -> Any:
         """Apply each block without membership checks."""
@@ -68,14 +64,10 @@ class BlockDiagonalLinOp(ProductLinOp[ProductSpace, ProductSpace]):
             return self._apply_parts[0](x[0]), self._apply_parts[1](x[1])
         return tuple(apply(xi) for apply, xi in zip(self._apply_parts, x))
 
+    @checked_method(in_space="codomain", out_space="domain")
     def rapply(self, y: Any) -> Any:
         """Apply each adjoint block to the matching product component."""
-        if self._enable_checks:
-            self.cod._check_member(y)
-        x = self._rapply_unchecked(y)
-        if self._enable_checks:
-            self.dom._check_member(x)
-        return x
+        return self._rapply_unchecked(y)
 
     def _rapply_unchecked(self, y: Any) -> Any:
         """Apply each adjoint block without membership checks."""
@@ -83,10 +75,9 @@ class BlockDiagonalLinOp(ProductLinOp[ProductSpace, ProductSpace]):
             return self._rapply_parts[0](y[0]), self._rapply_parts[1](y[1])
         return tuple(rapply(yi) for rapply, yi in zip(self._rapply_parts, y))
 
+    @checked_method(in_space="domain", in_batched=True)
     def vapply(self, x: Any) -> Any:
         """Apply this block-diagonal operator over a product batch."""
-        if self._enable_checks:
-            _check_batched(self.domain, x)
         return self._vapply_unchecked(x)
 
     def _vapply_unchecked(self, x: Any) -> Any:
@@ -94,14 +85,10 @@ class BlockDiagonalLinOp(ProductLinOp[ProductSpace, ProductSpace]):
         y = tuple(op.vapply(xi) for op, xi in zip(self.parts, x))
         return y
 
+    @checked_method(in_space="codomain", out_space="domain", in_batched=True, out_batched=True)
     def rvapply(self, y: Any) -> Any:
         """Apply the adjoint over a product batch."""
-        if self._enable_checks:
-            _check_batched(self.codomain, y)
-        x = self._rvapply_unchecked(y)
-        if self._enable_checks:
-            _check_batched(self.domain, x)
-        return x
+        return self._rvapply_unchecked(y)
 
     def _rvapply_unchecked(self, y: Any) -> Any:
         """Apply the adjoint over a product batch without membership checks."""

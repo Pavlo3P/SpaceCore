@@ -4,7 +4,7 @@ from typing import Any, Sequence, Tuple
 
 from ._base import ProductLinOp
 from .._base import LinOp, Codomain
-from ..._batching import _check_batched
+from ..._checks import checked_method
 from ...space import ProductSpace, VectorSpace
 from ...backend import jax_pytree_class, Context
 
@@ -72,14 +72,10 @@ class SumToSingleLinOp(ProductLinOp[ProductSpace, Codomain]):
             else:
                 raise TypeError(f"Component op {i} must map dom.spaces[{i}] -> cod.")
 
+    @checked_method(in_space="domain", out_space="codomain")
     def apply(self, x: Any) -> Any:
         """Apply component operators and sum in the codomain."""
-        if self._enable_checks:
-            self.dom._check_member(x)
-        y = self._apply_unchecked(x)
-        if self._enable_checks:
-            self.cod._check_member(y)
-        return y
+        return self._apply_unchecked(x)
 
     def _apply_unchecked(self, x: Any) -> Any:
         """Apply component operators without membership checks."""
@@ -108,14 +104,10 @@ class SumToSingleLinOp(ProductLinOp[ProductSpace, Codomain]):
                 acc = self.cod.add(acc, yi)
         return acc
 
+    @checked_method(in_space="codomain", out_space="domain")
     def rapply(self, y: Any) -> Any:
         """Apply each component adjoint to the shared codomain element."""
-        if self._enable_checks:
-            self.cod._check_member(y)
-        x = self._rapply_unchecked(y)
-        if self._enable_checks:
-            self.dom._check_member(x)
-        return x
+        return self._rapply_unchecked(y)
 
     def _rapply_unchecked(self, y: Any) -> Any:
         """Apply component adjoints without membership checks."""
@@ -123,14 +115,10 @@ class SumToSingleLinOp(ProductLinOp[ProductSpace, Codomain]):
             return self._rapply_parts[0](y), self._rapply_parts[1](y)
         return tuple(rapply(y) for rapply in self._rapply_parts)
 
+    @checked_method(in_space="domain", out_space="codomain", in_batched=True, out_batched=True)
     def vapply(self, x: Any) -> Any:
         """Apply this sum-to-single operator over a product batch."""
-        if self._enable_checks:
-            _check_batched(self.domain, x)
-        acc = self._vapply_unchecked(x)
-        if self._enable_checks:
-            _check_batched(self.codomain, acc)
-        return acc
+        return self._vapply_unchecked(x)
 
     def _vapply_unchecked(self, x: Any) -> Any:
         """Apply over a product batch without membership checks."""
@@ -154,14 +142,10 @@ class SumToSingleLinOp(ProductLinOp[ProductSpace, Codomain]):
                 acc = self.codomain.add_batch(acc, yi)
         return acc
 
+    @checked_method(in_space="codomain", out_space="domain", in_batched=True, out_batched=True)
     def rvapply(self, y: Any) -> Any:
         """Apply the adjoint over a codomain batch."""
-        if self._enable_checks:
-            _check_batched(self.codomain, y)
-        x = self._rvapply_unchecked(y)
-        if self._enable_checks:
-            _check_batched(self.domain, x)
-        return x
+        return self._rvapply_unchecked(y)
 
     def _rvapply_unchecked(self, y: Any) -> Any:
         """Apply the adjoint over a codomain batch without checks."""

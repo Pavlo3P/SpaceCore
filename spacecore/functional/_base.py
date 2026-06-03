@@ -4,7 +4,7 @@ from abc import abstractmethod
 from typing import TYPE_CHECKING, Any, Generic, TypeVar
 import warnings
 
-from .._batching import _check_batched
+from .._checks import checked_method
 from .._contextual import ContextBound, resolve_context_priority
 from ..backend import Context
 from ..space import Space
@@ -116,10 +116,9 @@ class Functional(ContextBound, Generic[Domain]):
 
         return make_functional_composed(self, A)
 
+    @checked_method(in_space="domain", in_batched=True)
     def vvalue(self, xs: Any) -> Any:
         """Evaluate over a leading batch axis. Input must have shape ``(N,) + domain.shape``; use ``moveaxis`` for other layouts."""
-        if self._enable_checks:
-            _check_batched(self.domain, xs)
         _warn_vmap_fallback_once(self, "vvalue", _leading_batch_size(self.domain, xs))
         return self.ops.vmap(self.value, in_axes=0, out_axes=0)(xs)
 
