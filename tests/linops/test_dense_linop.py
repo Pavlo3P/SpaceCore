@@ -2,6 +2,7 @@ import importlib
 import numpy as np
 import pytest
 from tests._helpers import has_jax, jax_real_dtype, to_numpy
+from test_generators.linop._dense import bare_dense_linop, make_dense_linop_data
 
 
 class ReshapeCountingArray(np.ndarray):
@@ -178,3 +179,68 @@ def test_dense_linop_convert_to_jax_if_supported():
     op = sc.DenseLinOp(src.asarray([[1.,2.],[3.,4.],[5.,6.]]), sc.VectorSpace((2,), src), sc.VectorSpace((3,), src), src)
     op2 = op.convert(dst)
     assert op2.ctx.ops.family == "jax"
+
+
+def test_dense_linop_test_data_bare_reference_tensor_euclidean():
+    sc = importlib.import_module("spacecore")
+    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    data = make_dense_linop_data(
+        ctx,
+        domain_shape=(2, 3),
+        codomain_shape=(4, 2),
+        batch=5,
+        weighted=False,
+        seed=12,
+    )
+    op = sc.DenseLinOp(data.operator, data.domain, data.codomain, ctx)
+
+    assert np.allclose(bare_dense_linop(ctx.ops, data, "apply"), op.apply(data.x))
+    assert np.allclose(bare_dense_linop(ctx.ops, data, "rapply"), op.rapply(data.y))
+    assert np.allclose(bare_dense_linop(ctx.ops, data, "vapply"), op.vapply(data.xs))
+    assert np.allclose(bare_dense_linop(ctx.ops, data, "rvapply"), op.rvapply(data.ys))
+
+
+def test_dense_linop_test_data_bare_reference_flat_weighted_and_timing():
+    sc = importlib.import_module("spacecore")
+    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    data = make_dense_linop_data(
+        ctx,
+        domain_shape=(6,),
+        codomain_shape=(4,),
+        batch=3,
+        weighted=True,
+        seed=14,
+    )
+    op = sc.DenseLinOp(data.operator, data.domain, data.codomain, ctx)
+
+    assert data.domain_weights is not None
+    assert data.codomain_weights is not None
+    assert np.allclose(bare_dense_linop(ctx.ops, data, "apply"), op.apply(data.x))
+    assert np.allclose(bare_dense_linop(ctx.ops, data, "rapply"), op.rapply(data.y))
+    assert np.allclose(bare_dense_linop(ctx.ops, data, "vapply"), op.vapply(data.xs))
+    assert np.allclose(bare_dense_linop(ctx.ops, data, "rvapply"), op.rvapply(data.ys))
+
+    timed = bare_dense_linop(ctx.ops, data, "rapply", time=True)
+    assert np.allclose(timed, op.rapply(data.y))
+    assert data.bare_time_s["rapply"] >= 0.0
+
+
+def test_dense_linop_bare_reference_jax_jit_timing_if_supported():
+    if not has_jax():
+        return
+    sc = importlib.import_module("spacecore")
+    dt = jax_real_dtype()
+    ctx = sc.Context(sc.JaxOps(), dtype=dt, enable_checks=False)
+    data = make_dense_linop_data(
+        ctx,
+        domain_shape=(5,),
+        codomain_shape=(3,),
+        batch=2,
+        weighted=False,
+        seed=16,
+    )
+    op = sc.DenseLinOp(data.operator, data.domain, data.codomain, ctx)
+
+    timed = bare_dense_linop(ctx.ops, data, "vapply", time=True, jit=True)
+    assert np.allclose(to_numpy(timed), to_numpy(op.vapply(data.xs)))
+    assert data.bare_time_s["vapply:jit"] >= 0.0
