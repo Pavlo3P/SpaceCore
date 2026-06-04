@@ -43,8 +43,10 @@ class SpaceCheck(ABC):
 
     def __call__(self, space: Any, x: Any) -> None:
         """Raise :class:`SpaceValidationError` when ``x`` is invalid."""
-        if not self.is_valid(space, x):
-            raise SpaceValidationError(self.error_message(space, x))
+        if not self.validate(space, x, allow_leading=False):
+            raise SpaceValidationError(
+                self.validation_message(space, x, allow_leading=False)
+            )
 
     def core_shape(self, space: Any) -> tuple[int, ...]:
         """Return the trailing shape that defines one element for this check."""

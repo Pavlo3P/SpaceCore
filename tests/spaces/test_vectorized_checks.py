@@ -28,6 +28,18 @@ def test_shape_check_matches_trailing_core_axes(leading_shape):
         space.check_member(x)
 
 
+def test_direct_shape_check_uses_member_semantics_not_batched_semantics():
+    ctx = _np_ctx()
+    space = sc.VectorSpace((2, 3), ctx)
+    x = ctx.asarray(np.ones(space.shape))
+    xs = ctx.asarray(np.ones((5,) + space.shape))
+
+    sc.ShapeCheck()(space, x)
+    with pytest.raises(ValueError, match=r"Expected shape \(2, 3\), got \(5, 2, 3\)"):
+        sc.ShapeCheck()(space, xs)
+    _check_batched(space, xs)
+
+
 @pytest.mark.parametrize("bad_shape", [(2, 4), (8, 2, 4), (2, 3, 2)])
 def test_shape_check_rejects_wrong_trailing_core_axes(bad_shape):
     ctx = _np_ctx()
@@ -70,6 +82,18 @@ def test_hermitian_check_rejects_one_bad_batched_slice():
         _check_batched(space, x)
 
 
+def test_direct_hermitian_check_uses_member_semantics_not_batched_semantics():
+    ctx = _np_ctx(np.complex128)
+    space = sc.HermitianSpace(2, ctx=ctx)
+    x = ctx.asarray(np.eye(2, dtype=np.complex128))
+    xs = ctx.asarray(np.broadcast_to(np.eye(2, dtype=np.complex128), (3, 2, 2)).copy())
+
+    sc.HermitianCheck()(space, x)
+    with pytest.raises(ValueError, match=r"Expected Hermitian matrix"):
+        sc.HermitianCheck()(space, xs)
+    _check_batched(space, xs)
+
+
 def test_backend_and_dtype_checks_are_rank_agnostic_for_batches():
     ctx = _np_ctx(np.float32)
     space = sc.VectorSpace((2,), ctx)
@@ -97,6 +121,8 @@ def test_product_component_checks_recurse_with_batched_mode():
     _check_batched(product, xs)
     with pytest.raises(ValueError, match="Invalid component 0"):
         product.check_member(xs)
+    with pytest.raises(ValueError, match="Invalid component 0"):
+        sc.ProductComponentCheck()(product, xs)
 
 
 @pytest.mark.skipif(not has_jax(), reason="jax is not installed")
