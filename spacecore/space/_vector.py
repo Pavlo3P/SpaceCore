@@ -94,11 +94,27 @@ class VectorSpace(Space):
         r"""Return :math:`\langle x, y\rangle_X` using this space's geometry."""
         return self.geometry.inner(self.ops, x, y)
 
-    def eigh(self, x: Any, k: int = None) -> Any:
-        """Raise because vector elements do not have a canonical eigendecomposition."""
-        raise TypeError(
-            f"{type(self).__name__}.eigh is not defined for vector spaces."
-        )
+    def _check_unbatched_member(self, x: DenseArray) -> None:
+        """Run member checks for one element, while allowing leading batches."""
+        if self._enable_checks and tuple(getattr(x, "shape", ())) == self.shape:
+            self._check_member(x)
+
+    def spectrum(self, x: DenseArray) -> DenseArray:
+        """Return ``x`` as its Jordan spectrum under elementwise product."""
+        self._check_unbatched_member(x)
+        return x
+
+    def spectral_decompose(self, x: DenseArray) -> tuple[DenseArray, None]:
+        """Return the trivial spectral decomposition ``(x, None)``."""
+        self._check_unbatched_member(x)
+        return x, None
+
+    def from_spectrum(self, eigvals: DenseArray, frame: Any) -> DenseArray:
+        """Reconstruct a vector-space element from its spectrum."""
+        if frame is not None:
+            raise ValueError("VectorSpace.from_spectrum expects frame=None.")
+        self._check_unbatched_member(eigvals)
+        return eigvals
 
     @checked_method(in_space="self")
     def flatten(self, X: DenseArray) -> DenseArray:

@@ -213,26 +213,26 @@ def _check_complex_adjoint(ops, dtype):
     H = sc.HermitianSpace(2, ctx=ctx)
     raw = ctx.asarray([[1.0 + 0.0j, 2.0 + 3.0j], [-1.0 + 4.0j, -0.5 + 0.0j]])
     herm = H.symmetrize(raw)
-    evals, evecs = H.eigh(herm)
+    evals, evecs = H.spectral_decompose(herm)
     rebuilt = (evecs * evals) @ ctx.ops.conj(ctx.ops.transpose(evecs))
     np.testing.assert_allclose(to_numpy(rebuilt), to_numpy(herm), rtol=1e-6, atol=1e-6)
 
 
-def test_numpy_complex_adjoint_and_hermitian_eigh():
+def test_numpy_complex_adjoint_and_hermitian_spectral_decompose():
     sc = importlib.import_module("spacecore")
 
     _check_complex_adjoint(sc.NumpyOps(), np.complex128)
 
 
 @pytest.mark.skipif(not has_jax(), reason="jax is not installed")
-def test_jax_complex_adjoint_and_hermitian_eigh():
+def test_jax_complex_adjoint_and_hermitian_spectral_decompose():
     sc = importlib.import_module("spacecore")
 
     _check_complex_adjoint(sc.JaxOps(), jax_complex_dtype())
 
 
 @pytest.mark.skipif(not has_torch(), reason="torch is not installed")
-def test_torch_complex_adjoint_and_hermitian_eigh():
+def test_torch_complex_adjoint_and_hermitian_spectral_decompose():
     sc = importlib.import_module("spacecore")
 
     _check_complex_adjoint(sc.TorchOps(), torch_complex_dtype())

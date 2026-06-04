@@ -7,7 +7,7 @@ from typing import Any, Callable, ClassVar, Tuple
 from ..backend import Context
 from .._contextual import ContextBound
 from ..types import DenseArray
-from ._checks import SpaceCheck
+from ._checks import SpaceCheck, _run_checks
 from ._inner import EuclideanInnerProduct, InnerProduct
 
 
@@ -44,6 +44,21 @@ class Space(ContextBound):
     -----
     Solvers use only this API. Concrete spaces define storage constraints,
     membership checks, and flattening rules.
+
+    The spectral API is the Jordan-algebraic contract for spaces that define
+    one. Spectra have shape ``(..., rank)``: eigenvalues live on the last axis
+    and leading axes are batch axes. Direct sums concatenate component spectra
+    along the last axis, vector spaces use the elementwise-product algebra and
+    therefore have the vector itself as the spectrum, and Hermitian matrix
+    spaces use the ordinary eigenvalue spectrum.
+
+    ``spectrum`` returns eigenvalues only and is sufficient for spectral
+    scalars such as log-determinants or trace functions. Operations producing
+    elements, such as PSD projections or matrix functions, must use
+    ``spectral_decompose`` and reconstruct with ``from_spectrum``. The returned
+    ``frame`` is a reconstruction frame rather than literally the Jordan
+    idempotents. For Hermitian matrices the frame is the eigenvector matrix
+    ``Q``; the Jordan idempotents are ``c_i = q_i q_i^*``.
 
     Examples
     --------
@@ -91,8 +106,7 @@ class Space(ContextBound):
 
     def _check_member(self, x: Any) -> None:
         """Raise if ``x`` is not a valid element of this space."""
-        for check in self.member_checks():
-            check(self, x)
+        _run_checks(self, x, allow_leading=False)
 
     def check_member(self, x: Any) -> None:
         if self._enable_checks:
@@ -150,9 +164,23 @@ class Space(ContextBound):
         v = self.ctx.ops.real(self.inner(x, x))
         return self.ctx.ops.sqrt(v)
 
-    @abstractmethod
-    def eigh(self, x: Any, k: int = None) -> Any:
-        """Return an eigendecomposition of ``x`` when the space defines one."""
+    def spectrum(self, x: Any) -> Any:
+        """Jordan-algebraic eigenvalues of ``x``, shape ``(..., rank)``."""
+        raise NotImplementedError(f"{type(self).__name__} defines no spectrum.")
+
+    def spectral_decompose(self, x: Any) -> Any:
+        """
+        Return ``(eigvals, frame)`` with ``eigvals`` shape ``(..., rank)``.
+
+        ``frame`` is a reconstruction frame. For Hermitian spaces it is the
+        eigenvector matrix ``Q``; callers that need Jordan idempotents can form
+        ``c_i = q_i q_i^*`` from the columns.
+        """
+        raise NotImplementedError
+
+    def from_spectrum(self, eigvals: Any, frame: Any) -> Any:
+        """Reconstruct an element from spectral data."""
+        raise NotImplementedError
 
     @abstractmethod
     def flatten(self, x: Any) -> DenseArray:

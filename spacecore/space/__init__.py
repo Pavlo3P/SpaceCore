@@ -16,6 +16,7 @@ from ._inner import EuclideanInnerProduct, InnerProduct, WeightedInnerProduct
 from ._herm import HermitianSpace
 from ._vector import VectorSpace
 from ._product import ProductSpace
+from ._structure import ProductStructure, TupleStructure, PytreeStructure
 from ._stacked import StackedSpace
 
 __all__ = [
@@ -35,5 +36,8 @@ __all__ = [
     "HermitianSpace",
     "VectorSpace",
     "ProductSpace",
+    "ProductStructure",
+    "TupleStructure",
+    "PytreeStructure",
     "StackedSpace",
 ]

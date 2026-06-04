@@ -19,7 +19,7 @@ def test_torch_vector_hermitian_product_and_linop_smoke():
 
     H = sc.HermitianSpace(2, atol=1e-6, rtol=1e-6, ctx=ctx)
     h = ctx.asarray([[2.0, 1.0], [1.0, 2.0]])
-    evals, evecs = H.eigh(h)
+    evals, evecs = H.spectral_decompose(h)
     assert np.allclose(to_numpy(evecs @ ctx.ops.diag(evals) @ evecs.T.conj()), to_numpy(h))
 
     P = sc.ProductSpace((X, sc.VectorSpace((3,), ctx)), ctx)

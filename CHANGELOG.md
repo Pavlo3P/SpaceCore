@@ -5,6 +5,14 @@ All notable changes to SpaceCore are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Removed
+
+- Removed the deprecated `Space.eigh` alias introduced by the prior spectrum
+  migration release. Use `spectral_decompose` when both eigenvalues and a
+  reconstruction frame are needed, or `spectrum` for eigenvalues only.
+
 ## [0.2.0]
 
 SpaceCore 0.2.0 is a major API expansion. The backend layer now sits on the

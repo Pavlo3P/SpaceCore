@@ -4,10 +4,11 @@ from typing import Any, Tuple, List, Sequence, Callable
 
 from ._base import Space
 from ._checks import ProductComponentCheck, ProductStructureCheck
+from ._structure import ProductStructure, TupleStructure, PytreeStructure
 from ._vector import VectorSpace
 from .._checks import checked_method
 from ..types import DenseArray
-from ..backend import Context
+from ..backend import Context, jax_pytree_class
 
 from .._contextual import resolve_context_priority
 
@@ -20,11 +21,13 @@ def _prod_int(shape: Tuple[int, ...]) -> int:
     return int(p)
 
 
+@jax_pytree_class
 class ProductSpace(Space):
     r"""
     Represent a Cartesian product of spaces.
 
-    Elements are tuples ``(x1, ..., xk)`` with ``xi`` in ``spaces[i]``.
+    Elements are tuples ``(x1, ..., xk)`` by default, or registered pytree
+    structures when built with ``structure=...`` or :meth:`from_template`.
     Dense coordinates concatenate the flattened coordinates of each component.
 
     Parameters
@@ -33,6 +36,8 @@ class ProductSpace(Space):
         Nonempty tuple of component spaces.
     ctx : Context, str, or None, optional
         Backend context specification. Default is resolved from components.
+    structure : ProductStructure or None, optional
+        Element representation adapter. Default uses plain tuples.
 
     Attributes
     ----------
@@ -44,7 +49,9 @@ class ProductSpace(Space):
     Notes
     -----
     ``shape`` is the one-dimensional coordinate length of the concatenated
-    flattening. ``eigh`` has no canonical meaning and raises by default.
+    flattening. The Jordan spectrum of a product/direct sum is the last-axis
+    concatenation of component spectra. Product spectral decompositions are
+    component-delegating rather than one fused reconstruction frame.
 
     The product inner product is the sum of component inner products. Riesz
     and inverse Riesz maps are applied componentwise to product tuple elements,
@@ -59,15 +66,27 @@ class ProductSpace(Space):
         new_spaces = []
         for sp in self.spaces:
             new_spaces.append(sp.convert(new_ctx))
-        return ProductSpace(tuple(new_spaces), new_ctx)
+        return ProductSpace(tuple(new_spaces), new_ctx, structure=self._structure)
 
     def _local_checks(self):
         """Return membership checks local to product spaces."""
         return ProductStructureCheck(), ProductComponentCheck()
 
-    def __init__(self, spaces: Tuple[Space, ...], ctx: Context | str | None = None) -> None:
+    def __init__(
+        self,
+        spaces: Tuple[Space, ...],
+        ctx: Context | str | None = None,
+        structure: ProductStructure | None = None,
+    ) -> None:
         if len(spaces) == 0:
             raise ValueError("ProductSpace requires at least one subspace.")
+        if structure is None:
+            structure = TupleStructure()
+        if not isinstance(structure, ProductStructure):
+            raise TypeError(
+                "ProductSpace structure must be a ProductStructure, "
+                f"got {type(structure).__name__}."
+            )
 
         spaces = self._validate_spaces(spaces)
         ctx = resolve_context_priority(ctx, *spaces)
@@ -85,6 +104,7 @@ class ProductSpace(Space):
         super(ProductSpace, self).__init__(shape, ctx)
         uniform_spaces = tuple(sp.convert(self.ctx) for sp in spaces)
         self.spaces = uniform_spaces
+        self._structure = structure
         self._arity = len(uniform_spaces)
         self._vector_fast_path = all(type(sp) is VectorSpace for sp in uniform_spaces)
         self._component_shapes = tuple(sp.shape for sp in uniform_spaces)
@@ -120,8 +140,29 @@ class ProductSpace(Space):
     def __eq__(self, other: Any) -> bool:
         """Return whether another product space has the same ordered components."""
         if type(other) is type(self):
-            return self.ctx == other.ctx and self.spaces == other.spaces
+            return (
+                self.ctx == other.ctx
+                and self.spaces == other.spaces
+                and self._structure == other._structure
+            )
         return False
+
+    @classmethod
+    def from_template(
+        cls,
+        spaces: Tuple[Space, ...],
+        template_element: Any,
+        ctx: Context | str | None = None,
+    ) -> ProductSpace:
+        """Build a product whose elements match a registered pytree template.
+
+        For dataclasses, register the class with JAX first, for example via
+        ``jax.tree_util.register_dataclass(MyState)``.
+        """
+        structure = PytreeStructure(template_element)
+        product = cls(spaces, ctx=ctx, structure=structure)
+        structure.to_components(template_element, arity=product.arity)
+        return product
 
     def _validate_spaces(self, spaces: Any) -> Tuple[Space, ...]:
         """Validate and normalize product component spaces."""
@@ -139,86 +180,180 @@ class ProductSpace(Space):
     @property
     def arity(self) -> int:
         """Number of component spaces."""
-        return self._arity
+        return len(self.spaces)
+
+    @property
+    def structure(self) -> ProductStructure:
+        """Element representation adapter for this product space."""
+        return self._structure
+
+    def _components(self, x: Any) -> tuple[Any, ...]:
+        """Return ordered product components using the configured structure."""
+        return self._structure.to_components(x, arity=self.arity)
+
+    def _from_components(self, parts: tuple[Any, ...]) -> Any:
+        """Rebuild a product element using the configured structure."""
+        return self._structure.from_components(tuple(parts), arity=self.arity)
+
+    def _ones_for_space(self, space: Space) -> Any:
+        """Return a component one element without requiring Space.ones globally."""
+        ones = getattr(space, "ones", None)
+        if callable(ones):
+            return ones()
+        return self.ops.ones(space.shape, dtype=self.dtype)
 
     def zeros(self) -> Tuple[Any, ...]:
-        """Return the product-space zero tuple."""
-        return tuple(s.zeros() for s in self.spaces)
+        """Return the product-space zero element."""
+        return self._from_components(tuple(s.zeros() for s in self.spaces))
+
+    def ones(self) -> Any:
+        """Return the product-space all-ones element."""
+        return self._from_components(tuple(self._ones_for_space(s) for s in self.spaces))
 
     @checked_method(in_space="self", arg_positions=(0, 1))
     def add(self, x: Tuple[Any, ...], y: Tuple[Any, ...]) -> Tuple[Any, ...]:
         """Return the componentwise product-space sum."""
-        return tuple(s.add(xi, yi) for s, xi, yi in zip(self.spaces, x, y))
+        x_parts = self._components(x)
+        y_parts = self._components(y)
+        out = tuple(s.add(xi, yi) for s, xi, yi in zip(self.spaces, x_parts, y_parts))
+        return self._from_components(out)
 
     def add_batch(self, x: Tuple[Any, ...], y: Tuple[Any, ...]) -> Tuple[Any, ...]:
         """Return the componentwise leading-axis batch sum."""
-        return tuple(s.add_batch(xi, yi) for s, xi, yi in zip(self.spaces, x, y))
+        x_parts = self._components(x)
+        y_parts = self._components(y)
+        out = tuple(s.add_batch(xi, yi) for s, xi, yi in zip(self.spaces, x_parts, y_parts))
+        return self._from_components(out)
 
     @checked_method(in_space="self", arg_positions=(1,))
     def scale(self, a: Any, x: Tuple[Any, ...]) -> Tuple[Any, ...]:
         """Return the componentwise scalar product."""
-        return tuple(s.scale(a, xi) for s, xi in zip(self.spaces, x))
+        parts = self._components(x)
+        out = tuple(s.scale(a, xi) for s, xi in zip(self.spaces, parts))
+        return self._from_components(out)
 
     def scale_batch(self, a: Any, x: Tuple[Any, ...]) -> Tuple[Any, ...]:
         """Return the componentwise leading-axis batch scalar product."""
-        return tuple(s.scale_batch(a, xi) for s, xi in zip(self.spaces, x))
+        parts = self._components(x)
+        out = tuple(s.scale_batch(a, xi) for s, xi in zip(self.spaces, parts))
+        return self._from_components(out)
 
     def stacked(self, count: int) -> ProductSpace:
         """Return a product whose components are stacked leaf spaces."""
-        return ProductSpace(tuple(s.stacked(count) for s in self.spaces), self.ctx)
+        return ProductSpace(
+            tuple(s.stacked(count) for s in self.spaces),
+            self.ctx,
+            structure=self._structure,
+        )
 
     @checked_method(in_space="self", arg_positions=(0, 1))
     def inner(self, x: Tuple[Any, ...], y: Tuple[Any, ...]) -> Any:
         r"""Return the sum of component inner products."""
+        x_parts = self._components(x)
+        y_parts = self._components(y)
         # Accumulate via backend ops (vdot works for scalars too, but sum is enough)
         acc = None
-        for s, xi, yi in zip(self.spaces, x, y):
+        for s, xi, yi in zip(self.spaces, x_parts, y_parts):
             v = s.inner(xi, yi)
             acc = v if acc is None else (acc + v)
         return acc
 
     def riesz(self, x: Tuple[Any, ...]) -> Tuple[Any, ...]:
         """Apply each component space's Riesz map."""
-        return tuple(s.riesz(xi) for s, xi in zip(self.spaces, x))
+        parts = self._components(x)
+        out = tuple(s.riesz(xi) for s, xi in zip(self.spaces, parts))
+        return self._from_components(out)
 
     def riesz_inverse(self, x: Tuple[Any, ...]) -> Tuple[Any, ...]:
         """Apply each component space's inverse Riesz map."""
-        return tuple(s.riesz_inverse(xi) for s, xi in zip(self.spaces, x))
+        parts = self._components(x)
+        out = tuple(s.riesz_inverse(xi) for s, xi in zip(self.spaces, parts))
+        return self._from_components(out)
 
     @property
     def is_euclidean(self) -> bool:
         """Return whether every product component is Euclidean."""
         return all(s.is_euclidean for s in self.spaces)
 
-    def eigh(self, x: Any, k: int = None) -> Any:
-        """Raise because product spaces do not define a canonical eigendecomposition."""
-        raise NotImplementedError(
-            "ProductSpace.eigh is not defined. "
-            "Call eigh on a specific component space, or define a custom convention."
-        )
+    def _spectral_size(self, space: Space) -> int:
+        """Return the trailing spectral rank of one component space."""
+        spectrum = space.spectrum(space.zeros())
+        return int(getattr(spectrum, "shape", (0,))[-1])
+
+    def spectrum(self, x: Tuple[Any, ...]) -> DenseArray:
+        """Return the concatenated Jordan spectrum of product components."""
+        x_parts = self._components(x)
+        parts = tuple(s.spectrum(xi) for s, xi in zip(self.spaces, x_parts))
+        if len(parts) == 1:
+            return parts[0]
+        return self.ops.concatenate(parts, axis=-1)
+
+    def spectral_decompose(self, x: Tuple[Any, ...]) -> Tuple[Tuple[Any, Any], ...]:
+        """Return componentwise spectral decompositions aligned to components."""
+        parts = self._components(x)
+        out = tuple(s.spectral_decompose(xi) for s, xi in zip(self.spaces, parts))
+        return self._from_components(out)
+
+    def from_spectrum(self, eigvals: Any, frame: Any = None) -> Tuple[Any, ...]:
+        """Reconstruct components from component-delegating spectral data."""
+        if frame is None:
+            decompositions = self._components(eigvals)
+            if len(decompositions) != self.arity:
+                raise ValueError("ProductSpace.from_spectrum decomposition arity mismatch.")
+            out = tuple(
+                s.from_spectrum(component_eigvals, component_frame)
+                for s, (component_eigvals, component_frame) in zip(self.spaces, decompositions)
+            )
+            return self._from_components(out)
+
+        frame_parts = self._components(frame)
+
+        if isinstance(eigvals, tuple) or not self.ctx.ops.is_dense(eigvals):
+            eigval_parts = self._components(eigvals)
+            if len(eigval_parts) != self.arity:
+                raise ValueError("ProductSpace.from_spectrum eigval arity mismatch.")
+            out = tuple(
+                s.from_spectrum(component_eigvals, component_frame)
+                for s, component_eigvals, component_frame in zip(self.spaces, eigval_parts, frame_parts)
+            )
+            return self._from_components(out)
+
+        if self._enable_checks:
+            eigvals = self.ctx.assert_dense(eigvals)
+        components = []
+        offset = 0
+        for s, component_frame in zip(self.spaces, frame_parts):
+            size = self._spectral_size(s)
+            vals = eigvals[..., offset: offset + size]
+            components.append(s.from_spectrum(vals, component_frame))
+            offset += size
+        if offset != int(getattr(eigvals, "shape", (offset,))[-1]):
+            raise ValueError("ProductSpace.from_spectrum received extra eigenvalues.")
+        return self._from_components(tuple(components))
 
     @checked_method(in_space="self")
     def flatten(self, x: Tuple[Any, ...]) -> DenseArray:
         """Concatenate component coordinate vectors into one dense vector."""
+        x_parts = self._components(x)
         if self._vector_fast_path:
             if self._arity == 1:
-                return x[0] if self._component_is_flat[0] else x[0].reshape((-1,))
+                return x_parts[0] if self._component_is_flat[0] else x_parts[0].reshape((-1,))
             if self._arity == 2:
-                x0 = x[0] if self._is_flat0 else x[0].reshape((-1,))
-                x1 = x[1] if self._is_flat1 else x[1].reshape((-1,))
+                x0 = x_parts[0] if self._is_flat0 else x_parts[0].reshape((-1,))
+                x1 = x_parts[1] if self._is_flat1 else x_parts[1].reshape((-1,))
                 if self._concatenate_uses_dim:
                     return self._concatenate((x0, x1), dim=0)
                 return self._concatenate((x0, x1), axis=0)
             parts = tuple(
                 xi if is_flat else xi.reshape((-1,))
-                for xi, is_flat in zip(x, self._component_is_flat)
+                for xi, is_flat in zip(x_parts, self._component_is_flat)
             )
             if self._concatenate_uses_dim:
                 return self._concatenate(parts, dim=0)
             return self._concatenate(parts, axis=0)
 
         parts = []
-        for s, xi in zip(self.spaces, x):
+        for s, xi in zip(self.spaces, x_parts):
             vi = s.flatten(xi)
             if self._enable_checks:
                 vi = self.ctx.assert_dense(vi)
@@ -242,7 +377,7 @@ class ProductSpace(Space):
         if self._vector_fast_path:
             if self._arity == 1:
                 x0 = v1[self._slice0]
-                return (x0 if self._is_flat0 else x0.reshape(self._shape0),)
+                return self._from_components((x0 if self._is_flat0 else x0.reshape(self._shape0),))
             if self._arity == 2:
                 x0 = v1[self._slice0]
                 x1 = v1[self._slice1]
@@ -250,24 +385,26 @@ class ProductSpace(Space):
                     x0 = x0.reshape(self._shape0)
                 if not self._is_flat1:
                     x1 = x1.reshape(self._shape1)
-                return x0, x1
-            return tuple(
+                return self._from_components((x0, x1))
+            parts = tuple(
                 v1[slc] if is_flat else v1[slc].reshape(shape)
                 for slc, shape, is_flat in zip(
                     self._slices, self._component_shapes, self._component_is_flat
                 )
             )
+            return self._from_components(parts)
 
         xs: List[Any] = []
         for s, slc in zip(self.spaces, self._slices):
             vi = v1[slc]
             xs.append(s.unflatten(vi))
 
-        return tuple(xs)
+        return self._from_components(tuple(xs))
 
     def flatten_batch(self, xs: Tuple[Any, ...]) -> DenseArray:
         """Concatenate a leading-axis batch of product elements to ``(N, size)``."""
-        parts = tuple(s.flatten_batch(xi) for s, xi in zip(self.spaces, xs))
+        xs_parts = self._components(xs)
+        parts = tuple(s.flatten_batch(xi) for s, xi in zip(self.spaces, xs_parts))
         if len(parts) == 1:
             return parts[0]
         if self._concatenate_uses_dim:
@@ -278,10 +415,11 @@ class ProductSpace(Space):
         """Split rows of shape ``(N, size)`` into batched component elements."""
         if self._enable_checks:
             vs = self.ctx.assert_dense(vs)
-        return tuple(
+        parts = tuple(
             s.unflatten_batch(vs[:, slc])
             for s, slc in zip(self.spaces, self._slices)
         )
+        return self._from_components(parts)
 
     @checked_method(in_space="self", out_space="self")
     def apply(self, x: Tuple[Any, ...], f: Callable[[Any], Any]) -> Tuple[Any, ...]:
@@ -331,6 +469,21 @@ class ProductSpace(Space):
         product space. It applies the existing functional calculus of each
         factor space independently, component by component.
         """
+        parts = self._components(x)
         if self._arity == 2:
-            return self.spaces[0].apply(x[0], f), self.spaces[1].apply(x[1], f)
-        return tuple(s.apply(xi, f) for s, xi in zip(self.spaces, x))
+            return self._from_components((
+                self.spaces[0].apply(parts[0], f),
+                self.spaces[1].apply(parts[1], f),
+            ))
+        out = tuple(s.apply(xi, f) for s, xi in zip(self.spaces, parts))
+        return self._from_components(out)
+
+    def tree_flatten(self):
+        """Flatten this space for JAX pytree registration."""
+        return (), (self.spaces, self.ctx, self._structure)
+
+    @classmethod
+    def tree_unflatten(cls, aux, children):
+        """Rebuild this space from pytree aux data."""
+        spaces, ctx, structure = aux
+        return cls(spaces, ctx, structure=structure)

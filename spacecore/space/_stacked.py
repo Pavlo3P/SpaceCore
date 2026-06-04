@@ -106,6 +106,18 @@ class StackedSpace(VectorSpace):
         """Return whether the base geometry is Euclidean."""
         return self.base.is_euclidean
 
+    def spectrum(self, x: Any) -> Any:
+        """Return spectra for each leading-axis copy of the base space."""
+        return self.base.spectrum(x)
+
+    def spectral_decompose(self, x: Any) -> Any:
+        """Return spectral decompositions for each leading-axis copy."""
+        return self.base.spectral_decompose(x)
+
+    def from_spectrum(self, eigvals: Any, frame: Any) -> Any:
+        """Reconstruct stacked elements from base spectral data."""
+        return self.base.from_spectrum(eigvals, frame)
+
     @checked_method(in_space="self")
     def flatten(self, x: Any) -> DenseArray:
         """Flatten the whole stacked element to one coordinate vector."""

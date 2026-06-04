@@ -24,12 +24,12 @@ def test_hermitian_check_and_symmetrize():
     H.check_member(sym)
 
 
-def test_hermitian_eigh_and_psd_proj():
+def test_hermitian_spectral_decompose_and_psd_proj():
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.NumpyOps(), dtype=np.complex128)
     H = sc.HermitianSpace(2, ctx=ctx)
     x = ctx.asarray([[1+0j,0],[0,-2+0j]])
-    evals, evecs = H.eigh(x)
+    evals, evecs = H.spectral_decompose(x)
     assert np.allclose(np.sort(np.asarray(evals)), [-2.,1.])
     y = H.psd_proj(H.symmetrize(x))
     ev = np.linalg.eigvalsh(np.asarray(y))
