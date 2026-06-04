@@ -1,4 +1,4 @@
-from .checks import (
+from ._base import (
     BackendCheck,
     DTypeCheck,
     HermitianCheck,

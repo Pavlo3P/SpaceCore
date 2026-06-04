@@ -13,7 +13,7 @@ from ._metric import (
     metric_rapply,
     metric_rvapply,
 )
-from ..space import DenseCoordinateSpace, DenseVectorSpace, WeightedInnerProduct
+from ..space import DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace, WeightedInnerProduct
 from ..types import DenseArray
 from ..backend import jax_pytree_class, Context
 from .._contextual import resolve_context_priority
@@ -114,8 +114,8 @@ class DenseLinOp(LinOp[Domain, Codomain]):
 
     def _select_mode(self) -> _DenseMode:
         """Select the dense computation mode once for this operator."""
-        vector_dom = type(self.dom) is DenseCoordinateSpace or type(self.dom) is DenseVectorSpace
-        vector_cod = type(self.cod) is DenseCoordinateSpace or type(self.cod) is DenseVectorSpace
+        vector_dom = type(self.dom) in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace)
+        vector_cod = type(self.cod) in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace)
         if (
             vector_dom
             and vector_cod

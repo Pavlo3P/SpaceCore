@@ -22,10 +22,22 @@ from ._base import (
 )
 from ._inner import EuclideanInnerProduct, InnerProduct, WeightedInnerProduct
 from ._herm import HermitianSpace
-from ._vector import DenseCoordinateSpace, DenseVectorSpace
-from ._product import ProductSpace
+from ._vector import DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace
+from ._product import (
+    ProductEuclideanJordanAlgebraSpace,
+    ProductInnerProductSpace,
+    ProductJordanAlgebraSpace,
+    ProductSpace,
+    ProductStarSpace,
+)
 from ._structure import ProductStructure, TupleStructure, PytreeStructure
-from ._stacked import StackedSpace
+from ._stacked import (
+    StackedEuclideanJordanAlgebraSpace,
+    StackedInnerProductSpace,
+    StackedJordanAlgebraSpace,
+    StackedSpace,
+    StackedStarSpace,
+)
 
 __all__ = [
     "BackendCheck",
@@ -44,6 +56,15 @@ __all__ = [
     "EuclideanJordanAlgebraSpace",
     "DenseCoordinateSpace",
     "DenseVectorSpace",
+    "StackedEuclideanJordanAlgebraSpace",
+    "StackedJordanAlgebraSpace",
+    "StackedStarSpace",
+    "StackedInnerProductSpace",
+    "ProductEuclideanJordanAlgebraSpace",
+    "ProductJordanAlgebraSpace",
+    "ProductStarSpace",
+    "ProductInnerProductSpace",
+    "ElementwiseJordanSpace",
     "Space",
     "SpaceCheck",
     "SpaceValidationError",

@@ -5,7 +5,7 @@ from typing import Any, Sequence, Tuple
 from ._base import ProductLinOp
 from .._base import LinOp, Domain
 from ..._checks import checked_method
-from ...space import DenseCoordinateSpace, DenseVectorSpace, ProductSpace
+from ...space import DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace, ProductSpace
 from ...backend import jax_pytree_class, Context
 
 
@@ -46,14 +46,14 @@ class StackedLinOp(ProductLinOp[Domain, ProductSpace]):
 
     def _make_flat_dense_rapply_mats(self):
         """Return dense adjoint matrices for the exact flat-vector fast path."""
-        if type(self.dom) not in (DenseCoordinateSpace, DenseVectorSpace) or not self.dom.is_euclidean:
+        if type(self.dom) not in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace) or not self.dom.is_euclidean:
             return None
         if tuple(self.dom.shape) != (self.dom._size,):
             return None
         mats = []
         for op in self.parts:
             if (
-                type(op.cod) not in (DenseCoordinateSpace, DenseVectorSpace)
+                type(op.cod) not in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace)
                 or not op.cod.is_euclidean
                 or tuple(op.cod.shape) != (op.cod._size,)
                 or not hasattr(op, "_A2H")
@@ -108,7 +108,7 @@ class StackedLinOp(ProductLinOp[Domain, ProductSpace]):
         if self._num_parts == 2:
             x0 = self._rapply_parts[0](y_parts[0])
             x1 = self._rapply_parts[1](y_parts[1])
-            if type(self.dom) in (DenseCoordinateSpace, DenseVectorSpace):
+            if type(self.dom) in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace):
                 return x0 + x1
             return self.dom.add(x0, x1)
         acc = None
@@ -116,7 +116,7 @@ class StackedLinOp(ProductLinOp[Domain, ProductSpace]):
             xi = rapply(yi)
             if acc is None:
                 acc = xi
-            elif type(self.dom) in (DenseCoordinateSpace, DenseVectorSpace):
+            elif type(self.dom) in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace):
                 acc = acc + xi
             else:
                 acc = self.dom.add(acc, xi)
@@ -154,7 +154,7 @@ class StackedLinOp(ProductLinOp[Domain, ProductSpace]):
             xi = op.rvapply(yi)
             if acc is None:
                 acc = xi
-            elif type(self.domain) in (DenseCoordinateSpace, DenseVectorSpace):
+            elif type(self.domain) in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace):
                 acc = acc + xi
             else:
                 acc = self.domain.add_batch(acc, xi)

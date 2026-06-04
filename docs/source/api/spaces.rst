@@ -14,10 +14,19 @@ Spaces define element structure, geometry, flattening, and validation.
    spacecore.space.JordanAlgebraSpace
    spacecore.space.EuclideanJordanAlgebraSpace
    spacecore.space.DenseCoordinateSpace
+   spacecore.space.ElementwiseJordanSpace
    spacecore.space.DenseVectorSpace
    spacecore.space.HermitianSpace
    spacecore.space.ProductSpace
+   spacecore.space.ProductInnerProductSpace
+   spacecore.space.ProductStarSpace
+   spacecore.space.ProductJordanAlgebraSpace
+   spacecore.space.ProductEuclideanJordanAlgebraSpace
    spacecore.space.StackedSpace
+   spacecore.space.StackedInnerProductSpace
+   spacecore.space.StackedStarSpace
+   spacecore.space.StackedJordanAlgebraSpace
+   spacecore.space.StackedEuclideanJordanAlgebraSpace
    spacecore.space.SpaceCheck
    spacecore.space.SpaceValidationError
 
@@ -93,6 +102,24 @@ DenseCoordinateSpace
    :inherited-members:
    :show-inheritance:
 
+ElementwiseJordanSpace
+----------------------
+
+.. autoclass:: spacecore.space.ElementwiseJordanSpace
+   :members:
+   :undoc-members:
+   :inherited-members:
+   :show-inheritance:
+
+DenseVectorSpace
+----------------
+
+.. autoclass:: spacecore.space.DenseVectorSpace
+   :members:
+   :undoc-members:
+   :inherited-members:
+   :show-inheritance:
+
 HermitianSpace
 --------------
 
@@ -111,6 +138,42 @@ ProductSpace
    :inherited-members:
    :show-inheritance:
 
+ProductInnerProductSpace
+------------------------
+
+.. autoclass:: spacecore.space.ProductInnerProductSpace
+   :members:
+   :undoc-members:
+   :inherited-members:
+   :show-inheritance:
+
+ProductStarSpace
+----------------
+
+.. autoclass:: spacecore.space.ProductStarSpace
+   :members:
+   :undoc-members:
+   :inherited-members:
+   :show-inheritance:
+
+ProductJordanAlgebraSpace
+-------------------------
+
+.. autoclass:: spacecore.space.ProductJordanAlgebraSpace
+   :members:
+   :undoc-members:
+   :inherited-members:
+   :show-inheritance:
+
+ProductEuclideanJordanAlgebraSpace
+----------------------------------
+
+.. autoclass:: spacecore.space.ProductEuclideanJordanAlgebraSpace
+   :members:
+   :undoc-members:
+   :inherited-members:
+   :show-inheritance:
+
 StackedSpace
 ------------
 
@@ -120,10 +183,37 @@ StackedSpace
    :inherited-members:
    :show-inheritance:
 
-DenseVectorSpace
+StackedInnerProductSpace
+------------------------
+
+.. autoclass:: spacecore.space.StackedInnerProductSpace
+   :members:
+   :undoc-members:
+   :inherited-members:
+   :show-inheritance:
+
+StackedStarSpace
 ----------------
 
-.. autoclass:: spacecore.space.DenseVectorSpace
+.. autoclass:: spacecore.space.StackedStarSpace
+   :members:
+   :undoc-members:
+   :inherited-members:
+   :show-inheritance:
+
+StackedJordanAlgebraSpace
+-------------------------
+
+.. autoclass:: spacecore.space.StackedJordanAlgebraSpace
+   :members:
+   :undoc-members:
+   :inherited-members:
+   :show-inheritance:
+
+StackedEuclideanJordanAlgebraSpace
+----------------------------------
+
+.. autoclass:: spacecore.space.StackedEuclideanJordanAlgebraSpace
    :members:
    :undoc-members:
    :inherited-members:

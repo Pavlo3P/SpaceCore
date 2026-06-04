@@ -15,7 +15,7 @@ import numpy as np
 
 # Define a space, a linear operator, and solve Ax = b
 ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
-X = sc.VectorSpace((100,), ctx)
+X = sc.DenseCoordinateSpace((100,), ctx)
 A = sc.DenseLinOp(np.random.randn(100, 100) @ np.random.randn(100, 100).T + np.eye(100), X, X, ctx)
 b = ctx.asarray(np.random.randn(100))
 
@@ -75,10 +75,10 @@ result = sc.lanczos_smallest(A, initial_vector, max_iter=50)
 print(f"E_0 = {result.eigenvalue}, converged={result.converged}")
 ```
 
-**3. Custom Hilbert spaces with non-Euclidean geometry.** Subclass `VectorSpace`, override `inner`, and every solver respects your geometry:
+**3. Custom Hilbert spaces with non-Euclidean geometry.** Subclass `DenseCoordinateSpace`, override `inner`, and every solver respects your geometry:
 
 ```python
-class WeightedL2(sc.VectorSpace):
+class WeightedL2(sc.DenseCoordinateSpace):
     def __init__(self, shape, weights, ctx=None):
         super().__init__(shape, ctx)
         self.weights = self.ctx.asarray(weights)
@@ -99,7 +99,7 @@ This is the basis for RKHS spaces, truncated Fock spaces (quantum many-body), fu
 import spacecore as sc
 
 ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
-X = sc.VectorSpace((1000,), ctx)
+X = sc.DenseCoordinateSpace((1000,), ctx)
 A = sc.DenseLinOp(make_spd_matrix(), X, X, ctx)
 b = ctx.asarray(rhs)
 
@@ -162,7 +162,7 @@ This operator works on NumPy, JAX, and PyTorch backends without modification.
 
 ## Features at a glance
 
-**Spaces.** `VectorSpace`, `HermitianSpace`, `ProductSpace`, `BatchSpace`. All easy to subclass for custom geometry.
+**Spaces.** `DenseCoordinateSpace`, `ElementwiseJordanSpace`, `HermitianSpace`, `ProductSpace`, and `StackedSpace`. Generic dense spaces can use custom inner products; elementwise Jordan spaces keep star/Jordan/spectral capabilities Euclidean.
 
 **Linear operators.** `DenseLinOp`, `SparseLinOp`, `DiagonalLinOp`, `MatrixFreeLinOp`, plus operator algebra (`A @ B`, `A + B`, `2 * A`, `A.H`, `IdentityLinOp`, `ZeroLinOp`).
 

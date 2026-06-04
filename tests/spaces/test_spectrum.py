@@ -39,7 +39,7 @@ def test_space_has_no_default_spectral_api():
 @pytest.mark.parametrize("ctx", list(_real_contexts()))
 def test_vector_space_spectrum_and_roundtrip(ctx):
     sc = importlib.import_module("spacecore")
-    space = sc.DenseCoordinateSpace((3,), ctx)
+    space = sc.ElementwiseJordanSpace((3,), ctx)
     x = ctx.asarray([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
 
     spectrum = space.spectrum(x)
@@ -130,7 +130,7 @@ def test_hermitian_eig_to_dense_matches_dense_reference(ctx):
 @pytest.mark.parametrize("ctx", list(_complex_contexts()))
 def test_product_space_spectrum_concatenates_mixed_components(ctx):
     sc = importlib.import_module("spacecore")
-    vector = sc.DenseCoordinateSpace((2,), ctx)
+    vector = sc.ElementwiseJordanSpace((2,), ctx)
     hermitian = sc.HermitianSpace(2, ctx=ctx)
     product = sc.ProductSpace((vector, hermitian), ctx)
     v = ctx.asarray([10.0 + 0.0j, 20.0 + 0.0j])
@@ -152,7 +152,7 @@ def test_product_space_spectrum_concatenates_mixed_components(ctx):
 @pytest.mark.parametrize("ctx", list(_complex_contexts()))
 def test_product_space_batched_spectrum_concatenates_last_axis(ctx):
     sc = importlib.import_module("spacecore")
-    vector = sc.DenseCoordinateSpace((2,), ctx)
+    vector = sc.ElementwiseJordanSpace((2,), ctx)
     hermitian = sc.HermitianSpace(2, ctx=ctx)
     product = sc.ProductSpace((vector, hermitian), ctx)
     v = ctx.asarray([[10.0 + 0.0j, 20.0 + 0.0j], [30.0 + 0.0j, 40.0 + 0.0j]])

@@ -13,7 +13,7 @@ from ._metric import (
     metric_rvapply,
 )
 from .._checks import checked_method
-from ..space import CoordinateSpace, DenseCoordinateSpace, DenseVectorSpace, WeightedInnerProduct
+from ..space import CoordinateSpace, DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace, WeightedInnerProduct
 from ..types import DenseArray, SparseArray
 from ..backend import jax_pytree_class, Context
 from .._contextual import resolve_context_priority
@@ -108,8 +108,8 @@ class SparseLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
         self._A_is_complex = self.ops.is_complex_dtype(dtype)
         self._AT = self.A.T
         self._AH = self._sparse_conj(self._AT) if self._A_is_complex else self._AT
-        self._dom_dense_array = type(self.dom) in (DenseCoordinateSpace, DenseVectorSpace)
-        self._cod_dense_array = type(self.cod) in (DenseCoordinateSpace, DenseVectorSpace)
+        self._dom_dense_array = type(self.dom) in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace)
+        self._cod_dense_array = type(self.cod) in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace)
         self._dom_is_flat = self._dom_dense_array and tuple(self.dom.shape) == (self._dom_size,)
         self._cod_is_flat = self._cod_dense_array and tuple(self.cod.shape) == (self._cod_size,)
         self._mode = self._select_mode()

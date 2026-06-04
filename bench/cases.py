@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable, Iterable
+from typing import Any, Callable
 
 import numpy as np
 import scipy.sparse as sps
@@ -114,7 +114,7 @@ def _dense_cases(sc, rng, backend: str, size_name: str, n: int, checks: bool) ->
     AH = A.T.conj()
     x = ctx.asarray(rng.standard_normal(n))
     y = ctx.asarray(rng.standard_normal(n))
-    X = sc.VectorSpace((n,), ctx)
+    X = sc.DenseCoordinateSpace((n,), ctx)
     op = sc.DenseLinOp(A, X, X, ctx)
     cases = []
     for operation, bare_label, sc_label, bare, call, arg in [
@@ -184,7 +184,7 @@ def _diagonal_cases(
         geometry = "euclidean"
         geom = None
         mode = "EUCLIDEAN"
-    X = sc.VectorSpace((n,), ctx, geometry=geom)
+    X = sc.DenseCoordinateSpace((n,), ctx, geometry=geom)
     op = sc.DiagonalLinOp(d, X, ctx)
     rows = []
     for operation, bare_label, sc_label, bare, call, batch_value in [
@@ -249,13 +249,13 @@ def _sparse_cases(sc, rng, size_name: str, n: int, checks: bool, weighted=False)
     ys = ctx.asarray(rng.standard_normal((batch, n)))
     if weighted:
         w = ctx.asarray(1.0 + rng.random(n))
-        X = sc.VectorSpace((n,), ctx, geometry=sc.WeightedInnerProduct(w))
+        X = sc.DenseCoordinateSpace((n,), ctx, geometry=sc.WeightedInnerProduct(w))
         geometry = "weighted"
         rbare = lambda: (ST @ (w * y)) / w
         rvbare = lambda: (ST @ (ys * w).T).T / w
         mode = "WEIGHTED_FUSED"
     else:
-        X = sc.VectorSpace((n,), ctx)
+        X = sc.DenseCoordinateSpace((n,), ctx)
         geometry = "euclidean"
         rbare = lambda: ST @ y
         rvbare = lambda: (ST @ ys.T).T
@@ -301,8 +301,8 @@ def _weighted_dense_cases(sc, rng, size_name: str, n: int, checks: bool, matrix_
     y = ctx.asarray(rng.standard_normal(n))
     batch = 8 if size_name != "large" else 4
     ys = ctx.asarray(rng.standard_normal((batch, n)))
-    X = sc.VectorSpace((n,), ctx, geometry=sc.WeightedInnerProduct(wx))
-    Y = sc.VectorSpace((n,), ctx, geometry=sc.WeightedInnerProduct(wy))
+    X = sc.DenseCoordinateSpace((n,), ctx, geometry=sc.WeightedInnerProduct(wx))
+    Y = sc.DenseCoordinateSpace((n,), ctx, geometry=sc.WeightedInnerProduct(wy))
     if matrix_free:
         op = sc.MatrixFreeLinOp.from_coordinate_adjoint(
             lambda z: A @ z,
@@ -399,7 +399,7 @@ def _algebra_cases(sc, rng, size_name: str, n: int, checks: bool) -> list[BenchC
     BH = B.T.conj()
     x = ctx.asarray(rng.standard_normal(n))
     y = ctx.asarray(rng.standard_normal(n))
-    X = sc.VectorSpace((n,), ctx)
+    X = sc.DenseCoordinateSpace((n,), ctx)
     Aop = sc.DenseLinOp(A, X, X, ctx)
     Bop = sc.DenseLinOp(B, X, X, ctx)
     cases = [
@@ -437,7 +437,7 @@ def _algebra_cases(sc, rng, size_name: str, n: int, checks: bool) -> list[BenchC
 
 def _functional_cases(sc, rng, size_name: str, n: int, checks: bool) -> list[BenchCase]:
     ctx = _ctx(sc, "numpy-eager", checks)
-    X = sc.VectorSpace((n,), ctx)
+    X = sc.DenseCoordinateSpace((n,), ctx)
     c = ctx.asarray(rng.standard_normal(n))
     x = ctx.asarray(rng.standard_normal(n))
     xs = ctx.asarray(rng.standard_normal((8 if size_name != "large" else 4, n)))

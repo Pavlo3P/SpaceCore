@@ -157,10 +157,12 @@ that needs this resolution step directly can call
 
 A ``Space`` describes the structure and geometry of values:
 
-* ``DenseCoordinateSpace`` for Euclidean vectors and tensors;
+* ``DenseCoordinateSpace`` for dense arrays with Euclidean, weighted, or custom inner-product geometry;
+* ``ElementwiseJordanSpace`` for dense arrays with Euclidean elementwise star, Jordan, and spectral operations;
 * ``HermitianSpace`` for Hermitian or symmetric matrices;
-* ``ProductSpace`` for Cartesian products of spaces.
-* ``BatchSpace`` for batched elements such as ``X.batch((B,), (0,))``,
+* ``ProductSpace`` for Cartesian products of spaces;
+* ``StackedSpace`` for repeated copies of a leaf space.
+* Batched spaces for elements such as ``X.batch((B,), (0,))``,
   representing ``B`` independent copies of ``X``.
 
 Algorithms should use space methods such as ``zeros``, ``add``, ``scale``,

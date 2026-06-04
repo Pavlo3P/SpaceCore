@@ -150,3 +150,126 @@ def test_jordan_identity_for_dense_vectors_and_hermitian_space():
     b = ctx.asarray([[0.5, -0.75], [-0.75, 3.0]])
     c = ctx.asarray([[2.0, 1.0], [1.0, -1.0]])
     np.testing.assert_allclose(herm.inner(herm.jordan(a, b), c), herm.inner(b, herm.jordan(a, c)))
+
+
+class PairCoordinateSpace(sc.CoordinateSpace):
+    def __init__(self, ctx=None):
+        super().__init__((2,), ctx)
+
+    def zeros(self):
+        return (0.0, 0.0)
+
+    def add(self, x, y):
+        return (x[0] + y[0], x[1] + y[1])
+
+    def scale(self, a, x):
+        return (a * x[0], a * x[1])
+
+    def flatten(self, x):
+        return self.ctx.asarray([x[0], x[1]])
+
+    def unflatten(self, v):
+        return (float(v[0]), float(v[1]))
+
+    def _convert(self, new_ctx):
+        return PairCoordinateSpace(new_ctx)
+
+
+def test_product_space_baseline_and_specialized_capabilities():
+    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    base_product = sc.ProductSpace((PairCoordinateSpace(ctx), PairCoordinateSpace(ctx)), ctx)
+
+    assert type(base_product) is sc.ProductSpace
+    assert isinstance(base_product, sc.CoordinateSpace)
+    assert not isinstance(base_product, sc.InnerProductSpace)
+    assert not isinstance(base_product, sc.StarSpace)
+    assert not isinstance(base_product, sc.JordanAlgebraSpace)
+
+    inner_product = sc.ProductSpace((sc.DenseCoordinateSpace((2,), ctx), sc.DenseCoordinateSpace((1,), ctx)), ctx)
+    assert isinstance(inner_product, sc.ProductInnerProductSpace)
+    assert isinstance(inner_product, sc.InnerProductSpace)
+    assert not isinstance(inner_product, sc.JordanAlgebraSpace)
+
+    jordan_product = sc.ProductSpace((sc.ElementwiseJordanSpace((2,), ctx), sc.HermitianSpace(2, ctx=ctx)), ctx)
+    assert isinstance(jordan_product, sc.ProductEuclideanJordanAlgebraSpace)
+    assert isinstance(jordan_product, sc.StarSpace)
+    assert isinstance(jordan_product, sc.EuclideanJordanAlgebraSpace)
+
+    with pytest.raises(TypeError, match="StarSpace"):
+        sc.ProductStarSpace((sc.DenseCoordinateSpace((1,), ctx),), ctx)
+    with pytest.raises(TypeError, match="EuclideanJordanAlgebraSpace"):
+        sc.ProductEuclideanJordanAlgebraSpace((sc.DenseCoordinateSpace((1,), ctx),), ctx)
+
+
+def test_stacked_space_capability_dispatch_matches_base():
+    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+
+    coordinate = PairCoordinateSpace(ctx).stacked(2)
+    assert type(coordinate) is sc.StackedSpace
+    assert isinstance(coordinate, sc.CoordinateSpace)
+    assert not isinstance(coordinate, sc.InnerProductSpace)
+
+    inner = sc.DenseCoordinateSpace((2,), ctx).stacked(2)
+    assert isinstance(inner, sc.StackedInnerProductSpace)
+    assert isinstance(inner, sc.InnerProductSpace)
+    assert not isinstance(inner, sc.JordanAlgebraSpace)
+    np.testing.assert_allclose(inner.inner(ctx.asarray([[1.0, 2.0], [3.0, 4.0]]), ctx.asarray([[5.0, 6.0], [7.0, 8.0]])), 70.0)
+
+    jordan = sc.ElementwiseJordanSpace((2,), ctx).stacked(2)
+    assert isinstance(jordan, sc.StackedEuclideanJordanAlgebraSpace)
+    assert isinstance(jordan, sc.StarSpace)
+    assert isinstance(jordan, sc.EuclideanJordanAlgebraSpace)
+    x = ctx.asarray([[1.0, 2.0], [3.0, 4.0]])
+    np.testing.assert_allclose(jordan.jordan(x, x), x * x)
+
+
+def test_dense_coordinate_space_is_generic_not_jordan():
+    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    space = sc.DenseCoordinateSpace((2, 2), ctx)
+
+    assert isinstance(space, sc.CoordinateSpace)
+    assert isinstance(space, sc.InnerProductSpace)
+    assert not isinstance(space, sc.StarSpace)
+    assert not isinstance(space, sc.JordanAlgebraSpace)
+    assert not hasattr(space, "spectrum")
+
+
+def test_elementwise_jordan_geometry_compatibility_real_complex_and_weighted():
+    real_ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    complex_ctx = sc.Context(sc.NumpyOps(), dtype=np.complex128)
+
+    for ctx in (real_ctx, complex_ctx):
+        space = sc.ElementwiseJordanSpace((2,), ctx)
+        x = ctx.asarray([1.0, 2.0])
+        y = ctx.asarray([3.0, -1.0])
+        z = ctx.asarray([0.5, 4.0])
+        np.testing.assert_allclose(space.inner(space.jordan(x, y), z), space.inner(y, space.jordan(x, z)))
+
+    weights = real_ctx.asarray([2.0, 3.0])
+    with pytest.raises(TypeError, match="EuclideanInnerProduct"):
+        sc.ElementwiseJordanSpace((2,), real_ctx, geometry=sc.WeightedInnerProduct(weights))
+    with pytest.raises(TypeError, match="EuclideanInnerProduct"):
+        sc.DenseVectorSpace((2,), real_ctx, geometry=sc.WeightedInnerProduct(weights))
+
+    weighted = sc.DenseCoordinateSpace((2,), real_ctx, geometry=sc.WeightedInnerProduct(weights))
+    assert not isinstance(weighted, sc.JordanAlgebraSpace)
+
+
+def test_no_repository_examples_instantiate_abstract_vector_space():
+    from pathlib import Path
+    import re
+
+    root = Path(__file__).resolve().parents[2]
+    pattern = re.compile(r"(?<!class )\b(?:sc\.)?VectorSpace\s*\(")
+    checked_roots = ["spacecore", "tests", "docs", "test_generators", "README.md"]
+    offenders = []
+    for rel in checked_roots:
+        path = root / rel
+        files = [path] if path.is_file() else list(path.rglob("*.py")) + list(path.rglob("*.rst")) + list(path.rglob("*.md"))
+        for file in files:
+            if file == Path(__file__).resolve():
+                continue
+            text = file.read_text(encoding="utf-8")
+            if pattern.search(text):
+                offenders.append(str(file.relative_to(root)))
+    assert offenders == []

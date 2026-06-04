@@ -4,7 +4,7 @@ from typing import Any, NamedTuple
 
 
 from ..linop import LinOp
-from ..space import DenseCoordinateSpace, DenseVectorSpace
+from ..space import DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace
 from ..types import DenseArray
 from ._utils import DEFAULT_CONVERGENCE_CHECK_INTERVAL, check_interval
 from ._utils import require_linop, require_square, safe_inverse_nonneg, should_check_iteration
@@ -117,7 +117,7 @@ def _lanczos_basis_and_tridiag(
     """Build a Lanczos basis and tridiagonal projection."""
     ops = A.ops
     ctx = A.ctx
-    use_euclidean_reorth = type(A.domain) in (DenseCoordinateSpace, DenseVectorSpace) and A.domain.is_euclidean
+    use_euclidean_reorth = type(A.domain) in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace) and A.domain.is_euclidean
 
     v0 = A.domain.flatten(initial_vector)
     v0 = ctx.assert_dense(v0)
