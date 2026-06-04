@@ -26,9 +26,16 @@ class ProductSpace(Space):
     r"""
     Represent a Cartesian product of spaces.
 
-    Elements are tuples ``(x1, ..., xk)`` by default, or registered pytree
-    structures when built with ``structure=...`` or :meth:`from_template`.
-    Dense coordinates concatenate the flattened coordinates of each component.
+    Product elements are tuples ``(x1, ..., xk)`` by default. Advanced callers
+    can opt into a registered pytree/dataclass representation with
+    ``ProductSpace.from_template(...)`` or an explicit ``PytreeStructure``.
+    Operations still run componentwise, and element-returning operations
+    rebuild the same representation as this product space's structure.
+
+    Dense coordinates are representation-neutral: :meth:`flatten` concatenates
+    the flattened coordinates of each component, so equal ordered components
+    produce the same flat vector whether the product element is represented as
+    a tuple or as a registered pytree/dataclass.
 
     Parameters
     ----------
@@ -37,7 +44,7 @@ class ProductSpace(Space):
     ctx : Context, str, or None, optional
         Backend context specification. Default is resolved from components.
     structure : ProductStructure or None, optional
-        Element representation adapter. Default uses plain tuples.
+        Element representation adapter. Default uses tuple elements.
 
     Attributes
     ----------
@@ -54,11 +61,11 @@ class ProductSpace(Space):
     component-delegating rather than one fused reconstruction frame.
 
     The product inner product is the sum of component inner products. Riesz
-    and inverse Riesz maps are applied componentwise to product tuple elements,
-    and ``is_euclidean`` is true if and only if every component space is
-    Euclidean. Although :class:`Space` stores a ``geometry`` attribute,
-    ``ProductSpace`` uses these componentwise overrides as its effective
-    geometry.
+    and inverse Riesz maps are applied componentwise and return the product
+    element representation configured by ``structure``. ``is_euclidean`` is
+    true if and only if every component space is Euclidean. Although
+    :class:`Space` stores a ``geometry`` attribute, ``ProductSpace`` uses these
+    componentwise overrides as its effective geometry.
     """
 
     def _convert(self, new_ctx: Context) -> Space:
@@ -444,24 +451,26 @@ class ProductSpace(Space):
         Parameters
         ----------
         x:
-            Tuple representing an element of this product space. Its length must
-            equal the arity of the product space, and each component must be a
-            valid member of the corresponding factor space.
+            Product element in this space's configured representation. Tuple is
+            the default representation; registered pytree/dataclass elements
+            are accepted only when the space was built from a template or
+            explicit ``PytreeStructure``.
         f:
             Callable to apply to each component. The meaning of application is
             delegated to each component space via ``spaces[i].apply``.
 
         Returns
         -------
-        tuple[Any, ...]
-            Tuple of transformed components, one for each factor space.
+        Any
+            Product element with transformed components, rebuilt using this
+            product space's structure.
 
         Raises
         ------
         TypeError
             If ``x`` is not a valid product-space element.
         ValueError
-            If ``x`` has the wrong tuple length.
+            If ``x`` has the wrong arity for this product space.
 
         Notes
         -----

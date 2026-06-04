@@ -16,7 +16,11 @@ class SumToSingleLinOp(ProductLinOp[ProductSpace, Codomain]):
 
     If ``dom = X1 x ... x Xk`` and ``cod = Y``, component ``parts[i]`` maps
     ``Xi`` to ``Y``. Forward application sums component outputs in ``Y``;
-    adjoint application returns the tuple of component adjoints.
+    adjoint application returns a domain product element whose representation
+    follows ``dom.structure``. Tuple output is the default only when the domain
+    uses ``TupleStructure``; registered pytree/dataclass domain elements are
+    preserved when the domain was built from a template or explicit
+    ``PytreeStructure``.
 
     Parameters
     ----------
@@ -74,7 +78,7 @@ class SumToSingleLinOp(ProductLinOp[ProductSpace, Codomain]):
 
     @checked_method(in_space="domain", out_space="codomain")
     def apply(self, x: Any) -> Any:
-        """Apply component operators and sum in the codomain."""
+        """Apply operators to components of a domain product element and sum."""
         return self._apply_unchecked(x)
 
     def _apply_unchecked(self, x: Any) -> Any:
@@ -107,11 +111,11 @@ class SumToSingleLinOp(ProductLinOp[ProductSpace, Codomain]):
 
     @checked_method(in_space="codomain", out_space="domain")
     def rapply(self, y: Any) -> Any:
-        """Apply each component adjoint to the shared codomain element."""
+        """Apply component adjoints and return a domain product element."""
         return self._rapply_unchecked(y)
 
     def _rapply_unchecked(self, y: Any) -> Any:
-        """Apply component adjoints without membership checks."""
+        """Apply component adjoints without checks and rebuild domain representation."""
         if self._num_parts == 2:
             x_parts = (self._rapply_parts[0](y), self._rapply_parts[1](y))
         else:
@@ -120,7 +124,7 @@ class SumToSingleLinOp(ProductLinOp[ProductSpace, Codomain]):
 
     @checked_method(in_space="domain", out_space="codomain", in_batched=True, out_batched=True)
     def vapply(self, x: Any) -> Any:
-        """Apply this sum-to-single operator over a product batch."""
+        """Apply this sum-to-single operator over a structured product batch."""
         return self._vapply_unchecked(x)
 
     def _vapply_unchecked(self, x: Any) -> Any:
@@ -148,11 +152,11 @@ class SumToSingleLinOp(ProductLinOp[ProductSpace, Codomain]):
 
     @checked_method(in_space="codomain", out_space="domain", in_batched=True, out_batched=True)
     def rvapply(self, y: Any) -> Any:
-        """Apply the adjoint over a codomain batch."""
+        """Apply the adjoint over a codomain batch and preserve domain structure."""
         return self._rvapply_unchecked(y)
 
     def _rvapply_unchecked(self, y: Any) -> Any:
-        """Apply the adjoint over a codomain batch without checks."""
+        """Apply the adjoint over a codomain batch without checks and rebuild domain representation."""
         x_parts = tuple(op.rvapply(y) for op in self.parts)
         return self.dom._from_components(x_parts)
 

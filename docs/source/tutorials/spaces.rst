@@ -148,14 +148,14 @@ Projection onto the PSD cone clips negative eigenvalues:
 ProductSpace
 ------------
 
-``ProductSpace`` represents a Cartesian product. Elements are tuples, one
-component per factor space. If
+``ProductSpace`` represents a Cartesian product. Tuple elements are the default
+representation, with one component per factor space. If
 
 .. math::
 
    X = X_1 \times \cdots \times X_k,
 
-then an element is a tuple
+then the default element representation is
 
 .. math::
 
@@ -171,13 +171,17 @@ Addition, scaling, and inner products are componentwise:
    =
    (x_1+y_1,\dots,x_k+y_k).
 
-Flattening moves between tuple form and flat coordinates:
+Flattening moves between any supported product element representation and flat
+coordinates:
 
 .. math::
 
    (x_1,\dots,x_k)
    \mapsto
    \operatorname{concat}(\operatorname{flatten}(x_1),\dots,\operatorname{flatten}(x_k)).
+
+The flat vector depends only on the ordered components, not on whether the
+user-facing product element is a tuple or a registered pytree/dataclass.
 
 .. code-block:: python
 
@@ -190,6 +194,39 @@ Flattening moves between tuple form and flat coordinates:
    x = (ctx.asarray([1.0, 2.0]), ctx.asarray([3.0, 4.0, 5.0]))
    flat = X_prod.flatten(x)
    x_back = X_prod.unflatten(flat)
+
+Structured product elements are available by building from a registered pytree
+template. For dataclasses used with JAX tree utilities, register the dataclass
+as a pytree; bare dataclasses are opaque leaves and are not automatically
+treated as product components.
+
+.. code-block:: python
+
+   from dataclasses import dataclass
+   import jax
+   from spacecore.space import ProductSpace, VectorSpace
+
+   @jax.tree_util.register_pytree_node_class
+   @dataclass(frozen=True)
+   class State:
+       position: object
+       velocity: object
+
+       def tree_flatten(self):
+           return (self.position, self.velocity), None
+
+       @classmethod
+       def tree_unflatten(cls, aux, children):
+           return cls(*children)
+
+   X1 = VectorSpace((2,), ctx=ctx)
+   X2 = VectorSpace((2,), ctx=ctx)
+   template = State(ctx.asarray([0.0, 0.0]), ctx.asarray([0.0, 0.0]))
+   X_state = ProductSpace.from_template((X1, X2), template, ctx=ctx)
+
+   x = State(ctx.asarray([1.0, 2.0]), ctx.asarray([3.0, 4.0]))
+   y = X_state.scale(2.0, x)  # returns State, not a tuple
+   flat = X_state.flatten(x)
 
 Choosing the right space
 ------------------------

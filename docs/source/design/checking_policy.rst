@@ -24,7 +24,9 @@ Built-in checks
    * dtype
    * square matrix structure
    * Hermitian matrix structure
-   * product tuple structure and component validity
+   * product element structure and component validity; tuple is the default
+     representation, and registered pytree/dataclass product elements are
+     validated through the product structure adapter
 
 Where checks run
 ----------------
