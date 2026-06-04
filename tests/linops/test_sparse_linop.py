@@ -4,6 +4,11 @@ import numpy as np
 import pytest
 import scipy.sparse as sps
 from tests._helpers import to_numpy
+from test_generators.linop._sparse import (
+    bare_sparse_linop,
+    check_sparse_linop,
+    make_sparse_linop_data,
+)
 
 
 class TransposeCountingCSR(sps.csr_matrix):
@@ -222,3 +227,104 @@ def test_sparse_linop_reuses_cached_transpose():
 
     assert transpose_calls == 1
     assert counter["calls"] == transpose_calls
+
+
+def test_sparse_linop_test_data_bare_reference_tensor_euclidean():
+    sc = importlib.import_module("spacecore")
+    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    data = make_sparse_linop_data(
+        ctx,
+        domain_shape=(2, 3),
+        codomain_shape=(4, 2),
+        batch=5,
+        weighted=False,
+        seed=12,
+    )
+    op = sc.SparseLinOp(data.operator, data.domain, data.codomain, ctx)
+
+    assert np.allclose(bare_sparse_linop(ctx.ops, data, "apply"), op.apply(data.x))
+    assert np.allclose(bare_sparse_linop(ctx.ops, data, "rapply"), op.rapply(data.y))
+    assert np.allclose(bare_sparse_linop(ctx.ops, data, "vapply"), op.vapply(data.xs))
+    assert np.allclose(bare_sparse_linop(ctx.ops, data, "rvapply"), op.rvapply(data.ys))
+
+
+def test_sparse_linop_test_data_bare_reference_flat_weighted_and_timing():
+    sc = importlib.import_module("spacecore")
+    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    data = make_sparse_linop_data(
+        ctx,
+        domain_shape=(6,),
+        codomain_shape=(4,),
+        batch=3,
+        weighted=True,
+        seed=14,
+    )
+    op = sc.SparseLinOp(data.operator, data.domain, data.codomain, ctx)
+
+    assert data.domain_weights is not None
+    assert data.codomain_weights is not None
+    assert np.allclose(bare_sparse_linop(ctx.ops, data, "apply"), op.apply(data.x))
+    assert np.allclose(bare_sparse_linop(ctx.ops, data, "rapply"), op.rapply(data.y))
+    assert np.allclose(bare_sparse_linop(ctx.ops, data, "vapply"), op.vapply(data.xs))
+    assert np.allclose(bare_sparse_linop(ctx.ops, data, "rvapply"), op.rvapply(data.ys))
+
+    timed = bare_sparse_linop(ctx.ops, data, "rapply", time=True)
+    assert np.allclose(timed, op.rapply(data.y))
+    assert data.bare_time_s["rapply"] >= 0.0
+
+
+@pytest.mark.parametrize("batch", [None, 4])
+@pytest.mark.parametrize("weighted", [False, True])
+@pytest.mark.parametrize("domain_shape", [(5,), (2, 3)])
+@pytest.mark.parametrize("codomain_shape", [(7,), (3, 2)])
+@pytest.mark.parametrize("kind", ["apply", "rapply", "vapply", "rvapply"])
+def test_check_sparse_linop_covers_shapes_batches_and_geometry(
+    batch,
+    weighted,
+    domain_shape,
+    codomain_shape,
+    kind,
+):
+    if batch is None and kind in {"vapply", "rvapply"}:
+        pytest.skip("batched checks require generated batch data")
+    sc = importlib.import_module("spacecore")
+    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    data = make_sparse_linop_data(
+        ctx,
+        domain_shape=domain_shape,
+        codomain_shape=codomain_shape,
+        batch=batch,
+        weighted=weighted,
+        seed=(
+            (0 if batch is None else batch)
+            + 10 * int(weighted)
+            + 100 * (1 if domain_shape == (2, 3) else 0)
+            + 1_000 * (1 if codomain_shape == (3, 2) else 0)
+            + 10_000 * ["apply", "rapply", "vapply", "rvapply"].index(kind)
+        ),
+    )
+
+    assert check_sparse_linop(data, kind)
+    assert kind in data.bare_outputs
+    assert kind in data.spacecore_outputs
+
+
+def test_check_sparse_linop_records_bare_and_spacecore_timing():
+    sc = importlib.import_module("spacecore")
+    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    data = make_sparse_linop_data(
+        ctx,
+        domain_shape=(5,),
+        codomain_shape=(7,),
+        batch=4,
+        weighted=True,
+        seed=22,
+    )
+
+    assert check_sparse_linop(data, "rvapply", time=True)
+    assert "rvapply" in data.bare_time_s
+    assert "rvapply" in data.spacecore_time_s
+    assert "rvapply" in data.bare_outputs
+    assert "rvapply" in data.spacecore_outputs
+    assert data.bare_time_s["rvapply"] >= 0.0
+    assert data.spacecore_time_s["rvapply"] >= 0.0
