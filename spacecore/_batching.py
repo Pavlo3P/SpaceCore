@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .space._checks import _run_checks
+from .space.checks import _run_checks
 
 
 def _check_batched(space: Any, xs: Any) -> None:

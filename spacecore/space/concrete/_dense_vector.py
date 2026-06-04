@@ -63,15 +63,21 @@ class ElementwiseJordanSpace(DenseCoordinateSpace, StarSpace, EuclideanJordanAlg
         self._check_unbatched_member(eigvals)
         return eigvals
 
+    def _apply_entrywise(self, x: DenseArray, f: Callable[[DenseArray], DenseArray]) -> DenseArray:
+        """Apply ``f`` entrywise and verify that shape is preserved."""
+        try:
+            y = f(x)
+        except Exception:
+            y = self.ops.vectorize(f)(x)
+        if self._enable_checks and y.shape != x.shape:
+            raise ValueError("Function application changed shape.")
+        return y
+
     @checked_method(in_space="self", out_space="self")
     def spectral_apply(self, x: DenseArray, f: Callable[[DenseArray], DenseArray]) -> DenseArray:
         """Apply a scalar function coordinatewise."""
         return self._apply_entrywise(x, f)
 
-    @checked_method(in_space="self", out_space="self")
-    def apply(self, x: DenseArray, f: Callable[[DenseArray], DenseArray]) -> DenseArray:
-        """Backward-compatible alias for elementwise spectral application."""
-        return self.spectral_apply(x, f)
 
     def _convert(self, new_ctx: Context) -> ElementwiseJordanSpace:
         return type(self)(self.shape, new_ctx, geometry=self.geometry.convert(new_ctx))

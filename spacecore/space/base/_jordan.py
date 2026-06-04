@@ -31,9 +31,6 @@ class JordanAlgebraSpace(VectorSpace):
         feigvals = f(eigvals)
         return self.from_spectrum(feigvals, frame)
 
-    def apply(self, x: Any, f: Callable) -> Any:
-        """Backward-compatible alias for ``spectral_apply``."""
-        return self.spectral_apply(x, f)
 
 
 class EuclideanJordanAlgebraSpace(JordanAlgebraSpace, InnerProductSpace):

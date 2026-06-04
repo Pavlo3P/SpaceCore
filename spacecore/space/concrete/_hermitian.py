@@ -156,6 +156,16 @@ class HermitianSpace(DenseCoordinateSpace, StarSpace, EuclideanJordanAlgebraSpac
         """Convert this Hermitian space to ``new_ctx``."""
         return HermitianSpace(self.n, self.atol, self.rtol, self.enforce_herm, new_ctx)
 
+    def _apply_entrywise(self, x: DenseArray, f: Callable[[DenseArray], DenseArray]) -> DenseArray:
+        """Apply ``f`` entrywise and verify that shape is preserved."""
+        try:
+            y = f(x)
+        except Exception:
+            y = self.ops.vectorize(f)(x)
+        if self._enable_checks and y.shape != x.shape:
+            raise ValueError("Function application changed shape.")
+        return y
+
     @checked_method(in_space="self")
     def spectral_apply(self, x: DenseArray, f: Callable[[DenseArray], DenseArray]) -> DenseArray:
         r"""
@@ -216,7 +226,3 @@ class HermitianSpace(DenseCoordinateSpace, StarSpace, EuclideanJordanAlgebraSpac
 
         return self.eig_to_dense(fevals, evecs)
 
-    @checked_method(in_space="self")
-    def apply(self, x: DenseArray, f: Callable[[DenseArray], DenseArray]) -> DenseArray:
-        """Backward-compatible alias for spectral application."""
-        return self.spectral_apply(x, f)

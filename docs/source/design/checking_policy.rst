@@ -32,8 +32,8 @@ Where checks run
 ----------------
 
 Spaces call ``check_member`` inside operations such as ``add``, ``inner``,
-``flatten``, and ``apply``. Linear operators call domain and codomain checks
-before ``apply`` and ``rapply`` when checking is enabled.
+``flatten``, and capability-specific methods such as ``spectral_apply``. Linear operators call domain and codomain checks
+before their ``apply`` and ``rapply`` methods when checking is enabled.
 
 For exploratory use, enabled checks produce clearer errors. For tight numerical
 loops, disabled checks reduce validation overhead.

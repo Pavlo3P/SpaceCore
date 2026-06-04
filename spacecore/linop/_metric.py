@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import warnings
 
-from ..space._base import InnerProductSpace
-from ..space._inner import InnerProduct
+from ..space.base import InnerProduct, InnerProductSpace
 
 
 _METRIC_BATCH_FALLBACK_ERRORS = (TypeError, ValueError, NotImplementedError)

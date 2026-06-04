@@ -191,7 +191,6 @@ def test_product_space_baseline_and_specialized_capabilities():
     assert not isinstance(inner_product, sc.JordanAlgebraSpace)
 
     jordan_product = sc.ProductSpace((sc.ElementwiseJordanSpace((2,), ctx), sc.HermitianSpace(2, ctx=ctx)), ctx)
-    assert isinstance(jordan_product, sc.ProductEuclideanJordanAlgebraSpace)
     assert isinstance(jordan_product, sc.StarSpace)
     assert isinstance(jordan_product, sc.EuclideanJordanAlgebraSpace)
 
@@ -216,7 +215,6 @@ def test_stacked_space_capability_dispatch_matches_base():
     np.testing.assert_allclose(inner.inner(ctx.asarray([[1.0, 2.0], [3.0, 4.0]]), ctx.asarray([[5.0, 6.0], [7.0, 8.0]])), 70.0)
 
     jordan = sc.ElementwiseJordanSpace((2,), ctx).stacked(2)
-    assert isinstance(jordan, sc.StackedEuclideanJordanAlgebraSpace)
     assert isinstance(jordan, sc.StarSpace)
     assert isinstance(jordan, sc.EuclideanJordanAlgebraSpace)
     x = ctx.asarray([[1.0, 2.0], [3.0, 4.0]])
@@ -272,4 +270,274 @@ def test_no_repository_examples_instantiate_abstract_vector_space():
             text = file.read_text(encoding="utf-8")
             if pattern.search(text):
                 offenders.append(str(file.relative_to(root)))
+    assert offenders == []
+
+
+class InnerCoordinateSpace(PairCoordinateSpace, sc.InnerProductSpace):
+    def __init__(self, ctx=None):
+        PairCoordinateSpace.__init__(self, ctx)
+        self.geometry = sc.EuclideanInnerProduct()
+
+    def inner(self, x, y):
+        return x[0] * y[0] + x[1] * y[1]
+
+    def riesz(self, x):
+        return x
+
+    def riesz_inverse(self, x):
+        return x
+
+    @property
+    def is_euclidean(self):
+        return True
+
+    def _convert(self, new_ctx):
+        return type(self)(new_ctx)
+
+
+class StarCoordinateSpace(PairCoordinateSpace, sc.StarSpace):
+    def star(self, x):
+        return self.ops.conj(x)
+
+    def _convert(self, new_ctx):
+        return type(self)(new_ctx)
+
+
+class JordanCoordinateSpace(PairCoordinateSpace, sc.JordanAlgebraSpace):
+    def jordan(self, x, y):
+        return x * y
+
+    def spectrum(self, x):
+        return x
+
+    def spectral_decompose(self, x):
+        return x, None
+
+    def from_spectrum(self, eigvals, frame):
+        if frame is not None:
+            raise ValueError("frame must be None")
+        return eigvals
+
+    def _convert(self, new_ctx):
+        return type(self)(new_ctx)
+
+
+class InnerStarCoordinateSpace(InnerCoordinateSpace, sc.StarSpace):
+    def star(self, x):
+        return self.ops.conj(x)
+
+
+class InnerJordanCoordinateSpace(InnerCoordinateSpace, sc.JordanAlgebraSpace):
+    def jordan(self, x, y):
+        return x * y
+
+    def spectrum(self, x):
+        return x
+
+    def spectral_decompose(self, x):
+        return x, None
+
+    def from_spectrum(self, eigvals, frame):
+        if frame is not None:
+            raise ValueError("frame must be None")
+        return eigvals
+
+
+class StarJordanCoordinateSpace(StarCoordinateSpace, sc.JordanAlgebraSpace):
+    def jordan(self, x, y):
+        return x * y
+
+    def spectrum(self, x):
+        return x
+
+    def spectral_decompose(self, x):
+        return x, None
+
+    def from_spectrum(self, eigvals, frame):
+        if frame is not None:
+            raise ValueError("frame must be None")
+        return eigvals
+
+
+class InnerStarJordanCoordinateSpace(InnerStarCoordinateSpace, sc.JordanAlgebraSpace):
+    def jordan(self, x, y):
+        return x * y
+
+    def spectrum(self, x):
+        return x
+
+    def spectral_decompose(self, x):
+        return x, None
+
+    def from_spectrum(self, eigvals, frame):
+        if frame is not None:
+            raise ValueError("frame must be None")
+        return eigvals
+
+
+class EuclideanJordanCoordinateSpace(PairCoordinateSpace, sc.EuclideanJordanAlgebraSpace):
+    def __init__(self, ctx=None):
+        PairCoordinateSpace.__init__(self, ctx)
+        self.geometry = sc.EuclideanInnerProduct()
+
+    def inner(self, x, y):
+        return x[0] * y[0] + x[1] * y[1]
+
+    def riesz(self, x):
+        return x
+
+    def riesz_inverse(self, x):
+        return x
+
+    @property
+    def is_euclidean(self):
+        return True
+
+    def jordan(self, x, y):
+        return x * y
+
+    def spectrum(self, x):
+        return x
+
+    def spectral_decompose(self, x):
+        return x, None
+
+    def from_spectrum(self, eigvals, frame):
+        if frame is not None:
+            raise ValueError("frame must be None")
+        return eigvals
+
+    def _convert(self, new_ctx):
+        return type(self)(new_ctx)
+
+
+def _capability_flags(space):
+    return {
+        sc.InnerProductSpace: isinstance(space, sc.InnerProductSpace),
+        sc.StarSpace: isinstance(space, sc.StarSpace),
+        sc.JordanAlgebraSpace: isinstance(space, sc.JordanAlgebraSpace),
+        sc.EuclideanJordanAlgebraSpace: isinstance(space, sc.EuclideanJordanAlgebraSpace),
+    }
+
+
+@pytest.mark.parametrize(
+    "factory, expected",
+    [
+        (PairCoordinateSpace, set()),
+        (InnerCoordinateSpace, {sc.InnerProductSpace}),
+        (StarCoordinateSpace, {sc.StarSpace}),
+        (JordanCoordinateSpace, {sc.JordanAlgebraSpace}),
+        (InnerStarCoordinateSpace, {sc.InnerProductSpace, sc.StarSpace}),
+        (InnerJordanCoordinateSpace, {sc.InnerProductSpace, sc.JordanAlgebraSpace}),
+        (StarJordanCoordinateSpace, {sc.StarSpace, sc.JordanAlgebraSpace}),
+        (
+            InnerStarJordanCoordinateSpace,
+            {sc.InnerProductSpace, sc.StarSpace, sc.JordanAlgebraSpace},
+        ),
+        (
+            EuclideanJordanCoordinateSpace,
+            {sc.InnerProductSpace, sc.JordanAlgebraSpace, sc.EuclideanJordanAlgebraSpace},
+        ),
+        (
+            sc.ElementwiseJordanSpace,
+            {
+                sc.InnerProductSpace,
+                sc.StarSpace,
+                sc.JordanAlgebraSpace,
+                sc.EuclideanJordanAlgebraSpace,
+            },
+        ),
+    ],
+)
+def test_product_and_stacked_preserve_exact_capability_combinations(factory, expected):
+    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    if factory is sc.ElementwiseJordanSpace:
+        base = factory((2,), ctx)
+    else:
+        base = factory(ctx)
+
+    product = sc.ProductSpace((base, base), ctx)
+    stacked = base.stacked(2)
+
+    for result in (product, stacked):
+        assert isinstance(result, sc.CoordinateSpace)
+        flags = _capability_flags(result)
+        for capability, present in flags.items():
+            assert present is (capability in expected)
+
+
+def test_baseline_product_and_stacked_do_not_expose_capability_methods():
+    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    product = sc.ProductSpace((PairCoordinateSpace(ctx), PairCoordinateSpace(ctx)), ctx)
+    stacked = PairCoordinateSpace(ctx).stacked(2)
+
+    for space in (product, stacked):
+        for name in (
+            "inner",
+            "riesz",
+            "riesz_inverse",
+            "norm",
+            "is_euclidean",
+            "star",
+            "jordan",
+            "spectrum",
+            "spectral_decompose",
+            "from_spectrum",
+            "spectral_apply",
+            "apply",
+        ):
+            assert not hasattr(space, name), (type(space).__name__, name)
+
+
+def test_product_capability_is_component_intersection():
+    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    product = sc.ProductSpace((InnerStarCoordinateSpace(ctx), InnerCoordinateSpace(ctx)), ctx)
+
+    assert isinstance(product, sc.InnerProductSpace)
+    assert not isinstance(product, sc.StarSpace)
+    assert not isinstance(product, sc.JordanAlgebraSpace)
+    assert hasattr(product, "inner")
+    assert not hasattr(product, "star")
+
+
+def test_constructor_validation_is_early_and_clear():
+    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+
+    with pytest.raises(TypeError, match="component 0 is FiniteSetSpace"):
+        sc.ProductSpace((FiniteSetSpace({"a"}, ctx),), ctx)
+    with pytest.raises(TypeError, match="component 0 is DenseCoordinateSpace"):
+        sc.ProductStarSpace((sc.DenseCoordinateSpace((1,), ctx),), ctx)
+    with pytest.raises(TypeError, match="base is FiniteSetSpace"):
+        sc.StackedSpace(FiniteSetSpace({"a"}, ctx), 1, ctx)
+    with pytest.raises(TypeError, match="base is DenseCoordinateSpace"):
+        sc.StackedStarSpace(sc.DenseCoordinateSpace((1,), ctx), 1, ctx)
+    with pytest.raises(ValueError, match="nonnegative"):
+        sc.StackedSpace(PairCoordinateSpace(ctx), -1, ctx)
+
+
+def test_no_space_apply_method_or_old_module_paths_remain():
+    import importlib
+    from pathlib import Path
+
+    for cls in (sc.DenseCoordinateSpace, sc.ElementwiseJordanSpace, sc.HermitianSpace):
+        assert "apply" not in cls.__dict__
+
+    for module_name in (
+        "spacecore.space._base",
+        "spacecore.space._checks",
+        "spacecore.space._herm",
+        "spacecore.space._inner",
+        "spacecore.space._product",
+        "spacecore.space._stacked",
+        "spacecore.space._vector",
+    ):
+        with pytest.raises(ModuleNotFoundError):
+            importlib.import_module(module_name)
+
+    root = Path(__file__).resolve().parents[2]
+    offenders = []
+    for file in (root / "spacecore" / "space").rglob("*.py"):
+        text = file.read_text(encoding="utf-8")
+        if "def apply(" in text:
+            offenders.append(str(file.relative_to(root)))
     assert offenders == []

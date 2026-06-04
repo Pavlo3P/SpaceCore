@@ -1,6 +1,6 @@
 """Vector space abstractions, concrete spaces, and validation checks."""
 
-from ._checks import (
+from .checks import (
     BackendCheck,
     DTypeCheck,
     HermitianCheck,
@@ -11,33 +11,35 @@ from ._checks import (
     SpaceValidationError,
     SquareMatrixCheck,
 )
-from ._base import (
+from .base import (
     CoordinateSpace,
+    EuclideanInnerProduct,
     EuclideanJordanAlgebraSpace,
+    InnerProduct,
     InnerProductSpace,
     JordanAlgebraSpace,
     Space,
     StarSpace,
     VectorSpace,
+    WeightedInnerProduct,
 )
-from ._inner import EuclideanInnerProduct, InnerProduct, WeightedInnerProduct
-from ._herm import HermitianSpace
-from ._vector import DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace
-from ._product import (
+from .concrete import (
+    DenseCoordinateSpace,
+    DenseVectorSpace,
+    ElementwiseJordanSpace,
+    HermitianSpace,
     ProductEuclideanJordanAlgebraSpace,
     ProductInnerProductSpace,
     ProductJordanAlgebraSpace,
     ProductSpace,
     ProductStarSpace,
-)
-from ._structure import ProductStructure, TupleStructure, PytreeStructure
-from ._stacked import (
     StackedEuclideanJordanAlgebraSpace,
     StackedInnerProductSpace,
     StackedJordanAlgebraSpace,
     StackedSpace,
     StackedStarSpace,
 )
+from ._structure import ProductStructure, PytreeStructure, TupleStructure
 
 __all__ = [
     "BackendCheck",
@@ -56,24 +58,24 @@ __all__ = [
     "EuclideanJordanAlgebraSpace",
     "DenseCoordinateSpace",
     "DenseVectorSpace",
-    "StackedEuclideanJordanAlgebraSpace",
-    "StackedJordanAlgebraSpace",
-    "StackedStarSpace",
-    "StackedInnerProductSpace",
-    "ProductEuclideanJordanAlgebraSpace",
-    "ProductJordanAlgebraSpace",
-    "ProductStarSpace",
-    "ProductInnerProductSpace",
     "ElementwiseJordanSpace",
-    "Space",
-    "SpaceCheck",
-    "SpaceValidationError",
-    "SquareMatrixCheck",
     "HermitianSpace",
-    "VectorSpace",
     "ProductSpace",
+    "ProductInnerProductSpace",
+    "ProductStarSpace",
+    "ProductJordanAlgebraSpace",
+    "ProductEuclideanJordanAlgebraSpace",
     "ProductStructure",
     "TupleStructure",
     "PytreeStructure",
     "StackedSpace",
+    "StackedInnerProductSpace",
+    "StackedStarSpace",
+    "StackedJordanAlgebraSpace",
+    "StackedEuclideanJordanAlgebraSpace",
+    "Space",
+    "SpaceCheck",
+    "SpaceValidationError",
+    "SquareMatrixCheck",
+    "VectorSpace",
 ]
