@@ -60,9 +60,12 @@ class BlockDiagonalLinOp(ProductLinOp[ProductSpace, ProductSpace]):
 
     def _apply_unchecked(self, x: Any) -> Any:
         """Apply each block without membership checks."""
+        x_parts = self.dom._components(x)
         if self._num_parts == 2:
-            return self._apply_parts[0](x[0]), self._apply_parts[1](x[1])
-        return tuple(apply(xi) for apply, xi in zip(self._apply_parts, x))
+            y_parts = (self._apply_parts[0](x_parts[0]), self._apply_parts[1](x_parts[1]))
+        else:
+            y_parts = tuple(apply(xi) for apply, xi in zip(self._apply_parts, x_parts))
+        return self.cod._from_components(y_parts)
 
     @checked_method(in_space="codomain", out_space="domain")
     def rapply(self, y: Any) -> Any:
@@ -71,9 +74,12 @@ class BlockDiagonalLinOp(ProductLinOp[ProductSpace, ProductSpace]):
 
     def _rapply_unchecked(self, y: Any) -> Any:
         """Apply each adjoint block without membership checks."""
+        y_parts = self.cod._components(y)
         if self._num_parts == 2:
-            return self._rapply_parts[0](y[0]), self._rapply_parts[1](y[1])
-        return tuple(rapply(yi) for rapply, yi in zip(self._rapply_parts, y))
+            x_parts = (self._rapply_parts[0](y_parts[0]), self._rapply_parts[1](y_parts[1]))
+        else:
+            x_parts = tuple(rapply(yi) for rapply, yi in zip(self._rapply_parts, y_parts))
+        return self.dom._from_components(x_parts)
 
     @checked_method(in_space="domain", in_batched=True)
     def vapply(self, x: Any) -> Any:
@@ -82,8 +88,9 @@ class BlockDiagonalLinOp(ProductLinOp[ProductSpace, ProductSpace]):
 
     def _vapply_unchecked(self, x: Any) -> Any:
         """Apply over a product batch without membership checks."""
-        y = tuple(op.vapply(xi) for op, xi in zip(self.parts, x))
-        return y
+        x_parts = self.dom._components(x)
+        y_parts = tuple(op.vapply(xi) for op, xi in zip(self.parts, x_parts))
+        return self.cod._from_components(y_parts)
 
     @checked_method(in_space="codomain", out_space="domain", in_batched=True, out_batched=True)
     def rvapply(self, y: Any) -> Any:
@@ -92,8 +99,9 @@ class BlockDiagonalLinOp(ProductLinOp[ProductSpace, ProductSpace]):
 
     def _rvapply_unchecked(self, y: Any) -> Any:
         """Apply the adjoint over a product batch without membership checks."""
-        x = tuple(op.rvapply(yi) for op, yi in zip(self.parts, y))
-        return x
+        y_parts = self.cod._components(y)
+        x_parts = tuple(op.rvapply(yi) for op, yi in zip(self.parts, y_parts))
+        return self.dom._from_components(x_parts)
 
     @classmethod
     def from_operators(cls, parts: Tuple[LinOp, ...]) -> BlockDiagonalLinOp:

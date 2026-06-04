@@ -79,22 +79,23 @@ class SumToSingleLinOp(ProductLinOp[ProductSpace, Codomain]):
 
     def _apply_unchecked(self, x: Any) -> Any:
         """Apply component operators without membership checks."""
+        x_parts = self.dom._components(x)
         mats = self._flat_dense_apply_mats
         if mats is not None:
             if self._num_parts == 2:
-                return mats[0] @ x[0] + mats[1] @ x[1]
-            acc = mats[0] @ x[0]
-            for mat, xi in zip(mats[1:], x[1:]):
+                return mats[0] @ x_parts[0] + mats[1] @ x_parts[1]
+            acc = mats[0] @ x_parts[0]
+            for mat, xi in zip(mats[1:], x_parts[1:]):
                 acc = acc + mat @ xi
             return acc
         if self._num_parts == 2:
-            y0 = self._apply_parts[0](x[0])
-            y1 = self._apply_parts[1](x[1])
+            y0 = self._apply_parts[0](x_parts[0])
+            y1 = self._apply_parts[1](x_parts[1])
             if type(self.cod) is VectorSpace:
                 return y0 + y1
             return self.cod.add(y0, y1)
         acc = None
-        for apply, xi in zip(self._apply_parts, x):
+        for apply, xi in zip(self._apply_parts, x_parts):
             yi = apply(xi)
             if acc is None:
                 acc = yi
@@ -112,8 +113,10 @@ class SumToSingleLinOp(ProductLinOp[ProductSpace, Codomain]):
     def _rapply_unchecked(self, y: Any) -> Any:
         """Apply component adjoints without membership checks."""
         if self._num_parts == 2:
-            return self._rapply_parts[0](y), self._rapply_parts[1](y)
-        return tuple(rapply(y) for rapply in self._rapply_parts)
+            x_parts = (self._rapply_parts[0](y), self._rapply_parts[1](y))
+        else:
+            x_parts = tuple(rapply(y) for rapply in self._rapply_parts)
+        return self.dom._from_components(x_parts)
 
     @checked_method(in_space="domain", out_space="codomain", in_batched=True, out_batched=True)
     def vapply(self, x: Any) -> Any:
@@ -122,17 +125,18 @@ class SumToSingleLinOp(ProductLinOp[ProductSpace, Codomain]):
 
     def _vapply_unchecked(self, x: Any) -> Any:
         """Apply over a product batch without membership checks."""
+        x_parts = self.dom._components(x)
         mats = self._flat_dense_apply_mats
         if mats is not None:
             if self._num_parts == 2:
-                acc = x[0] @ mats[0].T + x[1] @ mats[1].T
+                acc = x_parts[0] @ mats[0].T + x_parts[1] @ mats[1].T
             else:
-                acc = x[0] @ mats[0].T
-                for mat, xi in zip(mats[1:], x[1:]):
+                acc = x_parts[0] @ mats[0].T
+                for mat, xi in zip(mats[1:], x_parts[1:]):
                     acc = acc + xi @ mat.T
             return acc
         acc = None
-        for op, xi in zip(self.parts, x):
+        for op, xi in zip(self.parts, x_parts):
             yi = op.vapply(xi)
             if acc is None:
                 acc = yi
@@ -149,8 +153,8 @@ class SumToSingleLinOp(ProductLinOp[ProductSpace, Codomain]):
 
     def _rvapply_unchecked(self, y: Any) -> Any:
         """Apply the adjoint over a codomain batch without checks."""
-        x = tuple(op.rvapply(y) for op in self.parts)
-        return x
+        x_parts = tuple(op.rvapply(y) for op in self.parts)
+        return self.dom._from_components(x_parts)
 
     @classmethod
     def from_operators(cls, parts: Tuple[LinOp, ...]) -> SumToSingleLinOp:

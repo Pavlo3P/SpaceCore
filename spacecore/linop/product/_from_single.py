@@ -80,8 +80,10 @@ class StackedLinOp(ProductLinOp[Domain, ProductSpace]):
     def _apply_unchecked(self, x: Any) -> Any:
         """Apply component operators without membership checks."""
         if self._num_parts == 2:
-            return self._apply_parts[0](x), self._apply_parts[1](x)
-        return tuple(apply(x) for apply in self._apply_parts)
+            y_parts = (self._apply_parts[0](x), self._apply_parts[1](x))
+        else:
+            y_parts = tuple(apply(x) for apply in self._apply_parts)
+        return self.cod._from_components(y_parts)
 
     @checked_method(in_space="codomain", out_space="domain")
     def rapply(self, y: Any) -> Any:
@@ -90,22 +92,23 @@ class StackedLinOp(ProductLinOp[Domain, ProductSpace]):
 
     def _rapply_unchecked(self, y: Any) -> Any:
         """Apply component adjoints without membership checks."""
+        y_parts = self.cod._components(y)
         mats = self._flat_dense_rapply_mats
         if mats is not None:
             if self._num_parts == 2:
-                return mats[0] @ y[0] + mats[1] @ y[1]
-            acc = mats[0] @ y[0]
-            for mat, yi in zip(mats[1:], y[1:]):
+                return mats[0] @ y_parts[0] + mats[1] @ y_parts[1]
+            acc = mats[0] @ y_parts[0]
+            for mat, yi in zip(mats[1:], y_parts[1:]):
                 acc = acc + mat @ yi
             return acc
         if self._num_parts == 2:
-            x0 = self._rapply_parts[0](y[0])
-            x1 = self._rapply_parts[1](y[1])
+            x0 = self._rapply_parts[0](y_parts[0])
+            x1 = self._rapply_parts[1](y_parts[1])
             if type(self.dom) is VectorSpace:
                 return x0 + x1
             return self.dom.add(x0, x1)
         acc = None
-        for rapply, yi in zip(self._rapply_parts, y):
+        for rapply, yi in zip(self._rapply_parts, y_parts):
             xi = rapply(yi)
             if acc is None:
                 acc = xi
@@ -122,8 +125,8 @@ class StackedLinOp(ProductLinOp[Domain, ProductSpace]):
 
     def _vapply_unchecked(self, x: Any) -> Any:
         """Apply over a batch without membership checks."""
-        y = tuple(op.vapply(x) for op in self.parts)
-        return y
+        y_parts = tuple(op.vapply(x) for op in self.parts)
+        return self.cod._from_components(y_parts)
 
     @checked_method(in_space="codomain", out_space="domain", in_batched=True, out_batched=True)
     def rvapply(self, y: Any) -> Any:
@@ -132,17 +135,18 @@ class StackedLinOp(ProductLinOp[Domain, ProductSpace]):
 
     def _rvapply_unchecked(self, y: Any) -> Any:
         """Apply the adjoint over a product batch without membership checks."""
+        y_parts = self.cod._components(y)
         mats = self._flat_dense_rapply_mats
         if mats is not None:
             if self._num_parts == 2:
-                acc = y[0] @ mats[0].T + y[1] @ mats[1].T
+                acc = y_parts[0] @ mats[0].T + y_parts[1] @ mats[1].T
             else:
-                acc = y[0] @ mats[0].T
-                for mat, yi in zip(mats[1:], y[1:]):
+                acc = y_parts[0] @ mats[0].T
+                for mat, yi in zip(mats[1:], y_parts[1:]):
                     acc = acc + yi @ mat.T
             return acc
         acc = None
-        for op, yi in zip(self.parts, y):
+        for op, yi in zip(self.parts, y_parts):
             xi = op.rvapply(yi)
             if acc is None:
                 acc = xi
