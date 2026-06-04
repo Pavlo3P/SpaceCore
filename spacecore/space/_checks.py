@@ -250,7 +250,7 @@ class HermitianCheck(SpaceCheck):
 @dataclass(frozen=True)
 class ProductStructureCheck(SpaceCheck):
     """
-    Check that a product-space value is a tuple of the right length.
+    Check that a value is valid for the configured ProductSpace structure.
 
     Parameters
     ----------

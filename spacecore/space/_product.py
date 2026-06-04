@@ -13,6 +13,9 @@ from ..backend import Context, jax_pytree_class
 from .._contextual import resolve_context_priority
 
 
+ProductElement = Any
+
+
 def _prod_int(shape: Tuple[int, ...]) -> int:
     """Return the integer product of a shape tuple."""
     p = 1
@@ -209,23 +212,23 @@ class ProductSpace(Space):
             return ones()
         return self.ops.ones(space.shape, dtype=self.dtype)
 
-    def zeros(self) -> Tuple[Any, ...]:
+    def zeros(self) -> ProductElement:
         """Return the product-space zero element."""
         return self._from_components(tuple(s.zeros() for s in self.spaces))
 
-    def ones(self) -> Any:
+    def ones(self) -> ProductElement:
         """Return the product-space all-ones element."""
         return self._from_components(tuple(self._ones_for_space(s) for s in self.spaces))
 
     @checked_method(in_space="self", arg_positions=(0, 1))
-    def add(self, x: Tuple[Any, ...], y: Tuple[Any, ...]) -> Tuple[Any, ...]:
+    def add(self, x: ProductElement, y: ProductElement) -> ProductElement:
         """Return the componentwise product-space sum."""
         x_parts = self._components(x)
         y_parts = self._components(y)
         out = tuple(s.add(xi, yi) for s, xi, yi in zip(self.spaces, x_parts, y_parts))
         return self._from_components(out)
 
-    def add_batch(self, x: Tuple[Any, ...], y: Tuple[Any, ...]) -> Tuple[Any, ...]:
+    def add_batch(self, x: ProductElement, y: ProductElement) -> ProductElement:
         """Return the componentwise leading-axis batch sum."""
         x_parts = self._components(x)
         y_parts = self._components(y)
@@ -233,13 +236,13 @@ class ProductSpace(Space):
         return self._from_components(out)
 
     @checked_method(in_space="self", arg_positions=(1,))
-    def scale(self, a: Any, x: Tuple[Any, ...]) -> Tuple[Any, ...]:
+    def scale(self, a: Any, x: ProductElement) -> ProductElement:
         """Return the componentwise scalar product."""
         parts = self._components(x)
         out = tuple(s.scale(a, xi) for s, xi in zip(self.spaces, parts))
         return self._from_components(out)
 
-    def scale_batch(self, a: Any, x: Tuple[Any, ...]) -> Tuple[Any, ...]:
+    def scale_batch(self, a: Any, x: ProductElement) -> ProductElement:
         """Return the componentwise leading-axis batch scalar product."""
         parts = self._components(x)
         out = tuple(s.scale_batch(a, xi) for s, xi in zip(self.spaces, parts))
@@ -254,7 +257,7 @@ class ProductSpace(Space):
         )
 
     @checked_method(in_space="self", arg_positions=(0, 1))
-    def inner(self, x: Tuple[Any, ...], y: Tuple[Any, ...]) -> Any:
+    def inner(self, x: ProductElement, y: ProductElement) -> Any:
         r"""Return the sum of component inner products."""
         x_parts = self._components(x)
         y_parts = self._components(y)
@@ -265,13 +268,13 @@ class ProductSpace(Space):
             acc = v if acc is None else (acc + v)
         return acc
 
-    def riesz(self, x: Tuple[Any, ...]) -> Tuple[Any, ...]:
+    def riesz(self, x: ProductElement) -> ProductElement:
         """Apply each component space's Riesz map."""
         parts = self._components(x)
         out = tuple(s.riesz(xi) for s, xi in zip(self.spaces, parts))
         return self._from_components(out)
 
-    def riesz_inverse(self, x: Tuple[Any, ...]) -> Tuple[Any, ...]:
+    def riesz_inverse(self, x: ProductElement) -> ProductElement:
         """Apply each component space's inverse Riesz map."""
         parts = self._components(x)
         out = tuple(s.riesz_inverse(xi) for s, xi in zip(self.spaces, parts))
@@ -287,7 +290,7 @@ class ProductSpace(Space):
         spectrum = space.spectrum(space.zeros())
         return int(getattr(spectrum, "shape", (0,))[-1])
 
-    def spectrum(self, x: Tuple[Any, ...]) -> DenseArray:
+    def spectrum(self, x: ProductElement) -> DenseArray:
         """Return the concatenated Jordan spectrum of product components."""
         x_parts = self._components(x)
         parts = tuple(s.spectrum(xi) for s, xi in zip(self.spaces, x_parts))
@@ -295,13 +298,13 @@ class ProductSpace(Space):
             return parts[0]
         return self.ops.concatenate(parts, axis=-1)
 
-    def spectral_decompose(self, x: Tuple[Any, ...]) -> Tuple[Tuple[Any, Any], ...]:
+    def spectral_decompose(self, x: ProductElement) -> ProductElement:
         """Return componentwise spectral decompositions aligned to components."""
         parts = self._components(x)
         out = tuple(s.spectral_decompose(xi) for s, xi in zip(self.spaces, parts))
         return self._from_components(out)
 
-    def from_spectrum(self, eigvals: Any, frame: Any = None) -> Tuple[Any, ...]:
+    def from_spectrum(self, eigvals: Any, frame: Any = None) -> ProductElement:
         """Reconstruct components from component-delegating spectral data."""
         if frame is None:
             decompositions = self._components(eigvals)
@@ -339,7 +342,7 @@ class ProductSpace(Space):
         return self._from_components(tuple(components))
 
     @checked_method(in_space="self")
-    def flatten(self, x: Tuple[Any, ...]) -> DenseArray:
+    def flatten(self, x: ProductElement) -> DenseArray:
         """Concatenate component coordinate vectors into one dense vector."""
         x_parts = self._components(x)
         if self._vector_fast_path:
@@ -373,7 +376,7 @@ class ProductSpace(Space):
             return self._concatenate(parts, dim=0)
         return self._concatenate(parts, axis=0)
 
-    def unflatten(self, v: DenseArray) -> Tuple[Any, ...]:
+    def unflatten(self, v: DenseArray) -> ProductElement:
         """Split dense coordinates into component-space elements."""
         if self._enable_checks:
             v = self.ctx.assert_dense(v)
@@ -408,7 +411,7 @@ class ProductSpace(Space):
 
         return self._from_components(tuple(xs))
 
-    def flatten_batch(self, xs: Tuple[Any, ...]) -> DenseArray:
+    def flatten_batch(self, xs: ProductElement) -> DenseArray:
         """Concatenate a leading-axis batch of product elements to ``(N, size)``."""
         xs_parts = self._components(xs)
         parts = tuple(s.flatten_batch(xi) for s, xi in zip(self.spaces, xs_parts))
@@ -418,7 +421,7 @@ class ProductSpace(Space):
             return self._concatenate(parts, dim=1)
         return self._concatenate(parts, axis=1)
 
-    def unflatten_batch(self, vs: DenseArray) -> Tuple[Any, ...]:
+    def unflatten_batch(self, vs: DenseArray) -> ProductElement:
         """Split rows of shape ``(N, size)`` into batched component elements."""
         if self._enable_checks:
             vs = self.ctx.assert_dense(vs)
@@ -429,7 +432,7 @@ class ProductSpace(Space):
         return self._from_components(parts)
 
     @checked_method(in_space="self", out_space="self")
-    def apply(self, x: Tuple[Any, ...], f: Callable[[Any], Any]) -> Tuple[Any, ...]:
+    def apply(self, x: ProductElement, f: Callable[[Any], Any]) -> ProductElement:
         r"""
         Apply a function to each component of a product-space element.
 
