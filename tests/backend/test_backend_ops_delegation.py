@@ -193,8 +193,8 @@ def test_torch_constants_are_cached_and_astype_none_is_noop():
 def _check_complex_adjoint(ops, dtype):
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(ops, dtype=dtype)
-    dom = sc.VectorSpace((2,), ctx)
-    cod = sc.VectorSpace((3,), ctx)
+    dom = sc.DenseCoordinateSpace((2,), ctx)
+    cod = sc.DenseCoordinateSpace((3,), ctx)
     A = ctx.asarray(
         [
             [1.0 + 2.0j, 3.0 - 1.0j],

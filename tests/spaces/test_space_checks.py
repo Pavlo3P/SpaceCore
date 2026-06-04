@@ -14,7 +14,7 @@ def _ctx(dtype=np.float64, enable_checks=True):
 
 
 def test_backend_check_rejects_non_backend_dense_array():
-    space = sc.VectorSpace((2,), _ctx())
+    space = sc.DenseCoordinateSpace((2,), _ctx())
 
     with pytest.raises((ValueError, TypeError), match="Expected dense array for numpy"):
         sc.BackendCheck()(space, [1.0, 2.0])
@@ -22,7 +22,7 @@ def test_backend_check_rejects_non_backend_dense_array():
 
 def test_shape_check_rejects_wrong_shape():
     ctx = _ctx()
-    space = sc.VectorSpace((2,), ctx)
+    space = sc.DenseCoordinateSpace((2,), ctx)
 
     with pytest.raises(ValueError, match=r"Expected shape \(2,\), got \(3,\)"):
         sc.ShapeCheck()(space, ctx.asarray([1.0, 2.0, 3.0]))
@@ -30,7 +30,7 @@ def test_shape_check_rejects_wrong_shape():
 
 def test_dtype_check_rejects_wrong_dtype():
     ctx = _ctx(np.float32)
-    space = sc.VectorSpace((2,), ctx)
+    space = sc.DenseCoordinateSpace((2,), ctx)
 
     with pytest.raises(ValueError, match="Expected dtype float32, got float64"):
         sc.DTypeCheck()(space, np.asarray([1.0, 2.0], dtype=np.float64))
@@ -83,7 +83,7 @@ def test_hermitian_space_uses_configured_check_parameters():
 
 def test_product_structure_check_rejects_non_tuple_and_wrong_arity():
     ctx = _ctx()
-    product = sc.ProductSpace((sc.VectorSpace((2,), ctx), sc.VectorSpace((3,), ctx)), ctx)
+    product = sc.ProductSpace((sc.DenseCoordinateSpace((2,), ctx), sc.DenseCoordinateSpace((3,), ctx)), ctx)
 
     with pytest.raises(ValueError, match="ProductSpace element must be a tuple"):
         sc.ProductStructureCheck()(product, [ctx.asarray([1.0, 2.0]), ctx.asarray([3.0, 4.0, 5.0])])
@@ -94,7 +94,7 @@ def test_product_structure_check_rejects_non_tuple_and_wrong_arity():
 
 def test_product_component_check_rejects_invalid_component():
     ctx = _ctx()
-    product = sc.ProductSpace((sc.VectorSpace((2,), ctx), sc.VectorSpace((3,), ctx)), ctx)
+    product = sc.ProductSpace((sc.DenseCoordinateSpace((2,), ctx), sc.DenseCoordinateSpace((3,), ctx)), ctx)
 
     with pytest.raises(ValueError, match=r"Invalid component 1.*Expected shape \(3,\)"):
         sc.ProductComponentCheck()(product, (ctx.asarray([1.0, 2.0]), ctx.asarray([3.0, 4.0])))
@@ -112,7 +112,7 @@ class RejectFirstEntryCheck(sc.SpaceCheck):
 
 
 def test_subclass_checks_extend_parent_checks():
-    class ParentVectorSpace(sc.VectorSpace):
+    class ParentVectorSpace(sc.DenseCoordinateSpace):
         checks = (RejectFirstEntryCheck("parent_reject", 1.0),)
 
     class ChildVectorSpace(ParentVectorSpace):
@@ -131,7 +131,7 @@ def test_subclass_checks_extend_parent_checks():
 
 
 def test_disabled_context_skips_inherited_checks():
-    class ChildVectorSpace(sc.VectorSpace):
+    class ChildVectorSpace(sc.DenseCoordinateSpace):
         checks = (RejectFirstEntryCheck("child_reject", 0.0),)
 
     ctx = _ctx(enable_checks=False)
@@ -141,7 +141,7 @@ def test_disabled_context_skips_inherited_checks():
 
 
 def test_instance_specific_local_checks_extend_parent_checks():
-    class ParameterizedVectorSpace(sc.VectorSpace):
+    class ParameterizedVectorSpace(sc.DenseCoordinateSpace):
         def __init__(self, shape, reject_value, ctx=None):
             super().__init__(shape, ctx)
             self.reject_value = reject_value

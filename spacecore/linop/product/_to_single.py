@@ -5,7 +5,7 @@ from typing import Any, Sequence, Tuple
 from ._base import ProductLinOp
 from .._base import LinOp, Codomain
 from ..._checks import checked_method
-from ...space import ProductSpace, VectorSpace
+from ...space import DenseCoordinateSpace, DenseVectorSpace, ProductSpace
 from ...backend import jax_pytree_class, Context
 
 
@@ -46,14 +46,14 @@ class SumToSingleLinOp(ProductLinOp[ProductSpace, Codomain]):
 
     def _make_flat_dense_apply_mats(self):
         """Return dense matrices for the exact flat-vector fast path."""
-        if type(self.cod) is not VectorSpace or not self.cod.is_euclidean:
+        if type(self.cod) not in (DenseCoordinateSpace, DenseVectorSpace) or not self.cod.is_euclidean:
             return None
         if tuple(self.cod.shape) != (self.cod._size,):
             return None
         mats = []
         for op in self.parts:
             if (
-                type(op.dom) is not VectorSpace
+                type(op.dom) not in (DenseCoordinateSpace, DenseVectorSpace)
                 or not op.dom.is_euclidean
                 or tuple(op.dom.shape) != (op.dom._size,)
                 or not hasattr(op, "_A2")
@@ -95,7 +95,7 @@ class SumToSingleLinOp(ProductLinOp[ProductSpace, Codomain]):
         if self._num_parts == 2:
             y0 = self._apply_parts[0](x_parts[0])
             y1 = self._apply_parts[1](x_parts[1])
-            if type(self.cod) is VectorSpace:
+            if type(self.cod) in (DenseCoordinateSpace, DenseVectorSpace):
                 return y0 + y1
             return self.cod.add(y0, y1)
         acc = None
@@ -103,7 +103,7 @@ class SumToSingleLinOp(ProductLinOp[ProductSpace, Codomain]):
             yi = apply(xi)
             if acc is None:
                 acc = yi
-            elif type(self.cod) is VectorSpace:
+            elif type(self.cod) in (DenseCoordinateSpace, DenseVectorSpace):
                 acc = acc + yi
             else:
                 acc = self.cod.add(acc, yi)
@@ -144,7 +144,7 @@ class SumToSingleLinOp(ProductLinOp[ProductSpace, Codomain]):
             yi = op.vapply(xi)
             if acc is None:
                 acc = yi
-            elif type(self.codomain) is VectorSpace:
+            elif type(self.codomain) in (DenseCoordinateSpace, DenseVectorSpace):
                 acc = acc + yi
             else:
                 acc = self.codomain.add_batch(acc, yi)

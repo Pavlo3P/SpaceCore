@@ -213,7 +213,7 @@ def power_iteration(
     >>> import numpy as np
     >>> import spacecore as sc
     >>> ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
-    >>> X = sc.VectorSpace((3,), ctx)
+    >>> X = sc.DenseCoordinateSpace((3,), ctx)
     >>> A = sc.DiagonalLinOp(ctx.asarray([1.0, 3.0, 2.0]), X, ctx)
     >>> result = sc.power_iteration(A, maxiter=20, tol=1e-10)
     >>> np.allclose(result.eigenvalue, 3.0)

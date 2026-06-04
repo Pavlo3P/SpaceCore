@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from ._base import Space
+from ._base import CoordinateSpace, EuclideanJordanAlgebraSpace, Space, StarSpace
 from ._product import ProductSpace
-from ._vector import VectorSpace
 from ..backend import Context, jax_pytree_class
+from ._checks import BackendCheck, DTypeCheck, ShapeCheck
 from .._checks import checked_method
 from .._contextual import resolve_context_priority
 from ..types import DenseArray
@@ -14,7 +14,7 @@ _STACKED_FALLBACK_ERRORS = (TypeError, ValueError, AttributeError, IndexError)
 
 
 @jax_pytree_class
-class StackedSpace(VectorSpace):
+class StackedSpace(CoordinateSpace, StarSpace, EuclideanJordanAlgebraSpace):
     """N independent copies of a base space, stacked on a leading axis.
 
     Elements have shape ``(count,) + base.shape``. Operations act independently
@@ -37,13 +37,20 @@ class StackedSpace(VectorSpace):
         ctx = resolve_context_priority(ctx, base)
         self.base = base.convert(ctx)
         self.count = int(count)
-        super().__init__((self.count,) + tuple(self.base.shape), ctx, geometry=self.base.geometry)
+        super().__init__((self.count,) + tuple(self.base.shape), ctx)
+        if hasattr(self.base, "geometry"):
+            self.geometry = self.base.geometry
 
     def __eq__(self, other: Any) -> bool:
         """Return whether another stacked space has the same base and count."""
         if type(other) is type(self):
             return self.ctx == other.ctx and self.count == other.count and self.base == other.base
         return False
+
+
+    def _local_checks(self):
+        """Return membership checks local to stacked dense coordinate spaces."""
+        return BackendCheck(), ShapeCheck(), DTypeCheck()
 
     def zeros(self) -> DenseArray:
         """Return the stacked zero element."""
@@ -106,17 +113,54 @@ class StackedSpace(VectorSpace):
         """Return whether the base geometry is Euclidean."""
         return self.base.is_euclidean
 
+
+    def star(self, x: Any) -> Any:
+        """Return the base-space star operation for each stacked copy."""
+        try:
+            return self.base.star(x)
+        except _STACKED_FALLBACK_ERRORS:
+            return self.ops.vmap(self.base.star, in_axes=0, out_axes=0)(x)
+
+    @checked_method(in_space="self", arg_positions=(0, 1))
+    def jordan(self, x: Any, y: Any) -> Any:
+        """Return the base-space Jordan product for each stacked copy."""
+        try:
+            return self.base.jordan(x, y)
+        except _STACKED_FALLBACK_ERRORS:
+            return self.ops.vmap(self.base.jordan, in_axes=(0, 0), out_axes=0)(x, y)
+
     def spectrum(self, x: Any) -> Any:
         """Return spectra for each leading-axis copy of the base space."""
-        return self.base.spectrum(x)
+        try:
+            return self.base.spectrum(x)
+        except _STACKED_FALLBACK_ERRORS:
+            return self.ops.vmap(self.base.spectrum, in_axes=0, out_axes=0)(x)
 
     def spectral_decompose(self, x: Any) -> Any:
         """Return spectral decompositions for each leading-axis copy."""
-        return self.base.spectral_decompose(x)
+        try:
+            return self.base.spectral_decompose(x)
+        except _STACKED_FALLBACK_ERRORS:
+            return self.ops.vmap(self.base.spectral_decompose, in_axes=0, out_axes=0)(x)
 
     def from_spectrum(self, eigvals: Any, frame: Any) -> Any:
         """Reconstruct stacked elements from base spectral data."""
-        return self.base.from_spectrum(eigvals, frame)
+        try:
+            return self.base.from_spectrum(eigvals, frame)
+        except _STACKED_FALLBACK_ERRORS:
+            return self.ops.vmap(self.base.from_spectrum, in_axes=(0, 0), out_axes=0)(eigvals, frame)
+
+
+    def spectral_apply(self, x: Any, f: Any) -> Any:
+        """Apply the base-space spectral calculus to each stacked copy."""
+        try:
+            return self.base.spectral_apply(x, f)
+        except _STACKED_FALLBACK_ERRORS:
+            return self.ops.vmap(lambda xi: self.base.spectral_apply(xi, f), in_axes=0, out_axes=0)(x)
+
+    def apply(self, x: Any, f: Any) -> Any:
+        """Backward-compatible alias for spectral application."""
+        return self.spectral_apply(x, f)
 
     @checked_method(in_space="self")
     def flatten(self, x: Any) -> DenseArray:

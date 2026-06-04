@@ -13,7 +13,7 @@ from ._metric import (
     metric_rvapply,
 )
 from .._checks import checked_method
-from ..space import VectorSpace, WeightedInnerProduct
+from ..space import CoordinateSpace, DenseCoordinateSpace, DenseVectorSpace, WeightedInnerProduct
 from ..types import DenseArray, SparseArray
 from ..backend import jax_pytree_class, Context
 from .._contextual import resolve_context_priority
@@ -30,13 +30,13 @@ class _SparseMode(Enum):
 
 _VECTOR_SPACE_ONLY = (
     "SparseLinOp is only for coordinate sparse matrices acting between "
-    "VectorSpace objects. Non-vector or exotic spaces should use "
+    "CoordinateSpace objects. Non-vector or exotic spaces should use "
     "MatrixFreeLinOp with explicit forward and adjoint callbacks."
 )
 
 
 @jax_pytree_class
-class SparseLinOp(LinOp[VectorSpace, VectorSpace]):
+class SparseLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
     r"""
     Represent a sparse coordinate matrix-backed linear operator.
 
@@ -56,9 +56,9 @@ class SparseLinOp(LinOp[VectorSpace, VectorSpace]):
     ----------
     A : SparseArray
         Sparse backend matrix with shape ``(prod(cod.shape), prod(dom.shape))``.
-    dom : VectorSpace
+    dom : CoordinateSpace
         Domain vector space, or a subclass of ``VectorSpace``.
-    cod : VectorSpace
+    cod : CoordinateSpace
         Codomain vector space, or a subclass of ``VectorSpace``.
     ctx : Context, str, or None, optional
         Backend context specification. Default is resolved from the spaces.
@@ -76,7 +76,7 @@ class SparseLinOp(LinOp[VectorSpace, VectorSpace]):
     >>> import scipy.sparse as sps
     >>> import spacecore as sc
     >>> ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
-    >>> X = sc.VectorSpace((2,), ctx)
+    >>> X = sc.DenseCoordinateSpace((2,), ctx)
     >>> A = sc.SparseLinOp(ctx.assparse(sps.eye(2)), X, X, ctx)
     >>> A.apply(ctx.asarray([1.0, 2.0]))
     array([1., 2.])
@@ -84,13 +84,13 @@ class SparseLinOp(LinOp[VectorSpace, VectorSpace]):
 
     def __init__(self,
                  A: SparseArray,
-                 dom: VectorSpace,
-                 cod: VectorSpace,
+                 dom: CoordinateSpace,
+                 cod: CoordinateSpace,
                  ctx: Context | str | None = None
                  ) -> None:
         ctx = resolve_context_priority(ctx, dom, cod)
         ctx.assert_sparse(A)  # Check if A is sparse array of ctx
-        if not isinstance(dom, VectorSpace) or not isinstance(cod, VectorSpace):
+        if not isinstance(dom, CoordinateSpace) or not isinstance(cod, CoordinateSpace):
             raise TypeError(_VECTOR_SPACE_ONLY)
 
         _requires_euclidean_or_riesz(dom, cod, "SparseLinOp")
@@ -108,8 +108,10 @@ class SparseLinOp(LinOp[VectorSpace, VectorSpace]):
         self._A_is_complex = self.ops.is_complex_dtype(dtype)
         self._AT = self.A.T
         self._AH = self._sparse_conj(self._AT) if self._A_is_complex else self._AT
-        self._dom_is_flat = tuple(self.dom.shape) == (self._dom_size,)
-        self._cod_is_flat = tuple(self.cod.shape) == (self._cod_size,)
+        self._dom_dense_array = type(self.dom) in (DenseCoordinateSpace, DenseVectorSpace)
+        self._cod_dense_array = type(self.cod) in (DenseCoordinateSpace, DenseVectorSpace)
+        self._dom_is_flat = self._dom_dense_array and tuple(self.dom.shape) == (self._dom_size,)
+        self._cod_is_flat = self._cod_dense_array and tuple(self.cod.shape) == (self._cod_size,)
         self._mode = self._select_mode()
         if self._mode is _SparseMode.WEIGHTED_FUSED:
             self._dom_weights = self.dom.geometry.weights
@@ -120,11 +122,11 @@ class SparseLinOp(LinOp[VectorSpace, VectorSpace]):
         if (
             self._dom_is_flat
             and self._cod_is_flat
-            and type(self.dom.geometry) is WeightedInnerProduct
-            and type(self.cod.geometry) is WeightedInnerProduct
+            and type(getattr(self.dom, "geometry", None)) is WeightedInnerProduct
+            and type(getattr(self.cod, "geometry", None)) is WeightedInnerProduct
         ):
             return _SparseMode.WEIGHTED_FUSED
-        if self.domain.is_euclidean and self.codomain.is_euclidean:
+        if self.domain.is_euclidean and self.codomain.is_euclidean and self._dom_dense_array and self._cod_dense_array:
             if self._dom_is_flat and self._cod_is_flat:
                 return _SparseMode.EUCLIDEAN_FLAT
             return _SparseMode.EUCLIDEAN_TENSOR

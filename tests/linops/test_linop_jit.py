@@ -24,8 +24,8 @@ def test_dense_linop_jit_apply_and_rapply_with_operator_argument():
     ctx = _jax_ctx()
     op = sc.DenseLinOp(
         ctx.asarray([[1., 2.], [3., 4.], [5., 6.]]),
-        sc.VectorSpace((2,), ctx),
-        sc.VectorSpace((3,), ctx),
+        sc.DenseCoordinateSpace((2,), ctx),
+        sc.DenseCoordinateSpace((3,), ctx),
         ctx,
     )
     x = ctx.asarray([7., 8.])
@@ -42,7 +42,7 @@ def test_decorated_apply_rapply_value_and_grad_jit_compile():
     jax = pytest.importorskip("jax")
 
     ctx = _jax_ctx()
-    space = sc.VectorSpace((2,), ctx)
+    space = sc.DenseCoordinateSpace((2,), ctx)
     op = sc.DenseLinOp(ctx.asarray([[2.0, 1.0], [1.0, 4.0]]), space, space, ctx)
     q = sc.LinOpQuadraticForm(op, ctx=ctx)
     x = ctx.asarray([3.0, -1.0])
@@ -62,8 +62,8 @@ def test_tensor_dense_linop_jit_preserves_shapes():
     jax = pytest.importorskip("jax")
 
     ctx = _jax_ctx()
-    dom = sc.VectorSpace((2, 2), ctx)
-    cod = sc.VectorSpace((3, 1), ctx)
+    dom = sc.DenseCoordinateSpace((2, 2), ctx)
+    cod = sc.DenseCoordinateSpace((3, 1), ctx)
     A = ctx.asarray(np.arange(12, dtype=np.float32).reshape(cod.shape + dom.shape))
     op = sc.DenseLinOp(A, dom, cod, ctx)
     x = ctx.asarray([[1., 2.], [3., 4.]])
@@ -79,9 +79,9 @@ def test_product_linops_jit_compile():
     jax = pytest.importorskip("jax")
 
     ctx = _jax_ctx()
-    X = sc.VectorSpace((2,), ctx)
-    Y1 = sc.VectorSpace((2,), ctx)
-    Y2 = sc.VectorSpace((1,), ctx)
+    X = sc.DenseCoordinateSpace((2,), ctx)
+    Y1 = sc.DenseCoordinateSpace((2,), ctx)
+    Y2 = sc.DenseCoordinateSpace((1,), ctx)
     A1 = sc.DenseLinOp(ctx.asarray([[1., 2.], [3., 4.]]), X, Y1, ctx)
     A2 = sc.DenseLinOp(ctx.asarray([[5., 6.]]), X, Y2, ctx)
     stacked = sc.StackedLinOp.from_operators((A1, A2))
@@ -96,10 +96,10 @@ def test_product_linops_jit_compile():
     np.testing.assert_allclose(to_numpy(y[1]), [83.])
     np.testing.assert_allclose(to_numpy(xr), [8., 10.])
 
-    X1 = sc.VectorSpace((2,), ctx)
-    X2 = sc.VectorSpace((3,), ctx)
-    Z1 = sc.VectorSpace((2,), ctx)
-    Z2 = sc.VectorSpace((1,), ctx)
+    X1 = sc.DenseCoordinateSpace((2,), ctx)
+    X2 = sc.DenseCoordinateSpace((3,), ctx)
+    Z1 = sc.DenseCoordinateSpace((2,), ctx)
+    Z2 = sc.DenseCoordinateSpace((1,), ctx)
     B1 = sc.DenseLinOp(ctx.asarray([[1., 2.], [3., 4.]]), X1, Z1, ctx)
     B2 = sc.DenseLinOp(ctx.asarray([[5., 6., 7.]]), X2, Z2, ctx)
     block = sc.BlockDiagonalLinOp.from_operators((B1, B2))
@@ -132,8 +132,8 @@ def test_sparse_linop_jit_apply_if_supported():
     ctx = _jax_ctx()
     op = sc.SparseLinOp(
         ctx.assparse(np.asarray([[1., 2.], [3., 4.], [5., 6.]], dtype=jax_real_dtype())),
-        sc.VectorSpace((2,), ctx),
-        sc.VectorSpace((3,), ctx),
+        sc.DenseCoordinateSpace((2,), ctx),
+        sc.DenseCoordinateSpace((3,), ctx),
         ctx,
     )
     x = ctx.asarray([7., 8.])
@@ -149,8 +149,8 @@ def test_product_space_flatten_unflatten_jit_compile():
     jax = pytest.importorskip("jax")
 
     ctx = _jax_ctx()
-    X1 = sc.VectorSpace((2, 2), ctx)
-    X2 = sc.VectorSpace((3,), ctx)
+    X1 = sc.DenseCoordinateSpace((2, 2), ctx)
+    X2 = sc.DenseCoordinateSpace((3,), ctx)
     product = sc.ProductSpace((X1, X2), ctx)
     x1 = ctx.asarray([[1., 2.], [3., 4.]])
     x2 = ctx.asarray([5., 6., 7.])

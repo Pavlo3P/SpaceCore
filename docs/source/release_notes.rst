@@ -75,7 +75,7 @@ Spaces
 
 * Added :class:`BatchSpace` for batched elements with explicit batch shape and
   batch-axis metadata.
-* Improved :class:`VectorSpace`, :class:`HermitianSpace`, and
+* Improved :class:`DenseCoordinateSpace`, :class:`HermitianSpace`, and
   :class:`ProductSpace` conversion behavior, validation, batching support, and
   docstrings.
 

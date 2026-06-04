@@ -70,7 +70,7 @@ def _jax_ctx(enable_checks=True):
 
 
 def _spaces(ctx):
-    return sc.VectorSpace((2,), ctx), sc.VectorSpace((3,), ctx)
+    return sc.DenseCoordinateSpace((2,), ctx), sc.DenseCoordinateSpace((3,), ctx)
 
 
 def _state(ctx, a=(1.0, 2.0), b=(3.0, 4.0, 5.0)):

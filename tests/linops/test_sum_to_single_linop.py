@@ -6,8 +6,8 @@ from tests._helpers import to_numpy
 def test_sum_to_single_apply_and_rapply():
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
-    X1,X2 = sc.VectorSpace((2,),ctx), sc.VectorSpace((3,),ctx)
-    Y = sc.VectorSpace((2,),ctx)
+    X1,X2 = sc.DenseCoordinateSpace((2,),ctx), sc.DenseCoordinateSpace((3,),ctx)
+    Y = sc.DenseCoordinateSpace((2,),ctx)
     A1 = sc.DenseLinOp(ctx.asarray([[1.,2.],[3.,4.]]), X1, Y, ctx)
     A2 = sc.DenseLinOp(ctx.asarray([[5.,6.,7.],[8.,9.,10.]]), X2, Y, ctx)
     op = sc.SumToSingleLinOp.from_operators((A1,A2))

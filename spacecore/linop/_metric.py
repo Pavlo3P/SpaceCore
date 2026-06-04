@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import warnings
 
-from ..space._base import Space
+from ..space._base import InnerProductSpace
 from ..space._inner import InnerProduct
 
 
@@ -19,14 +19,17 @@ def space_has_riesz_maps(space) -> bool:
     if parts is not None:
         return all(part.is_euclidean or space_has_riesz_maps(part) for part in parts)
 
-    geometry_type = type(space.geometry)
+    geometry = getattr(space, "geometry", None)
+    if geometry is None or not isinstance(space, InnerProductSpace):
+        return False
+    geometry_type = type(geometry)
     geometry_has_maps = (
         geometry_type.riesz is not InnerProduct.riesz
         and geometry_type.riesz_inverse is not InnerProduct.riesz_inverse
     )
     space_has_maps = (
-        type(space).riesz is not Space.riesz
-        and type(space).riesz_inverse is not Space.riesz_inverse
+        type(space).riesz is not InnerProductSpace.riesz
+        and type(space).riesz_inverse is not InnerProductSpace.riesz_inverse
     )
     return geometry_has_maps or space_has_maps
 
@@ -34,7 +37,7 @@ def space_has_riesz_maps(space) -> bool:
 def _requires_euclidean_or_riesz(dom, cod, opname: str) -> None:
     """Reject non-Euclidean spaces that cannot define metric adjoints."""
     for space, role in ((dom, "domain"), (cod, "codomain")):
-        if space.is_euclidean or space_has_riesz_maps(space):
+        if isinstance(space, InnerProductSpace) and (space.is_euclidean or space_has_riesz_maps(space)):
             continue
         raise TypeError(
             f"{opname} on non-Euclidean {role} {type(space).__name__} "
@@ -109,5 +112,7 @@ def metric_rvapply(
         return domain.riesz_inverse(tmp)
     except _METRIC_BATCH_FALLBACK_ERRORS as err:
         _warn_metric_batch_fallback(opname, err)
-        per_elem = lambda y: metric_rapply(domain, codomain, euclidean_rapply, y)
+        def per_elem(y):
+            return metric_rapply(domain, codomain, euclidean_rapply, y)
+
         return ops.vmap(per_elem, in_axes=0, out_axes=0)(ys)

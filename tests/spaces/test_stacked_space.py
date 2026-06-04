@@ -19,7 +19,7 @@ def _contexts():
 @pytest.mark.parametrize("ctx", list(_contexts()))
 def test_stacked_space_core_contract_euclidean(ctx):
     sc = importlib.import_module("spacecore")
-    base = sc.VectorSpace((3,), ctx)
+    base = sc.DenseCoordinateSpace((3,), ctx)
     space = sc.StackedSpace(base, 4, ctx)
     x = ctx.asarray(np.arange(12.0).reshape(4, 3))
     y = ctx.asarray(np.ones((4, 3)))
@@ -40,7 +40,7 @@ def test_stacked_space_core_contract_euclidean(ctx):
 def test_stacked_space_weighted_geometry_lifts_elementwise(ctx):
     sc = importlib.import_module("spacecore")
     weights = ctx.asarray([2.0, 5.0, 11.0])
-    base = sc.VectorSpace((3,), ctx, geometry=sc.WeightedInnerProduct(weights))
+    base = sc.DenseCoordinateSpace((3,), ctx, geometry=sc.WeightedInnerProduct(weights))
     space = base.stacked(2)
     x = ctx.asarray([[1.0, -2.0, 0.5], [3.0, 1.5, -1.0]])
     y = ctx.asarray([[0.25, 2.0, -1.0], [-2.0, 0.5, 4.0]])
@@ -56,9 +56,9 @@ def test_stacked_space_equality_conversion_and_composition():
     sc = importlib.import_module("spacecore")
     src = sc.Context(sc.NumpyOps(), dtype=np.float32)
     dst = sc.Context(sc.NumpyOps(), dtype=np.float64)
-    base = sc.VectorSpace((2,), src)
+    base = sc.DenseCoordinateSpace((2,), src)
     a = base.stacked(3)
-    b = sc.StackedSpace(sc.VectorSpace((2,), src), 3, src)
+    b = sc.StackedSpace(sc.DenseCoordinateSpace((2,), src), 3, src)
     c = base.stacked(4)
 
     assert a == b
@@ -76,7 +76,7 @@ def test_stacked_space_jax_pytree_roundtrip():
 
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.JaxOps(), dtype=jax_real_dtype(), enable_checks=False)
-    space = sc.VectorSpace((2,), ctx).stacked(3)
+    space = sc.DenseCoordinateSpace((2,), ctx).stacked(3)
     leaves, treedef = jax.tree_util.tree_flatten(space)
     rebuilt = jax.tree_util.tree_unflatten(treedef, leaves)
 
@@ -87,8 +87,8 @@ def test_stacked_space_jax_pytree_roundtrip():
 def test_product_space_stacked_nests_products_outside_stacks():
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
-    x = sc.VectorSpace((2,), ctx)
-    y = sc.VectorSpace((3,), ctx)
+    x = sc.DenseCoordinateSpace((2,), ctx)
+    y = sc.DenseCoordinateSpace((3,), ctx)
     product = sc.ProductSpace((x, y), ctx)
     stacked = product.stacked(4)
 
@@ -104,7 +104,7 @@ def test_product_space_stacked_nests_products_outside_stacks():
 def test_operator_vapply_on_stacked_element_and_adjoint_identity(ctx):
     sc = importlib.import_module("spacecore")
     weights = ctx.asarray([2.0, 5.0])
-    base = sc.VectorSpace((2,), ctx, geometry=sc.WeightedInnerProduct(weights))
+    base = sc.DenseCoordinateSpace((2,), ctx, geometry=sc.WeightedInnerProduct(weights))
     stacked = base.stacked(3)
     matrix = ctx.asarray([[3.0, 0.0], [0.0, 7.0]])
     op = sc.DenseLinOp(matrix, base, base, ctx)
@@ -126,7 +126,7 @@ def test_operator_vapply_on_stacked_element_and_adjoint_identity(ctx):
 def test_cg_solves_diagonal_operator_on_stacked_space():
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, enable_checks=False)
-    base = sc.VectorSpace((2,), ctx)
+    base = sc.DenseCoordinateSpace((2,), ctx)
     stacked = base.stacked(3)
     diagonal = ctx.asarray([[2.0, 4.0], [3.0, 5.0], [7.0, 11.0]])
     op = sc.DiagonalLinOp(diagonal, stacked, ctx)

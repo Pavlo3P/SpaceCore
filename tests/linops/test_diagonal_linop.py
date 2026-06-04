@@ -13,13 +13,13 @@ def _ctx(dtype=np.float64, enable_checks=True):
 
 def _weighted_space(weights, ctx):
     sc = importlib.import_module("spacecore")
-    return sc.VectorSpace(tuple(np.asarray(weights).shape), ctx, sc.WeightedInnerProduct(ctx.asarray(weights)))
+    return sc.DenseCoordinateSpace(tuple(np.asarray(weights).shape), ctx, sc.WeightedInnerProduct(ctx.asarray(weights)))
 
 
 def test_apply_and_rapply_flat_diagonal():
     sc = importlib.import_module("spacecore")
     ctx = _ctx()
-    space = sc.VectorSpace((3,), ctx)
+    space = sc.DenseCoordinateSpace((3,), ctx)
     op = sc.DiagonalLinOp(ctx.asarray([1.0, 2.0, 3.0]), space, ctx)
     x = ctx.asarray([4.0, -1.0, 0.5])
 
@@ -30,7 +30,7 @@ def test_apply_and_rapply_flat_diagonal():
 def test_apply_and_rapply_tensor_shaped_diagonal():
     sc = importlib.import_module("spacecore")
     ctx = _ctx()
-    space = sc.VectorSpace((2, 2), ctx)
+    space = sc.DenseCoordinateSpace((2, 2), ctx)
     op = sc.DiagonalLinOp(ctx.asarray([[1.0, 2.0], [3.0, 4.0]]), space, ctx)
     x = ctx.asarray([[2.0, -1.0], [0.5, 3.0]])
 
@@ -41,7 +41,7 @@ def test_apply_and_rapply_tensor_shaped_diagonal():
 def test_complex_diagonal_satisfies_adjoint_identity_and_hermitian_predicate():
     sc = importlib.import_module("spacecore")
     ctx = _ctx(np.complex128)
-    space = sc.VectorSpace((2,), ctx)
+    space = sc.DenseCoordinateSpace((2,), ctx)
     hermitian = sc.DiagonalLinOp(ctx.asarray([1.0 + 0.0j, 2.0 + 0.0j]), space, ctx)
     non_hermitian = sc.DiagonalLinOp(ctx.asarray([1.0 + 2.0j, 3.0 - 1.0j]), space, ctx)
     u = ctx.asarray([2.0 - 1.0j, -0.5 + 0.25j])
@@ -59,7 +59,7 @@ def test_complex_diagonal_satisfies_adjoint_identity_and_hermitian_predicate():
 def test_vapply_and_rvapply_with_leading_batch():
     sc = importlib.import_module("spacecore")
     ctx = _ctx()
-    space = sc.VectorSpace((3,), ctx)
+    space = sc.DenseCoordinateSpace((3,), ctx)
     op = sc.DiagonalLinOp(ctx.asarray([1.0, 2.0, 3.0]), space, ctx)
     xs = ctx.asarray([[1.0, 2.0, 3.0], [4.0, -1.0, 0.5]])
 
@@ -71,7 +71,7 @@ def test_vapply_and_rvapply_with_leading_batch():
 def test_to_dense_matches_numpy_diagonal_for_tensor_space():
     sc = importlib.import_module("spacecore")
     ctx = _ctx()
-    space = sc.VectorSpace((2, 2), ctx)
+    space = sc.DenseCoordinateSpace((2, 2), ctx)
     diagonal = ctx.asarray([[1.0, 2.0], [3.0, 4.0]])
     op = sc.DiagonalLinOp(diagonal, space, ctx)
 
@@ -99,8 +99,8 @@ def test_weighted_diagonal_satisfies_metric_adjoint_identity_and_batches():
 def test_product_space_diagonal_uses_flatten_unflatten_paths():
     sc = importlib.import_module("spacecore")
     ctx = _ctx()
-    x1 = sc.VectorSpace((2,), ctx)
-    x2 = sc.VectorSpace((1,), ctx)
+    x1 = sc.DenseCoordinateSpace((2,), ctx)
+    x2 = sc.DenseCoordinateSpace((1,), ctx)
     space = sc.ProductSpace((x1, x2), ctx)
     op = sc.DiagonalLinOp(ctx.asarray([2.0, -1.0, 0.5]), space, ctx)
     x = (ctx.asarray([1.0, 3.0]), ctx.asarray([-2.0]))
@@ -129,7 +129,7 @@ def test_pytree_flatten_unflatten_round_trip():
     jax = pytest.importorskip("jax")
     sc = importlib.import_module("spacecore")
     ctx = _ctx()
-    space = sc.VectorSpace((3,), ctx)
+    space = sc.DenseCoordinateSpace((3,), ctx)
     op = sc.DiagonalLinOp(ctx.asarray([1.0, 2.0, 3.0]), space, ctx)
 
     leaves, treedef = jax.tree_util.tree_flatten(op)
@@ -143,7 +143,7 @@ def test_convert_changes_context_dtype():
     sc = importlib.import_module("spacecore")
     ctx64 = _ctx(np.float64)
     ctx32 = _ctx(np.float32)
-    space = sc.VectorSpace((3,), ctx64)
+    space = sc.DenseCoordinateSpace((3,), ctx64)
     op = sc.DiagonalLinOp(ctx64.asarray([1.0, 2.0, 3.0]), space, ctx64)
 
     converted = op._convert(ctx32)

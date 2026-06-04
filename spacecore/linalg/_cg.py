@@ -146,7 +146,7 @@ def cg(
     >>> import numpy as np
     >>> import spacecore as sc
     >>> ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
-    >>> X = sc.VectorSpace((3,), ctx)
+    >>> X = sc.DenseCoordinateSpace((3,), ctx)
     >>> M = ctx.asarray([[4.0, 1.0, 0.0], [1.0, 3.0, 1.0], [0.0, 1.0, 2.0]])
     >>> A = sc.DenseLinOp(M, X, X, ctx)
     >>> b = ctx.asarray([1.0, 2.0, 3.0])

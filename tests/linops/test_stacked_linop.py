@@ -6,8 +6,8 @@ from tests._helpers import to_numpy
 def test_stacked_apply_and_rapply():
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
-    X = sc.VectorSpace((2,),ctx)
-    Y1,Y2 = sc.VectorSpace((2,),ctx), sc.VectorSpace((1,),ctx)
+    X = sc.DenseCoordinateSpace((2,),ctx)
+    Y1,Y2 = sc.DenseCoordinateSpace((2,),ctx), sc.DenseCoordinateSpace((1,),ctx)
     A1 = sc.DenseLinOp(ctx.asarray([[1.,2.],[3.,4.]]), X, Y1, ctx)
     A2 = sc.DenseLinOp(ctx.asarray([[5.,6.]]), X, Y2, ctx)
     op = sc.StackedLinOp.from_operators((A1,A2))

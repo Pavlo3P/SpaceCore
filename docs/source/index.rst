@@ -55,8 +55,8 @@ tensors.
 
 
    def make_problem(ctx):
-       X = sc.VectorSpace((3,), ctx)
-       Y = sc.VectorSpace((2,), ctx)
+       X = sc.DenseCoordinateSpace((3,), ctx)
+       Y = sc.DenseCoordinateSpace((2,), ctx)
 
        A = sc.DenseLinOp(
            ctx.asarray([[1.0, 2.0, 3.0], [0.0, 1.0, 0.0]]),
@@ -157,7 +157,7 @@ that needs this resolution step directly can call
 
 A ``Space`` describes the structure and geometry of values:
 
-* ``VectorSpace`` for Euclidean vectors and tensors;
+* ``DenseCoordinateSpace`` for Euclidean vectors and tensors;
 * ``HermitianSpace`` for Hermitian or symmetric matrices;
 * ``ProductSpace`` for Cartesian products of spaces.
 * ``BatchSpace`` for batched elements such as ``X.batch((B,), (0,))``,

@@ -6,7 +6,7 @@ the abstraction for the geometry of admissible numerical objects.
 
 Current implemented spaces are:
 
-* ``VectorSpace``
+* ``DenseCoordinateSpace``
 * ``HermitianSpace``
 * ``ProductSpace``
 
@@ -59,15 +59,15 @@ Concrete spaces differ, but they share the same idea: define valid elements,
 provide linear operations, define geometry, and create or validate elements in a
 backend-aware way.
 
-VectorSpace
------------
+DenseCoordinateSpace
+--------------------
 
-``VectorSpace`` represents dense backend arrays with a fixed shape and
+``DenseCoordinateSpace`` represents dense backend arrays with a fixed shape and
 Euclidean geometry. If
 
 .. math::
 
-   X = \texttt{VectorSpace}(\texttt{shape}=(n_1,\dots,n_k)),
+   X = \texttt{DenseCoordinateSpace}(\texttt{shape}=(n_1,\dots,n_k)),
 
 then elements of ``X`` are dense arrays of shape ``(n_1, ..., n_k)`` compatible
 with the stored context.
@@ -76,10 +76,10 @@ with the stored context.
 
    import numpy as np
    from spacecore.backend import Context, NumpyOps
-   from spacecore.space import VectorSpace
+   from spacecore.space import DenseCoordinateSpace
 
    ctx = Context(NumpyOps(), dtype=np.float64, enable_checks=True)
-   X = VectorSpace((2, 3), ctx=ctx)
+   X = DenseCoordinateSpace((2, 3), ctx=ctx)
 
    x = X.zeros()
    y = ctx.asarray([[1, 2, 3], [4, 5, 6]])
@@ -185,10 +185,10 @@ user-facing product element is a tuple or a registered pytree/dataclass.
 
 .. code-block:: python
 
-   from spacecore.space import ProductSpace, VectorSpace
+   from spacecore.space import ProductSpace, DenseCoordinateSpace
 
-   X1 = VectorSpace((2,), ctx=ctx)
-   X2 = VectorSpace((3,), ctx=ctx)
+   X1 = DenseCoordinateSpace((2,), ctx=ctx)
+   X2 = DenseCoordinateSpace((3,), ctx=ctx)
    X_prod = ProductSpace((X1, X2), ctx=ctx)
 
    x = (ctx.asarray([1.0, 2.0]), ctx.asarray([3.0, 4.0, 5.0]))
@@ -204,7 +204,7 @@ treated as product components.
 
    from dataclasses import dataclass
    import jax
-   from spacecore.space import ProductSpace, VectorSpace
+   from spacecore.space import ProductSpace, DenseCoordinateSpace
 
    @jax.tree_util.register_pytree_node_class
    @dataclass(frozen=True)
@@ -219,8 +219,8 @@ treated as product components.
        def tree_unflatten(cls, aux, children):
            return cls(*children)
 
-   X1 = VectorSpace((2,), ctx=ctx)
-   X2 = VectorSpace((2,), ctx=ctx)
+   X1 = DenseCoordinateSpace((2,), ctx=ctx)
+   X2 = DenseCoordinateSpace((2,), ctx=ctx)
    template = State(ctx.asarray([0.0, 0.0]), ctx.asarray([0.0, 0.0]))
    X_state = ProductSpace.from_template((X1, X2), template, ctx=ctx)
 
@@ -231,7 +231,7 @@ treated as product components.
 Choosing the right space
 ------------------------
 
-Use ``VectorSpace`` for generic dense arrays, ``HermitianSpace`` when Hermitian
+Use ``DenseCoordinateSpace`` for generic dense arrays, ``HermitianSpace`` when Hermitian
 structure matters, and ``ProductSpace`` when variables are naturally
 block-structured.
 

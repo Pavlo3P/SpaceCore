@@ -11,10 +11,18 @@ from ._checks import (
     SpaceValidationError,
     SquareMatrixCheck,
 )
-from ._base import Space
+from ._base import (
+    CoordinateSpace,
+    EuclideanJordanAlgebraSpace,
+    InnerProductSpace,
+    JordanAlgebraSpace,
+    Space,
+    StarSpace,
+    VectorSpace,
+)
 from ._inner import EuclideanInnerProduct, InnerProduct, WeightedInnerProduct
 from ._herm import HermitianSpace
-from ._vector import VectorSpace
+from ._vector import DenseCoordinateSpace, DenseVectorSpace
 from ._product import ProductSpace
 from ._structure import ProductStructure, TupleStructure, PytreeStructure
 from ._stacked import StackedSpace
@@ -29,6 +37,13 @@ __all__ = [
     "InnerProduct",
     "EuclideanInnerProduct",
     "WeightedInnerProduct",
+    "CoordinateSpace",
+    "InnerProductSpace",
+    "StarSpace",
+    "JordanAlgebraSpace",
+    "EuclideanJordanAlgebraSpace",
+    "DenseCoordinateSpace",
+    "DenseVectorSpace",
     "Space",
     "SpaceCheck",
     "SpaceValidationError",

@@ -27,7 +27,7 @@ def _assert_adjoint_identity(op, x, y, rtol=1e-6, atol=1e-6):
 def _weighted_space_class():
     sc = importlib.import_module("spacecore")
 
-    class WeightedVectorSpace(sc.VectorSpace):
+    class WeightedVectorSpace(sc.DenseCoordinateSpace):
         def __init__(self, weights, ctx):
             self.weights = ctx.asarray(weights)
             super().__init__(tuple(self.weights.shape), ctx, geometry=sc.WeightedInnerProduct(self.weights))
@@ -66,15 +66,15 @@ def _assert_rvapply_loop(op, ys, rtol=1e-6, atol=1e-6):
 @pytest.mark.parametrize("ctx", list(_contexts(False)))
 def test_euclidean_real_adjoint_identity_for_matrix_backed_ops(ctx):
     sc = importlib.import_module("spacecore")
-    domain = sc.VectorSpace((2,), ctx)
-    codomain = sc.VectorSpace((3,), ctx)
+    domain = sc.DenseCoordinateSpace((2,), ctx)
+    codomain = sc.DenseCoordinateSpace((3,), ctx)
     matrix = np.array([[1.0, -2.0], [0.5, 3.0], [4.0, -1.0]])
     x = ctx.asarray([0.25, -1.5])
     y = ctx.asarray([2.0, -0.5, 1.25])
 
     dense = sc.DenseLinOp(ctx.asarray(matrix), domain, codomain, ctx)
     sparse = sc.SparseLinOp(ctx.assparse(matrix), domain, codomain, ctx)
-    diagonal_space = sc.VectorSpace((3,), ctx)
+    diagonal_space = sc.DenseCoordinateSpace((3,), ctx)
     diagonal = sc.DiagonalLinOp(ctx.asarray([2.0, -1.0, 0.5]), diagonal_space, ctx)
     z = ctx.asarray([1.0, -2.0, 0.75])
     w = ctx.asarray([-0.5, 3.0, 1.25])
@@ -87,8 +87,8 @@ def test_euclidean_real_adjoint_identity_for_matrix_backed_ops(ctx):
 @pytest.mark.parametrize("ctx", list(_contexts(True)))
 def test_euclidean_complex_adjoint_identity_for_matrix_backed_ops(ctx):
     sc = importlib.import_module("spacecore")
-    domain = sc.VectorSpace((2,), ctx)
-    codomain = sc.VectorSpace((3,), ctx)
+    domain = sc.DenseCoordinateSpace((2,), ctx)
+    codomain = sc.DenseCoordinateSpace((3,), ctx)
     matrix = np.array(
         [[1.0 + 0.5j, -2.0j], [0.5 - 1.0j, 3.0], [4.0, -1.0 + 2.0j]]
     )
@@ -97,7 +97,7 @@ def test_euclidean_complex_adjoint_identity_for_matrix_backed_ops(ctx):
 
     dense = sc.DenseLinOp(ctx.asarray(matrix), domain, codomain, ctx)
     sparse = sc.SparseLinOp(ctx.assparse(matrix), domain, codomain, ctx)
-    diagonal_space = sc.VectorSpace((3,), ctx)
+    diagonal_space = sc.DenseCoordinateSpace((3,), ctx)
     diagonal = sc.DiagonalLinOp(
         ctx.asarray([2.0 + 1.0j, -1.0j, 0.5 - 0.25j]), diagonal_space, ctx
     )
@@ -157,8 +157,8 @@ def test_weighted_dense_fused_adjoint_matches_generic_metric_formula():
     from spacecore.linop._metric import metric_rapply
 
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
-    domain = sc.VectorSpace((2,), ctx, geometry=sc.WeightedInnerProduct(ctx.asarray([2.0, 5.0])))
-    codomain = sc.VectorSpace((3,), ctx, geometry=sc.WeightedInnerProduct(ctx.asarray([3.0, 7.0, 11.0])))
+    domain = sc.DenseCoordinateSpace((2,), ctx, geometry=sc.WeightedInnerProduct(ctx.asarray([2.0, 5.0])))
+    codomain = sc.DenseCoordinateSpace((3,), ctx, geometry=sc.WeightedInnerProduct(ctx.asarray([3.0, 7.0, 11.0])))
     matrix = ctx.asarray([[1.0, -2.0], [0.5, 3.0], [4.0, -1.0]])
     op = sc.DenseLinOp(matrix, domain, codomain, ctx)
     y = ctx.asarray([2.0, -0.5, 1.25])
@@ -212,10 +212,10 @@ def test_weighted_composed_sum_scaled_and_adjoint_view_identity(ctx):
 @pytest.mark.parametrize("ctx", list(_contexts(True)))
 def test_weighted_complex_scaled_lazily_adjoint_identity(ctx):
     sc = importlib.import_module("spacecore")
-    domain = sc.VectorSpace(
+    domain = sc.DenseCoordinateSpace(
         (2,), ctx, geometry=sc.WeightedInnerProduct(ctx.asarray([2.0, 5.0]))
     )
-    codomain = sc.VectorSpace(
+    codomain = sc.DenseCoordinateSpace(
         (3,), ctx, geometry=sc.WeightedInnerProduct(ctx.asarray([3.0, 7.0, 11.0]))
     )
     op = sc.DenseLinOp(
@@ -257,8 +257,8 @@ def test_weighted_matrix_backed_mode_recomputed_after_convert():
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
     new_ctx = sc.Context(sc.NumpyOps(), dtype=np.float32, enable_checks=False)
-    domain = sc.VectorSpace((2,), ctx, geometry=sc.WeightedInnerProduct(ctx.asarray([2.0, 5.0])))
-    codomain = sc.VectorSpace((3,), ctx, geometry=sc.WeightedInnerProduct(ctx.asarray([3.0, 7.0, 11.0])))
+    domain = sc.DenseCoordinateSpace((2,), ctx, geometry=sc.WeightedInnerProduct(ctx.asarray([2.0, 5.0])))
+    codomain = sc.DenseCoordinateSpace((3,), ctx, geometry=sc.WeightedInnerProduct(ctx.asarray([3.0, 7.0, 11.0])))
     op = sc.DenseLinOp(
         ctx.asarray([[1.0, -2.0], [0.5, 3.0], [4.0, -1.0]]),
         domain,
@@ -282,8 +282,8 @@ def test_weighted_matrix_backed_mode_recomputed_after_convert():
 def test_matrix_free_coordinate_adjoint_constructor_matches_direct_euclidean_adjoint():
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
-    domain = sc.VectorSpace((2,), ctx)
-    codomain = sc.VectorSpace((3,), ctx)
+    domain = sc.DenseCoordinateSpace((2,), ctx)
+    codomain = sc.DenseCoordinateSpace((3,), ctx)
     matrix = ctx.asarray([[1.0, -2.0], [0.5, 3.0], [4.0, -1.0]])
     x = ctx.asarray([0.25, -1.5])
     y = ctx.asarray([2.0, -0.5, 1.25])
@@ -355,8 +355,8 @@ def test_matrix_free_coordinate_adjoint_supports_weighted_product_space():
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
     WeightedVectorSpace = _weighted_space_class()
-    domain = sc.ProductSpace((WeightedVectorSpace([2.0, 5.0], ctx), sc.VectorSpace((1,), ctx)), ctx)
-    codomain = sc.ProductSpace((sc.VectorSpace((1,), ctx), WeightedVectorSpace([3.0, 7.0], ctx)), ctx)
+    domain = sc.ProductSpace((WeightedVectorSpace([2.0, 5.0], ctx), sc.DenseCoordinateSpace((1,), ctx)), ctx)
+    codomain = sc.ProductSpace((sc.DenseCoordinateSpace((1,), ctx), WeightedVectorSpace([3.0, 7.0], ctx)), ctx)
     matrix = ctx.asarray([[1.0, 2.0, -1.0], [0.5, 3.0, 2.0], [4.0, -1.0, 0.25]])
 
     def apply(x):
@@ -407,10 +407,10 @@ def test_matrix_free_coordinate_adjoint_conversion_uses_converted_riesz_maps():
     old_cod = {"riesz": 0, "inverse": 0}
     new_dom = {"riesz": 0, "inverse": 0}
     new_cod = {"riesz": 0, "inverse": 0}
-    domain = sc.VectorSpace(
+    domain = sc.DenseCoordinateSpace(
         (2,), ctx, geometry=CountingWeightedInnerProduct(ctx.asarray([2.0, 5.0]), old_dom, new_dom)
     )
-    codomain = sc.VectorSpace(
+    codomain = sc.DenseCoordinateSpace(
         (3,), ctx, geometry=CountingWeightedInnerProduct(ctx.asarray([3.0, 7.0, 11.0]), old_cod, new_cod)
     )
     matrix = ctx.asarray([[1.0, -2.0], [0.5, 3.0], [4.0, -1.0]])
@@ -498,8 +498,8 @@ def test_direct_matrix_free_conversion_remains_backward_compatible():
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
     new_ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, enable_checks=False)
-    domain = sc.VectorSpace((2,), ctx)
-    codomain = sc.VectorSpace((3,), ctx)
+    domain = sc.DenseCoordinateSpace((2,), ctx)
+    codomain = sc.DenseCoordinateSpace((3,), ctx)
     matrix = ctx.asarray([[1.0, -2.0], [0.5, 3.0], [4.0, -1.0]])
 
     def apply(z):
@@ -520,7 +520,7 @@ def test_direct_matrix_free_conversion_remains_backward_compatible():
 def test_matrix_free_internal_coordinate_metadata_invariants():
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
-    domain = sc.VectorSpace((2,), ctx)
+    domain = sc.DenseCoordinateSpace((2,), ctx)
 
     with pytest.raises(ValueError, match="_coordinate_rapply_fn"):
         sc.MatrixFreeLinOp(
@@ -549,8 +549,8 @@ def test_direct_matrix_free_pytree_remains_backward_compatible():
 
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
-    domain = sc.VectorSpace((2,), ctx)
-    codomain = sc.VectorSpace((3,), ctx)
+    domain = sc.DenseCoordinateSpace((2,), ctx)
+    codomain = sc.DenseCoordinateSpace((3,), ctx)
     matrix = ctx.asarray([[1.0, -2.0], [0.5, 3.0], [4.0, -1.0]])
 
     def apply(z):
@@ -609,7 +609,7 @@ def test_method_based_riesz_space_is_accepted():
         def inner(self, ops, x, y):
             return ops.vdot(x, ctx.asarray([2.0, 5.0]) * y)
 
-    class MethodRieszSpace(sc.VectorSpace):
+    class MethodRieszSpace(sc.DenseCoordinateSpace):
         def __init__(self, ctx):
             super().__init__((2,), ctx, geometry=MethodInnerProduct())
             self.weights = ctx.asarray([2.0, 5.0])
@@ -648,8 +648,8 @@ def test_weighted_batched_apply_and_adjoint_match_loops(ctx):
 def test_weighted_batched_adjoint_uses_broadcast_riesz_without_fallback_warning():
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
-    domain = sc.VectorSpace((2,), ctx, geometry=sc.WeightedInnerProduct(ctx.asarray([2.0, 5.0])))
-    codomain = sc.VectorSpace((3,), ctx, geometry=sc.WeightedInnerProduct(ctx.asarray([3.0, 7.0, 11.0])))
+    domain = sc.DenseCoordinateSpace((2,), ctx, geometry=sc.WeightedInnerProduct(ctx.asarray([2.0, 5.0])))
+    codomain = sc.DenseCoordinateSpace((3,), ctx, geometry=sc.WeightedInnerProduct(ctx.asarray([3.0, 7.0, 11.0])))
     matrix = np.array([[1.0, -2.0], [0.5, 3.0], [4.0, -1.0]])
     op = sc.DenseLinOp(ctx.asarray(matrix), domain, codomain, ctx)
     ys = ctx.asarray([[2.0, -0.5, 1.25], [-1.0, 3.0, 0.75]])
@@ -666,22 +666,23 @@ def test_weighted_batched_adjoint_uses_broadcast_riesz_without_fallback_warning(
 def test_product_space_batched_forward_uses_space_batch_helpers():
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
-    domain = sc.ProductSpace((sc.VectorSpace((2,), ctx), sc.VectorSpace((1,), ctx)), ctx)
-    codomain = sc.ProductSpace((sc.VectorSpace((1,), ctx), sc.VectorSpace((2,), ctx)), ctx)
+    domain = sc.ProductSpace((sc.DenseCoordinateSpace((2,), ctx), sc.DenseCoordinateSpace((1,), ctx)), ctx)
+    codomain = sc.ProductSpace((sc.DenseCoordinateSpace((1,), ctx), sc.DenseCoordinateSpace((2,), ctx)), ctx)
     matrix = np.array([[1.0, 2.0, -1.0], [0.5, 3.0, 2.0], [4.0, -1.0, 0.25]])
     xs = (ctx.asarray([[1.0, 2.0], [-1.0, 0.5]]), ctx.asarray([[3.0], [4.0]]))
 
     dense = sc.DenseLinOp(ctx.asarray(matrix), domain, codomain, ctx)
 
+    sparse = sc.SparseLinOp(ctx.assparse(matrix), domain, codomain, ctx)
+
     _assert_vapply_loop(dense, xs)
-    with pytest.raises(TypeError, match="SparseLinOp.*VectorSpace.*MatrixFreeLinOp"):
-        sc.SparseLinOp(ctx.assparse(matrix), domain, codomain, ctx)
+    _assert_vapply_loop(sparse, xs)
 
 
 def test_matrix_backed_ops_accept_euclidean_product_space():
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
-    space = sc.ProductSpace((sc.VectorSpace((2,), ctx), sc.VectorSpace((1,), ctx)), ctx)
+    space = sc.ProductSpace((sc.DenseCoordinateSpace((2,), ctx), sc.DenseCoordinateSpace((1,), ctx)), ctx)
     matrix = ctx.asarray(np.eye(3))
     diagonal = ctx.asarray([2.0, -1.0, 0.5])
     x = (ctx.asarray([1.0, -2.0]), ctx.asarray([0.5]))
@@ -690,30 +691,32 @@ def test_matrix_backed_ops_accept_euclidean_product_space():
     dense = sc.DenseLinOp(matrix, space, space, ctx)
     diagonal_op = sc.DiagonalLinOp(diagonal, space, ctx)
 
+    sparse = sc.SparseLinOp(ctx.assparse(np.eye(3)), space, space, ctx)
+
     _assert_adjoint_identity(dense, x, y)
     _assert_adjoint_identity(diagonal_op, x, y)
-    with pytest.raises(TypeError, match="SparseLinOp.*VectorSpace.*MatrixFreeLinOp"):
-        sc.SparseLinOp(ctx.assparse(np.eye(3)), space, space, ctx)
+    _assert_adjoint_identity(sparse, x, y)
 
 
 def test_matrix_backed_ops_accept_weighted_product_space_and_satisfy_adjoint_identity():
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
     WeightedVectorSpace = _weighted_space_class()
-    domain = sc.ProductSpace((WeightedVectorSpace([2.0, 5.0], ctx), sc.VectorSpace((1,), ctx)), ctx)
-    codomain = sc.ProductSpace((sc.VectorSpace((1,), ctx), WeightedVectorSpace([3.0, 7.0], ctx)), ctx)
+    domain = sc.ProductSpace((WeightedVectorSpace([2.0, 5.0], ctx), sc.DenseCoordinateSpace((1,), ctx)), ctx)
+    codomain = sc.ProductSpace((sc.DenseCoordinateSpace((1,), ctx), WeightedVectorSpace([3.0, 7.0], ctx)), ctx)
     matrix = np.array([[1.0, 2.0, -1.0], [0.5, 3.0, 2.0], [4.0, -1.0, 0.25]])
     x = (ctx.asarray([0.25, -1.5]), ctx.asarray([2.0]))
     y = (ctx.asarray([-0.5]), ctx.asarray([2.0, 1.25]))
 
     dense = sc.DenseLinOp(ctx.asarray(matrix), domain, codomain, ctx)
 
+    sparse = sc.SparseLinOp(ctx.assparse(matrix), domain, codomain, ctx)
+
     _assert_adjoint_identity(dense, x, y)
-    with pytest.raises(TypeError, match="SparseLinOp.*VectorSpace.*MatrixFreeLinOp"):
-        sc.SparseLinOp(ctx.assparse(matrix), domain, codomain, ctx)
+    _assert_adjoint_identity(sparse, x, y)
 
     diagonal_space = sc.ProductSpace(
-        (WeightedVectorSpace([11.0, 13.0], ctx), sc.VectorSpace((1,), ctx)), ctx
+        (WeightedVectorSpace([11.0, 13.0], ctx), sc.DenseCoordinateSpace((1,), ctx)), ctx
     )
     diagonal = sc.DiagonalLinOp(ctx.asarray([2.0, -1.0, 0.5]), diagonal_space, ctx)
     z = (ctx.asarray([1.0, -2.0]), ctx.asarray([0.75]))
@@ -746,8 +749,8 @@ def test_metric_rvapply_warns_and_falls_back_when_batched_riesz_unavailable():
         def is_euclidean(self):
             return False
 
-    domain = sc.VectorSpace((2,), ctx, geometry=NoBatchWeightedInnerProduct(ctx.asarray([2.0, 5.0])))
-    codomain = sc.VectorSpace((3,), ctx, geometry=NoBatchWeightedInnerProduct(ctx.asarray([3.0, 7.0, 11.0])))
+    domain = sc.DenseCoordinateSpace((2,), ctx, geometry=NoBatchWeightedInnerProduct(ctx.asarray([2.0, 5.0])))
+    codomain = sc.DenseCoordinateSpace((3,), ctx, geometry=NoBatchWeightedInnerProduct(ctx.asarray([3.0, 7.0, 11.0])))
     op = sc.DenseLinOp(
         ctx.asarray([[1.0, -2.0], [0.5, 3.0], [4.0, -1.0]]),
         domain,
@@ -770,7 +773,7 @@ def test_non_euclidean_space_without_riesz_maps_is_rejected():
         def inner(self, ops, x, y):
             return ops.vdot(x, 2.0 * y)
 
-    class BrokenSpace(sc.VectorSpace):
+    class BrokenSpace(sc.DenseCoordinateSpace):
         def __init__(self, shape, ctx):
             super().__init__(shape, ctx)
             self.geometry = BrokenInnerProduct()
@@ -791,13 +794,13 @@ def test_product_space_with_component_missing_riesz_maps_is_rejected():
         def inner(self, ops, x, y):
             return ops.vdot(x, 2.0 * y)
 
-    broken = sc.VectorSpace((2,), ctx, geometry=BrokenInnerProduct())
-    euclidean = sc.VectorSpace((1,), ctx)
+    broken = sc.DenseCoordinateSpace((2,), ctx, geometry=BrokenInnerProduct())
+    euclidean = sc.DenseCoordinateSpace((1,), ctx)
     product = sc.ProductSpace((broken, euclidean), ctx)
 
     with pytest.raises(TypeError, match="Riesz maps"):
         sc.DenseLinOp(ctx.asarray(np.eye(3)), product, product, ctx)
-    with pytest.raises(TypeError, match="SparseLinOp.*VectorSpace.*MatrixFreeLinOp"):
+    with pytest.raises(TypeError, match="Riesz maps"):
         sc.SparseLinOp(ctx.assparse(np.eye(3)), product, product, ctx)
     with pytest.raises(TypeError, match="Riesz maps"):
         sc.DiagonalLinOp(ctx.asarray([1.0, 2.0, 3.0]), product, ctx)
@@ -824,7 +827,7 @@ def test_large_metric_hermitian_check_returns_unknown_without_applying_operator(
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
     n = 1025
-    space = sc.VectorSpace((n,), ctx, geometry=sc.WeightedInnerProduct(ctx.asarray(np.ones(n))))
+    space = sc.DenseCoordinateSpace((n,), ctx, geometry=sc.WeightedInnerProduct(ctx.asarray(np.ones(n))))
     op = sc.DiagonalLinOp(ctx.asarray(np.ones(n)), space, ctx)
 
     def fail_apply(_x):

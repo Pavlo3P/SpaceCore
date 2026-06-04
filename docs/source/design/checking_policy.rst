@@ -9,7 +9,7 @@ to spaces and run only when ``Context.enable_checks`` is true.
    import spacecore as sc
 
    ctx = sc.Context(sc.NumpyOps(), dtype="float64", enable_checks=True)
-   X = sc.VectorSpace((3,), ctx=ctx)
+   X = sc.DenseCoordinateSpace((3,), ctx=ctx)
 
    x = X.ctx.asarray([1.0, 2.0, 3.0])
    X.check_member(x)

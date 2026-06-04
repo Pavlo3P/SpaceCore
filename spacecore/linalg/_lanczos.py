@@ -4,7 +4,7 @@ from typing import Any, NamedTuple
 
 
 from ..linop import LinOp
-from ..space import VectorSpace
+from ..space import DenseCoordinateSpace, DenseVectorSpace
 from ..types import DenseArray
 from ._utils import DEFAULT_CONVERGENCE_CHECK_INTERVAL, check_interval
 from ._utils import require_linop, require_square, safe_inverse_nonneg, should_check_iteration
@@ -117,7 +117,7 @@ def _lanczos_basis_and_tridiag(
     """Build a Lanczos basis and tridiagonal projection."""
     ops = A.ops
     ctx = A.ctx
-    use_euclidean_reorth = type(A.domain) is VectorSpace and A.domain.is_euclidean
+    use_euclidean_reorth = type(A.domain) in (DenseCoordinateSpace, DenseVectorSpace) and A.domain.is_euclidean
 
     v0 = A.domain.flatten(initial_vector)
     v0 = ctx.assert_dense(v0)
@@ -347,7 +347,7 @@ def lanczos_smallest(
     >>> import numpy as np
     >>> import spacecore as sc
     >>> ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
-    >>> X = sc.VectorSpace((3,), ctx)
+    >>> X = sc.DenseCoordinateSpace((3,), ctx)
     >>> A = sc.DiagonalLinOp(ctx.asarray([1.0, 2.0, 4.0]), X, ctx)
     >>> result = sc.lanczos_smallest(A, ctx.asarray([1.0, 1.0, 1.0]), max_iter=3)
     >>> np.allclose(result.eigenvalue, 1.0)

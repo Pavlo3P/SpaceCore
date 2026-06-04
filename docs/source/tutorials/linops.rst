@@ -112,8 +112,8 @@ then dense storage is a tensor compatible with domain and codomain shapes.
 
    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, enable_checks=True)
 
-   X = sc.VectorSpace((2,), ctx=ctx)
-   Y = sc.VectorSpace((3,), ctx=ctx)
+   X = sc.DenseCoordinateSpace((2,), ctx=ctx)
+   Y = sc.DenseCoordinateSpace((3,), ctx=ctx)
 
    A = np.array([
        [1.0, 2.0],
@@ -245,7 +245,7 @@ domain products preserve their registered pytree/dataclass representation.
    import jax
    from spacecore.linop import IdentityLinOp
    from spacecore.linop.product import StackedLinOp
-   from spacecore.space import ProductSpace, VectorSpace
+   from spacecore.space import ProductSpace, DenseCoordinateSpace
 
    @jax.tree_util.register_pytree_node_class
    @dataclass(frozen=True)
@@ -260,7 +260,7 @@ domain products preserve their registered pytree/dataclass representation.
        def tree_unflatten(cls, aux, children):
            return cls(*children)
 
-   X = VectorSpace((2,), ctx=ctx)
+   X = DenseCoordinateSpace((2,), ctx=ctx)
    template = Pair(ctx.asarray([0.0, 0.0]), ctx.asarray([0.0, 0.0]))
    Y = ProductSpace.from_template((X, X), template, ctx=ctx)
    op = StackedLinOp(X, Y, (IdentityLinOp(X), IdentityLinOp(X)), ctx=ctx)

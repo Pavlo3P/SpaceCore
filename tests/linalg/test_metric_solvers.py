@@ -9,7 +9,7 @@ sc = importlib.import_module("spacecore")
 
 
 def _weighted_space(ctx):
-    return sc.VectorSpace((3,), ctx, geometry=sc.WeightedInnerProduct(ctx.asarray([2.0, 5.0, 11.0])))
+    return sc.DenseCoordinateSpace((3,), ctx, geometry=sc.WeightedInnerProduct(ctx.asarray([2.0, 5.0, 11.0])))
 
 
 def _metric_spd_matrix(ctx):

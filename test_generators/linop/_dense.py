@@ -9,7 +9,7 @@ import numpy as np
 
 from spacecore.backend import BackendOps, Context
 from spacecore.linop import DenseLinOp
-from spacecore.space import Space, VectorSpace, WeightedInnerProduct
+from spacecore.space import Space, DenseCoordinateSpace, WeightedInnerProduct
 from spacecore.types import DenseArray
 
 
@@ -58,12 +58,12 @@ def make_dense_linop_data(
         codomain_weights_np = 0.5 + rng.random(codomain_shape)
         domain_weights = ctx.asarray(domain_weights_np)
         codomain_weights = ctx.asarray(codomain_weights_np)
-        domain = VectorSpace(
+        domain = DenseCoordinateSpace(
             domain_shape,
             ctx,
             geometry=WeightedInnerProduct(domain_weights),
         )
-        codomain = VectorSpace(
+        codomain = DenseCoordinateSpace(
             codomain_shape,
             ctx,
             geometry=WeightedInnerProduct(codomain_weights),
@@ -71,8 +71,8 @@ def make_dense_linop_data(
     else:
         domain_weights = None
         codomain_weights = None
-        domain = VectorSpace(domain_shape, ctx)
-        codomain = VectorSpace(codomain_shape, ctx)
+        domain = DenseCoordinateSpace(domain_shape, ctx)
+        codomain = DenseCoordinateSpace(codomain_shape, ctx)
 
     return LinOpTestData(
         ctx=ctx,

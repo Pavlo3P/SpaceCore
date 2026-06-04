@@ -27,13 +27,13 @@ def _weighted_geometry(weights):
 def _weighted_space(ctx):
     weights = ctx.asarray([2.0, 5.0, 11.0])
     sc = importlib.import_module("spacecore")
-    return sc.VectorSpace((3,), ctx, geometry=_weighted_geometry(weights))
+    return sc.DenseCoordinateSpace((3,), ctx, geometry=_weighted_geometry(weights))
 
 
 def _weighted_vector_space(ctx, weights):
     sc = importlib.import_module("spacecore")
     weights = ctx.asarray(weights)
-    return sc.VectorSpace(tuple(to_numpy(weights).shape), ctx, geometry=_weighted_geometry(weights))
+    return sc.DenseCoordinateSpace(tuple(to_numpy(weights).shape), ctx, geometry=_weighted_geometry(weights))
 
 
 def _self_adjoint_metric_matrix(ctx):
@@ -90,7 +90,7 @@ def test_inner_product_functional_gradient_identity_on_weighted_space(ctx, eps, 
 def test_euclidean_quadratic_gradient_behavior_is_unchanged():
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
-    space = sc.VectorSpace((2,), ctx)
+    space = sc.DenseCoordinateSpace((2,), ctx)
     Q = sc.DenseLinOp(ctx.asarray([[2.0, 1.0], [1.0, 4.0]]), space, space, ctx)
     c = ctx.asarray([1.0, -1.0])
     functional = sc.LinOpQuadraticForm(Q, sc.InnerProductFunctional(c, space, ctx), 3.0, ctx)
@@ -132,7 +132,7 @@ def test_inner_product_functional_compose_uses_metric_adjoint_pullback(ctx, eps,
 @pytest.mark.parametrize("weighted", [False, True])
 def test_inner_product_functional_vectorized_batches_match_elementwise(ctx, eps, atol, weighted):
     sc = importlib.import_module("spacecore")
-    space = _weighted_space(ctx) if weighted else sc.VectorSpace((3,), ctx)
+    space = _weighted_space(ctx) if weighted else sc.DenseCoordinateSpace((3,), ctx)
     c = ctx.asarray([0.25, -1.5, 2.0])
     functional = sc.InnerProductFunctional(c, space, ctx)
     xs = ctx.asarray(
@@ -154,7 +154,7 @@ def test_inner_product_functional_vectorized_batches_match_elementwise(ctx, eps,
 @pytest.mark.parametrize("weighted", [False, True])
 def test_linop_quadratic_form_vectorized_batches_match_elementwise(ctx, eps, atol, weighted):
     sc = importlib.import_module("spacecore")
-    space = _weighted_space(ctx) if weighted else sc.VectorSpace((3,), ctx)
+    space = _weighted_space(ctx) if weighted else sc.DenseCoordinateSpace((3,), ctx)
     matrix = _self_adjoint_metric_matrix(ctx) if weighted else ctx.asarray(
         [
             [4.0, 1.0, -0.5],
@@ -185,7 +185,7 @@ def test_matrix_free_functional_vvalue_python_loop_warns_once_on_numpy():
     base = importlib.import_module("spacecore.functional._base")
     base._VMAP_FALLBACK_WARNED.clear()
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, enable_checks=False)
-    space = sc.VectorSpace((2,), ctx)
+    space = sc.DenseCoordinateSpace((2,), ctx)
     c = ctx.asarray([1.0, -2.0])
     functional = sc.MatrixFreeLinearFunctional(lambda x: space.inner(c, x), space, ctx)
     xs = ctx.asarray(np.arange(80.0).reshape(40, 2))
@@ -201,7 +201,7 @@ def test_matrix_free_functional_vvalue_python_loop_warns_once_on_numpy():
 def test_vectorized_functionals_do_not_warn_on_numpy():
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, enable_checks=False)
-    space = sc.VectorSpace((2,), ctx)
+    space = sc.DenseCoordinateSpace((2,), ctx)
     c = ctx.asarray([1.0, -2.0])
     functional = sc.InnerProductFunctional(c, space, ctx)
     xs = ctx.asarray(np.arange(80.0).reshape(40, 2))
@@ -217,7 +217,7 @@ def test_vectorized_functionals_do_not_warn_on_numpy():
 def test_matrix_free_functional_vvalue_does_not_warn_on_native_vmap_backend():
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.JaxOps(), dtype=jax_real_dtype(), enable_checks=False)
-    space = sc.VectorSpace((2,), ctx)
+    space = sc.DenseCoordinateSpace((2,), ctx)
     c = ctx.asarray([1.0, -2.0])
     functional = sc.MatrixFreeLinearFunctional(lambda x: space.inner(c, x), space, ctx)
     xs = ctx.asarray(np.arange(80.0).reshape(40, 2))

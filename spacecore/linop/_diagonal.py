@@ -14,7 +14,7 @@ from ._metric import (
 )
 from .._checks import checked_method
 from ..backend import Context, jax_pytree_class
-from ..space import Space, VectorSpace, WeightedInnerProduct
+from ..space import DenseCoordinateSpace, DenseVectorSpace, Space, WeightedInnerProduct
 from ..types import DenseArray
 from .._contextual import resolve_context_priority
 
@@ -57,7 +57,7 @@ class DiagonalLinOp(LinOp[Space, Space]):
     >>> import numpy as np
     >>> import spacecore as sc
     >>> ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
-    >>> X = sc.VectorSpace((2,), ctx)
+    >>> X = sc.DenseCoordinateSpace((2,), ctx)
     >>> D = sc.DiagonalLinOp(ctx.asarray([2.0, 3.0]), X, ctx)
     >>> D.apply(ctx.asarray([4.0, 5.0]))
     array([ 8., 15.])
@@ -72,7 +72,7 @@ class DiagonalLinOp(LinOp[Space, Space]):
         ctx = resolve_context_priority(ctx, space)
         ctx.assert_dense(diagonal)
         if space is None:
-            space = VectorSpace(tuple(diagonal.shape), ctx)
+            space = DenseCoordinateSpace(tuple(diagonal.shape), ctx)
         _requires_euclidean_or_riesz(space, space, "DiagonalLinOp")
         super().__init__(space, space, ctx)
         expected = tuple(self.domain.shape)
@@ -89,9 +89,9 @@ class DiagonalLinOp(LinOp[Space, Space]):
 
     def _select_mode(self) -> _DiagonalMode:
         """Select the diagonal computation mode once for this operator."""
-        if type(self.domain) is VectorSpace and self.domain.is_euclidean:
+        if (type(self.domain) is DenseCoordinateSpace or type(self.domain) is DenseVectorSpace) and self.domain.is_euclidean:
             return _DiagonalMode.EUCLIDEAN
-        if type(self.domain) is VectorSpace and type(self.domain.geometry) is WeightedInnerProduct:
+        if (type(self.domain) is DenseCoordinateSpace or type(self.domain) is DenseVectorSpace) and type(self.domain.geometry) is WeightedInnerProduct:
             return _DiagonalMode.WEIGHTED_FUSED
         return _DiagonalMode.GENERAL_METRIC
 
@@ -111,7 +111,7 @@ class DiagonalLinOp(LinOp[Space, Space]):
             return self.diagonal * x
         if self._mode is _DiagonalMode.WEIGHTED_FUSED:
             return self.diagonal * x
-        if type(self.domain) is VectorSpace:
+        if type(self.domain) is DenseCoordinateSpace or type(self.domain) is DenseVectorSpace:
             return self.diagonal * x
         x_flat = self.domain.flatten(x)
         y_flat = self._diag_flat * x_flat
@@ -136,7 +136,7 @@ class DiagonalLinOp(LinOp[Space, Space]):
             return self._diag_adjoint * y
         if self._mode is _DiagonalMode.WEIGHTED_FUSED:
             return self._diag_adjoint * y
-        if type(self.domain) is VectorSpace:
+        if type(self.domain) is DenseCoordinateSpace or type(self.domain) is DenseVectorSpace:
             return self._diag_adjoint * y
         y_flat = self.codomain.flatten(y)
         x_flat = self._diag_adjoint_flat * y_flat
@@ -153,7 +153,7 @@ class DiagonalLinOp(LinOp[Space, Space]):
             return self.diagonal * xs
         if self._mode is _DiagonalMode.WEIGHTED_FUSED:
             return self.diagonal * xs
-        if type(self.domain) is VectorSpace:
+        if type(self.domain) is DenseCoordinateSpace or type(self.domain) is DenseVectorSpace:
             return self.diagonal * xs
         xs_flat = self.domain.flatten_batch(xs)
         ys_flat = xs_flat * self._diag_flat
@@ -186,7 +186,7 @@ class DiagonalLinOp(LinOp[Space, Space]):
             return self._diag_adjoint * ys
         if self._mode is _DiagonalMode.WEIGHTED_FUSED:
             return self._diag_adjoint * ys
-        if type(self.domain) is VectorSpace:
+        if type(self.domain) is DenseCoordinateSpace or type(self.domain) is DenseVectorSpace:
             return self._diag_adjoint * ys
         ys_flat = self.codomain.flatten_batch(ys)
         xs_flat = ys_flat * self._diag_adjoint_flat

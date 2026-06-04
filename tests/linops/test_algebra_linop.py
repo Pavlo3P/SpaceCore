@@ -12,8 +12,8 @@ def _ctx(dtype=np.float64, enable_checks=True):
 def _op(matrix, dom_shape, cod_shape, ctx=None):
     sc = importlib.import_module("spacecore")
     ctx = ctx or _ctx()
-    dom = sc.VectorSpace(dom_shape, ctx)
-    cod = sc.VectorSpace(cod_shape, ctx)
+    dom = sc.DenseCoordinateSpace(dom_shape, ctx)
+    cod = sc.DenseCoordinateSpace(cod_shape, ctx)
     return sc.DenseLinOp(ctx.asarray(matrix), dom, cod, ctx)
 
 
@@ -137,8 +137,8 @@ def test_H_swaps_spaces_and_double_H_returns_original():
 def test_zero_identity_and_matrix_free_rapply_are_numerically_correct():
     sc = importlib.import_module("spacecore")
     ctx = _ctx()
-    dom = sc.VectorSpace((2,), ctx)
-    cod = sc.VectorSpace((3,), ctx)
+    dom = sc.DenseCoordinateSpace((2,), ctx)
+    cod = sc.DenseCoordinateSpace((3,), ctx)
     dense = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])
     x = ctx.asarray([7.0, 8.0])
     y = ctx.asarray([1.0, -1.0, 2.0])
@@ -216,8 +216,8 @@ def test_composition_factory_simplifies_identity_and_zero_factors():
     A = _op([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], (2,), (3,), ctx)
     id_domain = sc.IdentityLinOp(A.domain, ctx)
     id_codomain = sc.IdentityLinOp(A.codomain, ctx)
-    left_zero = sc.ZeroLinOp(A.codomain, sc.VectorSpace((4,), ctx), ctx)
-    right_zero = sc.ZeroLinOp(sc.VectorSpace((5,), ctx), A.domain, ctx)
+    left_zero = sc.ZeroLinOp(A.codomain, sc.DenseCoordinateSpace((4,), ctx), ctx)
+    right_zero = sc.ZeroLinOp(sc.DenseCoordinateSpace((5,), ctx), A.domain, ctx)
     x = ctx.asarray([7.0, 8.0])
     y = ctx.asarray([1.0, -1.0, 2.0])
     dense = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])

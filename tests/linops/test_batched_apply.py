@@ -28,8 +28,8 @@ def _assert_rvapply_loop(op, ys):
 @pytest.mark.parametrize("ctx", list(_contexts()))
 def test_dense_linop_batched_apply_matches_loop(ctx):
     sc = importlib.import_module("spacecore")
-    domain = sc.VectorSpace((2,), ctx)
-    codomain = sc.VectorSpace((3,), ctx)
+    domain = sc.DenseCoordinateSpace((2,), ctx)
+    codomain = sc.DenseCoordinateSpace((3,), ctx)
     matrix = ctx.asarray([[1.0, 2.0], [3.0, -1.0], [0.5, 4.0]])
     op = sc.DenseLinOp(matrix, domain, codomain, ctx)
 
@@ -40,7 +40,7 @@ def test_dense_linop_batched_apply_matches_loop(ctx):
 @pytest.mark.parametrize("ctx", list(_contexts()))
 def test_diagonal_linop_batched_apply_matches_loop(ctx):
     sc = importlib.import_module("spacecore")
-    space = sc.VectorSpace((3,), ctx)
+    space = sc.DenseCoordinateSpace((3,), ctx)
     op = sc.DiagonalLinOp(ctx.asarray([2.0, -1.0, 0.5]), space, ctx)
     xs = ctx.asarray([[1.0, 2.0, 3.0], [-1.0, 0.5, 4.0]])
 
@@ -51,8 +51,8 @@ def test_diagonal_linop_batched_apply_matches_loop(ctx):
 @pytest.mark.parametrize("ctx", list(_contexts()))
 def test_matrix_free_linop_batched_apply_matches_loop(ctx):
     sc = importlib.import_module("spacecore")
-    domain = sc.VectorSpace((2,), ctx)
-    codomain = sc.VectorSpace((3,), ctx)
+    domain = sc.DenseCoordinateSpace((2,), ctx)
+    codomain = sc.DenseCoordinateSpace((3,), ctx)
     matrix = ctx.asarray([[1.0, 2.0], [3.0, -1.0], [0.5, 4.0]])
     op = sc.MatrixFreeLinOp(
         lambda x: matrix @ x,
@@ -69,7 +69,7 @@ def test_matrix_free_linop_batched_apply_matches_loop(ctx):
 @pytest.mark.parametrize("ctx", list(_contexts()))
 def test_composed_linop_batched_apply_matches_loop(ctx):
     sc = importlib.import_module("spacecore")
-    space = sc.VectorSpace((2,), ctx)
+    space = sc.DenseCoordinateSpace((2,), ctx)
     left = sc.DenseLinOp(ctx.asarray([[1.0, 2.0], [0.0, -1.0]]), space, space, ctx)
     right = sc.DiagonalLinOp(ctx.asarray([2.0, -0.5]), space, ctx)
     op = left @ right

@@ -26,7 +26,7 @@ def test_expected_names_are_exported():
         "Functional", "LinearFunctional", "InnerProductFunctional",
         "ComposedFunctional", "MatrixFreeLinearFunctional", "QuadraticForm",
         "LinOpQuadraticForm", "make_functional_composed",
-        "VectorSpace", "HermitianSpace", "ProductSpace", "ProductStructure",
+        "DenseCoordinateSpace", "HermitianSpace", "ProductSpace", "ProductStructure",
         "TupleStructure", "PytreeStructure", "StackedSpace", "Space",
         "InnerProduct", "EuclideanInnerProduct", "WeightedInnerProduct",
         "DenseArray", "SparseArray", "ArrayLike",
@@ -62,7 +62,7 @@ def test_top_level_objects_match_source_modules():
     assert sc.InnerProduct is space.InnerProduct
     assert sc.EuclideanInnerProduct is space.EuclideanInnerProduct
     assert sc.WeightedInnerProduct is space.WeightedInnerProduct
-    assert sc.VectorSpace is space.VectorSpace
+    assert sc.DenseCoordinateSpace is space.DenseCoordinateSpace
     assert sc.ProductStructure is space.ProductStructure
     assert sc.TupleStructure is space.TupleStructure
     assert sc.PytreeStructure is space.PytreeStructure

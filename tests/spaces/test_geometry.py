@@ -43,7 +43,7 @@ def _weighted_geometry(weights, ctx, convert_log=None):
 def test_vector_space_default_geometry_is_euclidean():
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
-    space = sc.VectorSpace((3,), ctx)
+    space = sc.DenseCoordinateSpace((3,), ctx)
     x = ctx.asarray([1.0, 2.0, 3.0])
     y = ctx.asarray([4.0, 5.0, 6.0])
 
@@ -70,7 +70,7 @@ def test_vector_space_accepts_custom_geometry():
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
     geometry = _weighted_geometry([2.0, 3.0], ctx)
-    space = sc.VectorSpace((2,), ctx, geometry=geometry)
+    space = sc.DenseCoordinateSpace((2,), ctx, geometry=geometry)
     x = ctx.asarray([1.0, 4.0])
     y = ctx.asarray([5.0, 6.0])
 
@@ -84,7 +84,7 @@ def test_weighted_inner_product_geometry_is_shipped_and_converts():
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
     new_ctx = sc.Context(sc.NumpyOps(), dtype=np.float32, enable_checks=False)
     geometry = sc.WeightedInnerProduct(ctx.asarray([2.0, 3.0]))
-    space = sc.VectorSpace((2,), ctx, geometry=geometry)
+    space = sc.DenseCoordinateSpace((2,), ctx, geometry=geometry)
     x = ctx.asarray([1.0, 4.0])
     y = ctx.asarray([5.0, 6.0])
     xb = ctx.asarray([[1.0, 4.0], [2.0, 3.0]])
@@ -103,11 +103,11 @@ def test_weighted_inner_product_geometry_is_shipped_and_converts():
 def test_space_equality_includes_geometry():
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
-    euclidean_a = sc.VectorSpace((2,), ctx)
-    euclidean_b = sc.VectorSpace((2,), ctx)
-    weighted_a = sc.VectorSpace((2,), ctx, geometry=_weighted_geometry([2.0, 3.0], ctx))
-    weighted_b = sc.VectorSpace((2,), ctx, geometry=_weighted_geometry([2.0, 3.0], ctx))
-    weighted_c = sc.VectorSpace((2,), ctx, geometry=_weighted_geometry([2.0, 4.0], ctx))
+    euclidean_a = sc.DenseCoordinateSpace((2,), ctx)
+    euclidean_b = sc.DenseCoordinateSpace((2,), ctx)
+    weighted_a = sc.DenseCoordinateSpace((2,), ctx, geometry=_weighted_geometry([2.0, 3.0], ctx))
+    weighted_b = sc.DenseCoordinateSpace((2,), ctx, geometry=_weighted_geometry([2.0, 3.0], ctx))
+    weighted_c = sc.DenseCoordinateSpace((2,), ctx, geometry=_weighted_geometry([2.0, 4.0], ctx))
 
     assert euclidean_a == euclidean_b
     assert euclidean_a != weighted_a
@@ -117,13 +117,13 @@ def test_space_equality_includes_geometry():
 
 def test_space_equality_is_symmetric_and_requires_exact_space_type():
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
-    vector = sc.VectorSpace((2, 2), ctx)
+    vector = sc.DenseCoordinateSpace((2, 2), ctx)
     hermitian_a = sc.HermitianSpace(2, ctx=ctx)
     hermitian_b = sc.HermitianSpace(2, ctx=ctx)
-    weighted = sc.VectorSpace((2, 2), ctx, geometry=_weighted_geometry([1.0, 2.0, 3.0, 4.0], ctx))
-    product_a = sc.ProductSpace((sc.VectorSpace((2,), ctx), sc.VectorSpace((1,), ctx)), ctx)
-    product_b = sc.ProductSpace((sc.VectorSpace((2,), ctx), sc.VectorSpace((1,), ctx)), ctx)
-    product_reordered = sc.ProductSpace((sc.VectorSpace((1,), ctx), sc.VectorSpace((2,), ctx)), ctx)
+    weighted = sc.DenseCoordinateSpace((2, 2), ctx, geometry=_weighted_geometry([1.0, 2.0, 3.0, 4.0], ctx))
+    product_a = sc.ProductSpace((sc.DenseCoordinateSpace((2,), ctx), sc.DenseCoordinateSpace((1,), ctx)), ctx)
+    product_b = sc.ProductSpace((sc.DenseCoordinateSpace((2,), ctx), sc.DenseCoordinateSpace((1,), ctx)), ctx)
+    product_reordered = sc.ProductSpace((sc.DenseCoordinateSpace((1,), ctx), sc.DenseCoordinateSpace((2,), ctx)), ctx)
 
     assert vector != hermitian_a
     assert hermitian_a != vector
@@ -143,7 +143,7 @@ def test_vector_space_conversion_preserves_and_converts_geometry():
     dst = sc.Context(sc.NumpyOps(), dtype=np.float64)
     convert_log = []
     geometry = _weighted_geometry([2.0, 3.0], src, convert_log)
-    space = sc.VectorSpace((2,), src, geometry=geometry)
+    space = sc.DenseCoordinateSpace((2,), src, geometry=geometry)
 
     converted = space.convert(dst)
 
@@ -157,8 +157,8 @@ def test_vector_space_conversion_preserves_and_converts_geometry():
 def test_product_space_geometry_is_componentwise():
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
-    euclidean = sc.VectorSpace((2,), ctx)
-    weighted = sc.VectorSpace((2,), ctx, geometry=_weighted_geometry([2.0, 3.0], ctx))
+    euclidean = sc.DenseCoordinateSpace((2,), ctx)
+    weighted = sc.DenseCoordinateSpace((2,), ctx, geometry=_weighted_geometry([2.0, 3.0], ctx))
     product = sc.ProductSpace((euclidean, weighted), ctx)
     x = (ctx.asarray([1.0, 2.0]), ctx.asarray([3.0, 4.0]))
     y = (ctx.asarray([5.0, 6.0]), ctx.asarray([7.0, 8.0]))
@@ -179,9 +179,9 @@ def test_product_space_geometry_is_componentwise():
 def test_product_space_equality_distinguishes_component_geometry():
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
-    euclidean = sc.VectorSpace((2,), ctx)
-    weighted_a = sc.VectorSpace((2,), ctx, geometry=_weighted_geometry([2.0, 3.0], ctx))
-    weighted_b = sc.VectorSpace((2,), ctx, geometry=_weighted_geometry([2.0, 4.0], ctx))
+    euclidean = sc.DenseCoordinateSpace((2,), ctx)
+    weighted_a = sc.DenseCoordinateSpace((2,), ctx, geometry=_weighted_geometry([2.0, 3.0], ctx))
+    weighted_b = sc.DenseCoordinateSpace((2,), ctx, geometry=_weighted_geometry([2.0, 4.0], ctx))
 
     assert sc.ProductSpace((euclidean, weighted_a), ctx) == sc.ProductSpace(
         (euclidean, weighted_a), ctx

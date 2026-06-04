@@ -66,7 +66,7 @@ def _ctx(backend_name="numpy", dtype=np.float64):
 def test_cg_solves_spd_system(backend_name, dtype):
     sc = importlib.import_module("spacecore")
     ctx = _ctx(backend_name, dtype)
-    space = sc.VectorSpace((2,), ctx)
+    space = sc.DenseCoordinateSpace((2,), ctx)
     A = sc.DenseLinOp(ctx.asarray([[4.0, 1.0], [1.0, 3.0]]), space, space, ctx)
     b = ctx.asarray([1.0, 2.0])
 
@@ -86,8 +86,8 @@ def test_cg_solves_spd_system(backend_name, dtype):
 def test_lsqr_solves_rectangular_least_squares(backend_name, dtype):
     sc = importlib.import_module("spacecore")
     ctx = _ctx(backend_name, dtype)
-    domain = sc.VectorSpace((2,), ctx)
-    codomain = sc.VectorSpace((3,), ctx)
+    domain = sc.DenseCoordinateSpace((2,), ctx)
+    codomain = sc.DenseCoordinateSpace((3,), ctx)
     matrix = np.array([[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]])
     A = sc.DenseLinOp(ctx.asarray(matrix), domain, codomain, ctx)
     b = ctx.asarray([1.0, 2.0, 4.0])
@@ -103,8 +103,8 @@ def test_lsqr_solves_rectangular_least_squares(backend_name, dtype):
 def test_lsqr_works_with_matrix_free_linop_and_uses_rapply():
     sc = importlib.import_module("spacecore")
     ctx = _ctx()
-    domain = sc.VectorSpace((2,), ctx)
-    codomain = sc.VectorSpace((3,), ctx)
+    domain = sc.DenseCoordinateSpace((2,), ctx)
+    codomain = sc.DenseCoordinateSpace((3,), ctx)
     matrix = ctx.asarray([[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]])
     calls = {"rapply": 0}
 
@@ -127,8 +127,8 @@ def test_lsqr_works_with_matrix_free_linop_and_uses_rapply():
 def test_lsqr_recurrence_residual_mode_avoids_extra_check_applications():
     sc = importlib.import_module("spacecore")
     ctx = _ctx()
-    domain = sc.VectorSpace((2,), ctx)
-    codomain = sc.VectorSpace((3,), ctx)
+    domain = sc.DenseCoordinateSpace((2,), ctx)
+    codomain = sc.DenseCoordinateSpace((3,), ctx)
     matrix = ctx.asarray([[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]])
     b = ctx.asarray([1.0, 2.0, 4.0])
 
@@ -158,8 +158,8 @@ def test_lsqr_recurrence_residual_mode_avoids_extra_check_applications():
 def test_lsqr_recurrence_residual_mode_matches_exact_solution_and_diagnostics():
     sc = importlib.import_module("spacecore")
     ctx = _ctx()
-    domain = sc.VectorSpace((2,), ctx)
-    codomain = sc.VectorSpace((3,), ctx)
+    domain = sc.DenseCoordinateSpace((2,), ctx)
+    codomain = sc.DenseCoordinateSpace((3,), ctx)
     matrix = np.array([[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]])
     A = sc.DenseLinOp(ctx.asarray(matrix), domain, codomain, ctx)
     b = ctx.asarray([1.0, 2.0, 4.0])
@@ -185,8 +185,8 @@ def test_lsqr_recurrence_residual_mode_matches_exact_solution_and_diagnostics():
 def test_lsqr_rejects_unknown_residual_mode():
     sc = importlib.import_module("spacecore")
     ctx = _ctx()
-    domain = sc.VectorSpace((2,), ctx)
-    codomain = sc.VectorSpace((3,), ctx)
+    domain = sc.DenseCoordinateSpace((2,), ctx)
+    codomain = sc.DenseCoordinateSpace((3,), ctx)
     A = sc.DenseLinOp(ctx.asarray([[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]]), domain, codomain, ctx)
 
     with pytest.raises(ValueError, match="residual_mode"):
@@ -196,7 +196,7 @@ def test_lsqr_rejects_unknown_residual_mode():
 def test_cg_solves_complex_hermitian_positive_definite_system():
     sc = importlib.import_module("spacecore")
     ctx = _ctx(dtype=np.complex128)
-    space = sc.VectorSpace((2,), ctx)
+    space = sc.DenseCoordinateSpace((2,), ctx)
     matrix = np.array([[4.0, 1.0 + 1.0j], [1.0 - 1.0j, 3.0]], dtype=np.complex128)
     A = sc.DenseLinOp(ctx.asarray(matrix), space, space, ctx)
     b = ctx.asarray([1.0 + 2.0j, 3.0 - 1.0j])
@@ -211,7 +211,7 @@ def test_cg_solves_complex_hermitian_positive_definite_system():
 def test_cg_float64_spd_reaches_residual_below_one_e_minus_ten():
     sc = importlib.import_module("spacecore")
     ctx = _ctx(dtype=np.float64)
-    space = sc.VectorSpace((4,), ctx)
+    space = sc.DenseCoordinateSpace((4,), ctx)
     matrix = np.array(
         [
             [6.0, 1.0, 0.5, 0.0],
@@ -234,7 +234,7 @@ def test_cg_float64_spd_reaches_residual_below_one_e_minus_ten():
 def test_cg_regression_removes_sqrt_epsilon_residual_floor():
     sc = importlib.import_module("spacecore")
     ctx = _ctx(dtype=np.float64)
-    space = sc.VectorSpace((2,), ctx)
+    space = sc.DenseCoordinateSpace((2,), ctx)
     A = sc.DiagonalLinOp(ctx.asarray([1.0, 1.0e4]), space, ctx)
     b = ctx.asarray([1.0, 1.0e-12])
 
@@ -248,7 +248,7 @@ def test_cg_regression_removes_sqrt_epsilon_residual_floor():
 def test_cg_final_iteration_refreshes_residual_with_sparse_checks():
     sc = importlib.import_module("spacecore")
     ctx = _ctx(dtype=np.float64)
-    space = sc.VectorSpace((2,), ctx)
+    space = sc.DenseCoordinateSpace((2,), ctx)
     A = sc.DenseLinOp(ctx.asarray([[4.0, 1.0], [1.0, 3.0]]), space, space, ctx)
     b = ctx.asarray([1.0, 2.0])
 
@@ -262,8 +262,8 @@ def test_cg_final_iteration_refreshes_residual_with_sparse_checks():
 def test_lsqr_solves_complex_least_squares():
     sc = importlib.import_module("spacecore")
     ctx = _ctx(dtype=np.complex128)
-    domain = sc.VectorSpace((2,), ctx)
-    codomain = sc.VectorSpace((3,), ctx)
+    domain = sc.DenseCoordinateSpace((2,), ctx)
+    codomain = sc.DenseCoordinateSpace((3,), ctx)
     matrix = np.array(
         [[1.0 + 1.0j, 0.0], [0.0, 2.0 - 1.0j], [1.0, 1.0j]],
         dtype=np.complex128,
@@ -287,7 +287,7 @@ def test_lsqr_solves_complex_least_squares():
 def test_power_iteration_estimates_dominant_eigenpair(backend_name, dtype):
     sc = importlib.import_module("spacecore")
     ctx = _ctx(backend_name, dtype)
-    space = sc.VectorSpace((2,), ctx)
+    space = sc.DenseCoordinateSpace((2,), ctx)
     A = sc.DenseLinOp(ctx.asarray([[2.0, 0.0], [0.0, 5.0]]), space, space, ctx)
     x0 = ctx.asarray([1.0, 1.0])
 
@@ -306,7 +306,7 @@ def test_power_iteration_estimates_dominant_eigenpair(backend_name, dtype):
 def test_power_iteration_uses_one_application_per_iteration_after_initial_product():
     sc = importlib.import_module("spacecore")
     ctx = _ctx()
-    space = sc.VectorSpace((2,), ctx)
+    space = sc.DenseCoordinateSpace((2,), ctx)
     matrix = ctx.asarray([[2.0, 0.0], [0.0, 5.0]])
     calls = {"apply": 0}
 
@@ -326,7 +326,7 @@ def test_power_iteration_uses_one_application_per_iteration_after_initial_produc
 def test_power_iteration_converges_for_negative_dominant_eigenvalue():
     sc = importlib.import_module("spacecore")
     ctx = _ctx()
-    space = sc.VectorSpace((2,), ctx)
+    space = sc.DenseCoordinateSpace((2,), ctx)
     A = sc.DiagonalLinOp(ctx.asarray([-7.0, 2.0]), space, ctx)
 
     result = sc.power_iteration(A, x0=ctx.asarray([1.0, 1.0]), tol=1e-8, maxiter=60)
@@ -339,7 +339,7 @@ def test_power_iteration_converges_for_negative_dominant_eigenvalue():
 def test_power_iteration_zero_operator_does_not_produce_nan():
     sc = importlib.import_module("spacecore")
     ctx = _ctx()
-    space = sc.VectorSpace((2,), ctx)
+    space = sc.DenseCoordinateSpace((2,), ctx)
     A = sc.DiagonalLinOp(ctx.asarray([0.0, 0.0]), space, ctx)
 
     result = sc.power_iteration(A, x0=ctx.asarray([1.0, 1.0]), tol=1e-8, maxiter=10)
@@ -353,7 +353,7 @@ def test_power_iteration_zero_operator_does_not_produce_nan():
 def test_power_iteration_rejects_known_non_hermitian_operator():
     sc = importlib.import_module("spacecore")
     ctx = _ctx()
-    space = sc.VectorSpace((2,), ctx)
+    space = sc.DenseCoordinateSpace((2,), ctx)
     A = sc.DenseLinOp(ctx.asarray([[1.0, 2.0], [0.0, 3.0]]), space, space, ctx)
 
     with pytest.raises(ValueError, match="Hermitian"):
@@ -363,7 +363,7 @@ def test_power_iteration_rejects_known_non_hermitian_operator():
 def test_power_iteration_large_check_every_no_longer_delays_convergence():
     sc = importlib.import_module("spacecore")
     ctx = _ctx()
-    space = sc.VectorSpace((2,), ctx)
+    space = sc.DenseCoordinateSpace((2,), ctx)
     A = sc.DiagonalLinOp(ctx.asarray([1.0, 5.0]), space, ctx)
 
     result = sc.power_iteration(A, x0=ctx.asarray([0.0, 1.0]), tol=1e-12, maxiter=65, check_every=10_000)
@@ -376,7 +376,7 @@ def test_power_iteration_large_check_every_no_longer_delays_convergence():
 def test_power_iteration_accepts_quadratic_form_hessian_action():
     sc = importlib.import_module("spacecore")
     ctx = _ctx()
-    space = sc.VectorSpace((2,), ctx)
+    space = sc.DenseCoordinateSpace((2,), ctx)
     op = sc.DenseLinOp(ctx.asarray([[2.0, 0.0], [0.0, 5.0]]), space, space, ctx)
     q = sc.LinOpQuadraticForm(op, ctx=ctx)
     x0 = ctx.asarray([1.0, 1.0])
@@ -396,7 +396,7 @@ def test_power_iteration_accepts_quadratic_form_hessian_action():
 def test_power_iteration_quadratic_form_uses_fast_scalar_diagnostics():
     sc = importlib.import_module("spacecore")
     ctx = _ctx()
-    space = sc.VectorSpace((2,), ctx)
+    space = sc.DenseCoordinateSpace((2,), ctx)
 
     class CountingQuadraticForm(sc.QuadraticForm):
         def __init__(self):
@@ -447,7 +447,7 @@ def test_power_iteration_quadratic_form_falls_back_to_domain_inner():
     sc = importlib.import_module("spacecore")
     ctx = _ctx()
 
-    class CountingVectorSpace(sc.VectorSpace):
+    class CountingVectorSpace(sc.DenseCoordinateSpace):
         def __init__(self, shape, ctx):
             super().__init__(shape, ctx)
             self.inner_calls = 0
@@ -498,7 +498,7 @@ def test_power_iteration_quadratic_form_falls_back_to_domain_inner():
 def test_power_iteration_quadratic_form_fast_diagnostics_match_dense_diagonal():
     sc = importlib.import_module("spacecore")
     ctx = _ctx()
-    space = sc.VectorSpace((3,), ctx)
+    space = sc.DenseCoordinateSpace((3,), ctx)
     diagonal = ctx.asarray([1.0, 3.0, 7.0])
 
     class FastDiagonalQuadraticForm(sc.QuadraticForm):
@@ -536,7 +536,7 @@ def test_power_iteration_dispatches_quadratic_form_before_core(monkeypatch):
     sc = importlib.import_module("spacecore")
     power_mod = importlib.import_module("spacecore.linalg._power")
     ctx = _ctx()
-    space = sc.VectorSpace((2,), ctx)
+    space = sc.DenseCoordinateSpace((2,), ctx)
     op = sc.DenseLinOp(ctx.asarray([[2.0, 0.0], [0.0, 5.0]]), space, space, ctx)
     q = sc.LinOpQuadraticForm(op, ctx=ctx)
     x0 = ctx.asarray([1.0, 0.0])
@@ -577,7 +577,7 @@ def test_power_iteration_core_has_no_check_every_argument():
 def test_power_iteration_validates_check_every_for_backward_compatibility():
     sc = importlib.import_module("spacecore")
     ctx = _ctx()
-    space = sc.VectorSpace((2,), ctx)
+    space = sc.DenseCoordinateSpace((2,), ctx)
     A = sc.DiagonalLinOp(ctx.asarray([1.0, 2.0]), space, ctx)
 
     sc.power_iteration(A, check_every=1, maxiter=1)
@@ -589,7 +589,7 @@ def test_power_iteration_validates_check_every_for_backward_compatibility():
 def test_lanczos_smallest_approximates_smallest_eigenpair(backend_name, dtype):
     sc = importlib.import_module("spacecore")
     ctx = _ctx(backend_name, dtype)
-    space = sc.VectorSpace((2,), ctx)
+    space = sc.DenseCoordinateSpace((2,), ctx)
     op = sc.DenseLinOp(ctx.asarray([[2.0, 0.0], [0.0, 5.0]]), space, space, ctx)
     initial = ctx.asarray([1.0, 1.0])
 
@@ -616,7 +616,7 @@ def test_lanczos_smallest_approximates_smallest_eigenpair(backend_name, dtype):
 def test_lanczos_smallest_uses_true_krylov_dim_after_delayed_breakdown(backend_name, dtype):
     sc = importlib.import_module("spacecore")
     ctx = _ctx(backend_name, dtype)
-    space = sc.VectorSpace((3,), ctx)
+    space = sc.DenseCoordinateSpace((3,), ctx)
     op = sc.DiagonalLinOp(ctx.asarray([1.5, 2.0, 3.0]), space, ctx)
 
     result = sc.lanczos_smallest(
@@ -636,7 +636,7 @@ def test_lanczos_basis_sentinel_masks_ghost_iterations_after_breakdown(backend_n
     sc = importlib.import_module("spacecore")
     lanczos_mod = importlib.import_module("spacecore.linalg._lanczos")
     ctx = _ctx(backend_name, dtype)
-    space = sc.VectorSpace((3,), ctx)
+    space = sc.DenseCoordinateSpace((3,), ctx)
     op = sc.DiagonalLinOp(ctx.asarray([1.5, 2.0, 3.0]), space, ctx)
 
     basis = lanczos_mod._lanczos_basis_and_tridiag(
@@ -658,7 +658,7 @@ def test_lanczos_basis_sentinel_masks_ghost_iterations_after_breakdown(backend_n
 def test_lanczos_smallest_returns_result_object():
     sc = importlib.import_module("spacecore")
     ctx = _ctx()
-    space = sc.VectorSpace((2,), ctx)
+    space = sc.DenseCoordinateSpace((2,), ctx)
     op = sc.DenseLinOp(ctx.asarray([[2.0, 0.0], [0.0, 5.0]]), space, space, ctx)
 
     result = sc.lanczos_smallest(op, ctx.asarray([1.0, 1.0]), max_iter=2, tol=1e-8)
@@ -670,7 +670,7 @@ def test_lanczos_smallest_returns_result_object():
 def test_lanczos_smallest_uses_e0_for_zero_initial_vector():
     sc = importlib.import_module("spacecore")
     ctx = _ctx()
-    space = sc.VectorSpace((2,), ctx)
+    space = sc.DenseCoordinateSpace((2,), ctx)
     op = sc.DenseLinOp(ctx.asarray([[2.0, 0.0], [0.0, 5.0]]), space, space, ctx)
     initial = ctx.asarray([0.0, 0.0])
 
@@ -688,7 +688,7 @@ def test_lanczos_smallest_uses_e0_for_zero_initial_vector():
 def test_lanczos_smallest_rejects_invalid_max_iter():
     sc = importlib.import_module("spacecore")
     ctx = _ctx()
-    space = sc.VectorSpace((1,), ctx)
+    space = sc.DenseCoordinateSpace((1,), ctx)
     op = sc.IdentityLinOp(space, ctx)
 
     with pytest.raises(ValueError, match="max_iter"):
@@ -698,7 +698,7 @@ def test_lanczos_smallest_rejects_invalid_max_iter():
 def test_lanczos_smallest_rejects_structurally_non_hermitian_operator():
     sc = importlib.import_module("spacecore")
     ctx = _ctx()
-    space = sc.VectorSpace((2,), ctx)
+    space = sc.DenseCoordinateSpace((2,), ctx)
     op = sc.DenseLinOp(ctx.asarray([[1.0, 2.0], [0.0, 3.0]]), space, space, ctx)
 
     with pytest.raises(ValueError, match="Hermitian"):
@@ -708,7 +708,7 @@ def test_lanczos_smallest_rejects_structurally_non_hermitian_operator():
 def test_lanczos_smallest_handles_eigenvalues_larger_than_1e10():
     sc = importlib.import_module("spacecore")
     ctx = _ctx()
-    space = sc.VectorSpace((2,), ctx)
+    space = sc.DenseCoordinateSpace((2,), ctx)
     matrix = np.diag([2.0e12, 3.0e12])
     op = sc.DenseLinOp(ctx.asarray(matrix), space, space, ctx)
 
@@ -726,7 +726,7 @@ def test_lanczos_smallest_handles_eigenvalues_larger_than_1e10():
 def test_lanczos_smallest_handles_complex_hermitian_operator():
     sc = importlib.import_module("spacecore")
     ctx = _ctx(dtype=np.complex128)
-    space = sc.VectorSpace((2,), ctx)
+    space = sc.DenseCoordinateSpace((2,), ctx)
     matrix = np.array([[2.0, 1.0 + 2.0j], [1.0 - 2.0j, 5.0]], dtype=np.complex128)
     op = sc.DenseLinOp(ctx.asarray(matrix), space, space, ctx)
 
@@ -751,7 +751,7 @@ def test_lanczos_smallest_uses_domain_geometry_for_weighted_inner_product():
     sc = importlib.import_module("spacecore")
     ctx = _ctx()
 
-    class WeightedVectorSpace(sc.VectorSpace):
+    class WeightedVectorSpace(sc.DenseCoordinateSpace):
         def __init__(self, weights, ctx):
             weights = ctx.asarray(weights)
             super().__init__(tuple(weights.shape), ctx)
@@ -767,7 +767,7 @@ def test_lanczos_smallest_uses_domain_geometry_for_weighted_inner_product():
             return WeightedVectorSpace(new_ctx.asarray(self.weights), new_ctx)
 
     space = WeightedVectorSpace([1.0, 4.0], ctx)
-    assert type(space) is not sc.VectorSpace
+    assert type(space) is not sc.DenseCoordinateSpace
 
     matrix = ctx.asarray([[2.0, 1.0], [0.25, 0.75]])
     op = sc.MatrixFreeLinOp(
@@ -808,12 +808,12 @@ def test_safe_inverse_nonneg_returns_reciprocal_for_positive_values_only():
 def test_iterative_solvers_poll_convergence_on_check_interval():
     sc = importlib.import_module("spacecore")
     ctx = _ctx()
-    space = sc.VectorSpace((2,), ctx)
+    space = sc.DenseCoordinateSpace((2,), ctx)
     spd = sc.DenseLinOp(ctx.asarray([[4.0, 1.0], [1.0, 3.0]]), space, space, ctx)
     rectangular = sc.DenseLinOp(
         ctx.asarray([[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]]),
         space,
-        sc.VectorSpace((3,), ctx),
+        sc.DenseCoordinateSpace((3,), ctx),
         ctx,
     )
     diagonal = sc.DenseLinOp(ctx.asarray([[2.0, 0.0], [0.0, 5.0]]), space, space, ctx)
@@ -835,7 +835,7 @@ def test_cg_jit_compiles_with_operator_argument():
     jax = pytest.importorskip("jax")
     sc = importlib.import_module("spacecore")
     ctx = _ctx("jax", jax_real_dtype())
-    space = sc.VectorSpace((2,), ctx)
+    space = sc.DenseCoordinateSpace((2,), ctx)
     op = sc.DenseLinOp(ctx.asarray([[4.0, 1.0], [1.0, 3.0]]), space, space, ctx)
 
     solve = jax.jit(lambda A, b: sc.cg(A, b, maxiter=10).x)
@@ -849,8 +849,8 @@ def test_lsqr_jit_compiles_with_operator_argument():
     jax = pytest.importorskip("jax")
     sc = importlib.import_module("spacecore")
     ctx = _ctx("jax", jax_real_dtype())
-    domain = sc.VectorSpace((2,), ctx)
-    codomain = sc.VectorSpace((3,), ctx)
+    domain = sc.DenseCoordinateSpace((2,), ctx)
+    codomain = sc.DenseCoordinateSpace((3,), ctx)
     op = sc.DenseLinOp(ctx.asarray([[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]]), domain, codomain, ctx)
 
     solve = jax.jit(lambda A, b: sc.lsqr(A, b, maxiter=10).x)
@@ -864,7 +864,7 @@ def test_power_iteration_jit_compiles_with_operator_argument():
     jax = pytest.importorskip("jax")
     sc = importlib.import_module("spacecore")
     ctx = _ctx("jax", jax_real_dtype())
-    space = sc.VectorSpace((2,), ctx)
+    space = sc.DenseCoordinateSpace((2,), ctx)
     op = sc.DenseLinOp(ctx.asarray([[2.0, 0.0], [0.0, 5.0]]), space, space, ctx)
 
     run = jax.jit(lambda A, x: sc.power_iteration(A, x0=x, maxiter=60).eigenvalue)
@@ -878,7 +878,7 @@ def test_power_iteration_jit_compiles_with_quadratic_form_argument():
     jax = pytest.importorskip("jax")
     sc = importlib.import_module("spacecore")
     ctx = _ctx("jax", jax_real_dtype())
-    space = sc.VectorSpace((2,), ctx)
+    space = sc.DenseCoordinateSpace((2,), ctx)
     op = sc.DenseLinOp(ctx.asarray([[2.0, 0.0], [0.0, 5.0]]), space, space, ctx)
     q = sc.LinOpQuadraticForm(op, ctx=ctx)
 
@@ -893,7 +893,7 @@ def test_lanczos_smallest_jit_compiles_with_operator_argument():
     jax = pytest.importorskip("jax")
     sc = importlib.import_module("spacecore")
     ctx = _ctx("jax", jax_real_dtype())
-    space = sc.VectorSpace((2,), ctx)
+    space = sc.DenseCoordinateSpace((2,), ctx)
     op = sc.DenseLinOp(ctx.asarray([[2.0, 0.0], [0.0, 5.0]]), space, space, ctx)
 
     def run(A, initial):
@@ -919,8 +919,8 @@ def test_lanczos_smallest_jit_compiles_with_operator_argument():
 def test_cg_and_power_iteration_reject_rectangular_operator():
     sc = importlib.import_module("spacecore")
     ctx = _ctx()
-    domain = sc.VectorSpace((2,), ctx)
-    codomain = sc.VectorSpace((3,), ctx)
+    domain = sc.DenseCoordinateSpace((2,), ctx)
+    codomain = sc.DenseCoordinateSpace((3,), ctx)
     A = sc.DenseLinOp(ctx.asarray([[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]]), domain, codomain, ctx)
 
     with pytest.raises(ValueError, match="square LinOp"):

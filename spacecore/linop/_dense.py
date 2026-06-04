@@ -13,7 +13,7 @@ from ._metric import (
     metric_rapply,
     metric_rvapply,
 )
-from ..space import VectorSpace, WeightedInnerProduct
+from ..space import DenseCoordinateSpace, DenseVectorSpace, WeightedInnerProduct
 from ..types import DenseArray
 from ..backend import jax_pytree_class, Context
 from .._contextual import resolve_context_priority
@@ -66,7 +66,7 @@ class DenseLinOp(LinOp[Domain, Codomain]):
     >>> import numpy as np
     >>> import spacecore as sc
     >>> ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
-    >>> X = sc.VectorSpace((2,), ctx)
+    >>> X = sc.DenseCoordinateSpace((2,), ctx)
     >>> A = sc.DenseLinOp(ctx.asarray([[2.0, 0.0], [0.0, 3.0]]), X, X, ctx)
     >>> A.apply(ctx.asarray([1.0, 2.0]))
     array([2., 6.])
@@ -83,7 +83,7 @@ class DenseLinOp(LinOp[Domain, Codomain]):
 
         if cod is None:
             cod_shape_len = len(A.shape) - len(dom.shape)
-            cod = VectorSpace(A.shape[:cod_shape_len], ctx)
+            cod = DenseCoordinateSpace(A.shape[:cod_shape_len], ctx)
 
         _requires_euclidean_or_riesz(dom, cod, "DenseLinOp")
 
@@ -114,8 +114,8 @@ class DenseLinOp(LinOp[Domain, Codomain]):
 
     def _select_mode(self) -> _DenseMode:
         """Select the dense computation mode once for this operator."""
-        vector_dom = type(self.dom) is VectorSpace
-        vector_cod = type(self.cod) is VectorSpace
+        vector_dom = type(self.dom) is DenseCoordinateSpace or type(self.dom) is DenseVectorSpace
+        vector_cod = type(self.cod) is DenseCoordinateSpace or type(self.cod) is DenseVectorSpace
         if (
             vector_dom
             and vector_cod

@@ -45,7 +45,7 @@ loop.
     import optax
     
     from spacecore.backend import Context, JaxOps, NumpyOps
-    from spacecore.space import VectorSpace
+    from spacecore.space import DenseCoordinateSpace
     from spacecore.linop import LinOp
 
 Encoding the mathematics once
@@ -101,7 +101,7 @@ these formulas.
     
             # A(P) contains all equality constraints in one vector:
             #     [row sums of P, column sums of P].
-            marginal_space = VectorSpace((m + n,), ctx=resolved_ctx)
+            marginal_space = DenseCoordinateSpace((m + n,), ctx=resolved_ctx)
             super().__init__(dom=plan_space, cod=marginal_space, ctx=resolved_ctx)
             self.m = m
             self.n = n
@@ -147,7 +147,7 @@ these formulas.
             if self.target.shape != (self.n,):
                 raise ValueError('target must match the number of cost columns')
     
-            self.plan_space = VectorSpace((self.m, self.n), ctx=ctx)
+            self.plan_space = DenseCoordinateSpace((self.m, self.n), ctx=ctx)
             self.marginal_op = MarginalLinOp(self.plan_space, ctx=ctx)
             self.marginal_target = self.ops.concatenate([self.source, self.target])
     

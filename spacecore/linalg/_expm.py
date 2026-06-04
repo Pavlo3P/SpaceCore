@@ -129,7 +129,7 @@ def expm_multiply(
     >>> import numpy as np
     >>> import spacecore as sc
     >>> ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
-    >>> X = sc.VectorSpace((2,), ctx)
+    >>> X = sc.DenseCoordinateSpace((2,), ctx)
     >>> A = sc.DiagonalLinOp(ctx.asarray([0.0, 1.0]), X, ctx)
     >>> v = ctx.asarray([2.0, 3.0])
     >>> result = sc.expm_multiply(A, v, t=0.5, max_iter=5)

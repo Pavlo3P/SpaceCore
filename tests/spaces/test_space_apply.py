@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from spacecore import Context, NumpyOps, JaxOps
-from spacecore.space import VectorSpace, HermitianSpace, ProductSpace
+from spacecore.space import DenseCoordinateSpace, HermitianSpace, ProductSpace
 
 
 def _np_ctx():
@@ -16,7 +16,7 @@ def _jax_ctx():
 
 
 def test_vector_apply_numpy_entrywise():
-    sp = VectorSpace((3,), ctx=_np_ctx())
+    sp = DenseCoordinateSpace((3,), ctx=_np_ctx())
     x = np.asarray([1.0, 2.0, 3.0], dtype=sp.dtype)
 
     y = sp.apply(x, np.square)
@@ -26,7 +26,7 @@ def test_vector_apply_numpy_entrywise():
 
 
 def test_vector_apply_numpy_shape_change_raises():
-    sp = VectorSpace((3,), ctx=_np_ctx())
+    sp = DenseCoordinateSpace((3,), ctx=_np_ctx())
     x = np.asarray([1.0, 2.0, 3.0], dtype=sp.dtype)
 
     def bad_f(z):
@@ -37,8 +37,8 @@ def test_vector_apply_numpy_shape_change_raises():
 
 
 def test_product_apply_numpy_componentwise():
-    sp1 = VectorSpace((2,), ctx=_np_ctx())
-    sp2 = VectorSpace((3,), ctx=_np_ctx())
+    sp1 = DenseCoordinateSpace((2,), ctx=_np_ctx())
+    sp2 = DenseCoordinateSpace((3,), ctx=_np_ctx())
     psp = ProductSpace((sp1, sp2), ctx=_np_ctx())
 
     x = (
@@ -85,7 +85,7 @@ def test_hermitian_apply_numpy_preserves_hermitian_structure():
     ],
 )
 def test_vector_apply_numpy_basic_regression(factory, expected):
-    sp = VectorSpace((3,), ctx=_np_ctx())
+    sp = DenseCoordinateSpace((3,), ctx=_np_ctx())
     x = factory(sp)
     y = sp.apply(x, np.square)
     np.testing.assert_allclose(y, expected.astype(sp.dtype))
@@ -95,7 +95,7 @@ def test_vector_apply_jax_matches_eager_and_compiles():
     jax = pytest.importorskip("jax")
     jnp = pytest.importorskip("jax.numpy")
 
-    sp = VectorSpace((3,), ctx=_jax_ctx())
+    sp = DenseCoordinateSpace((3,), ctx=_jax_ctx())
     x = jnp.asarray([1.0, 2.0, 3.0], dtype=sp.dtype)
 
     f = jnp.square
@@ -116,8 +116,8 @@ def test_product_apply_jax_matches_eager_and_compiles():
     jax = pytest.importorskip("jax")
     jnp = pytest.importorskip("jax.numpy")
 
-    sp1 = VectorSpace((2,), ctx=_jax_ctx())
-    sp2 = VectorSpace((3,), ctx=_jax_ctx())
+    sp1 = DenseCoordinateSpace((2,), ctx=_jax_ctx())
+    sp2 = DenseCoordinateSpace((3,), ctx=_jax_ctx())
     psp = ProductSpace((sp1, sp2), ctx=_jax_ctx())
 
     x = (

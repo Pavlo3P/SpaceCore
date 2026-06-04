@@ -25,8 +25,8 @@ class ReshapeCountingArray(np.ndarray):
 def test_dense_linop_construct_apply_rapply():
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
-    dom = sc.VectorSpace((2,), ctx)
-    cod = sc.VectorSpace((3,), ctx)
+    dom = sc.DenseCoordinateSpace((2,), ctx)
+    cod = sc.DenseCoordinateSpace((3,), ctx)
     A = ctx.asarray([[1.,2.],[3.,4.],[5.,6.]])
     op = sc.DenseLinOp(A, dom, cod, ctx)
     x = ctx.asarray([7.,8.])
@@ -39,8 +39,8 @@ def test_dense_linop_construct_apply_rapply():
 def test_dense_linop_rectangular_batched_apply_and_rapply():
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
-    dom = sc.VectorSpace((2,), ctx)
-    cod = sc.VectorSpace((3,), ctx)
+    dom = sc.DenseCoordinateSpace((2,), ctx)
+    cod = sc.DenseCoordinateSpace((3,), ctx)
     matrix = np.array([[1.0, -2.0], [3.0, 0.5], [0.25, 4.0]])
     op = sc.DenseLinOp(ctx.asarray(matrix), dom, cod, ctx)
 
@@ -58,8 +58,8 @@ def test_dense_linop_rectangular_batched_apply_and_rapply():
 def test_dense_linop_complex_rapply_uses_conjugate_transpose():
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.NumpyOps(), dtype=np.complex128)
-    dom = sc.VectorSpace((2,), ctx)
-    cod = sc.VectorSpace((2,), ctx)
+    dom = sc.DenseCoordinateSpace((2,), ctx)
+    cod = sc.DenseCoordinateSpace((2,), ctx)
     matrix = np.array(
         [[1.0 + 2.0j, 3.0 - 1.0j], [-2.0j, 4.0 + 0.5j]],
         dtype=np.complex128,
@@ -73,8 +73,8 @@ def test_dense_linop_complex_rapply_uses_conjugate_transpose():
 def test_dense_linop_is_hermitian_uses_euclidean_matrix():
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.NumpyOps(), dtype=np.complex128)
-    space = sc.VectorSpace((2,), ctx)
-    cod = sc.VectorSpace((3,), ctx)
+    space = sc.DenseCoordinateSpace((2,), ctx)
+    cod = sc.DenseCoordinateSpace((3,), ctx)
 
     hermitian = sc.DenseLinOp(
         ctx.asarray([[2.0, 1.0 + 2.0j], [1.0 - 2.0j, 5.0]]),
@@ -99,7 +99,7 @@ def test_dense_linop_accepts_euclidean_vector_space_subclass():
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
 
-    class WeightedVectorSpace(sc.VectorSpace):
+    class WeightedVectorSpace(sc.DenseCoordinateSpace):
         pass
 
     space = WeightedVectorSpace((2,), ctx)
@@ -115,8 +115,8 @@ def test_dense_linop_accepts_euclidean_vector_space_subclass():
 def test_dense_linop_reuses_cached_matrix_reshape():
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
-    dom = sc.VectorSpace((2,), ctx)
-    cod = sc.VectorSpace((3,), ctx)
+    dom = sc.DenseCoordinateSpace((2,), ctx)
+    cod = sc.DenseCoordinateSpace((3,), ctx)
     counter = {"calls": 0}
     A = ReshapeCountingArray([[1., 2.], [3., 4.], [5., 6.]], counter)
 
@@ -136,18 +136,18 @@ def test_dense_linop_bad_shape_raises():
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
     with pytest.raises(Exception):
-        sc.DenseLinOp(ctx.asarray([[1.,2.],[3.,4.]]), sc.VectorSpace((2,), ctx), sc.VectorSpace((3,), ctx), ctx)
+        sc.DenseLinOp(ctx.asarray([[1.,2.],[3.,4.]]), sc.DenseCoordinateSpace((2,), ctx), sc.DenseCoordinateSpace((3,), ctx), ctx)
 
 
 def test_dense_linop_convert_preserves_action():
     sc = importlib.import_module("spacecore")
     src = sc.Context(sc.NumpyOps(), dtype=np.float32)
     dst = sc.Context(sc.NumpyOps(), dtype=np.float64)
-    op = sc.DenseLinOp(src.asarray([[1.,2.],[3.,4.],[5.,6.]]), sc.VectorSpace((2,), src), sc.VectorSpace((3,), src), src)
+    op = sc.DenseLinOp(src.asarray([[1.,2.],[3.,4.],[5.,6.]]), sc.DenseCoordinateSpace((2,), src), sc.DenseCoordinateSpace((3,), src), src)
     op2 = op.convert(dst)
     x = op2.ctx.asarray([7.,8.])
-    assert type(op2.dom) is sc.VectorSpace
-    assert type(op2.cod) is sc.VectorSpace
+    assert type(op2.dom) is sc.DenseCoordinateSpace
+    assert type(op2.cod) is sc.DenseCoordinateSpace
     assert op2.ops.get_dtype(op2.A) == dst.dtype
     assert np.allclose(to_numpy(op2.apply(x)), [23.,53.,83.])
 
@@ -155,16 +155,16 @@ def test_dense_linop_convert_preserves_action():
 def test_dense_linop_tree_flatten_unflatten_round_trip():
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
-    dom = sc.VectorSpace((2,), ctx)
-    cod = sc.VectorSpace((3,), ctx)
+    dom = sc.DenseCoordinateSpace((2,), ctx)
+    cod = sc.DenseCoordinateSpace((3,), ctx)
     matrix = ctx.asarray([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])
     op = sc.DenseLinOp(matrix, dom, cod, ctx)
 
     children, aux = op.tree_flatten()
     restored = sc.DenseLinOp.tree_unflatten(aux, children)
 
-    assert type(restored.dom) is sc.VectorSpace
-    assert type(restored.cod) is sc.VectorSpace
+    assert type(restored.dom) is sc.DenseCoordinateSpace
+    assert type(restored.cod) is sc.DenseCoordinateSpace
     assert np.allclose(restored.to_dense(), matrix)
     assert np.allclose(restored.apply(ctx.asarray([7.0, 8.0])), op.apply(ctx.asarray([7.0, 8.0])))
 
@@ -176,7 +176,7 @@ def test_dense_linop_convert_to_jax_if_supported():
     dt = jax_real_dtype()
     src = sc.Context(sc.NumpyOps(), dtype=dt)
     dst = sc.Context(sc.JaxOps(), dtype=dt)
-    op = sc.DenseLinOp(src.asarray([[1.,2.],[3.,4.],[5.,6.]]), sc.VectorSpace((2,), src), sc.VectorSpace((3,), src), src)
+    op = sc.DenseLinOp(src.asarray([[1.,2.],[3.,4.],[5.,6.]]), sc.DenseCoordinateSpace((2,), src), sc.DenseCoordinateSpace((3,), src), src)
     op2 = op.convert(dst)
     assert op2.ctx.ops.family == "jax"
 

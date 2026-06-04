@@ -8,91 +8,21 @@ from ..backend import Context
 from .._contextual import ContextBound
 from ..types import DenseArray
 from ._checks import SpaceCheck, _run_checks
-from ._inner import EuclideanInnerProduct, InnerProduct
+from ._inner import InnerProduct
 
 
 class Space(ContextBound):
-    """
-    Define the geometry and linear structure of a vector space.
-
-    A space owns the geometry (inner product, norm) and the basic linear
-    structure (add/scale/axpy) for its elements.
-
-    Membership validation is exposed through ``check_member``, which respects
-    the space's ``enable_checks`` policy. Internal code paths that have already
-    checked that policy may call ``_check_member`` to run the concrete checks
-    exactly once.
-
-    Parameters
-    ----------
-    shape : tuple of int
-        Canonical coordinate shape for elements of the space.
-    ctx : Context, str, or None, optional
-        Backend context specification. Default resolves to the global context.
-    geometry : InnerProduct or None, optional
-        Inner-product geometry for this space, including Riesz maps used by
-        metric-aware adjoints. Defaults to Euclidean coordinate geometry.
-
-    Attributes
-    ----------
-    shape : tuple of int
-        Canonical element shape.
-    ctx : Context
-        Resolved backend context inherited from :class:`ContextBound`.
-
-    Notes
-    -----
-    Solvers use only this API. Concrete spaces define storage constraints,
-    membership checks, and flattening rules.
-
-    The spectral API is the Jordan-algebraic contract for spaces that define
-    one. Spectra have shape ``(..., rank)``: eigenvalues live on the last axis
-    and leading axes are batch axes. Direct sums concatenate component spectra
-    along the last axis, vector spaces use the elementwise-product algebra and
-    therefore have the vector itself as the spectrum, and Hermitian matrix
-    spaces use the ordinary eigenvalue spectrum.
-
-    ``spectrum`` returns eigenvalues only and is sufficient for spectral
-    scalars such as log-determinants or trace functions. Operations producing
-    elements, such as PSD projections or matrix functions, must use
-    ``spectral_decompose`` and reconstruct with ``from_spectrum``. The returned
-    ``frame`` is a reconstruction frame rather than literally the Jordan
-    idempotents. For Hermitian matrices the frame is the eigenvector matrix
-    ``Q``; the Jordan idempotents are ``c_i = q_i q_i^*``.
-
-    Examples
-    --------
-    Instantiate the concrete :class:`VectorSpace` subclass.
-
-    >>> import numpy as np
-    >>> import spacecore as sc
-    >>> ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
-    >>> X = sc.VectorSpace((2,), ctx)
-    >>> X.shape
-    (2,)
-    """
+    """General space capability: context ownership and membership checks."""
 
     checks: ClassVar[tuple[SpaceCheck, ...]] = ()
 
-    def __init__(
-        self,
-        shape: Tuple[int, ...],
-        ctx: Context | str | None = None,
-        geometry: InnerProduct | None = None,
-    ) -> None:
+    def __init__(self, ctx: Context | str | None = None) -> None:
         super().__init__(ctx)
-        self.shape = shape
-        self.geometry: InnerProduct = geometry if geometry is not None else EuclideanInnerProduct()
         self._enable_checks = self.ctx.enable_checks
 
     def __eq__(self, other: Any) -> bool:
         if type(self) is type(other):
-            return (
-                self.ctx == other.ctx
-                and self.shape == other.shape
-                and type(self.geometry) is type(other.geometry)
-                and self.geometry == other.geometry
-            )
+            return self.ctx == other.ctx
         return False
 
     def member_checks(self) -> tuple[SpaceCheck, ...]:
@@ -112,88 +42,56 @@ class Space(ContextBound):
         if self._enable_checks:
             self._check_member(x)
 
+    def _convert(self, new_ctx: Context) -> Space:
+        raise NotImplementedError()
+
+
+class VectorSpace(Space):
+    """Abstract vector-space capability: linear operations only."""
+
     @abstractmethod
     def zeros(self) -> Any:
-        """Return the additive identity in the requested representation."""
+        """Return the additive identity."""
 
     @abstractmethod
     def add(self, x: Any, y: Any) -> Any:
         """Return x + y."""
 
-    def add_batch(self, x: Any, y: Any) -> Any:
-        """Return the leading-axis batch sum of ``x`` and ``y``."""
-        return self.ops.vmap(self.add, in_axes=(0, 0), out_axes=0)(x, y)
-
     @abstractmethod
     def scale(self, a: Any, x: Any) -> Any:
         """Return a * x."""
-
-    def scale_batch(self, a: Any, x: Any) -> Any:
-        """Return the leading-axis batch scalar product ``a * x``."""
-        return self.ops.vmap(lambda xi: self.scale(a, xi), in_axes=0, out_axes=0)(x)
-
-    def stacked(self, count: int) -> Space:
-        """Return ``count`` leading-axis copies of this leaf space as one space."""
-        from ._stacked import StackedSpace
-
-        return StackedSpace(self, count, self.ctx)
 
     def axpy(self, a: Any, x: Any, y: Any) -> Any:
         """Return a*x + y."""
         return self.add(self.scale(a, x), y)
 
-    @abstractmethod
-    def inner(self, x: Any, y: Any) -> Any:
-        r"""Return :math:`\langle x, y \rangle_X` for elements of this space."""
 
-    def riesz(self, x: Any) -> Any:
-        """Map a coordinate element to its dual representation."""
-        return self.geometry.riesz(self.ops, x)
+class CoordinateSpace(VectorSpace):
+    """Finite coordinate vector space capability."""
 
-    def riesz_inverse(self, x: Any) -> Any:
-        """Map a dual representation back to coordinate elements."""
-        return self.geometry.riesz_inverse(self.ops, x)
+    shape: Tuple[int, ...]
+
+    def __init__(self, shape: Tuple[int, ...], ctx: Context | str | None = None) -> None:
+        super().__init__(ctx)
+        self.shape = tuple(shape)
+
+    def __eq__(self, other: Any) -> bool:
+        if type(self) is type(other):
+            return super().__eq__(other) and self.shape == other.shape
+        return False
 
     @property
-    def is_euclidean(self) -> bool:
-        """Return whether this space uses Euclidean coordinate geometry."""
-        return self.geometry.is_euclidean
-
-    def norm(self, x: Any) -> Any:
-        r"""Return the induced norm :math:`\sqrt{\operatorname{Re}\langle x, x\rangle_X}`."""
-        v = self.ctx.ops.real(self.inner(x, x))
-        return self.ctx.ops.sqrt(v)
-
-    def spectrum(self, x: Any) -> Any:
-        """Jordan-algebraic eigenvalues of ``x``, shape ``(..., rank)``."""
-        raise NotImplementedError(f"{type(self).__name__} defines no spectrum.")
-
-    def spectral_decompose(self, x: Any) -> Any:
-        """
-        Return ``(eigvals, frame)`` with ``eigvals`` shape ``(..., rank)``.
-
-        ``frame`` is a reconstruction frame. For Hermitian spaces it is the
-        eigenvector matrix ``Q``; callers that need Jordan idempotents can form
-        ``c_i = q_i q_i^*`` from the columns.
-        """
-        raise NotImplementedError
-
-    def from_spectrum(self, eigvals: Any, frame: Any) -> Any:
-        """Reconstruct an element from spectral data."""
-        raise NotImplementedError
+    def size(self) -> int:
+        """Return the flat coordinate dimension of this space."""
+        return prod(self.shape)
 
     @abstractmethod
     def flatten(self, x: Any) -> DenseArray:
-        """
-        Return a dense 1D coordinate vector (backend-native dense array).
-
-        If a representation forbids materialization, raise a policy/capability error.
-        """
+        """Return a dense one-dimensional coordinate vector."""
 
     @abstractmethod
     def unflatten(self, v: DenseArray) -> Any:
-        """Inverse of flatten; returns an element in the requested representation."""
-        raise NotImplementedError
+        """Inverse of flatten."""
 
     def flatten_batch(self, xs: Any) -> DenseArray:
         """Flatten a leading-axis batch of space elements to shape ``(N, size)``."""
@@ -207,15 +105,80 @@ class Space(ContextBound):
         xs = tuple(self.unflatten(vs[i]) for i in range(n))
         return self.ops.stack(xs, axis=0)
 
-    @property
-    def size(self) -> int:
-        """Return the flat coordinate dimension of this space."""
-        return prod(self.shape)
+    def add_batch(self, x: Any, y: Any) -> Any:
+        """Return the leading-axis batch sum of ``x`` and ``y``."""
+        return self.ops.vmap(self.add, in_axes=(0, 0), out_axes=0)(x, y)
 
-    def _convert(self, new_ctx: Context) -> Space:
-        raise NotImplementedError()
+    def scale_batch(self, a: Any, x: Any) -> Any:
+        """Return the leading-axis batch scalar product ``a * x``."""
+        return self.ops.vmap(lambda xi: self.scale(a, xi), in_axes=0, out_axes=0)(x)
+
+    def stacked(self, count: int) -> CoordinateSpace:
+        """Return ``count`` leading-axis copies of this leaf space as one space."""
+        from ._stacked import StackedSpace
+
+        return StackedSpace(self, count, self.ctx)
+
+
+class InnerProductSpace(VectorSpace):
+    """Vector space capability with an inner-product geometry."""
+
+    geometry: InnerProduct
+
+    def inner(self, x: Any, y: Any) -> Any:
+        return self.geometry.inner(self.ops, x, y)
+
+    def riesz(self, x: Any) -> Any:
+        return self.geometry.riesz(self.ops, x)
+
+    def riesz_inverse(self, x: Any) -> Any:
+        return self.geometry.riesz_inverse(self.ops, x)
+
+    def norm(self, x: Any) -> Any:
+        value = self.ops.real(self.inner(x, x))
+        return self.ops.sqrt(value)
+
+    @property
+    def is_euclidean(self) -> bool:
+        return self.geometry.is_euclidean
+
+
+class StarSpace(Space):
+    """Space capability with a canonical involution/star operation."""
+
+    @abstractmethod
+    def star(self, x: Any) -> Any:
+        """Return the canonical star/involution of ``x``."""
+
+
+class JordanAlgebraSpace(VectorSpace):
+    """Vector space capability with a Jordan product and spectral calculus."""
+
+    @abstractmethod
+    def jordan(self, x: Any, y: Any) -> Any:
+        """Return the Jordan product of ``x`` and ``y``."""
+
+    @abstractmethod
+    def spectrum(self, x: Any) -> Any:
+        """Return Jordan-algebraic eigenvalues of ``x``."""
+
+    @abstractmethod
+    def spectral_decompose(self, x: Any) -> Any:
+        """Return spectral data sufficient to reconstruct ``x``."""
+
+    @abstractmethod
+    def from_spectrum(self, eigvals: Any, frame: Any) -> Any:
+        """Reconstruct an element from spectral data."""
+
+    def spectral_apply(self, x: Any, f: Callable) -> Any:
+        eigvals, frame = self.spectral_decompose(x)
+        feigvals = f(eigvals)
+        return self.from_spectrum(feigvals, frame)
 
     def apply(self, x: Any, f: Callable) -> Any:
-        raise NotImplementedError(
-            f"{type(self).__name__} does not define functional application."
-        )
+        """Backward-compatible alias for ``spectral_apply``."""
+        return self.spectral_apply(x, f)
+
+
+class EuclideanJordanAlgebraSpace(JordanAlgebraSpace, InnerProductSpace):
+    """Jordan algebra capability with a compatible inner product."""

@@ -88,10 +88,10 @@ Hermitian symmetry.
 
    import numpy as np
    from spacecore.backend import Context, NumpyOps
-   from spacecore.space import VectorSpace
+   from spacecore.space import DenseCoordinateSpace
 
-   X_checked = VectorSpace((2, 2), Context(NumpyOps(), enable_checks=True))
-   X_unchecked = VectorSpace((2, 2), Context(NumpyOps(), enable_checks=False))
+   X_checked = DenseCoordinateSpace((2, 2), Context(NumpyOps(), enable_checks=True))
+   X_unchecked = DenseCoordinateSpace((2, 2), Context(NumpyOps(), enable_checks=False))
 
    bad = np.zeros((3,))
 
@@ -159,7 +159,7 @@ Resolving contexts directly
 ---------------------------
 
 Most users get context resolution automatically through constructors such as
-``VectorSpace(...)``, ``ProductSpace(...)``, and ``DenseLinOp(...)``. When an
+``DenseCoordinateSpace(...)``, ``ProductSpace(...)``, and ``DenseLinOp(...)``. When an
 algorithm needs to resolve a context before constructing an object, use the
 public helper ``resolve_context_priority``:
 
@@ -167,7 +167,7 @@ public helper ``resolve_context_priority``:
 
    import spacecore as sc
 
-   X = sc.VectorSpace((3,), ctx="numpy")
+   X = sc.DenseCoordinateSpace((3,), ctx="numpy")
    ctx = sc.resolve_context_priority(None, X)
 
    assert ctx == X.ctx

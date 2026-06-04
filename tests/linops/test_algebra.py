@@ -46,7 +46,7 @@ def _ctx(dtype=np.complex128, enable_checks=True):
 
 def _spaces(ctx):
     sc = importlib.import_module("spacecore")
-    return sc.VectorSpace((2,), ctx), sc.VectorSpace((3,), ctx)
+    return sc.DenseCoordinateSpace((2,), ctx), sc.DenseCoordinateSpace((3,), ctx)
 
 
 def _matrix():
@@ -77,7 +77,7 @@ def _dense_same_shape(ctx, scale=1.0):
 
 def _dense_square(ctx):
     sc = importlib.import_module("spacecore")
-    dom = sc.VectorSpace((2,), ctx)
+    dom = sc.DenseCoordinateSpace((2,), ctx)
     return sc.DenseLinOp(ctx.asarray(_square_matrix()), dom, dom, ctx)
 
 
@@ -187,7 +187,7 @@ def test_simplification_canonicalizations():
     assert sc.make_composed(I_cod, A) is A
     assert sc.make_composed(A, I_dom) is A
 
-    out = sc.VectorSpace((4,), ctx)
+    out = sc.DenseCoordinateSpace((4,), ctx)
     left_zero = sc.ZeroLinOp(A.codomain, out, ctx)
     composed_zero = sc.make_composed(left_zero, A)
     assert isinstance(composed_zero, sc.ZeroLinOp)
@@ -206,7 +206,7 @@ def test_double_adjoint_view_returns_literal_original(case_index):
 def test_identity_linop_apply_is_literal_input_when_checks_disabled():
     sc = importlib.import_module("spacecore")
     ctx = _ctx(enable_checks=False)
-    space = sc.VectorSpace((2,), ctx)
+    space = sc.DenseCoordinateSpace((2,), ctx)
     op = sc.IdentityLinOp(space, ctx)
     x = ctx.asarray([1.0 + 2.0j, 3.0 - 4.0j])
 
@@ -217,7 +217,7 @@ def test_identity_linop_apply_is_literal_input_when_checks_disabled():
 def test_identity_linop_apply_equals_input_when_checks_enabled():
     sc = importlib.import_module("spacecore")
     ctx = _ctx(enable_checks=True)
-    space = sc.VectorSpace((2,), ctx)
+    space = sc.DenseCoordinateSpace((2,), ctx)
     op = sc.IdentityLinOp(space, ctx)
     x = ctx.asarray([1.0 + 2.0j, 3.0 - 4.0j])
 
@@ -259,8 +259,8 @@ def test_scaled_linop_uses_space_scale_for_vectors_and_complex_adjoint():
 def test_scaled_linop_supports_product_space_elements_and_batches():
     sc = importlib.import_module("spacecore")
     ctx = _ctx(dtype=np.float64)
-    x1, x2 = sc.VectorSpace((2,), ctx), sc.VectorSpace((1,), ctx)
-    y1, y2 = sc.VectorSpace((1,), ctx), sc.VectorSpace((2,), ctx)
+    x1, x2 = sc.DenseCoordinateSpace((2,), ctx), sc.DenseCoordinateSpace((1,), ctx)
+    y1, y2 = sc.DenseCoordinateSpace((1,), ctx), sc.DenseCoordinateSpace((2,), ctx)
     base = sc.BlockDiagonalLinOp.from_operators(
         (
             sc.DenseLinOp(ctx.asarray([[1.0, 2.0]]), x1, y1, ctx),
@@ -286,7 +286,7 @@ def test_scaled_linop_batched_paths_use_space_scale_batch():
     sc = importlib.import_module("spacecore")
     ctx = _ctx(dtype=np.float64)
 
-    class CountingVectorSpace(sc.VectorSpace):
+    class CountingVectorSpace(sc.DenseCoordinateSpace):
         def __init__(self, shape, ctx, counter):
             self.counter = counter
             super().__init__(shape, ctx)
@@ -330,8 +330,8 @@ def test_scaled_linop_batched_paths_use_space_scale_batch():
 def test_sum_linop_vapply_and_rvapply_match_scalar_loop_for_dense_vectors():
     sc = importlib.import_module("spacecore")
     ctx = _ctx(dtype=np.float64)
-    X = sc.VectorSpace((2,), ctx)
-    Y = sc.VectorSpace((3,), ctx)
+    X = sc.DenseCoordinateSpace((2,), ctx)
+    Y = sc.DenseCoordinateSpace((3,), ctx)
     A = sc.DenseLinOp(ctx.asarray([[1.0, 2.0], [3.0, -1.0], [0.5, 4.0]]), X, Y, ctx)
     B = sc.DenseLinOp(ctx.asarray([[0.25, -2.0], [1.5, 0.5], [-1.0, 3.0]]), X, Y, ctx)
     op = A + B
@@ -348,8 +348,8 @@ def test_sum_linop_vapply_and_rvapply_match_scalar_loop_for_dense_vectors():
 def test_sum_linop_vapply_and_rvapply_work_for_product_space_batches():
     sc = importlib.import_module("spacecore")
     ctx = _ctx(dtype=np.float64)
-    x1, x2 = sc.VectorSpace((2,), ctx), sc.VectorSpace((1,), ctx)
-    y1, y2 = sc.VectorSpace((1,), ctx), sc.VectorSpace((2,), ctx)
+    x1, x2 = sc.DenseCoordinateSpace((2,), ctx), sc.DenseCoordinateSpace((1,), ctx)
+    y1, y2 = sc.DenseCoordinateSpace((1,), ctx), sc.DenseCoordinateSpace((2,), ctx)
     A = sc.BlockDiagonalLinOp.from_operators(
         (
             sc.DenseLinOp(ctx.asarray([[1.0, 2.0]]), x1, y1, ctx),
@@ -377,7 +377,7 @@ def test_sum_linop_batched_accumulation_uses_space_add_batch():
     sc = importlib.import_module("spacecore")
     ctx = _ctx(dtype=np.float64)
 
-    class CountingVectorSpace(sc.VectorSpace):
+    class CountingVectorSpace(sc.DenseCoordinateSpace):
         def __init__(self, shape, ctx, counter):
             self.counter = counter
             super().__init__(shape, ctx)
@@ -426,8 +426,8 @@ def test_jax_jit_algebra_expression_matches_eager():
 
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.JaxOps(), dtype=jax_real_dtype(), enable_checks=False)
-    X = sc.VectorSpace((2,), ctx)
-    Y = sc.VectorSpace((3,), ctx)
+    X = sc.DenseCoordinateSpace((2,), ctx)
+    Y = sc.DenseCoordinateSpace((3,), ctx)
     A = sc.DenseLinOp(ctx.asarray([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]), X, Y, ctx)
     B = sc.DenseLinOp(ctx.asarray([[0.5, -1.0], [2.0, 1.0], [-0.5, 3.0]]), X, Y, ctx)
     C = sc.DenseLinOp(ctx.asarray([[2.0, -1.0], [0.25, 1.5]]), X, X, ctx)
@@ -443,10 +443,10 @@ def test_factories_enforce_same_context_dtype():
     sc = importlib.import_module("spacecore")
     ctx32 = sc.Context(sc.NumpyOps(), dtype=np.float32)
     ctx64 = sc.Context(sc.NumpyOps(), dtype=np.float64)
-    X32 = sc.VectorSpace((2,), ctx32)
-    Y32 = sc.VectorSpace((2,), ctx32)
-    X64 = sc.VectorSpace((2,), ctx64)
-    Y64 = sc.VectorSpace((2,), ctx64)
+    X32 = sc.DenseCoordinateSpace((2,), ctx32)
+    Y32 = sc.DenseCoordinateSpace((2,), ctx32)
+    X64 = sc.DenseCoordinateSpace((2,), ctx64)
+    Y64 = sc.DenseCoordinateSpace((2,), ctx64)
     A32 = sc.DenseLinOp(ctx32.asarray([[1.0, 2.0], [3.0, 4.0]]), X32, Y32, ctx32)
     A64 = sc.DenseLinOp(ctx64.asarray([[1.0, 2.0], [3.0, 4.0]]), X64, Y64, ctx64)
 
@@ -460,8 +460,8 @@ def test_factories_ignore_enable_checks_when_context_dtype_matches():
     sc = importlib.import_module("spacecore")
     checked = sc.Context(sc.NumpyOps(), dtype=np.float64, enable_checks=True)
     unchecked = sc.Context(sc.NumpyOps(), dtype=np.float64, enable_checks=False)
-    X_checked = sc.VectorSpace((2,), checked)
-    X_unchecked = sc.VectorSpace((2,), unchecked)
+    X_checked = sc.DenseCoordinateSpace((2,), checked)
+    X_unchecked = sc.DenseCoordinateSpace((2,), unchecked)
     A = sc.DenseLinOp(checked.asarray([[1.0, 0.0], [0.0, 1.0]]), X_checked, X_checked, checked)
     B = sc.DenseLinOp(
         unchecked.asarray([[2.0, 0.0], [0.0, 3.0]]),
@@ -481,10 +481,10 @@ def test_factories_reject_matching_shapes_with_different_geometry():
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
 
-    euclidean = sc.VectorSpace((2,), ctx)
-    weighted_a = sc.VectorSpace((2,), ctx, geometry=sc.WeightedInnerProduct(ctx.asarray([2.0, 3.0])))
-    weighted_b = sc.VectorSpace((2,), ctx, geometry=sc.WeightedInnerProduct(ctx.asarray([2.0, 3.0])))
-    differently_weighted = sc.VectorSpace((2,), ctx, geometry=sc.WeightedInnerProduct(ctx.asarray([2.0, 4.0])))
+    euclidean = sc.DenseCoordinateSpace((2,), ctx)
+    weighted_a = sc.DenseCoordinateSpace((2,), ctx, geometry=sc.WeightedInnerProduct(ctx.asarray([2.0, 3.0])))
+    weighted_b = sc.DenseCoordinateSpace((2,), ctx, geometry=sc.WeightedInnerProduct(ctx.asarray([2.0, 3.0])))
+    differently_weighted = sc.DenseCoordinateSpace((2,), ctx, geometry=sc.WeightedInnerProduct(ctx.asarray([2.0, 4.0])))
 
     A = sc.DenseLinOp(ctx.asarray([[1.0, 0.0], [0.0, 1.0]]), euclidean, euclidean, ctx)
     B = sc.DenseLinOp(ctx.asarray([[2.0, 0.0], [0.0, 3.0]]), weighted_a, weighted_a, ctx)
@@ -507,9 +507,9 @@ def test_factories_reject_matching_shapes_with_different_geometry():
 def test_factories_enforce_domain_and_codomain_compatibility():
     sc = importlib.import_module("spacecore")
     ctx = _ctx(dtype=np.float64)
-    X = sc.VectorSpace((2,), ctx)
-    Y = sc.VectorSpace((3,), ctx)
-    Z = sc.VectorSpace((4,), ctx)
+    X = sc.DenseCoordinateSpace((2,), ctx)
+    Y = sc.DenseCoordinateSpace((3,), ctx)
+    Z = sc.DenseCoordinateSpace((4,), ctx)
     A = sc.DenseLinOp(ctx.asarray(np.ones((3, 2))), X, Y, ctx)
     B = sc.DenseLinOp(ctx.asarray(np.ones((4, 2))), X, Z, ctx)
 

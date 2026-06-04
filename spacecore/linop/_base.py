@@ -53,7 +53,7 @@ class LinOp(ContextBound, Generic[Domain, Codomain]):
     >>> import numpy as np
     >>> import spacecore as sc
     >>> ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
-    >>> X = sc.VectorSpace((2,), ctx)
+    >>> X = sc.DenseCoordinateSpace((2,), ctx)
     >>> A = sc.DenseLinOp(ctx.asarray([[1.0, 0.0], [0.0, 2.0]]), X, X, ctx)
     >>> A.apply(ctx.asarray([3.0, 4.0]))
     array([3., 8.])

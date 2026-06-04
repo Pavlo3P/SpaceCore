@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from typing import Any, Tuple, List, Sequence, Callable
 
-from ._base import Space
+from ._base import CoordinateSpace, EuclideanJordanAlgebraSpace, Space, StarSpace
 from ._checks import ProductComponentCheck, ProductStructureCheck
 from ._structure import ProductStructure, TupleStructure, PytreeStructure
-from ._vector import VectorSpace
+from ._vector import DenseCoordinateSpace
 from .._checks import checked_method
 from ..types import DenseArray
 from ..backend import Context, jax_pytree_class
@@ -25,7 +25,7 @@ def _prod_int(shape: Tuple[int, ...]) -> int:
 
 
 @jax_pytree_class
-class ProductSpace(Space):
+class ProductSpace(CoordinateSpace, StarSpace, EuclideanJordanAlgebraSpace):
     r"""
     Represent a Cartesian product of spaces.
 
@@ -116,7 +116,7 @@ class ProductSpace(Space):
         self.spaces = uniform_spaces
         self._structure = structure
         self._arity = len(uniform_spaces)
-        self._vector_fast_path = all(type(sp) is VectorSpace for sp in uniform_spaces)
+        self._vector_fast_path = all(type(sp) is DenseCoordinateSpace for sp in uniform_spaces)
         self._component_shapes = tuple(sp.shape for sp in uniform_spaces)
         self._component_is_flat = tuple(
             shape == (dim,) for shape, dim in zip(self._component_shapes, self._dims)
@@ -285,6 +285,21 @@ class ProductSpace(Space):
         """Return whether every product component is Euclidean."""
         return all(s.is_euclidean for s in self.spaces)
 
+
+    def star(self, x: ProductElement) -> ProductElement:
+        """Return the componentwise star operation."""
+        parts = self._components(x)
+        out = tuple(s.star(xi) for s, xi in zip(self.spaces, parts))
+        return self._from_components(out)
+
+    @checked_method(in_space="self", arg_positions=(0, 1))
+    def jordan(self, x: ProductElement, y: ProductElement) -> ProductElement:
+        """Return the componentwise Jordan product."""
+        x_parts = self._components(x)
+        y_parts = self._components(y)
+        out = tuple(s.jordan(xi, yi) for s, xi, yi in zip(self.spaces, x_parts, y_parts))
+        return self._from_components(out)
+
     def _spectral_size(self, space: Space) -> int:
         """Return the trailing spectral rank of one component space."""
         spectrum = space.spectrum(space.zeros())
@@ -432,7 +447,7 @@ class ProductSpace(Space):
         return self._from_components(parts)
 
     @checked_method(in_space="self", out_space="self")
-    def apply(self, x: ProductElement, f: Callable[[Any], Any]) -> ProductElement:
+    def spectral_apply(self, x: ProductElement, f: Callable[[Any], Any]) -> ProductElement:
         r"""
         Apply a function to each component of a product-space element.
 
@@ -484,10 +499,10 @@ class ProductSpace(Space):
         parts = self._components(x)
         if self._arity == 2:
             return self._from_components((
-                self.spaces[0].apply(parts[0], f),
-                self.spaces[1].apply(parts[1], f),
+                self.spaces[0].spectral_apply(parts[0], f),
+                self.spaces[1].spectral_apply(parts[1], f),
             ))
-        out = tuple(s.apply(xi, f) for s, xi in zip(self.spaces, parts))
+        out = tuple(s.spectral_apply(xi, f) for s, xi in zip(self.spaces, parts))
         return self._from_components(out)
 
     def tree_flatten(self):
@@ -499,3 +514,8 @@ class ProductSpace(Space):
         """Rebuild this space from pytree aux data."""
         spaces, ctx, structure = aux
         return cls(spaces, ctx, structure=structure)
+
+    @checked_method(in_space="self", out_space="self")
+    def apply(self, x: ProductElement, f: Callable[[Any], Any]) -> ProductElement:
+        """Backward-compatible alias for spectral application."""
+        return self.spectral_apply(x, f)

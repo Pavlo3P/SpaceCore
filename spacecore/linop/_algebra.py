@@ -9,7 +9,7 @@ from .._checks import checked_method
 from .._contextual import resolve_context_priority
 from .._contextual._bound import _same_math_context
 from ..backend import Context, jax_pytree_class
-from ..space import VectorSpace
+from ..space import DenseCoordinateSpace, DenseVectorSpace
 
 
 def is_scalar_like(value: Any) -> bool:
@@ -381,7 +381,7 @@ class SumLinOp(LinOp[Domain, Codomain]):
         acc = self.ops_tuple[0].apply(x)
         for op in self.ops_tuple[1:]:
             yi = op.apply(x)
-            acc = acc + yi if type(self.codomain) is VectorSpace else self.codomain.add(acc, yi)
+            acc = acc + yi if type(self.codomain) in (DenseCoordinateSpace, DenseVectorSpace) else self.codomain.add(acc, yi)
         return acc
 
     @checked_method(in_space="codomain", out_space="domain")
@@ -390,7 +390,7 @@ class SumLinOp(LinOp[Domain, Codomain]):
         acc = self.ops_tuple[0].rapply(y)
         for op in self.ops_tuple[1:]:
             xi = op.rapply(y)
-            acc = acc + xi if type(self.domain) is VectorSpace else self.domain.add(acc, xi)
+            acc = acc + xi if type(self.domain) in (DenseCoordinateSpace, DenseVectorSpace) else self.domain.add(acc, xi)
         return acc
 
     @checked_method(in_space="domain", out_space="codomain", in_batched=True, out_batched=True)
@@ -399,7 +399,7 @@ class SumLinOp(LinOp[Domain, Codomain]):
         acc = self.ops_tuple[0].vapply(xs)
         for op in self.ops_tuple[1:]:
             yi = op.vapply(xs)
-            acc = acc + yi if type(self.codomain) is VectorSpace else self.codomain.add_batch(acc, yi)
+            acc = acc + yi if type(self.codomain) in (DenseCoordinateSpace, DenseVectorSpace) else self.codomain.add_batch(acc, yi)
         return acc
 
     @checked_method(in_space="codomain", out_space="domain", in_batched=True, out_batched=True)
@@ -408,7 +408,7 @@ class SumLinOp(LinOp[Domain, Codomain]):
         acc = self.ops_tuple[0].rvapply(ys)
         for op in self.ops_tuple[1:]:
             xi = op.rvapply(ys)
-            acc = acc + xi if type(self.domain) is VectorSpace else self.domain.add_batch(acc, xi)
+            acc = acc + xi if type(self.domain) in (DenseCoordinateSpace, DenseVectorSpace) else self.domain.add_batch(acc, xi)
         return acc
 
     def __eq__(self, other: Any) -> bool:

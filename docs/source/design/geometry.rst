@@ -24,7 +24,7 @@ The common diagonal-metric case is built in:
 
    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
    weights = ctx.asarray([2.0, 5.0, 11.0])
-   X = sc.VectorSpace((3,), ctx, geometry=sc.WeightedInnerProduct(weights))
+   X = sc.DenseCoordinateSpace((3,), ctx, geometry=sc.WeightedInnerProduct(weights))
 
    x = ctx.asarray([1.0, 2.0, 3.0])
    y = ctx.asarray([4.0, 5.0, 6.0])

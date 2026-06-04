@@ -10,7 +10,7 @@ sc = importlib.import_module("spacecore")
 
 
 def _weighted_space(weights, ctx):
-    return sc.VectorSpace(tuple(np.asarray(weights).shape), ctx, sc.WeightedInnerProduct(ctx.asarray(weights)))
+    return sc.DenseCoordinateSpace(tuple(np.asarray(weights).shape), ctx, sc.WeightedInnerProduct(ctx.asarray(weights)))
 
 
 def _assert_product_allclose(actual, expected):
@@ -51,8 +51,8 @@ def _inner(space, x, y):
 
 def test_space_add_batch_for_vector_and_recursive_product_space():
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
-    vector = sc.VectorSpace((2,), ctx)
-    product = sc.ProductSpace((vector, sc.ProductSpace((sc.VectorSpace((1,), ctx), vector), ctx)), ctx)
+    vector = sc.DenseCoordinateSpace((2,), ctx)
+    product = sc.ProductSpace((vector, sc.ProductSpace((sc.DenseCoordinateSpace((1,), ctx), vector), ctx)), ctx)
 
     x = ctx.asarray([[1.0, 2.0], [3.0, 4.0]])
     y = ctx.asarray([[5.0, 6.0], [7.0, 8.0]])
@@ -76,7 +76,7 @@ def test_space_add_batch_for_vector_and_recursive_product_space():
 def test_product_linops_use_space_add_batch_for_accumulation():
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
 
-    class CountingVectorSpace(sc.VectorSpace):
+    class CountingVectorSpace(sc.DenseCoordinateSpace):
         def __init__(self, shape, ctx, counter):
             self.counter = counter
             super().__init__(shape, ctx)
@@ -90,7 +90,7 @@ def test_product_linops_use_space_add_batch_for_accumulation():
 
     counter = {"calls": 0}
     shared = CountingVectorSpace((2,), ctx, counter)
-    cod1, cod2 = sc.VectorSpace((1,), ctx), sc.VectorSpace((1,), ctx)
+    cod1, cod2 = sc.DenseCoordinateSpace((1,), ctx), sc.DenseCoordinateSpace((1,), ctx)
     A1 = sc.DenseLinOp(ctx.asarray([[1.0, 2.0]]), shared, cod1, ctx)
     A2 = sc.DenseLinOp(ctx.asarray([[3.0, -1.0]]), shared, cod2, ctx)
     stacked = sc.StackedLinOp.from_operators((A1, A2))
@@ -100,7 +100,7 @@ def test_product_linops_use_space_add_batch_for_accumulation():
     assert counter["calls"] == 1
 
     counter["calls"] = 0
-    dom1, dom2 = sc.VectorSpace((1,), ctx), sc.VectorSpace((1,), ctx)
+    dom1, dom2 = sc.DenseCoordinateSpace((1,), ctx), sc.DenseCoordinateSpace((1,), ctx)
     B1 = sc.DenseLinOp(ctx.asarray([[1.0], [2.0]]), dom1, shared, ctx)
     B2 = sc.DenseLinOp(ctx.asarray([[3.0], [-1.0]]), dom2, shared, ctx)
     summed = sc.SumToSingleLinOp.from_operators((B1, B2))
@@ -112,8 +112,8 @@ def test_product_linops_use_space_add_batch_for_accumulation():
 
 def test_block_diagonal_vapply_and_rvapply_match_loops_for_two_and_three_components():
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
-    x1, x2, x3 = sc.VectorSpace((2,), ctx), sc.VectorSpace((1,), ctx), sc.VectorSpace((2,), ctx)
-    y1, y2, y3 = sc.VectorSpace((1,), ctx), sc.VectorSpace((2,), ctx), sc.VectorSpace((2,), ctx)
+    x1, x2, x3 = sc.DenseCoordinateSpace((2,), ctx), sc.DenseCoordinateSpace((1,), ctx), sc.DenseCoordinateSpace((2,), ctx)
+    y1, y2, y3 = sc.DenseCoordinateSpace((1,), ctx), sc.DenseCoordinateSpace((2,), ctx), sc.DenseCoordinateSpace((2,), ctx)
     parts = (
         sc.DenseLinOp(ctx.asarray([[1.0, 2.0]]), x1, y1, ctx),
         sc.DenseLinOp(ctx.asarray([[3.0], [-1.0]]), x2, y2, ctx),
@@ -171,8 +171,8 @@ def test_sum_to_single_adjoint_identity_and_batched_vapply_with_weighted_space()
 
 def test_product_linop_batch_checks_reject_wrong_tuple_layout():
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, enable_checks=True)
-    x1, x2 = sc.VectorSpace((2,), ctx), sc.VectorSpace((1,), ctx)
-    y1, y2 = sc.VectorSpace((1,), ctx), sc.VectorSpace((2,), ctx)
+    x1, x2 = sc.DenseCoordinateSpace((2,), ctx), sc.DenseCoordinateSpace((1,), ctx)
+    y1, y2 = sc.DenseCoordinateSpace((1,), ctx), sc.DenseCoordinateSpace((2,), ctx)
     A1 = sc.DenseLinOp(ctx.asarray([[1.0, 2.0]]), x1, y1, ctx)
     A2 = sc.DenseLinOp(ctx.asarray([[3.0], [-1.0]]), x2, y2, ctx)
     op = sc.BlockDiagonalLinOp.from_operators((A1, A2))

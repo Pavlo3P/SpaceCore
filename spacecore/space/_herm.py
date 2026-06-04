@@ -3,13 +3,13 @@ from __future__ import annotations
 from typing import Any, Tuple, Callable
 
 from ._checks import HermitianCheck, SquareMatrixCheck
-from ._vector import VectorSpace
+from ._vector import DenseCoordinateSpace
 from .._checks import checked_method
 from ..types import DenseArray
 from ..backend import Context
 
 
-class HermitianSpace(VectorSpace):
+class HermitianSpace(DenseCoordinateSpace):
     r"""
     Represent dense Hermitian matrices with Frobenius geometry.
 
@@ -98,6 +98,19 @@ class HermitianSpace(VectorSpace):
         x_adj = self.ops.conj(self.ops.swapaxes(x, -1, -2))
         return (x + x_adj) * 0.5
 
+
+    @checked_method(in_space="self")
+    def star(self, x: DenseArray) -> DenseArray:
+        """Return the canonical star operation for Hermitian elements: identity."""
+        return x
+
+    @checked_method(in_space="self", arg_positions=(0, 1))
+    def jordan(self, x: DenseArray, y: DenseArray) -> DenseArray:
+        """Return the Hermitian Jordan product ``(xy + yx) / 2``."""
+        xy = self.ops.matmul(x, y)
+        yx = self.ops.matmul(y, x)
+        return self.symmetrize((xy + yx) * 0.5)
+
     def _check_unbatched_member(self, x: DenseArray) -> None:
         """Run member checks for a single element, while allowing batched spectra."""
         if self._enable_checks and tuple(getattr(x, "shape", ())) == self.shape:
@@ -143,7 +156,7 @@ class HermitianSpace(VectorSpace):
         return HermitianSpace(self.n, self.atol, self.rtol, self.enforce_herm, new_ctx)
 
     @checked_method(in_space="self")
-    def apply(self, x: DenseArray, f: Callable[[DenseArray], DenseArray]) -> DenseArray:
+    def spectral_apply(self, x: DenseArray, f: Callable[[DenseArray], DenseArray]) -> DenseArray:
         r"""
         Apply a scalar function to a Hermitian matrix via spectral calculus.
 
@@ -201,3 +214,8 @@ class HermitianSpace(VectorSpace):
         fevals = self._apply_entrywise(evals, f)
 
         return self.eig_to_dense(fevals, evecs)
+
+    @checked_method(in_space="self")
+    def apply(self, x: DenseArray, f: Callable[[DenseArray], DenseArray]) -> DenseArray:
+        """Backward-compatible alias for spectral application."""
+        return self.spectral_apply(x, f)

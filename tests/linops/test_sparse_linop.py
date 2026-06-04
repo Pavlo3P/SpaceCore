@@ -26,8 +26,8 @@ class TransposeCountingCSR(sps.csr_matrix):
 def test_sparse_linop_construct_apply_rapply():
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
-    dom = sc.VectorSpace((2,), ctx)
-    cod = sc.VectorSpace((3,), ctx)
+    dom = sc.DenseCoordinateSpace((2,), ctx)
+    cod = sc.DenseCoordinateSpace((3,), ctx)
     dense = np.array([[1., 2.], [3., 4.], [5., 6.]])
     op = sc.SparseLinOp(ctx.assparse(dense), dom, cod, ctx)
 
@@ -43,8 +43,8 @@ def test_sparse_linop_construct_apply_rapply():
 def test_sparse_linop_rectangular_batched_apply_and_rapply():
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
-    dom = sc.VectorSpace((2,), ctx)
-    cod = sc.VectorSpace((3,), ctx)
+    dom = sc.DenseCoordinateSpace((2,), ctx)
+    cod = sc.DenseCoordinateSpace((3,), ctx)
     dense = np.array([[1.0, -2.0], [3.0, 0.5], [0.25, 4.0]])
     op = sc.SparseLinOp(ctx.assparse(dense), dom, cod, ctx)
 
@@ -64,8 +64,8 @@ def test_sparse_linop_rectangular_batched_apply_and_rapply():
 def test_sparse_linop_tensor_shaped_euclidean_behavior():
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
-    dom = sc.VectorSpace((2, 2), ctx)
-    cod = sc.VectorSpace((3,), ctx)
+    dom = sc.DenseCoordinateSpace((2, 2), ctx)
+    cod = sc.DenseCoordinateSpace((3,), ctx)
     dense = np.array(
         [
             [1.0, -2.0, 0.5, 3.0],
@@ -90,8 +90,8 @@ def test_sparse_linop_tensor_shaped_euclidean_behavior():
 def test_sparse_linop_complex_rapply_uses_conjugate_transpose():
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.NumpyOps(), dtype=np.complex128)
-    dom = sc.VectorSpace((2,), ctx)
-    cod = sc.VectorSpace((2,), ctx)
+    dom = sc.DenseCoordinateSpace((2,), ctx)
+    cod = sc.DenseCoordinateSpace((2,), ctx)
     dense = np.array(
         [[1.0 + 2.0j, 3.0 - 1.0j], [-2.0j, 4.0 + 0.5j]],
         dtype=np.complex128,
@@ -106,7 +106,7 @@ def test_sparse_linop_accepts_euclidean_vector_space_subclass():
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
 
-    class WeightedVectorSpace(sc.VectorSpace):
+    class WeightedVectorSpace(sc.DenseCoordinateSpace):
         pass
 
     space = WeightedVectorSpace((2,), ctx)
@@ -119,24 +119,29 @@ def test_sparse_linop_accepts_euclidean_vector_space_subclass():
     assert np.allclose(op.rapply(x), x)
 
 
-def test_sparse_linop_rejects_non_vector_spaces():
+def test_sparse_linop_accepts_coordinate_product_spaces():
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
-    vector = sc.VectorSpace((2,), ctx)
-    product = sc.ProductSpace((sc.VectorSpace((1,), ctx), sc.VectorSpace((1,), ctx)), ctx)
+    vector = sc.DenseCoordinateSpace((2,), ctx)
+    product = sc.ProductSpace((sc.DenseCoordinateSpace((1,), ctx), sc.DenseCoordinateSpace((1,), ctx)), ctx)
     matrix = ctx.assparse(np.eye(2))
+    x_product = (ctx.asarray([1.0]), ctx.asarray([-2.0]))
+    x_vector = ctx.asarray([0.5, 3.0])
 
-    with pytest.raises(TypeError, match="SparseLinOp.*VectorSpace.*MatrixFreeLinOp"):
-        sc.SparseLinOp(matrix, product, vector, ctx)
-    with pytest.raises(TypeError, match="SparseLinOp.*VectorSpace.*MatrixFreeLinOp"):
-        sc.SparseLinOp(matrix, vector, product, ctx)
+    to_vector = sc.SparseLinOp(matrix, product, vector, ctx)
+    to_product = sc.SparseLinOp(matrix, vector, product, ctx)
+
+    np.testing.assert_allclose(to_numpy(to_vector.apply(x_product)), [1.0, -2.0])
+    y = to_product.apply(x_vector)
+    np.testing.assert_allclose(to_numpy(y[0]), [0.5])
+    np.testing.assert_allclose(to_numpy(y[1]), [3.0])
 
 
 def test_sparse_linop_weighted_metric_adjoint_identity():
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
-    domain = sc.VectorSpace((2,), ctx, geometry=sc.WeightedInnerProduct(ctx.asarray([2.0, 5.0])))
-    codomain = sc.VectorSpace((3,), ctx, geometry=sc.WeightedInnerProduct(ctx.asarray([3.0, 7.0, 11.0])))
+    domain = sc.DenseCoordinateSpace((2,), ctx, geometry=sc.WeightedInnerProduct(ctx.asarray([2.0, 5.0])))
+    codomain = sc.DenseCoordinateSpace((3,), ctx, geometry=sc.WeightedInnerProduct(ctx.asarray([3.0, 7.0, 11.0])))
     dense = np.array([[1.0, -2.0], [0.5, 3.0], [4.0, -1.0]])
     op = sc.SparseLinOp(ctx.assparse(dense), domain, codomain, ctx)
     x = ctx.asarray([0.25, -1.5])
@@ -168,8 +173,8 @@ def test_sparse_linop_general_metric_adjoint_identity():
         def is_euclidean(self):
             return False
 
-    domain = sc.VectorSpace((2,), ctx, geometry=ScalingInnerProduct(ctx.asarray([2.0, 5.0])))
-    codomain = sc.VectorSpace((3,), ctx, geometry=ScalingInnerProduct(ctx.asarray([3.0, 7.0, 11.0])))
+    domain = sc.DenseCoordinateSpace((2,), ctx, geometry=ScalingInnerProduct(ctx.asarray([2.0, 5.0])))
+    codomain = sc.DenseCoordinateSpace((3,), ctx, geometry=ScalingInnerProduct(ctx.asarray([3.0, 7.0, 11.0])))
     dense = np.array([[1.0, -2.0], [0.5, 3.0], [4.0, -1.0]])
     op = sc.SparseLinOp(ctx.assparse(dense), domain, codomain, ctx)
     x = ctx.asarray([0.25, -1.5])
@@ -183,8 +188,8 @@ def test_sparse_linop_general_metric_adjoint_identity():
 def test_sparse_linop_to_sparse_returns_stored_object():
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
-    dom = sc.VectorSpace((2,), ctx)
-    cod = sc.VectorSpace((3,), ctx)
+    dom = sc.DenseCoordinateSpace((2,), ctx)
+    cod = sc.DenseCoordinateSpace((3,), ctx)
     matrix = sps.csr_matrix([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])
     op = sc.SparseLinOp(matrix, dom, cod, ctx)
 
@@ -196,8 +201,8 @@ def test_sparse_linop_convert_preserves_action_and_converts_sparse_storage():
     sc = importlib.import_module("spacecore")
     src = sc.Context(sc.NumpyOps(), dtype=np.float32)
     dst = sc.Context(sc.NumpyOps(), dtype=np.float64)
-    dom = sc.VectorSpace((2,), src)
-    cod = sc.VectorSpace((3,), src)
+    dom = sc.DenseCoordinateSpace((2,), src)
+    cod = sc.DenseCoordinateSpace((3,), src)
     dense = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
     op = sc.SparseLinOp(src.assparse(dense), dom, cod, src)
 
@@ -205,8 +210,8 @@ def test_sparse_linop_convert_preserves_action_and_converts_sparse_storage():
     x = op2.ctx.asarray([7.0, 8.0])
 
     assert op2 is not op
-    assert type(op2.dom) is sc.VectorSpace
-    assert type(op2.cod) is sc.VectorSpace
+    assert type(op2.dom) is sc.DenseCoordinateSpace
+    assert type(op2.cod) is sc.DenseCoordinateSpace
     assert op2.ops.get_dtype(op2.A) == dst.dtype
     assert np.allclose(op2.apply(x), dense.astype(np.float64) @ np.asarray(x))
 
@@ -214,8 +219,8 @@ def test_sparse_linop_convert_preserves_action_and_converts_sparse_storage():
 def test_sparse_linop_reuses_cached_transpose():
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
-    dom = sc.VectorSpace((2,), ctx)
-    cod = sc.VectorSpace((3,), ctx)
+    dom = sc.DenseCoordinateSpace((2,), ctx)
+    cod = sc.DenseCoordinateSpace((3,), ctx)
     counter = {"calls": 0}
     A = TransposeCountingCSR([[1., 2.], [3., 4.], [5., 6.]], counter=counter)
 

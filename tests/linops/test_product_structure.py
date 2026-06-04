@@ -48,10 +48,10 @@ def _assert_state_allclose(actual, expected_a, expected_b):
 
 
 def _block_parts(ctx):
-    x1 = sc.VectorSpace((2,), ctx)
-    x2 = sc.VectorSpace((3,), ctx)
-    y1 = sc.VectorSpace((2,), ctx)
-    y2 = sc.VectorSpace((1,), ctx)
+    x1 = sc.DenseCoordinateSpace((2,), ctx)
+    x2 = sc.DenseCoordinateSpace((3,), ctx)
+    y1 = sc.DenseCoordinateSpace((2,), ctx)
+    y2 = sc.DenseCoordinateSpace((1,), ctx)
     return (
         sc.DenseLinOp(ctx.asarray([[1.0, 2.0], [3.0, 4.0]]), x1, y1, ctx),
         sc.DenseLinOp(ctx.asarray([[5.0, 6.0, 7.0]]), x2, y2, ctx),
@@ -59,9 +59,9 @@ def _block_parts(ctx):
 
 
 def _stacked_parts(ctx):
-    x = sc.VectorSpace((2,), ctx)
-    y1 = sc.VectorSpace((2,), ctx)
-    y2 = sc.VectorSpace((1,), ctx)
+    x = sc.DenseCoordinateSpace((2,), ctx)
+    y1 = sc.DenseCoordinateSpace((2,), ctx)
+    y2 = sc.DenseCoordinateSpace((1,), ctx)
     return (
         sc.DenseLinOp(ctx.asarray([[1.0, 2.0], [3.0, 4.0]]), x, y1, ctx),
         sc.DenseLinOp(ctx.asarray([[5.0, 6.0]]), x, y2, ctx),
@@ -69,9 +69,9 @@ def _stacked_parts(ctx):
 
 
 def _sum_parts(ctx):
-    x1 = sc.VectorSpace((2,), ctx)
-    x2 = sc.VectorSpace((3,), ctx)
-    y = sc.VectorSpace((2,), ctx)
+    x1 = sc.DenseCoordinateSpace((2,), ctx)
+    x2 = sc.DenseCoordinateSpace((3,), ctx)
+    y = sc.DenseCoordinateSpace((2,), ctx)
     return (
         sc.DenseLinOp(ctx.asarray([[1.0, 2.0], [3.0, 4.0]]), x1, y, ctx),
         sc.DenseLinOp(ctx.asarray([[5.0, 6.0, 7.0], [8.0, 9.0, 10.0]]), x2, y, ctx),

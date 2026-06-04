@@ -56,7 +56,7 @@ def _ctx(backend_name="numpy", dtype=np.float64, enable_checks=False):
 
 def _operator(ctx, matrix):
     sc = importlib.import_module("spacecore")
-    space = sc.VectorSpace((matrix.shape[0],), ctx)
+    space = sc.DenseCoordinateSpace((matrix.shape[0],), ctx)
     return sc.DenseLinOp(ctx.asarray(matrix), space, space, ctx)
 
 
@@ -116,7 +116,7 @@ def test_expm_multiply_masks_inactive_sentinel_for_early_breakdown(backend_name,
     sc = importlib.import_module("spacecore")
     ctx = _ctx(backend_name, dtype)
     diagonal = np.array([1.5, 2.0, 3.0], dtype=np.float64)
-    space = sc.VectorSpace((3,), ctx)
+    space = sc.DenseCoordinateSpace((3,), ctx)
     A = sc.DiagonalLinOp(ctx.asarray(diagonal), space, ctx)
     v_np = np.array([1.0, -2.0, 0.5], dtype=np.float64)
     v = ctx.asarray(v_np)
@@ -207,7 +207,7 @@ def test_expm_multiply_masks_inactive_sentinel_for_complex_time(backend_name, dt
     sc = importlib.import_module("spacecore")
     ctx = _ctx(backend_name, dtype)
     diagonal = np.array([1.5, 2.0, 3.0], dtype=np.float64)
-    space = sc.VectorSpace((3,), ctx)
+    space = sc.DenseCoordinateSpace((3,), ctx)
     A = sc.DiagonalLinOp(ctx.asarray(diagonal), space, ctx)
     v_np = np.array([1.0, -2.0, 0.5], dtype=np.float64)
     v = ctx.asarray(v_np)

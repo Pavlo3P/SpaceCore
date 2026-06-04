@@ -1,57 +1,22 @@
 from __future__ import annotations
 
 from math import prod
-from typing import Any, Tuple, Callable
+from typing import Any, Callable, Tuple
 
-from ._base import Space
+from ._base import (
+    CoordinateSpace,
+    EuclideanJordanAlgebraSpace,
+    StarSpace,
+)
 from ._checks import BackendCheck, DTypeCheck, ShapeCheck
-from ._inner import InnerProduct
+from ._inner import EuclideanInnerProduct, InnerProduct
 from .._checks import checked_method
 from ..types import DenseArray
 from ..backend import Context
 
 
-class VectorSpace(Space):
-    r"""
-    Represent dense backend arrays with configurable inner-product geometry.
-
-    Elements are backend-native dense arrays with canonical shape ``shape``.
-    By default, the geometry is Euclidean:
-    :math:`\langle x, y\rangle_X = \operatorname{vdot}(x,y)`, where the
-    backend conjugates the first argument for complex arrays. A custom
-    :class:`InnerProduct` may be supplied with ``geometry=...`` to define the
-    inner product and Riesz maps used by metric-aware adjoints.
-
-    The methods :meth:`inner`, :meth:`riesz`, and :meth:`riesz_inverse`
-    delegate to the geometry object.
-
-    Parameters
-    ----------
-    shape : tuple of int
-        Canonical coordinate shape for elements of the space.
-    ctx : Context, str, or None, optional
-        Backend context specification. Default resolves to the global context.
-    geometry : InnerProduct or None, optional
-        Inner-product geometry for this coordinate space. Defaults to
-        Euclidean coordinate geometry.
-
-    Attributes
-    ----------
-    shape : tuple of int
-        Canonical element shape.
-    ctx : Context
-        Resolved backend context.
-
-    Examples
-    --------
-    >>> import numpy as np
-    >>> import spacecore as sc
-    >>> ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
-    >>> X = sc.VectorSpace((2,), ctx)
-    >>> x = ctx.asarray([1.0, 2.0])
-    >>> X.inner(x, x)
-    np.float64(5.0)
-    """
+class DenseCoordinateSpace(CoordinateSpace, StarSpace, EuclideanJordanAlgebraSpace):
+    r"""Concrete dense backend arrays with arbitrary finite coordinate shape."""
 
     def __init__(
         self,
@@ -59,12 +24,22 @@ class VectorSpace(Space):
         ctx: Context | str | None = None,
         geometry: InnerProduct | None = None,
     ) -> None:
-        super(VectorSpace, self).__init__(shape, ctx, geometry=geometry)
+        super().__init__(tuple(shape), ctx)
+        self.geometry: InnerProduct = geometry if geometry is not None else EuclideanInnerProduct()
         self._size = prod(self.shape)
         self._is_flat_shape = self.shape == (self._size,)
 
+    def __eq__(self, other: Any) -> bool:
+        if type(self) is type(other):
+            return (
+                super().__eq__(other)
+                and type(self.geometry) is type(other.geometry)
+                and self.geometry == other.geometry
+            )
+        return False
+
     def _local_checks(self):
-        """Return membership checks local to dense vector spaces."""
+        """Return membership checks local to dense coordinate spaces."""
         return BackendCheck(), ShapeCheck(), DTypeCheck()
 
     def zeros(self) -> DenseArray:
@@ -94,6 +69,16 @@ class VectorSpace(Space):
         r"""Return :math:`\langle x, y\rangle_X` using this space's geometry."""
         return self.geometry.inner(self.ops, x, y)
 
+    @checked_method(in_space="self")
+    def star(self, x: DenseArray) -> DenseArray:
+        """Return elementwise conjugation."""
+        return self.ops.conj(x)
+
+    @checked_method(in_space="self", arg_positions=(0, 1))
+    def jordan(self, x: DenseArray, y: DenseArray) -> DenseArray:
+        """Return the elementwise Jordan product."""
+        return x * y
+
     def _check_unbatched_member(self, x: DenseArray) -> None:
         """Run member checks for one element, while allowing leading batches."""
         if self._enable_checks and tuple(getattr(x, "shape", ())) == self.shape:
@@ -110,9 +95,9 @@ class VectorSpace(Space):
         return x, None
 
     def from_spectrum(self, eigvals: DenseArray, frame: Any) -> DenseArray:
-        """Reconstruct a vector-space element from its spectrum."""
+        """Reconstruct a dense-coordinate element from its spectrum."""
         if frame is not None:
-            raise ValueError("VectorSpace.from_spectrum expects frame=None.")
+            raise ValueError(f"{type(self).__name__}.from_spectrum expects frame=None.")
         self._check_unbatched_member(eigvals)
         return eigvals
 
@@ -136,65 +121,45 @@ class VectorSpace(Space):
         vs = self.ctx.assert_dense(vs) if self._enable_checks else vs
         return vs if self._is_flat_shape else vs.reshape((vs.shape[0],) + self.shape)
 
-    def _convert(self, new_ctx: Context) -> VectorSpace:
-        """Convert this vector space to ``new_ctx`` without changing shape."""
-        return VectorSpace(self.shape, new_ctx, geometry=self.geometry.convert(new_ctx))
+    def _convert(self, new_ctx: Context) -> DenseCoordinateSpace:
+        """Convert this dense coordinate space to ``new_ctx`` without changing shape."""
+        return type(self)(self.shape, new_ctx, geometry=self.geometry.convert(new_ctx))
 
     def _apply_entrywise(self, x: DenseArray, f: Callable[[DenseArray], DenseArray]) -> DenseArray:
         """Apply ``f`` entrywise and verify that shape is preserved."""
         try:
             y = f(x)
         except Exception:
-            # optional fallback if backend has vectorize/map
             y = self.ops.vectorize(f)(x)
-        if self._enable_checks:
-            if y.shape != x.shape:
-                raise ValueError("Function application changed shape.")
+        if self._enable_checks and y.shape != x.shape:
+            raise ValueError("Function application changed shape.")
         return y
 
     @checked_method(in_space="self", out_space="self")
+    def spectral_apply(self, x: DenseArray, f: Callable[[DenseArray], DenseArray]) -> DenseArray:
+        """Apply a scalar function coordinatewise."""
+        return self._apply_entrywise(x, f)
+
+    @checked_method(in_space="self", out_space="self")
     def apply(self, x: DenseArray, f: Callable[[DenseArray], DenseArray]) -> DenseArray:
-        r"""
-        Apply a scalar function to a vector-space element entrywise.
+        """Backward-compatible alias for coordinatewise spectral application."""
+        return self.spectral_apply(x, f)
 
-        For a space element
-        $$
-        x \in \mathbb{K}^{n_1 \times \cdots \times n_k},
-        $$
-        this method returns the element
-        $$
-        y = f(x)
-        $$
-        obtained by applying ``f`` coordinatewise to the entries of ``x``.
 
-        Parameters
-        ----------
-        x:
-            Element of this vector space. Must have shape ``self.shape`` and
-            dtype compatible with this space.
-        f:
-            Callable representing an entrywise transformation. It is expected
-            to act elementwise on backend arrays, or to be compatible with the
-            backend vectorization fallback.
+class DenseVectorSpace(DenseCoordinateSpace):
+    r"""Concrete one-dimensional dense vectors with configurable geometry."""
 
-        Returns
-        -------
-        DenseArray
-            The transformed element, with the same shape as ``x``.
+    def __init__(
+        self,
+        shape: Tuple[int, ...],
+        ctx: Context | str | None = None,
+        geometry: InnerProduct | None = None,
+    ) -> None:
+        shape = tuple(shape)
+        if len(shape) != 1:
+            raise ValueError(f"DenseVectorSpace requires one-dimensional shape, got {shape}.")
+        super().__init__(shape, ctx, geometry=geometry)
 
-        Raises
-        ------
-        TypeError
-            If ``x`` is not a valid member of this space.
-        ValueError
-            If the result of the application does not preserve the shape of the
-            space element.
-
-        Notes
-        -----
-        This is the canonical functional calculus for ``VectorSpace``:
-        application is performed entrywise in the distinguished coordinate
-        representation.
-        """
-        y = self._apply_entrywise(x, f)
-        return y
+    def _convert(self, new_ctx: Context) -> DenseVectorSpace:
+        """Convert this dense vector space to ``new_ctx`` without changing shape."""
+        return DenseVectorSpace(self.shape, new_ctx, geometry=self.geometry.convert(new_ctx))

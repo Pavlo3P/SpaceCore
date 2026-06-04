@@ -14,8 +14,8 @@ def test_smoke_jax_conversion_workflow():
     dtype = jax_real_dtype()
     np_ctx = sc.Context(sc.NumpyOps(), dtype=dtype)
     jx_ctx = sc.Context(sc.JaxOps(), dtype=dtype)
-    x_space = sc.VectorSpace((2,), np_ctx)
-    y_space = sc.VectorSpace((3,), np_ctx)
+    x_space = sc.DenseCoordinateSpace((2,), np_ctx)
+    y_space = sc.DenseCoordinateSpace((3,), np_ctx)
     op = sc.DenseLinOp(
         np_ctx.asarray([[1., 2.], [3., 4.], [5., 6.]]),
         x_space,
