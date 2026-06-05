@@ -5,8 +5,6 @@ All notable changes to SpaceCore are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
-
 ## [0.3.0]
 
 SpaceCore 0.3.0 is a breaking release for the unstable `0.x` series. Space

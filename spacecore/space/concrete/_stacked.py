@@ -93,7 +93,8 @@ class StackedSpace(CoordinateSpace):
         if cls is StackedSpace:
             base = _validate_stacked_base(base)
             _validate_count(count)
-            cls = _stacked_class_for(_stacked_capabilities(base))
+            resolved_ctx = resolve_context_priority(ctx, base)
+            cls = _stacked_class_for(_stacked_capabilities(base.convert(resolved_ctx)))
         return super(StackedSpace, cls).__new__(cls)
 
     def __init__(self, base: Space, count: int, ctx: Context | str | None = None) -> None:
@@ -312,6 +313,7 @@ class _StackedEuclideanJordanAlgebraSpace(
         base = _validate_stacked_base(base, type(self).__name__)
         _require_base(base, EuclideanJordanAlgebraSpace, type(self).__name__)
         super().__init__(base, count, ctx)
+        _require_base(self.base, EuclideanJordanAlgebraSpace, type(self).__name__)
 
 
 @jax_pytree_class

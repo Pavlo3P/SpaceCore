@@ -11,15 +11,47 @@ from ..base import (
 )
 from ..._checks import checked_method
 from ..._contextual import normalize_context
-from ...backend import Context
+from ...backend import Context, jax_pytree_class
 from ...types import DenseArray
 from ._dense_coordinate import DenseCoordinateSpace
 
 
-def _is_real_euclidean(ctx: Context, geometry: InnerProduct | None) -> bool:
+def _resolve_elementwise_geometry(
+    geometry: InnerProduct | None,
+    inner_product: InnerProduct | None = None,
+) -> InnerProduct:
+    """Resolve the public geometry aliases for elementwise coordinate spaces."""
+    if geometry is not None and inner_product is not None:
+        raise TypeError("Specify either geometry or inner_product, not both.")
+    return EuclideanInnerProduct() if geometry is None and inner_product is None else (
+        inner_product if inner_product is not None else geometry
+    )
+
+
+def _euclidean_elementwise_jordan_incompatibility(
+    ctx: Context,
+    geometry: InnerProduct,
+) -> str | None:
+    """Return the violated Euclidean-elementwise invariant, if any."""
+    if ctx.ops.is_complex_dtype(ctx.dtype):
+        return "dtype"
+    if type(geometry) is not EuclideanInnerProduct:
+        return "geometry"
+    return None
+
+
+def _is_euclidean_elementwise_jordan_compatible(ctx: Context, geometry: InnerProduct) -> bool:
     """Return whether elementwise coordinates have Euclidean-Jordan geometry."""
-    geometry = EuclideanInnerProduct() if geometry is None else geometry
-    return not ctx.ops.is_complex_dtype(ctx.dtype) and type(geometry) is EuclideanInnerProduct
+    return _euclidean_elementwise_jordan_incompatibility(ctx, geometry) is None
+
+
+def _validate_euclidean_elementwise_jordan(ctx: Context, geometry: InnerProduct) -> None:
+    """Raise if a Euclidean elementwise Jordan space would be untruthful."""
+    reason = _euclidean_elementwise_jordan_incompatibility(ctx, geometry)
+    if reason == "dtype":
+        raise ValueError("EuclideanElementwiseJordanSpace requires a real dtype.")
+    if reason == "geometry":
+        raise TypeError("EuclideanElementwiseJordanSpace requires EuclideanInnerProduct.")
 
 
 class DenseVectorSpace(DenseCoordinateSpace, StarSpace):
@@ -57,6 +89,7 @@ class DenseVectorSpace(DenseCoordinateSpace, StarSpace):
         return DenseVectorSpace(self.shape, new_ctx, geometry=self.geometry.convert(new_ctx))
 
 
+@jax_pytree_class
 class ElementwiseJordanSpace(JordanAlgebraSpace, DenseCoordinateSpace, StarSpace):
     """
     Elementwise Jordan algebra for real or complex dense coordinates.
@@ -70,6 +103,8 @@ class ElementwiseJordanSpace(JordanAlgebraSpace, DenseCoordinateSpace, StarSpace
     geometry : InnerProduct or None, optional
         Inner-product geometry. If omitted, Euclidean coordinate geometry is
         used.
+    inner_product : InnerProduct or None, optional
+        Alias for ``geometry``.
     """
 
     def __new__(
@@ -77,10 +112,13 @@ class ElementwiseJordanSpace(JordanAlgebraSpace, DenseCoordinateSpace, StarSpace
         shape: Tuple[int, ...],
         ctx: Context | str | None = None,
         geometry: InnerProduct | None = None,
+        *,
+        inner_product: InnerProduct | None = None,
     ):
+        geometry = _resolve_elementwise_geometry(geometry, inner_product)
         if cls is ElementwiseJordanSpace:
             resolved_ctx = normalize_context(ctx)
-            if _is_real_euclidean(resolved_ctx, geometry):
+            if _is_euclidean_elementwise_jordan_compatible(resolved_ctx, geometry):
                 cls = EuclideanElementwiseJordanSpace
         return super(ElementwiseJordanSpace, cls).__new__(cls)
 
@@ -89,7 +127,10 @@ class ElementwiseJordanSpace(JordanAlgebraSpace, DenseCoordinateSpace, StarSpace
         shape: Tuple[int, ...],
         ctx: Context | str | None = None,
         geometry: InnerProduct | None = None,
+        *,
+        inner_product: InnerProduct | None = None,
     ) -> None:
+        geometry = _resolve_elementwise_geometry(geometry, inner_product)
         DenseCoordinateSpace.__init__(self, shape, ctx, geometry=geometry)
 
     @checked_method(in_space="self")
@@ -142,7 +183,18 @@ class ElementwiseJordanSpace(JordanAlgebraSpace, DenseCoordinateSpace, StarSpace
     def _convert(self, new_ctx: Context) -> ElementwiseJordanSpace:
         return ElementwiseJordanSpace(self.shape, new_ctx, geometry=self.geometry.convert(new_ctx))
 
+    def tree_flatten(self):
+        """Flatten this space for JAX pytree registration."""
+        return (), (self.shape, self.ctx, self.geometry)
 
+    @classmethod
+    def tree_unflatten(cls, aux, children):
+        """Rebuild this space from pytree aux data."""
+        shape, ctx, geometry = aux
+        return cls(shape, ctx, geometry=geometry)
+
+
+@jax_pytree_class
 class EuclideanElementwiseJordanSpace(ElementwiseJordanSpace, EuclideanJordanAlgebraSpace):
     """
     Real elementwise Euclidean Jordan algebra.
@@ -156,4 +208,19 @@ class EuclideanElementwiseJordanSpace(ElementwiseJordanSpace, EuclideanJordanAlg
     geometry : InnerProduct or None, optional
         Inner-product geometry. This class is selected only for real contexts
         with Euclidean coordinate geometry.
+    inner_product : InnerProduct or None, optional
+        Alias for ``geometry``.
     """
+
+    def __init__(
+        self,
+        shape: Tuple[int, ...],
+        ctx: Context | str | None = None,
+        geometry: InnerProduct | None = None,
+        *,
+        inner_product: InnerProduct | None = None,
+    ) -> None:
+        resolved_ctx = normalize_context(ctx)
+        geometry = _resolve_elementwise_geometry(geometry, inner_product)
+        _validate_euclidean_elementwise_jordan(resolved_ctx, geometry)
+        DenseCoordinateSpace.__init__(self, shape, resolved_ctx, geometry=geometry)

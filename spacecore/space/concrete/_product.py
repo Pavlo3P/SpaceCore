@@ -14,7 +14,12 @@ from ..base import (
 from ..checks import ProductComponentCheck, ProductStructureCheck
 from .._structure import ProductStructure, PytreeStructure, TupleStructure
 from ._dense_coordinate import DenseCoordinateSpace
-from ._dense_vector import DenseVectorSpace, ElementwiseJordanSpace, EuclideanElementwiseJordanSpace
+from ._dense_vector import (
+    DenseVectorSpace,
+    ElementwiseJordanSpace,
+    EuclideanElementwiseJordanSpace,
+    _validate_euclidean_elementwise_jordan,
+)
 from ..._checks import checked_method
 from ..._contextual import resolve_context_priority
 from ...backend import Context, jax_pytree_class
@@ -80,6 +85,8 @@ def _space_capabilities(space: Space) -> CapabilitySet:
     if isinstance(space, JordanAlgebraSpace):
         caps.add(_CAP_JORDAN)
     if isinstance(space, EuclideanJordanAlgebraSpace):
+        if isinstance(space, EuclideanElementwiseJordanSpace):
+            _validate_euclidean_elementwise_jordan(space.ctx, space.geometry)
         caps.add(_CAP_EUCLIDEAN_JORDAN)
     return frozenset(caps)
 
@@ -155,7 +162,9 @@ class ProductSpace(CoordinateSpace):
     ):
         if cls is ProductSpace:
             spaces_tuple = _validate_product_spaces(spaces)
-            cls = _product_class_for(_product_capabilities(spaces_tuple))
+            resolved_ctx = resolve_context_priority(ctx, *spaces_tuple)
+            converted_spaces = tuple(space.convert(resolved_ctx) for space in spaces_tuple)
+            cls = _product_class_for(_product_capabilities(converted_spaces))
         return super(ProductSpace, cls).__new__(cls)
 
     def __init__(
@@ -583,6 +592,7 @@ class _ProductEuclideanJordanAlgebraSpace(
         spaces = _validate_product_spaces(spaces, type(self).__name__)
         _require_all_components(spaces, EuclideanJordanAlgebraSpace, type(self).__name__)
         super().__init__(spaces, ctx=ctx, structure=structure)
+        _require_all_components(self.spaces, EuclideanJordanAlgebraSpace, type(self).__name__)
 
 
 @jax_pytree_class

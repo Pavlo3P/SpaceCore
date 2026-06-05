@@ -59,6 +59,11 @@ class NonCoordinateInnerProductSpace(sc.InnerProductSpace):
         return NonCoordinateInnerProductSpace(new_ctx)
 
 
+class CustomInnerProduct(sc.InnerProduct):
+    def inner(self, ops, x, y):
+        return ops.vdot(x, y)
+
+
 def test_minimal_space_membership_only():
     space = FiniteSetSpace({"a", "b"}, sc.Context(sc.NumpyOps(), enable_checks=True))
 
@@ -262,6 +267,90 @@ def test_elementwise_jordan_geometry_compatibility_real_complex_and_weighted():
 
     weighted = sc.DenseCoordinateSpace((2,), real_ctx, geometry=sc.WeightedInnerProduct(weights))
     assert not isinstance(weighted, sc.JordanAlgebraSpace)
+
+
+def test_euclidean_elementwise_direct_construction_validates_invariant():
+    real_ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    complex_ctx = sc.Context(sc.NumpyOps(), dtype=np.complex128)
+    weights = real_ctx.asarray([2.0, 3.0])
+
+    direct = sc.EuclideanElementwiseJordanSpace((2,), real_ctx)
+    factory = sc.ElementwiseJordanSpace((2,), real_ctx)
+
+    assert isinstance(direct, sc.EuclideanElementwiseJordanSpace)
+    assert direct == factory
+
+    with pytest.raises(ValueError, match="requires a real dtype"):
+        sc.EuclideanElementwiseJordanSpace((2,), complex_ctx)
+
+    with pytest.raises(TypeError, match="requires EuclideanInnerProduct"):
+        sc.EuclideanElementwiseJordanSpace(
+            (2,),
+            real_ctx,
+            inner_product=sc.WeightedInnerProduct(weights),
+        )
+
+    with pytest.raises(TypeError, match="requires EuclideanInnerProduct"):
+        sc.EuclideanElementwiseJordanSpace((2,), real_ctx, geometry=CustomInnerProduct())
+
+
+def test_elementwise_conversion_never_leaves_stale_euclidean_class():
+    real_ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    complex_ctx = sc.Context(sc.NumpyOps(), dtype=np.complex128)
+
+    real_space = sc.EuclideanElementwiseJordanSpace((2,), real_ctx)
+    complex_space = real_space.convert(complex_ctx)
+    restored = complex_space.convert(real_ctx)
+
+    assert type(complex_space) is sc.ElementwiseJordanSpace
+    assert not isinstance(complex_space, sc.EuclideanJordanAlgebraSpace)
+    assert isinstance(restored, sc.EuclideanElementwiseJordanSpace)
+
+
+def test_product_and_stacked_dispatch_after_context_conversion_is_truthful():
+    real_ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    complex_ctx = sc.Context(sc.NumpyOps(), dtype=np.complex128)
+    base = sc.EuclideanElementwiseJordanSpace((2,), real_ctx)
+
+    product = sc.ProductSpace((base,), complex_ctx)
+    stacked = sc.StackedSpace(base, 2, complex_ctx)
+
+    assert type(product.spaces[0]) is sc.ElementwiseJordanSpace
+    assert not isinstance(product, sc.EuclideanJordanAlgebraSpace)
+    assert isinstance(product, sc.JordanAlgebraSpace)
+    assert type(stacked.base) is sc.ElementwiseJordanSpace
+    assert not isinstance(stacked, sc.EuclideanJordanAlgebraSpace)
+    assert isinstance(stacked, sc.JordanAlgebraSpace)
+
+
+def test_directly_constructed_euclidean_elementwise_identity_holds():
+    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    space = sc.EuclideanElementwiseJordanSpace((3,), ctx)
+    x = ctx.asarray([1.0, -2.0, 0.5])
+    y = ctx.asarray([3.0, 4.0, -1.0])
+    z = ctx.asarray([-0.25, 2.0, 5.0])
+
+    np.testing.assert_allclose(
+        space.inner(space.jordan(x, y), z),
+        space.inner(y, space.jordan(x, z)),
+    )
+
+
+@pytest.mark.skipif(not hasattr(sc, "JaxOps"), reason="jax is not installed")
+def test_euclidean_elementwise_jax_pytree_reconstruction_revalidates_invariant():
+    import jax
+
+    real_ctx = sc.Context(sc.JaxOps(), dtype=np.float32, enable_checks=False)
+    complex_ctx = sc.Context(sc.JaxOps(), dtype=np.complex64, enable_checks=False)
+    space = sc.EuclideanElementwiseJordanSpace((2,), real_ctx)
+
+    leaves, treedef = jax.tree_util.tree_flatten(space)
+    rebuilt = jax.tree_util.tree_unflatten(treedef, leaves)
+
+    assert leaves == []
+    assert rebuilt == space
+    with pytest.raises(ValueError, match="requires a real dtype"):
+        type(space).tree_unflatten(((2,), complex_ctx, sc.EuclideanInnerProduct()), ())
 
 
 def test_no_repository_examples_instantiate_abstract_vector_space():
