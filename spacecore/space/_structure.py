@@ -44,11 +44,18 @@ class TupleStructure(ProductStructure):
 
 
 class PytreeStructure(ProductStructure):
-    """Registered pytree product structure with fixed treedef and leaf order.
+    """
+    Registered pytree product structure with fixed treedef and leaf order.
 
     Bare Python dataclasses are opaque leaves to JAX unless registered with
     ``jax.tree_util.register_dataclass`` or
     ``jax.tree_util.register_pytree_node_class``.
+
+    Parameters
+    ----------
+    template_element : Any
+        Example product element whose pytree definition and leaf order define
+        the product structure.
     """
 
     def __init__(self, template_element: Any) -> None:

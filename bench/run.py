@@ -151,7 +151,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.limit is not None:
         cases = cases[: args.limit]
 
-    print(f"Calibrating primitives...", flush=True)
+    print("Calibrating primitives...", flush=True)
     costs = calibrate_primitives()
     print(f"Running {len(cases)} cases...", flush=True)
     results = []

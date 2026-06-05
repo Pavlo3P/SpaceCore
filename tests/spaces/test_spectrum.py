@@ -1,9 +1,26 @@
 import importlib
+from dataclasses import dataclass
 
 import numpy as np
 import pytest
 
 from tests._helpers import has_jax, jax_complex_dtype, jax_real_dtype, to_numpy
+from spacecore.backend import jax_pytree_class
+
+
+@jax_pytree_class
+@dataclass(frozen=True)
+class PairElement:
+    vector: object
+    matrix: object
+
+    def tree_flatten(self):
+        return (self.vector, self.matrix), None
+
+    @classmethod
+    def tree_unflatten(cls, aux, children):
+        vector, matrix = children
+        return cls(vector, matrix)
 
 
 def _real_contexts():
@@ -143,10 +160,33 @@ def test_product_space_spectrum_concatenates_mixed_components(ctx):
     rebuilt = product.from_spectrum(decompositions)
 
     assert np.allclose(to_numpy(spectrum), expected, atol=1e-6)
-    assert len(decompositions) == 2
-    assert np.allclose(to_numpy(decompositions[0][0]), to_numpy(v), atol=1e-6)
+    assert isinstance(decompositions, sc.ProductSpectralDecomposition)
+    assert len(decompositions.eigvals) == 2
+    assert len(decompositions.frames) == 2
+    assert np.allclose(to_numpy(decompositions.eigvals[0]), to_numpy(v), atol=1e-6)
     assert np.allclose(to_numpy(rebuilt[0]), to_numpy(v), atol=1e-6)
     assert np.allclose(to_numpy(rebuilt[1]), to_numpy(h), atol=1e-6)
+
+
+@pytest.mark.skipif(not has_jax(), reason="pytree products require jax tree utilities")
+@pytest.mark.parametrize("ctx", list(_complex_contexts()))
+def test_product_space_pytree_spectral_decomposition_roundtrip(ctx):
+    sc = importlib.import_module("spacecore")
+    vector = sc.ElementwiseJordanSpace((2,), ctx)
+    hermitian = sc.HermitianSpace(2, ctx=ctx)
+    x = PairElement(
+        ctx.asarray([10.0 + 0.0j, 20.0 + 0.0j]),
+        ctx.asarray([[1.0 + 0.0j, 0.25 + 0.0j], [0.25 + 0.0j, -2.0 + 0.0j]]),
+    )
+    product = sc.ProductSpace.from_template((vector, hermitian), x, ctx)
+
+    decomposition = product.spectral_decompose(x)
+    rebuilt = product.from_spectrum(decomposition)
+
+    assert isinstance(decomposition, sc.ProductSpectralDecomposition)
+    assert isinstance(rebuilt, PairElement)
+    assert np.allclose(to_numpy(rebuilt.vector), to_numpy(x.vector), atol=1e-6)
+    assert np.allclose(to_numpy(rebuilt.matrix), to_numpy(x.matrix), atol=1e-6)
 
 
 @pytest.mark.parametrize("ctx", list(_complex_contexts()))

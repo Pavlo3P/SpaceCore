@@ -8,7 +8,14 @@ from ._vector import VectorSpace
 
 
 class JordanAlgebraSpace(VectorSpace):
-    """Vector space capability with a Jordan product and spectral calculus."""
+    """
+    Vector space capability with a Jordan product and spectral calculus.
+
+    Parameters
+    ----------
+    ctx : Context, str, or None, optional
+        Context specification used for elements and validation checks.
+    """
 
     @abstractmethod
     def jordan(self, x: Any, y: Any) -> Any:
@@ -34,4 +41,11 @@ class JordanAlgebraSpace(VectorSpace):
 
 
 class EuclideanJordanAlgebraSpace(JordanAlgebraSpace, InnerProductSpace):
-    """Jordan algebra capability with a compatible inner product."""
+    """
+    Jordan algebra capability with a compatible inner product.
+
+    Parameters
+    ----------
+    ctx : Context, str, or None, optional
+        Context specification used for elements and validation checks.
+    """

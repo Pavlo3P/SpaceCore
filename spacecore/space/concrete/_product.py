@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any, Callable, List, Sequence, Tuple
 
 from ..base import (
@@ -13,7 +14,7 @@ from ..base import (
 from ..checks import ProductComponentCheck, ProductStructureCheck
 from .._structure import ProductStructure, PytreeStructure, TupleStructure
 from ._dense_coordinate import DenseCoordinateSpace
-from ._dense_vector import DenseVectorSpace, ElementwiseJordanSpace
+from ._dense_vector import DenseVectorSpace, ElementwiseJordanSpace, EuclideanElementwiseJordanSpace
 from ..._checks import checked_method
 from ..._contextual import resolve_context_priority
 from ...backend import Context, jax_pytree_class
@@ -21,6 +22,34 @@ from ...types import DenseArray
 
 ProductElement = Any
 CapabilitySet = frozenset[type]
+
+
+@jax_pytree_class
+@dataclass(frozen=True)
+class ProductSpectralDecomposition:
+    """
+    Component spectral data independent of product element structure.
+
+    Parameters
+    ----------
+    eigvals : tuple
+        Per-component eigenvalue data in product component order.
+    frames : tuple
+        Per-component frame data in product component order.
+    """
+
+    eigvals: tuple[Any, ...]
+    frames: tuple[Any, ...]
+
+    def tree_flatten(self):
+        """Flatten spectral data for JAX pytree registration."""
+        return (self.eigvals, self.frames), None
+
+    @classmethod
+    def tree_unflatten(cls, aux, children):
+        """Rebuild spectral data from JAX pytree children."""
+        eigvals, frames = children
+        return cls(tuple(eigvals), tuple(frames))
 
 _CAP_INNER = InnerProductSpace
 _CAP_STAR = StarSpace
@@ -98,12 +127,24 @@ def _require_all_components(spaces: Sequence[Space], capability: type, owner: st
 
 @jax_pytree_class
 class ProductSpace(CoordinateSpace):
-    r"""Represent a Cartesian product of coordinate spaces.
+    r"""
+    Represent a Cartesian product of coordinate spaces.
 
     Baseline ``ProductSpace`` exposes only coordinate-space operations. When
     constructed directly, it dispatches to a more specific concrete class if all
     components share inner-product, star, Jordan, or Euclidean-Jordan
     capabilities.
+
+    Parameters
+    ----------
+    spaces : tuple of Space
+        Coordinate component spaces in product order.
+    ctx : Context, str, or None, optional
+        Context specification. If omitted, the context is resolved from the
+        component spaces.
+    structure : ProductStructure or None, optional
+        Element adapter used to map product elements to ordered components. If
+        omitted, tuple-structured product elements are used.
     """
 
     def __new__(
@@ -149,7 +190,12 @@ class ProductSpace(CoordinateSpace):
         self._structure = structure
         self._arity = len(uniform_spaces)
         self._vector_fast_path = all(
-            type(sp) in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace)
+            type(sp) in (
+                DenseCoordinateSpace,
+                DenseVectorSpace,
+                ElementwiseJordanSpace,
+                EuclideanElementwiseJordanSpace,
+            )
             for sp in uniform_spaces
         )
         self._component_shapes = tuple(sp.shape for sp in uniform_spaces)
@@ -184,7 +230,7 @@ class ProductSpace(CoordinateSpace):
 
     def __eq__(self, other: Any) -> bool:
         """Return whether another product space has the same ordered components."""
-        if type(other) is type(self):
+        if isinstance(other, ProductSpace):
             return (
                 self.ctx == other.ctx
                 and self.spaces == other.spaces
@@ -208,7 +254,7 @@ class ProductSpace(CoordinateSpace):
     def _convert(self, new_ctx: Context) -> ProductSpace:
         """Convert all component spaces to ``new_ctx``."""
         new_spaces = tuple(sp.convert(new_ctx) for sp in self.spaces)
-        return type(self)(new_spaces, new_ctx, structure=self._structure)
+        return ProductSpace(new_spaces, new_ctx, structure=self._structure)
 
     def _local_checks(self):
         """Return membership checks local to product spaces."""
@@ -447,48 +493,39 @@ class _ProductJordanMixin:
             return parts[0]
         return self.ops.concatenate(parts, axis=-1)
 
-    def spectral_decompose(self, x: ProductElement) -> ProductElement:
-        """Return componentwise spectral decompositions aligned to components."""
+    def spectral_decompose(self, x: ProductElement) -> ProductSpectralDecomposition:
+        """Return componentwise spectral data independent of element structure."""
         parts = self._components(x)
-        out = tuple(s.spectral_decompose(xi) for s, xi in zip(self.spaces, parts))
+        decompositions = tuple(s.spectral_decompose(xi) for s, xi in zip(self.spaces, parts))
+        return ProductSpectralDecomposition(
+            eigvals=tuple(eigvals for eigvals, _frame in decompositions),
+            frames=tuple(frame for _eigvals, frame in decompositions),
+        )
+
+    def from_spectrum(
+        self,
+        decomposition: ProductSpectralDecomposition,
+        frame: Any = None,
+    ) -> ProductElement:
+        """Reconstruct a product element from explicit product spectral data."""
+        if frame is not None:
+            raise TypeError("ProductSpace.from_spectrum expects ProductSpectralDecomposition only.")
+        if not isinstance(decomposition, ProductSpectralDecomposition):
+            raise TypeError(
+                "ProductSpace.from_spectrum expects ProductSpectralDecomposition; "
+                f"got {type(decomposition).__name__}."
+            )
+        if len(decomposition.eigvals) != self.arity or len(decomposition.frames) != self.arity:
+            raise ValueError("ProductSpace.from_spectrum decomposition arity mismatch.")
+        out = tuple(
+            s.from_spectrum(component_eigvals, component_frame)
+            for s, component_eigvals, component_frame in zip(
+                self.spaces,
+                decomposition.eigvals,
+                decomposition.frames,
+            )
+        )
         return self._from_components(out)
-
-    def from_spectrum(self, eigvals: Any, frame: Any = None) -> ProductElement:
-        """Reconstruct components from component-delegating spectral data."""
-        if frame is None:
-            decompositions = self._components(eigvals)
-            if len(decompositions) != self.arity:
-                raise ValueError("ProductSpace.from_spectrum decomposition arity mismatch.")
-            out = tuple(
-                s.from_spectrum(component_eigvals, component_frame)
-                for s, (component_eigvals, component_frame) in zip(self.spaces, decompositions)
-            )
-            return self._from_components(out)
-
-        frame_parts = self._components(frame)
-
-        if isinstance(eigvals, tuple) or not self.ctx.ops.is_dense(eigvals):
-            eigval_parts = self._components(eigvals)
-            if len(eigval_parts) != self.arity:
-                raise ValueError("ProductSpace.from_spectrum eigval arity mismatch.")
-            out = tuple(
-                s.from_spectrum(component_eigvals, component_frame)
-                for s, component_eigvals, component_frame in zip(self.spaces, eigval_parts, frame_parts)
-            )
-            return self._from_components(out)
-
-        if self._enable_checks:
-            eigvals = self.ctx.assert_dense(eigvals)
-        components = []
-        offset = 0
-        for s, component_frame in zip(self.spaces, frame_parts):
-            size = self._spectral_size(s)
-            vals = eigvals[..., offset: offset + size]
-            components.append(s.from_spectrum(vals, component_frame))
-            offset += size
-        if offset != int(getattr(eigvals, "shape", (offset,))[-1]):
-            raise ValueError("ProductSpace.from_spectrum received extra eigenvalues.")
-        return self._from_components(tuple(components))
 
     @checked_method(in_space="self", out_space="self")
     def spectral_apply(self, x: ProductElement, f: Callable[[Any], Any]) -> ProductElement:
@@ -504,7 +541,7 @@ class _ProductJordanMixin:
 
 
 @jax_pytree_class
-class ProductInnerProductSpace(_ProductInnerProductMixin, ProductSpace, InnerProductSpace):
+class _ProductInnerProductSpace(_ProductInnerProductMixin, ProductSpace, InnerProductSpace):
     """Product space whose components all support inner products."""
 
     def __init__(self, spaces, ctx=None, structure=None):
@@ -514,7 +551,7 @@ class ProductInnerProductSpace(_ProductInnerProductMixin, ProductSpace, InnerPro
 
 
 @jax_pytree_class
-class ProductStarSpace(_ProductStarMixin, ProductSpace, StarSpace):
+class _ProductStarSpace(_ProductStarMixin, ProductSpace, StarSpace):
     """Product space whose components all support a star operation."""
 
     def __init__(self, spaces, ctx=None, structure=None):
@@ -524,7 +561,7 @@ class ProductStarSpace(_ProductStarMixin, ProductSpace, StarSpace):
 
 
 @jax_pytree_class
-class ProductJordanAlgebraSpace(_ProductJordanMixin, ProductSpace, JordanAlgebraSpace):
+class _ProductJordanAlgebraSpace(_ProductJordanMixin, ProductSpace, JordanAlgebraSpace):
     """Product space whose components all support Jordan algebra operations."""
 
     def __init__(self, spaces, ctx=None, structure=None):
@@ -534,7 +571,7 @@ class ProductJordanAlgebraSpace(_ProductJordanMixin, ProductSpace, JordanAlgebra
 
 
 @jax_pytree_class
-class ProductEuclideanJordanAlgebraSpace(
+class _ProductEuclideanJordanAlgebraSpace(
     _ProductInnerProductMixin,
     _ProductJordanMixin,
     ProductSpace,
@@ -597,7 +634,7 @@ class _ProductInnerProductStarJordanSpace(
 @jax_pytree_class
 class _ProductEuclideanJordanStarSpace(
     _ProductStarMixin,
-    ProductEuclideanJordanAlgebraSpace,
+    _ProductEuclideanJordanAlgebraSpace,
     StarSpace,
 ):
     """Product implementation for Euclidean-Jordan plus star capability."""
@@ -605,24 +642,21 @@ class _ProductEuclideanJordanStarSpace(
 
 _PRODUCT_REGISTRY.update({
     frozenset(): ProductSpace,
-    frozenset({_CAP_INNER}): ProductInnerProductSpace,
-    frozenset({_CAP_STAR}): ProductStarSpace,
-    frozenset({_CAP_JORDAN}): ProductJordanAlgebraSpace,
+    frozenset({_CAP_INNER}): _ProductInnerProductSpace,
+    frozenset({_CAP_STAR}): _ProductStarSpace,
+    frozenset({_CAP_JORDAN}): _ProductJordanAlgebraSpace,
     frozenset({_CAP_INNER, _CAP_STAR}): _ProductInnerProductStarSpace,
     frozenset({_CAP_INNER, _CAP_JORDAN}): _ProductInnerProductJordanSpace,
     frozenset({_CAP_STAR, _CAP_JORDAN}): _ProductStarJordanSpace,
     frozenset({_CAP_INNER, _CAP_STAR, _CAP_JORDAN}): _ProductInnerProductStarJordanSpace,
-    frozenset({_CAP_INNER, _CAP_JORDAN, _CAP_EUCLIDEAN_JORDAN}): ProductEuclideanJordanAlgebraSpace,
+    frozenset({_CAP_INNER, _CAP_JORDAN, _CAP_EUCLIDEAN_JORDAN}): _ProductEuclideanJordanAlgebraSpace,
     frozenset({_CAP_INNER, _CAP_STAR, _CAP_JORDAN, _CAP_EUCLIDEAN_JORDAN}): _ProductEuclideanJordanStarSpace,
 })
 
 
 __all__ = [
     "ProductSpace",
-    "ProductInnerProductSpace",
-    "ProductStarSpace",
-    "ProductJordanAlgebraSpace",
-    "ProductEuclideanJordanAlgebraSpace",
+    "ProductSpectralDecomposition",
     "_space_capabilities",
     "_product_capabilities",
 ]

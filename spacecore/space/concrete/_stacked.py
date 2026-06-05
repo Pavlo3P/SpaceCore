@@ -71,11 +71,22 @@ def _require_base(base: Space, capability: type, owner: str) -> None:
 
 @jax_pytree_class
 class StackedSpace(CoordinateSpace):
-    """Leading-axis copies of a coordinate leaf space.
+    """
+    Leading-axis copies of a coordinate leaf space.
 
     Baseline ``StackedSpace`` exposes only coordinate-space operations. Direct
     construction dispatches to a more specific class that preserves the base
     space's inner-product, star, Jordan, and Euclidean-Jordan capabilities.
+
+    Parameters
+    ----------
+    base : Space
+        Coordinate leaf space to repeat along a leading axis.
+    count : int
+        Number of leading-axis copies.
+    ctx : Context, str, or None, optional
+        Context specification. If omitted, the context is resolved from
+        ``base``.
     """
 
     def __new__(cls, base: Space, count: int, ctx: Context | str | None = None):
@@ -95,7 +106,7 @@ class StackedSpace(CoordinateSpace):
 
     def __eq__(self, other: Any) -> bool:
         """Return whether another stacked space has the same base and count."""
-        if type(other) is type(self):
+        if isinstance(other, StackedSpace):
             return self.ctx == other.ctx and self.count == other.count and self.base == other.base
         return False
 
@@ -151,7 +162,7 @@ class StackedSpace(CoordinateSpace):
 
     def _convert(self, new_ctx: Context) -> StackedSpace:
         """Convert the base space and rebuild the stacked space."""
-        return type(self)(self.base.convert(new_ctx), self.count, new_ctx)
+        return StackedSpace(self.base.convert(new_ctx), self.count, new_ctx)
 
     def stacked(self, count: int) -> StackedSpace:
         """Return a flattened stack of this stack: ``base.stacked(count * k)``."""
@@ -259,7 +270,7 @@ class _StackedJordanMixin:
 
 
 @jax_pytree_class
-class StackedInnerProductSpace(_StackedInnerProductMixin, StackedSpace, InnerProductSpace):
+class _StackedInnerProductSpace(_StackedInnerProductMixin, StackedSpace, InnerProductSpace):
     """Stacked space whose base supports an inner product."""
 
     def __init__(self, base, count, ctx=None):
@@ -269,7 +280,7 @@ class StackedInnerProductSpace(_StackedInnerProductMixin, StackedSpace, InnerPro
 
 
 @jax_pytree_class
-class StackedStarSpace(_StackedStarMixin, StackedSpace, StarSpace):
+class _StackedStarSpace(_StackedStarMixin, StackedSpace, StarSpace):
     """Stacked space whose base supports a star operation."""
 
     def __init__(self, base, count, ctx=None):
@@ -279,7 +290,7 @@ class StackedStarSpace(_StackedStarMixin, StackedSpace, StarSpace):
 
 
 @jax_pytree_class
-class StackedJordanAlgebraSpace(_StackedJordanMixin, StackedSpace, JordanAlgebraSpace):
+class _StackedJordanAlgebraSpace(_StackedJordanMixin, StackedSpace, JordanAlgebraSpace):
     """Stacked space whose base supports Jordan algebra operations."""
 
     def __init__(self, base, count, ctx=None):
@@ -289,7 +300,7 @@ class StackedJordanAlgebraSpace(_StackedJordanMixin, StackedSpace, JordanAlgebra
 
 
 @jax_pytree_class
-class StackedEuclideanJordanAlgebraSpace(
+class _StackedEuclideanJordanAlgebraSpace(
     _StackedInnerProductMixin,
     _StackedJordanMixin,
     StackedSpace,
@@ -352,7 +363,7 @@ class _StackedInnerProductStarJordanSpace(
 @jax_pytree_class
 class _StackedEuclideanJordanStarSpace(
     _StackedStarMixin,
-    StackedEuclideanJordanAlgebraSpace,
+    _StackedEuclideanJordanAlgebraSpace,
     StarSpace,
 ):
     """Stacked implementation for Euclidean-Jordan plus star capability."""
@@ -360,23 +371,19 @@ class _StackedEuclideanJordanStarSpace(
 
 _STACKED_REGISTRY.update({
     frozenset(): StackedSpace,
-    frozenset({_CAP_INNER}): StackedInnerProductSpace,
-    frozenset({_CAP_STAR}): StackedStarSpace,
-    frozenset({_CAP_JORDAN}): StackedJordanAlgebraSpace,
+    frozenset({_CAP_INNER}): _StackedInnerProductSpace,
+    frozenset({_CAP_STAR}): _StackedStarSpace,
+    frozenset({_CAP_JORDAN}): _StackedJordanAlgebraSpace,
     frozenset({_CAP_INNER, _CAP_STAR}): _StackedInnerProductStarSpace,
     frozenset({_CAP_INNER, _CAP_JORDAN}): _StackedInnerProductJordanSpace,
     frozenset({_CAP_STAR, _CAP_JORDAN}): _StackedStarJordanSpace,
     frozenset({_CAP_INNER, _CAP_STAR, _CAP_JORDAN}): _StackedInnerProductStarJordanSpace,
-    frozenset({_CAP_INNER, _CAP_JORDAN, _CAP_EUCLIDEAN_JORDAN}): StackedEuclideanJordanAlgebraSpace,
+    frozenset({_CAP_INNER, _CAP_JORDAN, _CAP_EUCLIDEAN_JORDAN}): _StackedEuclideanJordanAlgebraSpace,
     frozenset({_CAP_INNER, _CAP_STAR, _CAP_JORDAN, _CAP_EUCLIDEAN_JORDAN}): _StackedEuclideanJordanStarSpace,
 })
 
 
 __all__ = [
     "StackedSpace",
-    "StackedInnerProductSpace",
-    "StackedStarSpace",
-    "StackedJordanAlgebraSpace",
-    "StackedEuclideanJordanAlgebraSpace",
     "_stacked_capabilities",
 ]

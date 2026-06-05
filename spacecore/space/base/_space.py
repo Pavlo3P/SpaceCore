@@ -8,7 +8,14 @@ from ..checks import SpaceCheck, _run_checks
 
 
 class Space(ContextBound):
-    """General space capability: context ownership and membership checks."""
+    """
+    General space capability: context ownership and membership checks.
+
+    Parameters
+    ----------
+    ctx : Context, str, or None, optional
+        Context specification used for elements and validation checks.
+    """
 
     checks: ClassVar[tuple[SpaceCheck, ...]] = ()
 

@@ -239,7 +239,6 @@ def test_python_sum_starts_from_zero_and_accumulates_linops():
 
 
 def test_scaled_linop_uses_space_scale_for_vectors_and_complex_adjoint():
-    sc = importlib.import_module("spacecore")
     ctx = _ctx(dtype=np.complex128)
     A = _dense_linop(ctx)
     x, y = _xy(ctx)

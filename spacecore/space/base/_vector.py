@@ -7,7 +7,14 @@ from ._space import Space
 
 
 class VectorSpace(Space):
-    """Abstract vector-space capability: linear operations only."""
+    """
+    Abstract vector-space capability: linear operations only.
+
+    Parameters
+    ----------
+    ctx : Context, str, or None, optional
+        Context specification used for elements and validation checks.
+    """
 
     @abstractmethod
     def zeros(self) -> Any:

@@ -11,7 +11,19 @@ from ...types import DenseArray
 
 
 class DenseCoordinateSpace(CoordinateSpace, InnerProductSpace):
-    r"""Concrete dense backend arrays with arbitrary finite coordinate shape."""
+    r"""
+    Concrete dense backend arrays with arbitrary finite coordinate shape.
+
+    Parameters
+    ----------
+    shape : tuple of int
+        Canonical dense array shape for one element.
+    ctx : Context, str, or None, optional
+        Context specification used for dense arrays.
+    geometry : InnerProduct or None, optional
+        Inner-product geometry. If omitted, Euclidean coordinate geometry is
+        used.
+    """
 
     def __init__(
         self,
@@ -21,6 +33,7 @@ class DenseCoordinateSpace(CoordinateSpace, InnerProductSpace):
     ) -> None:
         super().__init__(tuple(shape), ctx)
         self.geometry: InnerProduct = geometry if geometry is not None else EuclideanInnerProduct()
+        self.geometry.validate_for(self)
         self._size = prod(self.shape)
         self._is_flat_shape = self.shape == (self._size,)
 
@@ -86,5 +99,4 @@ class DenseCoordinateSpace(CoordinateSpace, InnerProductSpace):
 
     def _convert(self, new_ctx: Context) -> DenseCoordinateSpace:
         """Convert this dense coordinate space to ``new_ctx`` without changing shape."""
-        return type(self)(self.shape, new_ctx, geometry=self.geometry.convert(new_ctx))
-
+        return DenseCoordinateSpace(self.shape, new_ctx, geometry=self.geometry.convert(new_ctx))

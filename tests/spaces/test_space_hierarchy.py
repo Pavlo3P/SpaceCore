@@ -104,7 +104,8 @@ def test_dense_vector_space_is_only_one_dimensional():
     assert isinstance(space, sc.CoordinateSpace)
     assert isinstance(space, sc.InnerProductSpace)
     assert isinstance(space, sc.StarSpace)
-    assert isinstance(space, sc.EuclideanJordanAlgebraSpace)
+    assert not isinstance(space, sc.JordanAlgebraSpace)
+    assert not hasattr(space, "jordan")
 
     with pytest.raises(ValueError, match="one-dimensional"):
         sc.DenseVectorSpace((2, 2), ctx)
@@ -133,9 +134,9 @@ def test_star_involution_and_conjugate_linearity():
     np.testing.assert_allclose(herm.star(herm.star(h)), h)
 
 
-def test_jordan_identity_for_dense_vectors_and_hermitian_space():
+def test_jordan_identity_for_elementwise_and_hermitian_space():
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
-    vector = sc.DenseVectorSpace((3,), ctx)
+    vector = sc.ElementwiseJordanSpace((3,), ctx)
     x = ctx.asarray([1.0, 2.0, -1.0])
     y = ctx.asarray([0.5, -3.0, 4.0])
     z = ctx.asarray([2.0, 1.0, 0.25])
@@ -186,7 +187,7 @@ def test_product_space_baseline_and_specialized_capabilities():
     assert not isinstance(base_product, sc.JordanAlgebraSpace)
 
     inner_product = sc.ProductSpace((sc.DenseCoordinateSpace((2,), ctx), sc.DenseCoordinateSpace((1,), ctx)), ctx)
-    assert isinstance(inner_product, sc.ProductInnerProductSpace)
+    assert isinstance(inner_product, sc.ProductSpace)
     assert isinstance(inner_product, sc.InnerProductSpace)
     assert not isinstance(inner_product, sc.JordanAlgebraSpace)
 
@@ -194,10 +195,8 @@ def test_product_space_baseline_and_specialized_capabilities():
     assert isinstance(jordan_product, sc.StarSpace)
     assert isinstance(jordan_product, sc.EuclideanJordanAlgebraSpace)
 
-    with pytest.raises(TypeError, match="StarSpace"):
-        sc.ProductStarSpace((sc.DenseCoordinateSpace((1,), ctx),), ctx)
-    with pytest.raises(TypeError, match="EuclideanJordanAlgebraSpace"):
-        sc.ProductEuclideanJordanAlgebraSpace((sc.DenseCoordinateSpace((1,), ctx),), ctx)
+    assert not hasattr(sc, "ProductStarSpace")
+    assert not hasattr(sc, "ProductEuclideanJordanAlgebraSpace")
 
 
 def test_stacked_space_capability_dispatch_matches_base():
@@ -209,7 +208,7 @@ def test_stacked_space_capability_dispatch_matches_base():
     assert not isinstance(coordinate, sc.InnerProductSpace)
 
     inner = sc.DenseCoordinateSpace((2,), ctx).stacked(2)
-    assert isinstance(inner, sc.StackedInnerProductSpace)
+    assert isinstance(inner, sc.StackedSpace)
     assert isinstance(inner, sc.InnerProductSpace)
     assert not isinstance(inner, sc.JordanAlgebraSpace)
     np.testing.assert_allclose(inner.inner(ctx.asarray([[1.0, 2.0], [3.0, 4.0]]), ctx.asarray([[5.0, 6.0], [7.0, 8.0]])), 70.0)
@@ -241,13 +240,25 @@ def test_elementwise_jordan_geometry_compatibility_real_complex_and_weighted():
         x = ctx.asarray([1.0, 2.0])
         y = ctx.asarray([3.0, -1.0])
         z = ctx.asarray([0.5, 4.0])
-        np.testing.assert_allclose(space.inner(space.jordan(x, y), z), space.inner(y, space.jordan(x, z)))
+        if not ctx.ops.is_complex_dtype(ctx.dtype):
+            assert isinstance(space, sc.EuclideanJordanAlgebraSpace)
+            np.testing.assert_allclose(
+                space.inner(space.jordan(x, y), z),
+                space.inner(y, space.jordan(x, z)),
+            )
+        else:
+            assert not isinstance(space, sc.EuclideanJordanAlgebraSpace)
 
     weights = real_ctx.asarray([2.0, 3.0])
-    with pytest.raises(TypeError, match="EuclideanInnerProduct"):
-        sc.ElementwiseJordanSpace((2,), real_ctx, geometry=sc.WeightedInnerProduct(weights))
-    with pytest.raises(TypeError, match="EuclideanInnerProduct"):
-        sc.DenseVectorSpace((2,), real_ctx, geometry=sc.WeightedInnerProduct(weights))
+    weighted_elementwise = sc.ElementwiseJordanSpace(
+        (2,),
+        real_ctx,
+        geometry=sc.WeightedInnerProduct(weights),
+    )
+    weighted_vector = sc.DenseVectorSpace((2,), real_ctx, geometry=sc.WeightedInnerProduct(weights))
+    assert isinstance(weighted_elementwise, sc.JordanAlgebraSpace)
+    assert not isinstance(weighted_elementwise, sc.EuclideanJordanAlgebraSpace)
+    assert not isinstance(weighted_vector, sc.JordanAlgebraSpace)
 
     weighted = sc.DenseCoordinateSpace((2,), real_ctx, geometry=sc.WeightedInnerProduct(weights))
     assert not isinstance(weighted, sc.JordanAlgebraSpace)
@@ -266,6 +277,8 @@ def test_no_repository_examples_instantiate_abstract_vector_space():
         files = [path] if path.is_file() else list(path.rglob("*.py")) + list(path.rglob("*.rst")) + list(path.rglob("*.md"))
         for file in files:
             if file == Path(__file__).resolve():
+                continue
+            if file.name in {"CHANGELOG.md", "release_notes.rst"}:
                 continue
             text = file.read_text(encoding="utf-8")
             if pattern.search(text):
@@ -505,14 +518,12 @@ def test_constructor_validation_is_early_and_clear():
 
     with pytest.raises(TypeError, match="component 0 is FiniteSetSpace"):
         sc.ProductSpace((FiniteSetSpace({"a"}, ctx),), ctx)
-    with pytest.raises(TypeError, match="component 0 is DenseCoordinateSpace"):
-        sc.ProductStarSpace((sc.DenseCoordinateSpace((1,), ctx),), ctx)
     with pytest.raises(TypeError, match="base is FiniteSetSpace"):
         sc.StackedSpace(FiniteSetSpace({"a"}, ctx), 1, ctx)
-    with pytest.raises(TypeError, match="base is DenseCoordinateSpace"):
-        sc.StackedStarSpace(sc.DenseCoordinateSpace((1,), ctx), 1, ctx)
     with pytest.raises(ValueError, match="nonnegative"):
         sc.StackedSpace(PairCoordinateSpace(ctx), -1, ctx)
+    assert not hasattr(sc, "ProductStarSpace")
+    assert not hasattr(sc, "StackedStarSpace")
 
 
 def test_no_space_apply_method_or_old_module_paths_remain():

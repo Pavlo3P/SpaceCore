@@ -13,7 +13,8 @@ if has_jax():
 
     _register_pytree = jax.tree_util.register_pytree_node_class
 else:
-    _register_pytree = lambda cls: cls
+    def _register_pytree(cls):
+        return cls
 
 
 @_register_pytree

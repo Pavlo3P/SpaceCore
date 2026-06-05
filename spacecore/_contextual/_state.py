@@ -6,13 +6,16 @@ from warnings import warn
 from ..types import DType
 from ..backend._family import BackendFamily
 from ..backend._ops import BackendOps
-from ..backend.jax import JaxOps
 from ..backend.numpy import NumpyOps
 from ._policies import (
     ContextConflictError,
     ContextInferenceError,
     UnknownBackendError,
 )
+try:
+    from ..backend.jax import JaxOps
+except ImportError:
+    pass
 try:
     from ..backend.cupy import CuPyOps
 except ImportError:
@@ -51,8 +54,9 @@ class Contextual:
 
         self._available_ops = {
             self._backend_key(NumpyOps): NumpyOps,
-            self._backend_key(JaxOps): JaxOps,
         }
+        if "JaxOps" in globals():
+            self._available_ops[self._backend_key(JaxOps)] = JaxOps
         if "CuPyOps" in globals():
             self._available_ops[self._backend_key(CuPyOps)] = CuPyOps
         if "TorchOps" in globals():
@@ -263,13 +267,31 @@ def set_context(
         dtype: Any = None,
         enable_checks: bool | None = None
 ) -> None:
-    """Set the process-wide default SpaceCore context."""
+    """
+    Set the process-wide default SpaceCore context.
+
+    Parameters
+    ----------
+    ctx : Context, BackendFamily, str, or None, optional
+        Context or backend specification.
+    dtype : Any, optional
+        Default dtype override.
+    enable_checks : bool or None, optional
+        Validation-check policy override.
+    """
     state = _state()
     state.default_ctx = state.normalize_context(ctx, dtype=dtype, enable_checks=enable_checks)
 
 
 def get_context() -> Context:
-    """Return the current process-wide default SpaceCore context."""
+    """
+    Return the current process-wide default SpaceCore context.
+
+    Returns
+    -------
+    Context
+        Active process-wide default context.
+    """
     return _state().default_ctx
 
 
@@ -277,12 +299,38 @@ def resolve_context_priority(
         priority_ctx: Context | BackendFamily | str | None = None,
         *other_ctx: object,
 ) -> Context:
-    """Resolve the context assigned to a newly created object."""
+    """
+    Resolve the context assigned to a newly created object.
+
+    Parameters
+    ----------
+    priority_ctx : Context, BackendFamily, str, or None, optional
+        Explicit context that takes precedence when provided.
+    *other_ctx : object
+        Objects or contexts used as fallback context sources.
+
+    Returns
+    -------
+    Context
+        Resolved context.
+    """
     return _state().resolve_context_priority(priority_ctx, *other_ctx)
 
 
 def register_ops(ops: type[BackendOps]) -> type[BackendOps]:
-    """Register a backend operations implementation."""
+    """
+    Register a backend operations implementation.
+
+    Parameters
+    ----------
+    ops : type of BackendOps
+        Backend operations class to register.
+
+    Returns
+    -------
+    type of BackendOps
+        Registered backend operations class.
+    """
     return _state().register_ops(ops)
 
 
@@ -291,14 +339,42 @@ def normalize_context(
     dtype: Any = None,
     enable_checks: bool | None = None,
 ) -> Context:
-    """Normalize a context specification through the process-wide state."""
+    """
+    Normalize a context specification through the process-wide state.
+
+    Parameters
+    ----------
+    ctx : Context, BackendFamily, str, or None, optional
+        Context or backend specification.
+    dtype : Any, optional
+        Default dtype override.
+    enable_checks : bool or None, optional
+        Validation-check policy override.
+
+    Returns
+    -------
+    Context
+        Normalized context.
+    """
     return _state().normalize_context(ctx, dtype=dtype, enable_checks=enable_checks)
 
 
 def normalize_ops(
     ops: str | BackendFamily | BackendOps | type[BackendOps] | Context
 ) -> BackendOps:
-    """Normalize backend operations through the process-wide state."""
+    """
+    Normalize backend operations through the process-wide state.
+
+    Parameters
+    ----------
+    ops : str, BackendFamily, BackendOps, type of BackendOps, or Context
+        Backend operations specification.
+
+    Returns
+    -------
+    BackendOps
+        Normalized backend operations singleton.
+    """
     if isinstance(ops, BackendOps):
         return ops
     return _state().get_ops(ops)

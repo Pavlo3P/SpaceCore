@@ -10,7 +10,16 @@ from ._vector import VectorSpace
 
 
 class CoordinateSpace(VectorSpace):
-    """Finite coordinate vector space capability."""
+    """
+    Finite coordinate vector space capability.
+
+    Parameters
+    ----------
+    shape : tuple of int
+        Canonical coordinate shape for one element of the space.
+    ctx : Context, str, or None, optional
+        Context specification used for coordinate arrays.
+    """
 
     shape: Tuple[int, ...]
 

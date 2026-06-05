@@ -1,14 +1,12 @@
 """Backend-agnostic vector spaces, linear operators, and solvers."""
 
-from importlib.metadata import version as _version
+from ._version import __version__
 
+from .backend import Context, BackendOps, NumpyOps, jax_pytree_class
 try:
-    __version__ = _version("spacecore")
-except Exception:
-    __version__ = "0.0.0+unknown"
-
-
-from .backend import Context, BackendOps, JaxOps, NumpyOps, jax_pytree_class
+    from .backend import JaxOps as JaxOps
+except ImportError:
+    pass
 try:
     from .backend import CuPyOps as CuPyOps
 except ImportError:
@@ -66,22 +64,16 @@ from .space import (
     DenseCoordinateSpace,
     DenseVectorSpace,
     ElementwiseJordanSpace,
+    EuclideanElementwiseJordanSpace,
     EuclideanJordanAlgebraSpace,
     InnerProductSpace,
     JordanAlgebraSpace,
-    ProductEuclideanJordanAlgebraSpace,
-    ProductInnerProductSpace,
-    ProductJordanAlgebraSpace,
     ProductSpace,
-    ProductStarSpace,
+    ProductSpectralDecomposition,
     ProductStructure,
     ProductStructureCheck,
     PytreeStructure,
-    StackedEuclideanJordanAlgebraSpace,
-    StackedInnerProductSpace,
-    StackedJordanAlgebraSpace,
     StackedSpace,
-    StackedStarSpace,
     ShapeCheck,
     InnerProduct,
     EuclideanInnerProduct,
@@ -107,6 +99,7 @@ from ._contextual import (
 )
 
 __all__ = [
+    "__version__",
     "Context",
 
     "BackendOps",
@@ -174,15 +167,9 @@ __all__ = [
     "EuclideanJordanAlgebraSpace",
     "DenseCoordinateSpace",
     "DenseVectorSpace",
-    "StackedEuclideanJordanAlgebraSpace",
-    "StackedJordanAlgebraSpace",
-    "StackedStarSpace",
-    "StackedInnerProductSpace",
-    "ProductEuclideanJordanAlgebraSpace",
-    "ProductJordanAlgebraSpace",
-    "ProductStarSpace",
-    "ProductInnerProductSpace",
     "ElementwiseJordanSpace",
+    "EuclideanElementwiseJordanSpace",
+    "ProductSpectralDecomposition",
     "Space",
     "SpaceCheck",
     "SpaceValidationError",

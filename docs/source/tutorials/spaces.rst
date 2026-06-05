@@ -7,8 +7,11 @@ the abstraction for the geometry of admissible numerical objects.
 Current implemented concrete spaces are:
 
 * ``DenseCoordinateSpace`` for dense arrays with an inner product;
-* ``ElementwiseJordanSpace`` and ``DenseVectorSpace`` for Euclidean dense arrays
-  with elementwise star, Jordan, and spectral operations;
+* ``DenseVectorSpace`` for plain one-dimensional dense vectors with star;
+* ``ElementwiseJordanSpace`` for dense arrays with elementwise star, Jordan, and
+  spectral operations;
+* ``EuclideanElementwiseJordanSpace`` for real Euclidean elementwise Jordan
+  algebras;
 * ``HermitianSpace`` for Hermitian or symmetric matrices;
 * ``ProductSpace`` for Cartesian products of spaces;
 * ``StackedSpace`` for repeated copies of a leaf space.
@@ -129,16 +132,15 @@ calculus:
    z = J.jordan(x, y)      # coordinatewise product
    s = J.spectrum(x)       # x itself for the elementwise algebra
 
-Elementwise Jordan operations are compatible only with Euclidean inner-product
-geometry. Passing a non-Euclidean geometry such as ``WeightedInnerProduct`` to
-``ElementwiseJordanSpace`` or ``DenseVectorSpace`` raises ``TypeError``. Use
-``DenseCoordinateSpace`` when weighted or otherwise non-Euclidean inner products
-matter but star/Jordan operations are not required.
+``ElementwiseJordanSpace`` may be real or complex, and may use valid custom
+inner products. It advertises ``EuclideanJordanAlgebraSpace`` only when the
+context dtype is real and the geometry is ``EuclideanInnerProduct``; complex or
+weighted elementwise spaces keep only the plain Jordan capability.
 
-``DenseVectorSpace`` is a backward-compatible one-dimensional alias for the
-same Euclidean elementwise Jordan capability. New code should prefer
-``DenseCoordinateSpace`` for generic vectors and ``ElementwiseJordanSpace`` when
-it needs elementwise algebra explicitly.
+``DenseVectorSpace`` is a plain one-dimensional dense vector space with star and
+no Jordan capability by default. Use ``DenseCoordinateSpace`` for generic dense
+arrays, ``DenseVectorSpace`` for plain vectors, and ``ElementwiseJordanSpace``
+when coordinatewise Jordan algebra is required.
 
 HermitianSpace
 --------------
@@ -218,14 +220,10 @@ Addition, scaling, and supported capability methods are componentwise:
    =
    (x_1+y_1,\dots,x_k+y_k).
 
-When constructed through ``ProductSpace(...)``, SpaceCore returns the most
-specific product subclass supported by all components:
-
-* ``ProductInnerProductSpace`` when every component has an inner product;
-* ``ProductStarSpace`` when every component has a star operation;
-* ``ProductJordanAlgebraSpace`` when every component has Jordan operations;
-* ``ProductEuclideanJordanAlgebraSpace`` when every component is a Euclidean
-  Jordan algebra and has a star operation.
+When constructed through ``ProductSpace(...)``, SpaceCore returns an internal
+implementation class with the capabilities supported by all components: inner
+product, star, Jordan, and Euclidean-Jordan operations are available exactly
+when every component supports them.
 
 If any component lacks a capability, the resulting product does not advertise
 that capability. This keeps ``isinstance`` checks truthful.
@@ -291,9 +289,8 @@ StackedSpace
 ------------
 
 ``StackedSpace(base, count)`` represents ``count`` independent copies of a leaf
-space stacked on a leading axis. Like products, construction returns the most
-specific stacked subclass supported by the base space, for example
-``StackedInnerProductSpace`` or ``StackedEuclideanJordanAlgebraSpace``.
+space stacked on a leading axis. Like products, construction returns an
+internal implementation class preserving the base space capabilities.
 
 For product spaces, call ``ProductSpace(...).stacked(count)``. This stacks each
 component instead of wrapping the product as a single leaf.

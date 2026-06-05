@@ -2,26 +2,40 @@ from __future__ import annotations
 
 from typing import Any, Callable, Tuple
 
-from ..base import EuclideanInnerProduct, EuclideanJordanAlgebraSpace, InnerProduct, StarSpace
+from ..base import (
+    EuclideanInnerProduct,
+    EuclideanJordanAlgebraSpace,
+    InnerProduct,
+    JordanAlgebraSpace,
+    StarSpace,
+)
 from ..._checks import checked_method
+from ..._contextual import normalize_context
 from ...backend import Context
 from ...types import DenseArray
 from ._dense_coordinate import DenseCoordinateSpace
 
 
-def _require_elementwise_jordan_geometry(geometry: InnerProduct | None) -> InnerProduct | None:
-    if geometry is None:
-        return None
-    if type(geometry) is EuclideanInnerProduct:
-        return geometry
-    raise TypeError(
-        "ElementwiseJordanSpace requires EuclideanInnerProduct; "
-        f"got {type(geometry).__name__}. Use DenseCoordinateSpace for generic or weighted coordinates."
-    )
+def _is_real_euclidean(ctx: Context, geometry: InnerProduct | None) -> bool:
+    """Return whether elementwise coordinates have Euclidean-Jordan geometry."""
+    geometry = EuclideanInnerProduct() if geometry is None else geometry
+    return not ctx.ops.is_complex_dtype(ctx.dtype) and type(geometry) is EuclideanInnerProduct
 
 
-class ElementwiseJordanSpace(DenseCoordinateSpace, StarSpace, EuclideanJordanAlgebraSpace):
-    """Dense coordinate space with elementwise star and Jordan product."""
+class DenseVectorSpace(DenseCoordinateSpace, StarSpace):
+    """
+    Plain one-dimensional dense vectors with no Jordan capability by default.
+
+    Parameters
+    ----------
+    shape : tuple of int
+        One-dimensional dense vector shape.
+    ctx : Context, str, or None, optional
+        Context specification used for dense arrays.
+    geometry : InnerProduct or None, optional
+        Inner-product geometry. If omitted, Euclidean coordinate geometry is
+        used.
+    """
 
     def __init__(
         self,
@@ -29,7 +43,54 @@ class ElementwiseJordanSpace(DenseCoordinateSpace, StarSpace, EuclideanJordanAlg
         ctx: Context | str | None = None,
         geometry: InnerProduct | None = None,
     ) -> None:
-        super().__init__(shape, ctx, geometry=_require_elementwise_jordan_geometry(geometry))
+        shape = tuple(shape)
+        if len(shape) != 1:
+            raise ValueError(f"DenseVectorSpace requires one-dimensional shape, got {shape}.")
+        super().__init__(shape, ctx, geometry=geometry)
+
+    @checked_method(in_space="self")
+    def star(self, x: DenseArray) -> DenseArray:
+        """Return elementwise conjugation."""
+        return self.ops.conj(x)
+
+    def _convert(self, new_ctx: Context) -> DenseVectorSpace:
+        return DenseVectorSpace(self.shape, new_ctx, geometry=self.geometry.convert(new_ctx))
+
+
+class ElementwiseJordanSpace(JordanAlgebraSpace, DenseCoordinateSpace, StarSpace):
+    """
+    Elementwise Jordan algebra for real or complex dense coordinates.
+
+    Parameters
+    ----------
+    shape : tuple of int
+        Canonical dense array shape for one element.
+    ctx : Context, str, or None, optional
+        Context specification used for dense arrays.
+    geometry : InnerProduct or None, optional
+        Inner-product geometry. If omitted, Euclidean coordinate geometry is
+        used.
+    """
+
+    def __new__(
+        cls,
+        shape: Tuple[int, ...],
+        ctx: Context | str | None = None,
+        geometry: InnerProduct | None = None,
+    ):
+        if cls is ElementwiseJordanSpace:
+            resolved_ctx = normalize_context(ctx)
+            if _is_real_euclidean(resolved_ctx, geometry):
+                cls = EuclideanElementwiseJordanSpace
+        return super(ElementwiseJordanSpace, cls).__new__(cls)
+
+    def __init__(
+        self,
+        shape: Tuple[int, ...],
+        ctx: Context | str | None = None,
+        geometry: InnerProduct | None = None,
+    ) -> None:
+        DenseCoordinateSpace.__init__(self, shape, ctx, geometry=geometry)
 
     @checked_method(in_space="self")
     def star(self, x: DenseArray) -> DenseArray:
@@ -56,7 +117,7 @@ class ElementwiseJordanSpace(DenseCoordinateSpace, StarSpace, EuclideanJordanAlg
         self._check_unbatched_member(x)
         return x, None
 
-    def from_spectrum(self, eigvals: DenseArray, frame: Any) -> DenseArray:
+    def from_spectrum(self, eigvals: DenseArray, frame: Any = None) -> DenseArray:
         """Reconstruct an elementwise Jordan element from its spectrum."""
         if frame is not None:
             raise ValueError(f"{type(self).__name__}.from_spectrum expects frame=None.")
@@ -78,24 +139,21 @@ class ElementwiseJordanSpace(DenseCoordinateSpace, StarSpace, EuclideanJordanAlg
         """Apply a scalar function coordinatewise."""
         return self._apply_entrywise(x, f)
 
-
     def _convert(self, new_ctx: Context) -> ElementwiseJordanSpace:
-        return type(self)(self.shape, new_ctx, geometry=self.geometry.convert(new_ctx))
+        return ElementwiseJordanSpace(self.shape, new_ctx, geometry=self.geometry.convert(new_ctx))
 
 
-class DenseVectorSpace(ElementwiseJordanSpace):
-    r"""Concrete one-dimensional dense vectors with Euclidean elementwise Jordan structure."""
+class EuclideanElementwiseJordanSpace(ElementwiseJordanSpace, EuclideanJordanAlgebraSpace):
+    """
+    Real elementwise Euclidean Jordan algebra.
 
-    def __init__(
-        self,
-        shape: Tuple[int, ...],
-        ctx: Context | str | None = None,
-        geometry: InnerProduct | None = None,
-    ) -> None:
-        shape = tuple(shape)
-        if len(shape) != 1:
-            raise ValueError(f"DenseVectorSpace requires one-dimensional shape, got {shape}.")
-        super().__init__(shape, ctx, geometry=geometry)
-
-    def _convert(self, new_ctx: Context) -> DenseVectorSpace:
-        return DenseVectorSpace(self.shape, new_ctx, geometry=self.geometry.convert(new_ctx))
+    Parameters
+    ----------
+    shape : tuple of int
+        Canonical dense array shape for one element.
+    ctx : Context, str, or None, optional
+        Context specification used for dense arrays.
+    geometry : InnerProduct or None, optional
+        Inner-product geometry. This class is selected only for real contexts
+        with Euclidean coordinate geometry.
+    """

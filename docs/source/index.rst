@@ -158,7 +158,9 @@ that needs this resolution step directly can call
 A ``Space`` describes the structure and geometry of values:
 
 * ``DenseCoordinateSpace`` for dense arrays with Euclidean, weighted, or custom inner-product geometry;
-* ``ElementwiseJordanSpace`` for dense arrays with Euclidean elementwise star, Jordan, and spectral operations;
+* ``DenseVectorSpace`` for plain one-dimensional dense vectors with star and no Jordan capability by default;
+* ``ElementwiseJordanSpace`` for real or complex dense arrays with elementwise star, Jordan, and spectral operations;
+* ``EuclideanElementwiseJordanSpace`` for real Euclidean elementwise Jordan algebras;
 * ``HermitianSpace`` for Hermitian or symmetric matrices;
 * ``ProductSpace`` for Cartesian products of spaces;
 * ``StackedSpace`` for repeated copies of a leaf space.

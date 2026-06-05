@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 import sys
-import tomllib
 from datetime import date
 from pathlib import Path
 
@@ -11,9 +10,9 @@ sys.path.insert(0, os.path.abspath("../.."))
 project = "SpaceCore"
 author = "Pavlo Pelikh"
 copyright = f"{date.today().year}, {author}"
-release = tomllib.loads((Path(__file__).resolve().parents[2] / "pyproject.toml").read_text())[
-    "project"
-]["version"]
+version_ns: dict[str, str] = {}
+exec((Path(__file__).resolve().parents[2] / "spacecore" / "_version.py").read_text(), version_ns)
+release = version_ns["__version__"]
 
 extensions = [
     "sphinx.ext.autodoc",
@@ -38,6 +37,7 @@ autodoc_default_options = {
     "show-inheritance": True,
     "exclude-members": (
             "tree_flatten, tree_unflatten, "
+            "ctx, ops, dtype, enable_checks, representer, A, parts, n, "
             "__dict__, __weakref__, __module__"
         ),
 }

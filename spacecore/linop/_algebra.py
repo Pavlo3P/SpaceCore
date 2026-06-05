@@ -760,6 +760,13 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
         Optional callable with signature ``rvapply(ys: Any) -> Any`` for
         batched adjoint application. If omitted, backend ``vmap`` fallback is
         used.
+    _uses_coordinate_adjoint : bool, optional
+        Internal flag indicating whether the stored adjoint callable is a
+        Euclidean coordinate adjoint that should be adapted with Riesz maps.
+    _coordinate_rapply_fn : callable or None, optional
+        Internal coordinate-adjoint callable used by conversion.
+    _coordinate_rvapply_fn : callable or None, optional
+        Internal batched coordinate-adjoint callable used by conversion.
 
     Returns
     -------

@@ -81,4 +81,8 @@ def test_top_level_objects_match_source_modules():
 def test_package_version_matches_project_metadata():
     sc = importlib.import_module("spacecore")
     metadata = tomllib.loads((ROOT / "pyproject.toml").read_text())
-    assert sc.__version__ == metadata["project"]["version"]
+    assert metadata["project"]["dynamic"] == ["version"]
+    assert metadata["tool"]["setuptools"]["dynamic"]["version"]["attr"] == (
+        "spacecore._version.__version__"
+    )
+    assert sc.__version__ == "0.3.0"

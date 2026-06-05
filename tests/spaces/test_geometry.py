@@ -100,6 +100,47 @@ def test_weighted_inner_product_geometry_is_shipped_and_converts():
     assert converted == sc.WeightedInnerProduct(new_ctx.asarray([2.0, 3.0]))
 
 
+def test_weighted_inner_product_validation_rejects_invalid_weights():
+    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    complex_ctx = sc.Context(sc.NumpyOps(), dtype=np.complex128)
+    cases = [
+        (ctx, ctx.asarray([1.0, -1.0]), "strictly positive"),
+        (ctx, ctx.asarray([1.0, 0.0]), "strictly positive"),
+        (complex_ctx, complex_ctx.asarray([1.0 + 1.0j, 2.0 + 0.0j]), "real-valued"),
+        (ctx, ctx.asarray([1.0, np.inf]), "finite"),
+        (ctx, ctx.asarray([1.0, np.nan]), "finite"),
+        (ctx, ctx.asarray([[1.0, 2.0]]), "coordinate shape"),
+        (ctx, ctx.asarray([1.0, 2.0, 3.0]), "coordinate shape"),
+    ]
+
+    for space_ctx, weights, message in cases:
+        with np.testing.assert_raises_regex((TypeError, ValueError), message):
+            sc.DenseCoordinateSpace((2,), space_ctx, geometry=sc.WeightedInnerProduct(weights))
+
+    with np.testing.assert_raises_regex(TypeError, "context dtype"):
+        sc.DenseCoordinateSpace(
+            (2,),
+            complex_ctx,
+            geometry=sc.WeightedInnerProduct(ctx.asarray([1.0, 2.0])),
+        )
+
+
+def test_weighted_inner_product_validation_accepts_valid_weights_after_conversion():
+    src = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    dst = sc.Context(sc.NumpyOps(), dtype=np.float32)
+    space = sc.DenseVectorSpace(
+        (2,),
+        src,
+        geometry=sc.WeightedInnerProduct(src.asarray([2.0, 3.0])),
+    )
+
+    converted = space.convert(dst)
+
+    assert isinstance(converted.geometry, sc.WeightedInnerProduct)
+    assert converted.ctx == dst
+    assert converted.geometry.weights.dtype == dst.dtype
+
+
 def test_space_equality_includes_geometry():
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)

@@ -3,9 +3,6 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Any
 
-from .cost_model import classify_gap
-
-
 def dominant_component(components: list[dict[str, float]]) -> str:
     visible = [c for c in components if c["name"] != "amortized_per_element"]
     if not visible:

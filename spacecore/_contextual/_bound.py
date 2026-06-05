@@ -16,7 +16,15 @@ def _same_math_context(left: Context, right: Context) -> bool:
 
 
 class ContextBound(ABC):
-    """Base class for objects bound to a SpaceCore execution context."""
+    """
+    Base class for objects bound to a SpaceCore execution context.
+
+    Parameters
+    ----------
+    ctx : Context, str, or None, optional
+        Context specification used to resolve backend operations, dtype, and
+        validation policy.
+    """
 
     def __init__(self, ctx: Context | str | None = None):
         ctx = normalize_context(ctx)

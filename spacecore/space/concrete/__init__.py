@@ -1,34 +1,16 @@
 from ._dense_coordinate import DenseCoordinateSpace
-from ._dense_vector import DenseVectorSpace, ElementwiseJordanSpace
+from ._dense_vector import DenseVectorSpace, ElementwiseJordanSpace, EuclideanElementwiseJordanSpace
 from ._hermitian import HermitianSpace
-from ._product import (
-    ProductEuclideanJordanAlgebraSpace,
-    ProductInnerProductSpace,
-    ProductJordanAlgebraSpace,
-    ProductSpace,
-    ProductStarSpace,
-)
-from ._stacked import (
-    StackedEuclideanJordanAlgebraSpace,
-    StackedInnerProductSpace,
-    StackedJordanAlgebraSpace,
-    StackedSpace,
-    StackedStarSpace,
-)
+from ._product import ProductSpace, ProductSpectralDecomposition
+from ._stacked import StackedSpace
 
 __all__ = [
     "DenseCoordinateSpace",
     "ElementwiseJordanSpace",
+    "EuclideanElementwiseJordanSpace",
     "DenseVectorSpace",
     "HermitianSpace",
     "ProductSpace",
-    "ProductInnerProductSpace",
-    "ProductStarSpace",
-    "ProductJordanAlgebraSpace",
-    "ProductEuclideanJordanAlgebraSpace",
+    "ProductSpectralDecomposition",
     "StackedSpace",
-    "StackedInnerProductSpace",
-    "StackedStarSpace",
-    "StackedJordanAlgebraSpace",
-    "StackedEuclideanJordanAlgebraSpace",
 ]

@@ -162,7 +162,7 @@ This operator works on NumPy, JAX, and PyTorch backends without modification.
 
 ## Features at a glance
 
-**Spaces.** `DenseCoordinateSpace`, `ElementwiseJordanSpace`, `HermitianSpace`, `ProductSpace`, and `StackedSpace`. Generic dense spaces can use custom inner products; elementwise Jordan spaces keep star/Jordan/spectral capabilities Euclidean.
+**Spaces.** `DenseCoordinateSpace`, `DenseVectorSpace`, `ElementwiseJordanSpace`, `EuclideanElementwiseJordanSpace`, `HermitianSpace`, `ProductSpace`, and `StackedSpace`. Generic dense spaces can use custom inner products; `DenseVectorSpace` has no Jordan capability by default; real Euclidean elementwise spaces get the Euclidean-Jordan capability.
 
 **Linear operators.** `DenseLinOp`, `SparseLinOp`, `DiagonalLinOp`, `MatrixFreeLinOp`, plus operator algebra (`A @ B`, `A + B`, `2 * A`, `A.H`, `IdentityLinOp`, `ZeroLinOp`).
 
@@ -174,7 +174,7 @@ This operator works on NumPy, JAX, and PyTorch backends without modification.
 
 ## Project status
 
-**v0.2 alpha.** API may still change in minor ways. Core abstractions are stable. Suitable for research code; not yet recommended for production deployment.
+**v0.3 alpha.** API may still change in minor ways. Core abstractions are stable. Suitable for research code; not yet recommended for production deployment.
 
 The library is being developed in the open and is looking for early users and feedback. If you try it on your problem, please open an issue with what worked and what didn't — that's the single most valuable contribution right now.
 

@@ -89,15 +89,18 @@ def _action_from_quadratic_form(q: QuadraticForm) -> _SelfAdjointAction:
     """Normalize a quadratic form into its Hessian action."""
     hess_quad = getattr(q, "hess_quad", None)
     if callable(hess_quad):
-        rayleigh = lambda x, y: q.ops.real(hess_quad(x, Hx=y))
+        def rayleigh(x, y):
+            return q.ops.real(hess_quad(x, Hx=y))
     else:
-        rayleigh = lambda x, y: q.ops.real(q.domain.inner(x, y))
+        def rayleigh(x, y):
+            return q.ops.real(q.domain.inner(x, y))
 
     hess_residual_norm = getattr(q, "hess_residual_norm", None)
     if callable(hess_residual_norm):
         residual_norm = hess_residual_norm
     else:
-        residual_norm = lambda x, y, eigenvalue: q.domain.norm(q.domain.axpy(-eigenvalue, x, y))
+        def residual_norm(x, y, eigenvalue):
+            return q.domain.norm(q.domain.axpy(-eigenvalue, x, y))
 
     return _SelfAdjointAction(q.hess_apply, q.domain, q.ctx, rayleigh, residual_norm)
 
