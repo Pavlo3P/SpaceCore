@@ -29,6 +29,8 @@ def checked_method(
     out_space: str | None = None,
     arg_pos: int | None = None,
     arg_positions: int | tuple[int, ...] | None = None,
+    in_batched: bool = False,
+    out_batched: bool = False,
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """
     Build a decorator that validates method inputs and outputs against spaces.
@@ -48,6 +50,10 @@ def checked_method(
     arg_positions : int, tuple of int, or None, optional
         Zero-based positions in ``*args`` of input values that should be checked
         against ``in_space``. Defaults to ``(0,)``.
+    in_batched : bool, optional
+        Validate inputs as leading-axis batches instead of single elements.
+    out_batched : bool, optional
+        Validate outputs as leading-axis batches instead of single elements.
 
     Returns
     -------
@@ -64,12 +70,23 @@ def checked_method(
             if self._enable_checks and in_space is not None:
                 check_target = _space_target(self, in_space)
                 for pos in positions:
-                    check_target._check_member(args[pos])
+                    if in_batched:
+                        from ._batching import _check_batched
+
+                        _check_batched(check_target, args[pos])
+                    else:
+                        check_target._check_member(args[pos])
 
             y = method(self, *args, **kwargs)
 
             if self._enable_checks and out_space is not None:
-                _space_target(self, out_space)._check_member(y)
+                check_target = _space_target(self, out_space)
+                if out_batched:
+                    from ._batching import _check_batched
+
+                    _check_batched(check_target, y)
+                else:
+                    check_target._check_member(y)
 
             return y
 

@@ -5,6 +5,81 @@ All notable changes to SpaceCore are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.3.0]
+
+SpaceCore 0.3.0 is a breaking release for the unstable `0.x` series. Space
+capabilities are now derived from actual structure, dtype, and inner product,
+and conversions rebuild spaces through public factories so stale capabilities
+are not retained.
+
+### Migration
+
+| 0.2.x | 0.3.0 |
+| --- | --- |
+| `space.eigh(x)` | `space.spectral_decompose(x)` for eigenvalues and frame |
+| `space.eigh(x)` | `space.spectrum(x)` for eigenvalues only |
+| `sc.VectorSpace((n,))` | `sc.DenseVectorSpace((n,))` |
+| `sc.VectorSpace((d, d))` | `sc.DenseCoordinateSpace((d, d))` |
+| `ProductInnerProductSpace(...)` | `ProductSpace(...)` |
+| `ProductStarSpace(...)` | `ProductSpace(...)` |
+| `ProductJordanAlgebraSpace(...)` | `ProductSpace(...)` |
+| `ProductEuclideanJordanAlgebraSpace(...)` | `ProductSpace(...)` |
+| `StackedInnerProductSpace(...)` | `StackedSpace(...)` |
+| `StackedStarSpace(...)` | `StackedSpace(...)` |
+| `StackedJordanAlgebraSpace(...)` | `StackedSpace(...)` |
+| `StackedEuclideanJordanAlgebraSpace(...)` | `StackedSpace(...)` |
+
+Prominent `eigh` replacement:
+
+```python
+space.eigh(x)
+# -> space.spectral_decompose(x)  # eigenvalues and frame
+# -> space.spectrum(x)            # eigenvalues only
+```
+
+### Added
+
+- `spectrum`, `spectral_decompose`, and `from_spectrum` as the public spectral
+  contract for Jordan spaces.
+- `ElementwiseJordanSpace` for real or complex elementwise Jordan algebras.
+- `EuclideanElementwiseJordanSpace` for real Euclidean elementwise Jordan
+  algebras.
+- Jordan capability hierarchy separating `JordanAlgebraSpace` from
+  `EuclideanJordanAlgebraSpace`.
+- `ProductStructure`, `TupleStructure`, `PytreeStructure`, and
+  `ProductSpace.from_template` for structured product elements.
+- `ProductSpectralDecomposition` for product spectral data independent of
+  product element structure.
+- `StackedSpace` for leading-axis repeated leaf spaces.
+- Vectorizable axis-aware validation checks.
+- `InnerProduct.validate_for(space)` and construction-time validation for
+  `WeightedInnerProduct`.
+- `scripts/api_audit.py` for repository and downstream migration audits.
+
+### Changed
+
+- `VectorSpace` is an abstract linear-capability base.
+- Previous concrete `VectorSpace` use cases moved to `DenseVectorSpace` for
+  one-dimensional dense vectors and `DenseCoordinateSpace` for generic dense
+  coordinate arrays.
+- `DenseVectorSpace` is now a plain one-dimensional vector space with star and
+  no Jordan capability by default.
+- Elementwise Euclidean-Jordan capability is selected only for real dtype with
+  `EuclideanInnerProduct`.
+- `ProductSpace(...)` and `StackedSpace(...)` are the only public product and
+  stacked constructors; they auto-dispatch to private implementation classes.
+- `convert()` for elementwise, product, and stacked spaces recomputes
+  capabilities through public factories.
+- `ProductSpace.spectral_decompose` returns explicit product spectral data
+  rather than routing decompositions through element structure adapters.
+
+### Removed
+
+- Removed `eigh` from spaces. Use `spectral_decompose` when both eigenvalues
+  and a reconstruction frame are needed, or `spectrum` for eigenvalues only.
+- Removed public specialized product and stacked constructors from the public
+  API.
+
 ## [0.2.0]
 
 SpaceCore 0.2.0 is a major API expansion. The backend layer now sits on the

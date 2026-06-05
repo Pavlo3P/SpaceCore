@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from typing import Any, Tuple
+from typing import Any, Sequence, Tuple
 
 from ._base import ProductLinOp
 from .._base import LinOp, Codomain
 from ..._checks import checked_method
-from ...space import ProductSpace, VectorSpace
+from ...space import DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace, ProductSpace
 from ...backend import jax_pytree_class, Context
 
 
@@ -16,7 +16,11 @@ class SumToSingleLinOp(ProductLinOp[ProductSpace, Codomain]):
 
     If ``dom = X1 x ... x Xk`` and ``cod = Y``, component ``parts[i]`` maps
     ``Xi`` to ``Y``. Forward application sums component outputs in ``Y``;
-    adjoint application returns the tuple of component adjoints.
+    adjoint application returns a domain product element whose representation
+    follows ``dom.structure``. Tuple output is the default only when the domain
+    uses ``TupleStructure``; registered pytree/dataclass domain elements are
+    preserved when the domain was built from a template or explicit
+    ``PytreeStructure``.
 
     Parameters
     ----------
@@ -29,6 +33,34 @@ class SumToSingleLinOp(ProductLinOp[ProductSpace, Codomain]):
     ctx : Context, str, or None, optional
         Backend context specification.
     """
+
+    def __init__(
+        self,
+        dom: ProductSpace,
+        cod: Codomain,
+        parts: Sequence[LinOp],
+        ctx: Context | str | None = None,
+    ) -> None:
+        super().__init__(dom, cod, parts, ctx)
+        self._flat_dense_apply_mats = self._make_flat_dense_apply_mats()
+
+    def _make_flat_dense_apply_mats(self):
+        """Return dense matrices for the exact flat-vector fast path."""
+        if type(self.cod) not in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace) or not self.cod.is_euclidean:
+            return None
+        if tuple(self.cod.shape) != (self.cod._size,):
+            return None
+        mats = []
+        for op in self.parts:
+            if (
+                type(op.dom) not in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace)
+                or not op.dom.is_euclidean
+                or tuple(op.dom.shape) != (op.dom._size,)
+                or not hasattr(op, "_A2")
+            ):
+                return None
+            mats.append(op._A2)
+        return tuple(mats)
 
     def _check_layout(self) -> None:
         """Check that every component maps one product part to the shared codomain."""
@@ -44,60 +76,89 @@ class SumToSingleLinOp(ProductLinOp[ProductSpace, Codomain]):
             else:
                 raise TypeError(f"Component op {i} must map dom.spaces[{i}] -> cod.")
 
-    @checked_method(in_space="dom", out_space="cod")
+    @checked_method(in_space="domain", out_space="codomain")
     def apply(self, x: Any) -> Any:
-        """Apply component operators and sum in the codomain."""
+        """Apply operators to components of a domain product element and sum."""
         return self._apply_unchecked(x)
 
     def _apply_unchecked(self, x: Any) -> Any:
         """Apply component operators without membership checks."""
+        x_parts = self.dom._components(x)
+        mats = self._flat_dense_apply_mats
+        if mats is not None:
+            if self._num_parts == 2:
+                return mats[0] @ x_parts[0] + mats[1] @ x_parts[1]
+            acc = mats[0] @ x_parts[0]
+            for mat, xi in zip(mats[1:], x_parts[1:]):
+                acc = acc + mat @ xi
+            return acc
         if self._num_parts == 2:
-            y0 = self._apply_parts[0](x[0])
-            y1 = self._apply_parts[1](x[1])
-            return y0 + y1 if type(self.cod) is VectorSpace else self.cod.add(y0, y1)
+            y0 = self._apply_parts[0](x_parts[0])
+            y1 = self._apply_parts[1](x_parts[1])
+            if type(self.cod) in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace):
+                return y0 + y1
+            return self.cod.add(y0, y1)
         acc = None
-        use_direct_add = type(self.cod) is VectorSpace
-        for apply, xi in zip(self._apply_parts, x):
+        for apply, xi in zip(self._apply_parts, x_parts):
             yi = apply(xi)
-            acc = yi if acc is None else (acc + yi if use_direct_add else self.cod.add(yi, acc))
+            if acc is None:
+                acc = yi
+            elif type(self.cod) in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace):
+                acc = acc + yi
+            else:
+                acc = self.cod.add(acc, yi)
         return acc
 
-    @checked_method(in_space="cod", out_space="dom")
+    @checked_method(in_space="codomain", out_space="domain")
     def rapply(self, y: Any) -> Any:
-        """Apply each component adjoint to the shared codomain element."""
+        """Apply component adjoints and return a domain product element."""
         return self._rapply_unchecked(y)
 
     def _rapply_unchecked(self, y: Any) -> Any:
-        """Apply component adjoints without membership checks."""
+        """Apply component adjoints without checks and rebuild domain representation."""
         if self._num_parts == 2:
-            return self._rapply_parts[0](y), self._rapply_parts[1](y)
-        return tuple(rapply(y) for rapply in self._rapply_parts)
+            x_parts = (self._rapply_parts[0](y), self._rapply_parts[1](y))
+        else:
+            x_parts = tuple(rapply(y) for rapply in self._rapply_parts)
+        return self.dom._from_components(x_parts)
 
-    def vapply(self, x: Any, batch_space=None) -> Any:
-        """Apply this sum-to-single operator over a product batch."""
-        in_space = self._input_batch_space(self.domain, x, batch_space)
-        if self._enable_checks:
-            in_space._check_member(x)
-        batch_shape = in_space.batch_shape
-        batch_axes = in_space.batch_axes
-        out_space = self.codomain.batch(batch_shape, batch_axes)
+    @checked_method(in_space="domain", out_space="codomain", in_batched=True, out_batched=True)
+    def vapply(self, x: Any) -> Any:
+        """Apply this sum-to-single operator over a structured product batch."""
+        return self._vapply_unchecked(x)
+
+    def _vapply_unchecked(self, x: Any) -> Any:
+        """Apply over a product batch without membership checks."""
+        x_parts = self.dom._components(x)
+        mats = self._flat_dense_apply_mats
+        if mats is not None:
+            if self._num_parts == 2:
+                acc = x_parts[0] @ mats[0].T + x_parts[1] @ mats[1].T
+            else:
+                acc = x_parts[0] @ mats[0].T
+                for mat, xi in zip(mats[1:], x_parts[1:]):
+                    acc = acc + xi @ mat.T
+            return acc
         acc = None
-        for op, xi in zip(self.parts, x):
-            yi = op.vapply(xi, op.domain.batch(batch_shape, batch_axes))
-            acc = yi if acc is None else out_space.add(acc, yi)
+        for op, xi in zip(self.parts, x_parts):
+            yi = op.vapply(xi)
+            if acc is None:
+                acc = yi
+            elif type(self.codomain) in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace):
+                acc = acc + yi
+            else:
+                acc = self.codomain.add_batch(acc, yi)
         return acc
 
-    def rvapply(self, y: Any, batch_space=None) -> Any:
-        """Apply the adjoint over a codomain batch."""
-        in_space = self._input_batch_space(self.codomain, y, batch_space)
-        if self._enable_checks:
-            in_space._check_member(y)
-        batch_shape = in_space.batch_shape
-        batch_axes = in_space.batch_axes
-        return tuple(
-            op.rvapply(y, op.codomain.batch(batch_shape, batch_axes))
-            for op in self.parts
-        )
+    @checked_method(in_space="codomain", out_space="domain", in_batched=True, out_batched=True)
+    def rvapply(self, y: Any) -> Any:
+        """Apply the adjoint over a codomain batch and preserve domain structure."""
+        return self._rvapply_unchecked(y)
+
+    def _rvapply_unchecked(self, y: Any) -> Any:
+        """Apply the adjoint over a codomain batch without checks and rebuild domain representation."""
+        x_parts = tuple(op.rvapply(y) for op in self.parts)
+        return self.dom._from_components(x_parts)
 
     @classmethod
     def from_operators(cls, parts: Tuple[LinOp, ...]) -> SumToSingleLinOp:
@@ -115,4 +176,4 @@ class SumToSingleLinOp(ProductLinOp[ProductSpace, Codomain]):
         new_dom = self.dom.convert(new_ctx)
         new_cod = self.cod.convert(new_ctx)
         new_parts = [op.convert(new_ctx) for op in self.parts]
-        return SumToSingleLinOp(new_dom, new_cod, new_parts)
+        return SumToSingleLinOp(new_dom, new_cod, new_parts, new_ctx)

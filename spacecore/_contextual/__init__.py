@@ -1,45 +1,31 @@
 from ._bound import ContextBound as ContextBound
-from ._manager import (
+from ._state import (
     enforce_convert_policy as enforce_convert_policy,
     get_context as get_context,
-    get_dtype_resolution_policy as get_dtype_resolution_policy,
-    get_resolution_policy as get_resolution_policy,
     normalize_context as normalize_context,
     normalize_ops as normalize_ops,
     register_ops as register_ops,
     resolve_context_priority as resolve_context_priority,
     set_context as set_context,
-    set_dtype_resolution_policy as set_dtype_resolution_policy,
-    set_resolution_policy as set_resolution_policy,
 )
 from ._policies import (
     ContextConflictError as ContextConflictError,
-    ContextConversionError as ContextConversionError,
     ContextError as ContextError,
     ContextInferenceError as ContextInferenceError,
-    ContextPolicy as ContextPolicy,
-    DtypePreservePolicy as DtypePreservePolicy,
     UnknownBackendError as UnknownBackendError,
 )
 
 __all__ = [
     "ContextBound",
     "ContextConflictError",
-    "ContextConversionError",
     "ContextError",
     "ContextInferenceError",
-    "ContextPolicy",
-    "DtypePreservePolicy",
     "UnknownBackendError",
     "enforce_convert_policy",
     "get_context",
-    "get_dtype_resolution_policy",
-    "get_resolution_policy",
     "normalize_context",
     "normalize_ops",
     "register_ops",
     "resolve_context_priority",
     "set_context",
-    "set_dtype_resolution_policy",
-    "set_resolution_policy",
 ]

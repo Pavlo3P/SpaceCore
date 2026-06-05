@@ -55,8 +55,8 @@ tensors.
 
 
    def make_problem(ctx):
-       X = sc.VectorSpace((3,), ctx)
-       Y = sc.VectorSpace((2,), ctx)
+       X = sc.DenseCoordinateSpace((3,), ctx)
+       Y = sc.DenseCoordinateSpace((2,), ctx)
 
        A = sc.DenseLinOp(
            ctx.asarray([[1.0, 2.0, 3.0], [0.0, 1.0, 0.0]]),
@@ -157,10 +157,14 @@ that needs this resolution step directly can call
 
 A ``Space`` describes the structure and geometry of values:
 
-* ``VectorSpace`` for Euclidean vectors and tensors;
+* ``DenseCoordinateSpace`` for dense arrays with Euclidean, weighted, or custom inner-product geometry;
+* ``DenseVectorSpace`` for plain one-dimensional dense vectors with star and no Jordan capability by default;
+* ``ElementwiseJordanSpace`` for real or complex dense arrays with elementwise star, Jordan, and spectral operations;
+* ``EuclideanElementwiseJordanSpace`` for real Euclidean elementwise Jordan algebras;
 * ``HermitianSpace`` for Hermitian or symmetric matrices;
-* ``ProductSpace`` for Cartesian products of spaces.
-* ``BatchSpace`` for batched elements such as ``X.batch((B,), (0,))``,
+* ``ProductSpace`` for Cartesian products of spaces;
+* ``StackedSpace`` for repeated copies of a leaf space.
+* Batched spaces for elements such as ``X.batch((B,), (0,))``,
   representing ``B`` independent copies of ``X``.
 
 Algorithms should use space methods such as ``zeros``, ``add``, ``scale``,

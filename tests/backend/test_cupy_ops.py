@@ -42,8 +42,8 @@ def test_cupy_sparse_conversion_and_matmul():
 def test_cupy_dense_linop_apply_and_rapply():
     sc = importlib.import_module("spacecore")
     ctx = _ctx()
-    dom = sc.VectorSpace((2,), ctx)
-    cod = sc.VectorSpace((3,), ctx)
+    dom = sc.DenseCoordinateSpace((2,), ctx)
+    cod = sc.DenseCoordinateSpace((3,), ctx)
     dense = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])
     op = sc.DenseLinOp(ctx.asarray(dense), dom, cod, ctx)
     x = ctx.asarray([7.0, 8.0])
@@ -56,8 +56,8 @@ def test_cupy_dense_linop_apply_and_rapply():
 def test_cupy_sparse_linop_apply_and_to_dense():
     sc = importlib.import_module("spacecore")
     ctx = _ctx()
-    dom = sc.VectorSpace((2,), ctx)
-    cod = sc.VectorSpace((3,), ctx)
+    dom = sc.DenseCoordinateSpace((2,), ctx)
+    cod = sc.DenseCoordinateSpace((3,), ctx)
     dense = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])
     op = sc.SparseLinOp(ctx.assparse(dense), dom, cod, ctx)
     x = ctx.asarray([7.0, 8.0])

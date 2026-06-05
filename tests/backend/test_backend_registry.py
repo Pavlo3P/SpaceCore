@@ -60,7 +60,7 @@ def test_register_ops_adds_backend():
             return y
         def allclose_sparse(self, a, b, **kwargs): return False
     sc.register_ops(DummyOps)
-    assert sc.VectorSpace((1,), "dummy").ctx.ops.family == "dummy"
+    assert sc.DenseCoordinateSpace((1,), "dummy").ctx.ops.family == "dummy"
     ops = DummyOps()
     x = ops.reshape(ops.arange(6), (2, 3))
     assert np.allclose(ops.sum(x, axis=0), [3, 5, 7])
@@ -71,8 +71,8 @@ def test_torch_backend_aliases_resolve_when_available():
     sc = importlib.import_module("spacecore")
 
     assert isinstance(sc.TorchOps(), sc.BackendOps)
-    assert sc.VectorSpace((1,), "torch").ctx.ops.family == "torch"
-    assert sc.VectorSpace((1,), "pytorch").ctx.ops.family == "torch"
+    assert sc.DenseCoordinateSpace((1,), "torch").ctx.ops.family == "torch"
+    assert sc.DenseCoordinateSpace((1,), "pytorch").ctx.ops.family == "torch"
 
 
 @pytest.mark.skipif(not has_cupy(), reason="cupy is not installed")
@@ -80,4 +80,4 @@ def test_cupy_backend_alias_resolves_when_available():
     sc = importlib.import_module("spacecore")
 
     assert isinstance(sc.CuPyOps(), sc.BackendOps)
-    assert sc.VectorSpace((1,), "cupy").ctx.ops.family == "cupy"
+    assert sc.DenseCoordinateSpace((1,), "cupy").ctx.ops.family == "cupy"

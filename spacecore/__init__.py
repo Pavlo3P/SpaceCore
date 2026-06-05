@@ -1,14 +1,12 @@
 """Backend-agnostic vector spaces, linear operators, and solvers."""
 
-from importlib.metadata import version as _version
+from ._version import __version__
 
+from .backend import Context, BackendOps, NumpyOps, jax_pytree_class
 try:
-    __version__ = _version("spacecore")
-except Exception:
-    __version__ = "0.0.0+unknown"
-
-
-from .backend import Context, BackendOps, JaxOps, NumpyOps, jax_pytree_class
+    from .backend import JaxOps as JaxOps
+except ImportError:
+    pass
 try:
     from .backend import CuPyOps as CuPyOps
 except ImportError:
@@ -58,18 +56,34 @@ from .linalg import (
     power_iteration,
 )
 from .space import (
-    BatchSpace,
     BackendCheck,
     DTypeCheck,
     HermitianCheck,
     ProductComponentCheck,
+    CoordinateSpace,
+    DenseCoordinateSpace,
+    DenseVectorSpace,
+    ElementwiseJordanSpace,
+    EuclideanElementwiseJordanSpace,
+    EuclideanJordanAlgebraSpace,
+    InnerProductSpace,
+    JordanAlgebraSpace,
     ProductSpace,
+    ProductSpectralDecomposition,
+    ProductStructure,
     ProductStructureCheck,
+    PytreeStructure,
+    StackedSpace,
     ShapeCheck,
+    InnerProduct,
+    EuclideanInnerProduct,
+    WeightedInnerProduct,
     Space,
+    StarSpace,
     SpaceCheck,
     SpaceValidationError,
     SquareMatrixCheck,
+    TupleStructure,
     VectorSpace,
     HermitianSpace,
 )
@@ -81,12 +95,11 @@ from ._contextual import (
     set_context, get_context,
     resolve_context_priority,
     register_ops,
-    set_resolution_policy, set_dtype_resolution_policy,
-    get_resolution_policy, get_dtype_resolution_policy,
     normalize_ops, normalize_context,
 )
 
 __all__ = [
+    "__version__",
     "Context",
 
     "BackendOps",
@@ -137,10 +150,26 @@ __all__ = [
     "ProductComponentCheck",
     "ProductStructureCheck",
     "ShapeCheck",
-    "BatchSpace",
+    "InnerProduct",
+    "EuclideanInnerProduct",
+    "WeightedInnerProduct",
     "VectorSpace",
     "HermitianSpace",
     "ProductSpace",
+    "ProductStructure",
+    "TupleStructure",
+    "PytreeStructure",
+    "StackedSpace",
+    "CoordinateSpace",
+    "InnerProductSpace",
+    "StarSpace",
+    "JordanAlgebraSpace",
+    "EuclideanJordanAlgebraSpace",
+    "DenseCoordinateSpace",
+    "DenseVectorSpace",
+    "ElementwiseJordanSpace",
+    "EuclideanElementwiseJordanSpace",
+    "ProductSpectralDecomposition",
     "Space",
     "SpaceCheck",
     "SpaceValidationError",
@@ -156,10 +185,6 @@ __all__ = [
     "get_context",
     "resolve_context_priority",
     "register_ops",
-    "set_resolution_policy",
-    "set_dtype_resolution_policy",
-    "get_resolution_policy",
-    "get_dtype_resolution_policy",
     "normalize_ops",
     "normalize_context",
 ]

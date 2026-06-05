@@ -9,7 +9,7 @@ from ..linop import LinOp
 from ..space import Space
 from ._utils import DEFAULT_CONVERGENCE_CHECK_INTERVAL, check_interval, check_maxiter
 from ._utils import default_initial_vector, is_converged, normalize, require_linop
-from ._utils import require_square, result_repr, should_check_iteration
+from ._utils import require_square, result_repr
 
 
 class PowerIterationResult(NamedTuple):
@@ -56,6 +56,8 @@ class _SelfAdjointAction(NamedTuple):
     apply: Callable[[Any], Any]
     domain: Space
     ctx: Context
+    rayleigh: Callable[[Any, Any], Any]
+    residual_norm: Callable[[Any, Any, Any], Any]
 
     @property
     def ops(self) -> Any:
@@ -72,12 +74,35 @@ def _action_from_linop(A: LinOp) -> _SelfAdjointAction:
     """Normalize a square linear operator into a self-adjoint action."""
     A = require_linop(A)
     require_square(A, "power_iteration")
-    return _SelfAdjointAction(A.apply, A.domain, A.ctx)
+    if A.is_hermitian() is False:
+        raise ValueError("power_iteration requires A to be Hermitian/self-adjoint.")
+    return _SelfAdjointAction(
+        A.apply,
+        A.domain,
+        A.ctx,
+        lambda x, y: A.ops.real(A.domain.inner(x, y)),
+        lambda x, y, eigenvalue: A.domain.norm(A.domain.axpy(-eigenvalue, x, y)),
+    )
 
 
 def _action_from_quadratic_form(q: QuadraticForm) -> _SelfAdjointAction:
     """Normalize a quadratic form into its Hessian action."""
-    return _SelfAdjointAction(q.hess_apply, q.domain, q.ctx)
+    hess_quad = getattr(q, "hess_quad", None)
+    if callable(hess_quad):
+        def rayleigh(x, y):
+            return q.ops.real(hess_quad(x, Hx=y))
+    else:
+        def rayleigh(x, y):
+            return q.ops.real(q.domain.inner(x, y))
+
+    hess_residual_norm = getattr(q, "hess_residual_norm", None)
+    if callable(hess_residual_norm):
+        residual_norm = hess_residual_norm
+    else:
+        def residual_norm(x, y, eigenvalue):
+            return q.domain.norm(q.domain.axpy(-eigenvalue, x, y))
+
+    return _SelfAdjointAction(q.hess_apply, q.domain, q.ctx, rayleigh, residual_norm)
 
 
 def power_iteration(
@@ -93,8 +118,12 @@ def power_iteration(
 
     Accept a square :class:`LinOp` or a :class:`QuadraticForm` exposing
     ``hess_apply``. Public dispatch converts either input into a fixed
-    self-adjoint action before entering the numerical loop. "Dominant" means
-    largest eigenvalue in absolute value, not necessarily the largest positive
+    self-adjoint action before entering the numerical loop. Power iteration
+    still requires ``hess_apply`` for quadratic forms because the vector update
+    is ``x_next = normalize(H x)``. Optional two-sided scalar diagnostics such
+    as ``hess_quad(x, Hx=None)`` can improve Rayleigh quotient evaluation, but
+    they cannot replace the Hessian-vector action. "Dominant" means largest
+    eigenvalue in absolute value, not necessarily the largest positive
     eigenvalue.
 
     Parameters
@@ -104,6 +133,14 @@ def power_iteration(
         absolute value, is sought. Linear-operator inputs must satisfy
         ``A.domain == A.codomain``; this includes the underlying space type and
         inner-product geometry.
+        Quadratic-form inputs must provide ``hess_apply``. If they also expose
+        ``hess_quad(x, Hx=None)``, it is used for the Rayleigh quotient and
+        must be compatible with being called as ``hess_quad(x, Hx=Hx)``. The
+        ``Hx`` argument is the cached Hessian-vector product already computed
+        by power iteration. If the quadratic form exposes
+        ``hess_residual_norm(x, Hx, eigenvalue)``, it is used for the residual
+        diagnostic. Otherwise generic space inner-product and norm diagnostics
+        are used.
         For spectral-norm estimates of a rectangular operator, pass
         ``A.H @ A``.
     x0 : array-like or None, optional
@@ -115,9 +152,9 @@ def power_iteration(
     maxiter : int or None, optional
         Maximum number of iterations. Default is ``prod(A.domain.shape)``.
     check_every : int, optional
-        Refresh residual diagnostics every this many iterations and always on
-        the final iteration. Default is
-        ``DEFAULT_CONVERGENCE_CHECK_INTERVAL``.
+        Accepted for backward compatibility. Residual diagnostics are now
+        refreshed every iteration because the loop already carries ``A @ x``;
+        this argument is ignored and may be removed in a future release.
 
     Returns
     -------
@@ -135,8 +172,8 @@ def power_iteration(
     TypeError
         If ``A`` is neither a :class:`LinOp` nor a :class:`QuadraticForm`.
     ValueError
-        If a linear-operator input is not square or if iteration parameters are
-        invalid.
+        If a linear-operator input is not square, is known to be non-Hermitian,
+        or if iteration parameters are invalid.
 
     See Also
     --------
@@ -147,10 +184,15 @@ def power_iteration(
     Notes
     -----
     The residual-based stopping criterion uses
-    :math:`\|A x - \lambda x\|` and is refreshed only every ``check_every``
-    iterations, and always on the final iteration. This function is
-    JIT-compatible on the JAX backend when ``maxiter`` and ``check_every`` are
-    static arguments.
+    :math:`\|A x - \lambda x\|` and is refreshed every iteration. The
+    ``check_every`` argument is accepted for backward compatibility but is no
+    longer used. This function is JIT-compatible on the JAX backend when
+    ``maxiter`` is static.
+
+    Inner products and norms use ``domain.inner`` and ``domain.norm`` through
+    the normalized self-adjoint action. The method is correct on
+    non-Euclidean geometries when the space supplies Riesz maps and the action
+    is self-adjoint in that geometry.
 
     For operators with eigenvalues of mixed sign, the dominant eigenvalue is
     the one with largest absolute value, which may be negative. Convergence
@@ -159,6 +201,14 @@ def power_iteration(
     ``-lambda`` have maximum modulus, the iteration may oscillate between
     subspaces.
 
+    For most dense vector-space problems, the generic Rayleigh quotient
+    ``real(inner(x, Hx))`` is already cheap. Specialized quadratic-form scalar
+    diagnostics are mainly useful when a subclass can evaluate ``<x, Hx>`` or
+    the residual norm more accurately or with less overhead than reconstructing
+    the scalar from generic space operations. A specialized ``hess_quad`` must
+    accept the cached Hessian-vector product as ``hess_quad(x, Hx=Hx)``;
+    implementations may ignore ``Hx`` or use it to avoid recomputation.
+
     Examples
     --------
     Estimate the largest eigenvalue of a diagonal operator.
@@ -166,7 +216,7 @@ def power_iteration(
     >>> import numpy as np
     >>> import spacecore as sc
     >>> ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
-    >>> X = sc.VectorSpace((3,), ctx)
+    >>> X = sc.DenseCoordinateSpace((3,), ctx)
     >>> A = sc.DiagonalLinOp(ctx.asarray([1.0, 3.0, 2.0]), X, ctx)
     >>> result = sc.power_iteration(A, maxiter=20, tol=1e-10)
     >>> np.allclose(result.eigenvalue, 3.0)
@@ -180,11 +230,11 @@ def power_iteration(
         raise TypeError(f"A must be a LinOp or QuadraticForm, got {type(A).__name__}.")
 
     maxiter = check_maxiter(maxiter, action)
-    check_every = check_interval(check_every)
+    check_interval(check_every)
 
     x = default_initial_vector(action) if x0 is None else x0
     action.domain.check_member(x)
-    return PowerIterationResult(*_power_iteration_core(action, x, tol, maxiter, check_every))
+    return PowerIterationResult(*_power_iteration_core(action, x, tol, maxiter))
 
 
 def _power_iteration_core(
@@ -192,41 +242,33 @@ def _power_iteration_core(
     x: Any,
     tol: float,
     maxiter: int,
-    check_every: int,
 ) -> tuple[Any, Any, Any, Any, Any]:
     """Run the backend-loop implementation of power iteration."""
     x, _ = normalize(action.domain, x)
+    y = action.apply(x)
     zero = action.ops.asarray(0.0, dtype=action.dtype)
     residual_norm = action.domain.norm(x) + float("inf")
 
-    def cond_fun(carry: tuple[Any, Any, Any, int]) -> Any:
-        _eigenvalue, _x, res_norm, k = carry
+    # Carry: current eigenvalue estimate, normalized vector x, product y=A x,
+    # residual norm, and iteration counter.
+    def cond_fun(carry: tuple[Any, Any, Any, Any, int]) -> Any:
+        _eigenvalue, _x, _y, res_norm, k = carry
         return (k < maxiter) & (res_norm > tol)
 
-    def body_fun(carry: tuple[Any, Any, Any, int]) -> tuple[Any, Any, Any, int]:
-        _eigenvalue, x, _residual_norm, k = carry
-        y = action.apply(x)
+    def body_fun(carry: tuple[Any, Any, Any, Any, int]) -> tuple[Any, Any, Any, Any, int]:
+        _eigenvalue, _x, y, _residual_norm, k = carry
         x_next, _norm_y = normalize(action.domain, y)
         y_next = action.apply(x_next)
-        eigenvalue_next = action.domain.inner(x_next, y_next)
+        eigenvalue_next = action.rayleigh(x_next, y_next)
         k_next = k + 1
 
-        def refresh_residual(_: Any) -> Any:
-            residual = action.domain.axpy(-eigenvalue_next, x_next, y_next)
-            return action.domain.norm(residual)
+        residual_norm_next = action.residual_norm(x_next, y_next, eigenvalue_next)
+        return eigenvalue_next, x_next, y_next, residual_norm_next, k_next
 
-        residual_norm_next = action.ops.cond(
-            should_check_iteration(k_next, maxiter, check_every),
-            refresh_residual,
-            lambda _: _residual_norm,
-            action.ops.asarray(0.0, dtype=action.dtype),
-        )
-        return eigenvalue_next, x_next, residual_norm_next, k_next
-
-    eigenvalue, eigenvector, residual_norm, num_iters = action.ops.while_loop(
+    eigenvalue, eigenvector, _y, residual_norm, num_iters = action.ops.while_loop(
         cond_fun,
         body_fun,
-        (zero, x, residual_norm, 0),
+        (zero, x, y, residual_norm, 0),
     )
     return (
         eigenvalue,

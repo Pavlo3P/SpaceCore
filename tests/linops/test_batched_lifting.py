@@ -25,8 +25,8 @@ def _stack_rapply(ctx, op, ys):
 def test_dense_linop_vapply_and_rvapply_match_stacked_apply():
     sc = importlib.import_module("spacecore")
     ctx = _ctx()
-    dom = sc.VectorSpace((2,), ctx)
-    cod = sc.VectorSpace((3,), ctx)
+    dom = sc.DenseCoordinateSpace((2,), ctx)
+    cod = sc.DenseCoordinateSpace((3,), ctx)
     matrix = ctx.asarray([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])
     op = sc.DenseLinOp(matrix, dom, cod, ctx)
     xs = ctx.asarray([[7.0, 8.0], [1.0, -1.0], [0.5, 2.0]])
@@ -39,8 +39,8 @@ def test_dense_linop_vapply_and_rvapply_match_stacked_apply():
 def test_sparse_linop_vapply_and_rvapply_match_stacked_apply():
     sc = importlib.import_module("spacecore")
     ctx = _ctx()
-    dom = sc.VectorSpace((2,), ctx)
-    cod = sc.VectorSpace((3,), ctx)
+    dom = sc.DenseCoordinateSpace((2,), ctx)
+    cod = sc.DenseCoordinateSpace((3,), ctx)
     dense = np.array([[1.0, 0.0], [0.0, 4.0], [5.0, 6.0]])
     op = sc.SparseLinOp(ctx.assparse(sps.csr_matrix(dense)), dom, cod, ctx)
     xs = ctx.asarray([[7.0, 8.0], [1.0, -1.0], [0.5, 2.0]])
@@ -53,27 +53,25 @@ def test_sparse_linop_vapply_and_rvapply_match_stacked_apply():
 def test_dense_and_sparse_batched_lifting_fast_paths_without_checks():
     sc = importlib.import_module("spacecore")
     ctx = _unchecked_ctx()
-    dom = sc.VectorSpace((2,), ctx)
-    cod = sc.VectorSpace((3,), ctx)
+    dom = sc.DenseCoordinateSpace((2,), ctx)
+    cod = sc.DenseCoordinateSpace((3,), ctx)
     matrix = ctx.asarray([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])
     sparse = ctx.assparse(sps.csr_matrix([[1.0, 0.0], [0.0, 4.0], [5.0, 6.0]]))
     dense_op = sc.DenseLinOp(matrix, dom, cod, ctx)
     sparse_op = sc.SparseLinOp(sparse, dom, cod, ctx)
-    batch_dom = dom.batch((3,), (0,))
-    batch_cod = cod.batch((2,), (0,))
     xs = ctx.asarray([[7.0, 8.0], [1.0, -1.0], [0.5, 2.0]])
     ys = ctx.asarray([[1.0, -1.0, 2.0], [0.0, 3.0, -2.0]])
 
-    assert np.allclose(dense_op.vapply(xs, batch_dom), np.asarray(xs) @ np.asarray(matrix).T)
-    assert np.allclose(dense_op.rvapply(ys, batch_cod), np.asarray(ys) @ np.asarray(matrix))
-    assert np.allclose(sparse_op.vapply(xs, batch_dom), (sparse @ np.asarray(xs).T).T)
-    assert np.allclose(sparse_op.rvapply(ys, batch_cod), (sparse.T @ np.asarray(ys).T).T)
+    assert np.allclose(dense_op.vapply(xs), np.asarray(xs) @ np.asarray(matrix).T)
+    assert np.allclose(dense_op.rvapply(ys), np.asarray(ys) @ np.asarray(matrix))
+    assert np.allclose(sparse_op.vapply(xs), (sparse @ np.asarray(xs).T).T)
+    assert np.allclose(sparse_op.rvapply(ys), (sparse.T @ np.asarray(ys).T).T)
 
 
 def test_diagonal_identity_zero_sum_composed_and_adjoint_batched_lifting():
     sc = importlib.import_module("spacecore")
     ctx = _ctx()
-    space = sc.VectorSpace((3,), ctx)
+    space = sc.DenseCoordinateSpace((3,), ctx)
     d1 = sc.DiagonalLinOp(ctx.asarray([1.0, 2.0, 3.0]), space, ctx)
     d2 = sc.DiagonalLinOp(ctx.asarray([-1.0, 0.5, 4.0]), space, ctx)
     identity = sc.IdentityLinOp(space, ctx)
@@ -93,8 +91,8 @@ def test_diagonal_identity_zero_sum_composed_and_adjoint_batched_lifting():
 def test_matrix_free_vapply_uses_callback_when_supplied_and_fallback_when_absent():
     sc = importlib.import_module("spacecore")
     ctx = _ctx()
-    dom = sc.VectorSpace((2,), ctx)
-    cod = sc.VectorSpace((3,), ctx)
+    dom = sc.DenseCoordinateSpace((2,), ctx)
+    cod = sc.DenseCoordinateSpace((3,), ctx)
     matrix = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])
     calls = {"vapply": 0, "rvapply": 0}
 
@@ -127,10 +125,10 @@ def test_matrix_free_vapply_uses_callback_when_supplied_and_fallback_when_absent
 def test_product_linops_batched_lifting_matches_stacked_apply():
     sc = importlib.import_module("spacecore")
     ctx = _ctx()
-    x0 = sc.VectorSpace((2,), ctx)
-    x1 = sc.VectorSpace((3,), ctx)
-    y0 = sc.VectorSpace((3,), ctx)
-    y1 = sc.VectorSpace((2,), ctx)
+    x0 = sc.DenseCoordinateSpace((2,), ctx)
+    x1 = sc.DenseCoordinateSpace((3,), ctx)
+    y0 = sc.DenseCoordinateSpace((3,), ctx)
+    y1 = sc.DenseCoordinateSpace((2,), ctx)
     a0 = sc.DenseLinOp(ctx.asarray([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]), x0, y0, ctx)
     a1 = sc.DenseLinOp(ctx.asarray([[2.0, -1.0, 0.5], [0.0, 3.0, 4.0]]), x1, y1, ctx)
     s1 = sc.DenseLinOp(ctx.asarray([[2.0, -1.0], [0.0, 3.0]]), x0, y1, ctx)

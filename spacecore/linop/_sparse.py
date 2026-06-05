@@ -1,41 +1,74 @@
 from __future__ import annotations
 
+from enum import Enum, auto
 from functools import cached_property
 from math import prod
 from typing import Any
 
-from ._base import LinOp, Domain, Codomain
+from ._base import LinOp
+from ._metric import (
+    _metric_is_hermitian_by_basis,
+    _requires_euclidean_or_riesz,
+    metric_rapply,
+    metric_rvapply,
+)
 from .._checks import checked_method
-from ..space import VectorSpace
+from ..space import CoordinateSpace, DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace, WeightedInnerProduct
 from ..types import DenseArray, SparseArray
 from ..backend import jax_pytree_class, Context
 from .._contextual import resolve_context_priority
 
 
-@jax_pytree_class
-class SparseLinOp(LinOp):
-    r"""
-    Represent a sparse matrix-backed linear operator.
+class _SparseMode(Enum):
+    """Private computation modes for sparse coordinate operators."""
 
-    ``SparseLinOp(A, dom, cod)`` represents a tensor map whose conceptual shape
-    is ``cod.shape + dom.shape`` while storage uses a two-dimensional sparse
-    matrix with shape ``(prod(cod.shape), prod(dom.shape))``.
+    EUCLIDEAN_FLAT = auto()
+    EUCLIDEAN_TENSOR = auto()
+    WEIGHTED_FUSED = auto()
+    GENERAL_METRIC = auto()
+
+
+_VECTOR_SPACE_ONLY = (
+    "SparseLinOp is only for coordinate sparse matrices acting between "
+    "CoordinateSpace objects. Non-vector or exotic spaces should use "
+    "MatrixFreeLinOp with explicit forward and adjoint callbacks."
+)
+
+
+@jax_pytree_class
+class SparseLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
+    r"""
+    Represent a sparse coordinate matrix-backed linear operator.
+
+    ``SparseLinOp(A, dom, cod)`` represents a sparse coordinate matrix between
+    vector spaces. Subclasses of :class:`VectorSpace` are supported, but product
+    spaces and other non-vector spaces are intentionally rejected. The
+    conceptual operator tensor has shape ``cod.shape + dom.shape`` while
+    storage uses a two-dimensional sparse matrix with shape
+    ``(prod(cod.shape), prod(dom.shape))``.
+
+    Forward application is the raw coordinate matrix action. Adjoint
+    application is metric-aware: Euclidean spaces use the conjugate transpose
+    fast path, while non-Euclidean spaces use their Riesz maps as
+    ``R_X^{-1} A^dagger R_Y``.
 
     Parameters
     ----------
     A : SparseArray
         Sparse backend matrix with shape ``(prod(cod.shape), prod(dom.shape))``.
-    dom : Space
-        Domain space.
-    cod : Space
-        Codomain space.
+    dom : CoordinateSpace
+        Domain vector space, or a subclass of ``VectorSpace``.
+    cod : CoordinateSpace
+        Codomain vector space, or a subclass of ``VectorSpace``.
     ctx : Context, str, or None, optional
         Backend context specification. Default is resolved from the spaces.
 
     Attributes
     ----------
     A : SparseArray
-        Stored sparse matrix representation.
+        Stored sparse matrix representation. The constructor keeps this object
+        without sparse conversion or copying; explicit conversion happens only
+        through :meth:`_convert`.
 
     Examples
     --------
@@ -43,7 +76,7 @@ class SparseLinOp(LinOp):
     >>> import scipy.sparse as sps
     >>> import spacecore as sc
     >>> ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
-    >>> X = sc.VectorSpace((2,), ctx)
+    >>> X = sc.DenseCoordinateSpace((2,), ctx)
     >>> A = sc.SparseLinOp(ctx.assparse(sps.eye(2)), X, X, ctx)
     >>> A.apply(ctx.asarray([1.0, 2.0]))
     array([1., 2.])
@@ -51,12 +84,16 @@ class SparseLinOp(LinOp):
 
     def __init__(self,
                  A: SparseArray,
-                 dom: Domain,
-                 cod: Codomain,
+                 dom: CoordinateSpace,
+                 cod: CoordinateSpace,
                  ctx: Context | str | None = None
                  ) -> None:
         ctx = resolve_context_priority(ctx, dom, cod)
         ctx.assert_sparse(A)  # Check if A is sparse array of ctx
+        if not isinstance(dom, CoordinateSpace) or not isinstance(cod, CoordinateSpace):
+            raise TypeError(_VECTOR_SPACE_ONLY)
+
+        _requires_euclidean_or_riesz(dom, cod, "SparseLinOp")
 
         super(SparseLinOp, self).__init__(dom, cod, ctx)
 
@@ -70,11 +107,45 @@ class SparseLinOp(LinOp):
         dtype = self.ops.get_dtype(self.A)
         self._A_is_complex = self.ops.is_complex_dtype(dtype)
         self._AT = self.A.T
-        self._AH = self._AT.conj() if self._A_is_complex else self._AT
-        self._dom_is_flat = tuple(self.dom.shape) == (self._dom_size,)
-        self._cod_is_flat = tuple(self.cod.shape) == (self._cod_size,)
-        self._dom_vector_fast_path = type(self.dom) is VectorSpace
-        self._cod_vector_fast_path = type(self.cod) is VectorSpace
+        self._AH = self._sparse_conj(self._AT) if self._A_is_complex else self._AT
+        self._dom_dense_array = type(self.dom) in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace)
+        self._cod_dense_array = type(self.cod) in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace)
+        self._dom_is_flat = self._dom_dense_array and tuple(self.dom.shape) == (self._dom_size,)
+        self._cod_is_flat = self._cod_dense_array and tuple(self.cod.shape) == (self._cod_size,)
+        self._mode = self._select_mode()
+        if self._mode is _SparseMode.WEIGHTED_FUSED:
+            self._dom_weights = self.dom.geometry.weights
+            self._cod_weights = self.cod.geometry.weights
+
+    def _select_mode(self) -> _SparseMode:
+        """Select the sparse computation mode once for this operator."""
+        if (
+            self._dom_is_flat
+            and self._cod_is_flat
+            and type(getattr(self.dom, "geometry", None)) is WeightedInnerProduct
+            and type(getattr(self.cod, "geometry", None)) is WeightedInnerProduct
+        ):
+            return _SparseMode.WEIGHTED_FUSED
+        if self.domain.is_euclidean and self.codomain.is_euclidean and self._dom_dense_array and self._cod_dense_array:
+            if self._dom_is_flat and self._cod_is_flat:
+                return _SparseMode.EUCLIDEAN_FLAT
+            return _SparseMode.EUCLIDEAN_TENSOR
+        return _SparseMode.GENERAL_METRIC
+
+    def _sparse_conj(self, A: SparseArray) -> SparseArray:
+        """Return the complex conjugate of a backend sparse array."""
+        if hasattr(A, "conj"):
+            return A.conj()
+        if hasattr(A, "conjugate"):
+            return A.conjugate()
+        if hasattr(A, "data") and hasattr(A, "indices"):
+            kwargs = {
+                "shape": A.shape,
+                "indices_sorted": getattr(A, "indices_sorted", False),
+                "unique_indices": getattr(A, "unique_indices", False),
+            }
+            return type(A)((self.ops.conj(A.data), A.indices), **kwargs)
+        raise TypeError(f"Cannot conjugate sparse array of type {type(A).__name__}.")
 
     @cached_property
     def A(self) -> SparseArray:
@@ -87,135 +158,119 @@ class SparseLinOp(LinOp):
         """
         return self._A
 
-    @checked_method(in_space="dom", out_space="cod")
+    @checked_method(in_space="domain", out_space="codomain")
     def apply(self, x: DenseArray) -> DenseArray:
         """
-        Forward action: y = A ⋅ x with y in cod.shape.
+        Forward action ``y = A @ x`` in Euclidean coordinates.
 
         x must have shape dom.shape (dense).
         """
-        return self._apply_unchecked(x)
+        return self._apply_core(x)
 
-    def _apply_unchecked(self, x: DenseArray) -> DenseArray:
+    def _apply_core(self, x: DenseArray) -> DenseArray:
         """Apply the stored sparse matrix without membership checks."""
-        x1 = x if self._dom_is_flat else x.reshape((self._dom_size,))
-        y1 = self.A @ x1   # (m,)
-        if self._cod_vector_fast_path:
-            return y1 if self._cod_is_flat else y1.reshape(self.cod.shape)
+        if self._mode is _SparseMode.EUCLIDEAN_FLAT:
+            return self._A @ x
+        if self._mode is _SparseMode.EUCLIDEAN_TENSOR:
+            return (self._A @ x.reshape((self._dom_size,))).reshape(self.cod.shape)
+        if self._mode is _SparseMode.WEIGHTED_FUSED:
+            return self._A @ x
+        x1 = self.dom.flatten(x)
+        y1 = self._A @ x1
         return self.cod.unflatten(y1)
 
-    @checked_method(in_space="cod", out_space="dom")
+    @checked_method(in_space="codomain", out_space="domain")
     def rapply(self, y: DenseArray) -> DenseArray:
         """
-        Adjoint action: x = A^* ⋅ y with x in dom.shape.
+        Metric-aware adjoint action.
 
         y must have shape cod.shape (dense).
         """
-        return self._rapply_unchecked(y)
+        return self._rapply_core(y)
 
-    def _rapply_unchecked(self, y: DenseArray) -> DenseArray:
+    def _rapply_core(self, y: DenseArray) -> DenseArray:
+        """Apply the metric adjoint without membership checks."""
+        if self._mode is _SparseMode.EUCLIDEAN_FLAT or self._mode is _SparseMode.EUCLIDEAN_TENSOR:
+            return self._euclidean_rapply_core(y)
+        if self._mode is _SparseMode.WEIGHTED_FUSED:
+            return (self._AH @ (self._cod_weights * y)) / self._dom_weights
+        return metric_rapply(self.domain, self.codomain, self._euclidean_rapply_core, y)
+
+    def _euclidean_rapply_core(self, y: DenseArray) -> DenseArray:
         """Apply the stored sparse adjoint without membership checks."""
-        y1 = y if self._cod_is_flat else y.reshape((self._cod_size,))
+        if self._mode is _SparseMode.EUCLIDEAN_FLAT:
+            return self._AH @ y
+        if self._mode is _SparseMode.EUCLIDEAN_TENSOR:
+            return (self._AH @ y.reshape((self._cod_size,))).reshape(self.dom.shape)
+        y1 = self.cod.flatten(y)
         x1 = self._AH @ y1
-
-        if self._dom_vector_fast_path:
-            return x1 if self._dom_is_flat else x1.reshape(self.dom.shape)
         return self.dom.unflatten(x1)
 
-    @staticmethod
-    def _batch_shape_from_input(value: DenseArray, base_ndim: int) -> tuple[int, ...]:
-        shape = tuple(value.shape)
-        return shape if base_ndim == 0 else shape[:-base_ndim]
+    @checked_method(in_space="domain", in_batched=True)
+    def vapply(self, xs: DenseArray) -> DenseArray:
+        return self._vapply_core(xs)
 
-    @staticmethod
-    def _is_leading_batch(batch_space: Any) -> bool:
-        if batch_space is None:
-            return True
-        batch_shape = tuple(getattr(batch_space, "batch_shape", ()))
-        batch_axes = tuple(getattr(batch_space, "batch_axes", ()))
-        return batch_axes == tuple(range(len(batch_shape)))
+    def _vapply_core(self, xs: DenseArray) -> DenseArray:
+        """Apply over a leading batch axis without membership checks."""
+        if self._mode is _SparseMode.EUCLIDEAN_FLAT:
+            return (self._A @ xs.reshape((-1, self._dom_size)).T).T
+        if self._mode is _SparseMode.EUCLIDEAN_TENSOR:
+            lead = tuple(xs.shape[: len(xs.shape) - len(self.dom.shape)])
+            xs2 = xs.reshape((-1, self._dom_size))
+            ys2 = (self._A @ xs2.T).T
+            return ys2.reshape(lead + tuple(self.cod.shape))
+        if self._mode is _SparseMode.WEIGHTED_FUSED:
+            return (self._A @ xs.reshape((-1, self._dom_size)).T).T
+        xs_flat = self.domain.flatten_batch(xs)
+        ys_flat = (self._A @ xs_flat.T).T
+        return self.codomain.unflatten_batch(ys_flat)
 
-    @staticmethod
-    def _batch_shape_from_space(batch_space: Any) -> tuple[int, ...]:
-        return tuple(getattr(batch_space, "batch_shape"))
+    @checked_method(in_space="codomain", out_space="domain", in_batched=True, out_batched=True)
+    def rvapply(self, ys: DenseArray) -> DenseArray:
+        return self._rvapply_core(ys)
 
-    def _vapply_unchecked_leading(
-        self,
-        xs: DenseArray,
-        batch_shape: tuple[int, ...],
-    ) -> DenseArray:
-        xs2 = xs.reshape((-1, self._dom_size))
-        ys2 = (self.A @ xs2.T).T
-        if self._cod_vector_fast_path:
-            if self._cod_is_flat and tuple(ys2.shape[:-1]) == batch_shape:
-                return ys2
-            return ys2.reshape(batch_shape + tuple(self.cod.shape))
-        ys_flat = ys2.reshape(batch_shape + (self._cod_size,))
-        return self.cod.batch(batch_shape, tuple(range(len(batch_shape)))).unflatten(ys_flat)
-
-    def _rvapply_unchecked_leading(
-        self,
-        ys: DenseArray,
-        batch_shape: tuple[int, ...],
-    ) -> DenseArray:
-        ys2 = ys.reshape((-1, self._cod_size))
-        xs2 = (self._AH @ ys2.T).T
-        if self._dom_vector_fast_path:
-            if self._dom_is_flat and tuple(xs2.shape[:-1]) == batch_shape:
-                return xs2
-            return xs2.reshape(batch_shape + tuple(self.dom.shape))
-        xs_flat = xs2.reshape(batch_shape + (self._dom_size,))
-        return self.dom.batch(batch_shape, tuple(range(len(batch_shape)))).unflatten(xs_flat)
-
-    def _vapply_unchecked(self, xs: DenseArray, batch_space=None) -> DenseArray:
-        if not self._is_leading_batch(batch_space):
-            return self._fallback_vapply(xs, batch_space)
-        batch_shape = (
-            self._batch_shape_from_input(xs, len(self.domain.shape))
-            if batch_space is None
-            else self._batch_shape_from_space(batch_space)
+    def _rvapply_core(self, ys: DenseArray) -> DenseArray:
+        """Apply the metric adjoint over leading batch axes without checks."""
+        if self._mode is _SparseMode.EUCLIDEAN_FLAT or self._mode is _SparseMode.EUCLIDEAN_TENSOR:
+            return self._euclidean_rvapply_core(ys)
+        if self._mode is _SparseMode.WEIGHTED_FUSED:
+            return (self._AH @ (ys * self._cod_weights).T).T / self._dom_weights
+        return metric_rvapply(
+            self.domain,
+            self.codomain,
+            self._euclidean_rapply_core,
+            self._euclidean_rvapply_core,
+            ys,
+            opname=type(self).__name__,
+            ops=self.ops,
         )
-        return self._vapply_unchecked_leading(xs, batch_shape)
 
-    def _rvapply_unchecked(self, ys: DenseArray, batch_space=None) -> DenseArray:
-        if not self._is_leading_batch(batch_space):
-            return self._fallback_rvapply(ys, batch_space)
-        batch_shape = (
-            self._batch_shape_from_input(ys, len(self.codomain.shape))
-            if batch_space is None
-            else self._batch_shape_from_space(batch_space)
-        )
-        return self._rvapply_unchecked_leading(ys, batch_shape)
+    def _euclidean_rvapply_core(self, ys: DenseArray) -> DenseArray:
+        """Apply the Euclidean sparse adjoint over leading batch axes."""
+        if self._mode is _SparseMode.EUCLIDEAN_FLAT:
+            return (self._AH @ ys.reshape((-1, self._cod_size)).T).T
+        if self._mode is _SparseMode.EUCLIDEAN_TENSOR:
+            lead = tuple(ys.shape[: len(ys.shape) - len(self.cod.shape)])
+            ys2 = ys.reshape((-1, self._cod_size))
+            xs2 = (self._AH @ ys2.T).T
+            return xs2.reshape(lead + tuple(self.dom.shape))
+        ys_flat = self.codomain.flatten_batch(ys)
+        xs_flat = (self._AH @ ys_flat.T).T
+        return self.domain.unflatten_batch(xs_flat)
 
-    def vapply(self, xs: DenseArray, batch_space=None) -> DenseArray:
-        in_space = self._input_batch_space(self.domain, xs, batch_space)
-        if tuple(getattr(in_space, "batch_axes", ())) != tuple(range(len(in_space.batch_shape))):
-            return self._fallback_vapply(xs, batch_space)
-        if self._enable_checks:
-            in_space._check_member(xs)
-        batch_shape = tuple(in_space.batch_shape)
-        ys = self._vapply_unchecked_leading(xs, batch_shape)
-        if self._enable_checks:
-            self._output_batch_space(self.codomain, in_space)._check_member(ys)
-        return ys
-
-    def rvapply(self, ys: DenseArray, batch_space=None) -> DenseArray:
-        in_space = self._input_batch_space(self.codomain, ys, batch_space)
-        if tuple(getattr(in_space, "batch_axes", ())) != tuple(range(len(in_space.batch_shape))):
-            return self._fallback_rvapply(ys, batch_space)
-        if self._enable_checks:
-            in_space._check_member(ys)
-        batch_shape = tuple(in_space.batch_shape)
-        xs = self._rvapply_unchecked_leading(ys, batch_shape)
-        if self._enable_checks:
-            self._output_batch_space(self.domain, in_space)._check_member(xs)
-        return xs
-
-    def to_dense(self) -> DenseArray:
+    def to_sparse(self) -> SparseArray:
         """
-        Materialize the stored sparse matrix as a dense operator tensor.
+        Return the stored sparse matrix representation without copying.
 
-        The returned array has shape ``self.codomain.shape + self.domain.shape``.
+        The returned object is exactly the sparse array supplied at construction.
+        """
+        return self.A
+
+    def to_matrix(self) -> DenseArray:
+        """
+        Materialize the stored sparse matrix as a dense 2D coordinate matrix.
+
+        Use :meth:`to_sparse` when sparse storage should be preserved.
         """
         if hasattr(self.A, "toarray"):
             dense = self.A.toarray()
@@ -224,25 +279,31 @@ class SparseLinOp(LinOp):
         elif hasattr(self.A, "to_dense"):
             dense = self.A.to_dense()
         else:
-            dense = super().to_dense().reshape((self._cod_size, self._dom_size))
-        return self.ops.reshape(dense, tuple(self.codomain.shape) + tuple(self.domain.shape))
+            dense = super().to_matrix()
+        return self.ops.reshape(self.ctx.asarray(dense), (self._cod_size, self._dom_size))
+
+    def to_dense(self) -> DenseArray:
+        """
+        Materialize the stored sparse matrix as a dense operator tensor.
+
+        The returned array has shape ``self.codomain.shape + self.domain.shape``.
+        """
+        return self.ops.reshape(self.to_matrix(), tuple(self.codomain.shape) + tuple(self.domain.shape))
 
     def is_hermitian(self) -> bool | None:
         """
-        Return whether this sparse operator is structurally Hermitian.
+        Return whether this sparse operator is structurally self-adjoint.
 
         Returns
         -------
         bool or None
-            ``True`` or ``False`` for plain :class:`VectorSpace` domains, where
-            Hermiticity is checked against the Euclidean sparse matrix.
-            ``None`` for custom geometries whose inner product may differ from
-            the Euclidean coordinate product.
+            ``True`` or ``False`` when the structure can be checked, otherwise
+            ``None``.
         """
         if self.dom != self.cod:
             return False
-        if type(self.dom) is not VectorSpace:
-            return None
+        if not (self.domain.is_euclidean and self.codomain.is_euclidean):
+            return _metric_is_hermitian_by_basis(self)
         try:
             return bool(self.ops.allclose_sparse(self.A, self._AH))
         except Exception:
@@ -257,13 +318,16 @@ class SparseLinOp(LinOp):
         return False
 
     def tree_flatten(self):
-        aux = (self.dom, self.cod, self.ctx)
+        aux = (self.dom, self.cod, self.ctx, self._mode)
         children = (self.A,)
         return children, aux
 
     @classmethod
     def tree_unflatten(cls, aux, children):
-        dom, cod, ctx = aux
+        if len(aux) == 4:
+            dom, cod, ctx, _mode = aux
+        else:
+            dom, cod, ctx = aux
         A = children[0]
         return cls(A, dom, cod, ctx)
 
@@ -271,4 +335,11 @@ class SparseLinOp(LinOp):
         new_dom = self.dom.convert(new_ctx)
         new_cod = self.cod.convert(new_ctx)
         new_A = new_ctx.assparse(self.A)
+        if new_ctx.ops.get_dtype(new_A) != new_ctx.dtype:
+            if hasattr(new_A, "astype"):
+                new_A = new_A.astype(new_ctx.dtype)
+            elif hasattr(new_A, "to"):
+                new_A = new_A.to(dtype=new_ctx.dtype)
+            else:
+                new_A = new_ctx.assparse(self.to_matrix())
         return SparseLinOp(new_A, new_dom, new_cod, new_ctx)

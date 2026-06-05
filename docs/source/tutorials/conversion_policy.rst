@@ -1,12 +1,23 @@
-Conversion policy guide
-=======================
+Conversion and context guide
+============================
 
-This tutorial follows ``tutorials/5_Conversion_Policy.ipynb``. It explains why
-SpaceCore needs conversion policy, how context is chosen, how dtype is handled
-during conversion, and which flags regulate conversion behavior.
+This tutorial follows ``tutorials/5_Conversion_Policy.ipynb``. It describes
+the current conversion behavior in SpaceCore.
 
-Motivation
-----------
+The policy model is intentionally small:
+
+* every object is attached to a ``Context``;
+* constructors resolve one context by a fixed priority rule;
+* conversion always targets the backend, dtype, and checking flag of the
+  requested context;
+* there are no warning/error/silent conversion policies and no
+  dtype-preservation policy.
+
+The important practical rule is: **the target context wins during explicit
+conversion**.
+
+What a context controls
+-----------------------
 
 SpaceCore is built around the chain:
 
@@ -14,166 +25,146 @@ SpaceCore is built around the chain:
 
    \texttt{BackendOps} \to \texttt{Context} \to \texttt{Space} \to \texttt{LinOp}.
 
-Spaces and operators always live under a numerical policy: a backend, a dtype,
-and a checking policy.
+A ``Context`` stores three runtime choices:
 
-As soon as objects may come from different sources, SpaceCore must answer:
+* ``ops``: the backend implementation, such as ``NumpyOps``, ``JaxOps``, or
+  ``TorchOps``;
+* ``dtype``: the backend-normalized dtype used for arrays created or converted
+  through the context;
+* ``enable_checks``: whether spaces, operators, and functionals validate inputs
+  and outputs.
 
-* Which backend should be used?
-* Which dtype should be used?
-* Should native dtype be preserved or converted to the target context dtype?
-* Should backend changes happen silently or produce warnings/errors?
+This means spaces and operators always carry an execution policy, but that
+policy is just the context itself. The old global conversion knobs have been
+removed.
 
-Without an explicit conversion policy, these situations are ambiguous.
+Context resolution order
+------------------------
 
-Typical example
----------------
+When a constructor needs a context, SpaceCore resolves it in this order:
 
-Suppose you create ``ProductSpace((s1, ..., sn))`` without passing ``ctx=...``.
-The global default context is NumPy with ``float64``, but one input space
-``sk`` has a JAX context.
+1. use an explicit ``ctx=...`` argument if one was provided;
+2. otherwise infer a context from inputs that carry a ``ctx`` attribute or from
+   registered backend arrays;
+3. otherwise use the global default context from ``spacecore.get_context()``.
 
-SpaceCore must decide whether to infer context from the input spaces or use the
-global default context and convert the input spaces. It must also decide what to
-do with the dtype associated with each input. Conversion policy makes these
-decisions deterministic.
+If the explicit context is a backend name or backend family, missing fields are
+filled from backend defaults. For example, ``ctx="jax"`` selects JAX and lets
+``JaxOps.sanitize_dtype(None)`` choose the dtype.
 
-Context resolution
-------------------
+Inference is conservative. A common context can be inferred only when all
+context-carrying inputs use the same backend family. If compatible inputs have
+different dtypes, SpaceCore chooses the most general dtype for that backend. If
+their ``enable_checks`` flags differ, the inferred flag is the conjunction:
+checks stay enabled only if all source contexts have checks enabled.
 
-The context resolution procedure is:
+Explicit conversion
+-------------------
 
-.. image:: ../_static/img/context_decision_tree.svg
-   :alt: SpaceCore context resolution decision tree
-   :align: center
+Calling
 
-1. If an explicit context is provided via ``ctx``, it is used. If it is given as
-   a string, missing context parameters are filled from defaults.
-2. If no explicit context is provided and input objects carry ``ctx``
-   attributes, SpaceCore attempts to infer a context.
-3. A common context can be inferred only if all context-carrying inputs use the
-   same backend.
-4. The inferred context uses the shared backend and the most general dtype among
-   the inputs. Other parameters are set to default values.
-5. If no context can be inferred, the global default context set by
-   ``spacecore.set_context()`` is used.
+.. code-block:: python
 
-Once the context is resolved, it is assigned to the object being created. Any
-context-carrying inputs are adapted to the backend of the resolved context.
-Their dtype may or may not be preserved, depending on the active dtype policy.
+   obj2 = obj.convert(new_ctx)
 
-How object conversion happens
------------------------------
+normalizes ``new_ctx`` into a full ``Context``. If ``obj.ctx == new_ctx``,
+conversion returns ``obj`` unchanged. Otherwise, the object is rebuilt in
+``new_ctx`` by its ``_convert(...)`` implementation.
 
-Assume an object ``foo`` needs to be converted to a new context ``new_ctx``.
+There is no separate conversion policy. A backend change is allowed, and no
+warning/error/silent mode is consulted. Use explicit contexts in library code
+when backend migration should be controlled tightly.
 
-.. image:: ../_static/img/convert_to_new_ctx.svg
-   :alt: SpaceCore conversion to a new context
-   :align: center
+There is also no dtype-preservation policy. The converted object uses the dtype
+of the target context. If you want to preserve a dtype, make that dtype part of
+the target context explicitly:
 
-The backend is determined by ``new_ctx``. Dtype is treated independently by
-``dtype_resolution_policy``.
+.. code-block:: python
 
-Dtype resolution during conversion
-----------------------------------
+   jax64 = spacecore.Context(spacecore.JaxOps(), dtype="float64", enable_checks=False)
+   obj_jax64 = obj.convert(jax64)
 
-Dtype resolution is separate from context resolution. Context resolution decides
-which context is assigned to the object being created. Once that context is
-fixed, input objects carrying their own contexts may need to be converted to it.
-During conversion, the backend is determined by the resolved context, but dtype
-policy may vary.
+Dtype behavior
+--------------
 
-If an input object has dtype ``float32`` and is converted to a context on a
-different backend, SpaceCore must decide whether to preserve ``float32`` or
-cast the object to the dtype of the resolved context.
+Dtype behavior now has two simple cases.
 
-The resolver supports two dtype policies:
+During context inference
+~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. dropdown:: ``dtype_resolution_policy`` values
-
-   * ``convert``: convert the object with the dtype that the resolved context
-     provides.
-   * ``keep_native``: convert the object to an equivalent dtype in the backend
-     of the resolved context. This is the default.
-
-Set this policy with ``spacecore.set_dtype_resolution_policy()`` and inspect it
-with ``spacecore.get_dtype_resolution_policy()``.
-
-When context is inferred from several objects, dtype is chosen as:
+When a context is inferred from several compatible inputs, dtypes are normalized
+to the inferred backend and joined:
 
 .. math::
 
    \{d_1,\dots,d_k\}
    \mapsto
    \begin{cases}
-   d_1, & \text{if all } d_i \text{ are equal},\\
-   \texttt{join}(d_1,\dots,d_k), & \text{otherwise}.
+   d_1, & \text{if all } d_i \text{ agree},\\
+   \texttt{result\_type}(d_1,\dots,d_k), & \text{otherwise}.
    \end{cases}
 
-Before joining, dtypes are normalized to the inferred backend.
+During explicit conversion
+~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Other inferred context parameters
----------------------------------
+The target context dtype wins. Objects are converted to that dtype. There is no
+``keep_native`` mode.
 
-When a context is inferred from several source objects, the inferred
-``enable_checks`` flag is the conjunction
+Backend defaults still come from ``BackendOps.sanitize_dtype(None)``. In the
+current implementation, NumPy defaults to ``float64``; JAX follows the active
+JAX dtype configuration; Torch follows the active PyTorch default dtype rules.
 
-.. math::
-
-   \texttt{enable\_checks}
-   =
-   \bigwedge_i \texttt{ctx}_i.\texttt{enable\_checks}.
-
-Checks remain enabled only if all source contexts have checks enabled.
-
-Resolution policy
+Checking behavior
 -----------------
 
-``resolution_policy`` regulates what happens when an object's native context and
-target context are backend-incompatible. That means the object is being
-converted to a backend other than its own.
+``enable_checks`` is a context field, not a conversion policy.
 
-.. dropdown:: ``resolution_policy`` values
+* Explicit contexts use their own ``enable_checks`` value.
+* Inferred contexts enable checks only if all inferred source contexts have
+  checks enabled.
+* Converted objects use the target context's ``enable_checks`` value.
 
-   * ``warning``: conversion is allowed, but a warning is issued. This is the
-     default behavior.
-   * ``error``: conversion is rejected. Use this when accidental backend
-     migration should be forbidden.
-   * ``silent``: conversion proceeds without warning. Use this when automatic
-     conversion is expected and the pipeline is trusted.
+Checks validate shapes, membership, dtype/backend representation, and operator
+input/output contracts. Disabling checks can reduce overhead in tight loops
+after data has already been validated.
 
-Set this policy with ``spacecore.set_resolution_policy()`` and inspect it with
-``spacecore.get_resolution_policy()``.
+What was removed
+----------------
 
-Backend-specific default dtypes
+Older versions exposed speculative global policies such as:
+
+* ``set_resolution_policy(...)`` / ``get_resolution_policy(...)``;
+* ``set_dtype_resolution_policy(...)`` / ``get_dtype_resolution_policy(...)``;
+* ``ContextPolicy`` and ``DtypePreservePolicy`` values such as ``warning``,
+  ``error``, ``silent``, and ``keep_native``.
+
+These are no longer part of the current API. Conversion is deterministic
+without them: normalize the target context, rebuild if needed, and cast to the
+target context dtype.
+
+Backend-specific dtype defaults
 -------------------------------
 
 Each backend implementation defines dtype normalization through
 ``sanitize_dtype(dtype)``. This method normalizes dtype into backend-native form
 and determines the backend default dtype when ``dtype=None``.
 
-For ``NumpyOps``:
+* ``NumpyOps.sanitize_dtype(None)`` currently returns ``numpy.float64``.
+* ``JaxOps.sanitize_dtype(None)`` depends on JAX configuration: ``float64``
+  when ``jax_enable_x64=True``, otherwise ``float32``.
+* ``TorchOps.sanitize_dtype(None)`` follows PyTorch default dtype behavior.
 
-.. math::
-
-   \texttt{sanitize\_dtype(None)} = \texttt{numpy.float64}.
-
-For ``JaxOps``, the default depends on JAX configuration:
-
-* if ``jax_enable_x64=True``, the default is ``float64``;
-* otherwise, the default is ``float32``.
+If exact dtype matters, pass it explicitly in the ``Context`` you construct.
 
 Summary
 -------
 
-When a new object is created, SpaceCore resolves context first:
+When a new object is created, SpaceCore resolves a context by priority:
 
-1. use explicit ``ctx`` if provided;
-2. otherwise infer from inputs that carry ``ctx``;
-3. otherwise use the global default context.
+1. explicit ``ctx``;
+2. compatible inferred contexts from inputs;
+3. global default context.
 
-Context inference is possible only when context-carrying inputs agree on the
-same backend. The inferred dtype is the most general dtype among inputs, and
-``enable_checks`` is inferred by conjunction. Once context is resolved, backend
-conversion follows ``resolution_policy`` and dtype handling follows
-``dtype_resolution_policy``.
+When an existing object is converted, the requested target context wins
+completely: backend, dtype, and ``enable_checks`` all come from that context.
+This is the current conversion policy.

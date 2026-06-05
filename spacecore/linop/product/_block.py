@@ -16,7 +16,11 @@ class BlockDiagonalLinOp(ProductLinOp[ProductSpace, ProductSpace]):
     Block-diagonal operator between product spaces.
 
     If ``dom = X1 x ... x Xk`` and ``cod = Y1 x ... x Yk``, component
-    ``parts[i]`` maps ``Xi`` to ``Yi``.
+    ``parts[i]`` maps ``Xi`` to ``Yi``. Input and output representations follow
+    the corresponding :class:`ProductSpace` structures: tuple is the default,
+    but registered pytree/dataclass product elements are preserved when the
+    domain or codomain was built with ``ProductSpace.from_template(...)`` or an
+    explicit ``PytreeStructure``.
 
     Parameters
     ----------
@@ -29,6 +33,15 @@ class BlockDiagonalLinOp(ProductLinOp[ProductSpace, ProductSpace]):
     ctx : Context, str, or None, optional
         Backend context specification.
     """
+
+    def __init__(
+        self,
+        dom: ProductSpace,
+        cod: ProductSpace,
+        parts: Tuple[LinOp, ...],
+        ctx: Context | str | None = None,
+    ) -> None:
+        super().__init__(dom, cod, parts, ctx)
 
     def _check_layout(self) -> None:
         """Check that each component maps the matching product component."""
@@ -44,51 +57,55 @@ class BlockDiagonalLinOp(ProductLinOp[ProductSpace, ProductSpace]):
             else:
                 raise TypeError(f"Component op {i} has incompatible dom/cod spaces.")
 
-    @checked_method(in_space="dom", out_space="cod")
+    @checked_method(in_space="domain", out_space="codomain")
     def apply(self, x: Any) -> Any:
-        """Apply each block to the matching product component."""
+        """Apply each block to the matching component of a product element."""
         return self._apply_unchecked(x)
 
     def _apply_unchecked(self, x: Any) -> Any:
-        """Apply each block without membership checks."""
+        """Apply each block without membership checks and rebuild codomain representation."""
+        x_parts = self.dom._components(x)
         if self._num_parts == 2:
-            return self._apply_parts[0](x[0]), self._apply_parts[1](x[1])
-        return tuple(apply(xi) for apply, xi in zip(self._apply_parts, x))
+            y_parts = (self._apply_parts[0](x_parts[0]), self._apply_parts[1](x_parts[1]))
+        else:
+            y_parts = tuple(apply(xi) for apply, xi in zip(self._apply_parts, x_parts))
+        return self.cod._from_components(y_parts)
 
-    @checked_method(in_space="cod", out_space="dom")
+    @checked_method(in_space="codomain", out_space="domain")
     def rapply(self, y: Any) -> Any:
-        """Apply each adjoint block to the matching product component."""
+        """Apply each adjoint block to the matching component of a product element."""
         return self._rapply_unchecked(y)
 
     def _rapply_unchecked(self, y: Any) -> Any:
-        """Apply each adjoint block without membership checks."""
+        """Apply each adjoint block without checks and rebuild domain representation."""
+        y_parts = self.cod._components(y)
         if self._num_parts == 2:
-            return self._rapply_parts[0](y[0]), self._rapply_parts[1](y[1])
-        return tuple(rapply(yi) for rapply, yi in zip(self._rapply_parts, y))
+            x_parts = (self._rapply_parts[0](y_parts[0]), self._rapply_parts[1](y_parts[1]))
+        else:
+            x_parts = tuple(rapply(yi) for rapply, yi in zip(self._rapply_parts, y_parts))
+        return self.dom._from_components(x_parts)
 
-    def vapply(self, x: Any, batch_space=None) -> Any:
-        """Apply this block-diagonal operator over a product batch."""
-        in_space = self._input_batch_space(self.domain, x, batch_space)
-        if self._enable_checks:
-            in_space._check_member(x)
-        batch_shape = in_space.batch_shape
-        batch_axes = in_space.batch_axes
-        return tuple(
-            op.vapply(xi, op.domain.batch(batch_shape, batch_axes))
-            for op, xi in zip(self.parts, x)
-        )
+    @checked_method(in_space="domain", in_batched=True)
+    def vapply(self, x: Any) -> Any:
+        """Apply this block-diagonal operator over a structured product batch."""
+        return self._vapply_unchecked(x)
 
-    def rvapply(self, y: Any, batch_space=None) -> Any:
-        """Apply the adjoint over a product batch."""
-        in_space = self._input_batch_space(self.codomain, y, batch_space)
-        if self._enable_checks:
-            in_space._check_member(y)
-        batch_shape = in_space.batch_shape
-        batch_axes = in_space.batch_axes
-        return tuple(
-            op.rvapply(yi, op.codomain.batch(batch_shape, batch_axes))
-            for op, yi in zip(self.parts, y)
-        )
+    def _vapply_unchecked(self, x: Any) -> Any:
+        """Apply over a product batch without checks and rebuild codomain representation."""
+        x_parts = self.dom._components(x)
+        y_parts = tuple(op.vapply(xi) for op, xi in zip(self.parts, x_parts))
+        return self.cod._from_components(y_parts)
+
+    @checked_method(in_space="codomain", out_space="domain", in_batched=True, out_batched=True)
+    def rvapply(self, y: Any) -> Any:
+        """Apply the adjoint over a structured product batch."""
+        return self._rvapply_unchecked(y)
+
+    def _rvapply_unchecked(self, y: Any) -> Any:
+        """Apply the adjoint over a product batch without checks and rebuild domain representation."""
+        y_parts = self.cod._components(y)
+        x_parts = tuple(op.rvapply(yi) for op, yi in zip(self.parts, y_parts))
+        return self.dom._from_components(x_parts)
 
     @classmethod
     def from_operators(cls, parts: Tuple[LinOp, ...]) -> BlockDiagonalLinOp:
@@ -105,4 +122,4 @@ class BlockDiagonalLinOp(ProductLinOp[ProductSpace, ProductSpace]):
         new_dom = self.dom.convert(new_ctx)
         new_cod = self.cod.convert(new_ctx)
         new_parts = [op.convert(new_ctx) for op in self.parts]
-        return BlockDiagonalLinOp(new_dom, new_cod, new_parts)
+        return BlockDiagonalLinOp(new_dom, new_cod, new_parts, new_ctx)

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import warnings
 from abc import abstractmethod
 from functools import cached_property
 from math import prod
 from numbers import Number
 from typing import Any, Generic, TypeVar
 
+from .._checks import checked_method
 from ..space import Space
 from ..backend import Context
 from .._contextual import ContextBound, resolve_context_priority
@@ -51,7 +53,7 @@ class LinOp(ContextBound, Generic[Domain, Codomain]):
     >>> import numpy as np
     >>> import spacecore as sc
     >>> ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
-    >>> X = sc.VectorSpace((2,), ctx)
+    >>> X = sc.DenseCoordinateSpace((2,), ctx)
     >>> A = sc.DenseLinOp(ctx.asarray([[1.0, 0.0], [0.0, 2.0]]), X, X, ctx)
     >>> A.apply(ctx.asarray([3.0, 4.0]))
     array([3., 8.])
@@ -119,68 +121,15 @@ class LinOp(ContextBound, Generic[Domain, Codomain]):
         """
         return None
 
-    def vapply(self, xs: Any, batch_space: Space | None = None) -> Any:
-        """Apply this operator independently over a batch of domain elements."""
-        return self._fallback_vapply(xs, batch_space)
+    @checked_method(in_space="domain", in_batched=True)
+    def vapply(self, xs: Any) -> Any:
+        """Apply over a leading batch axis. Input must have shape ``(N,) + domain.shape``; use ``moveaxis`` for other layouts."""
+        return self.ops.vmap(self.apply, in_axes=0, out_axes=0)(xs)
 
-    def rvapply(self, ys: Any, batch_space: Space | None = None) -> Any:
-        """Apply the adjoint independently over a batch of codomain elements."""
-        return self._fallback_rvapply(ys, batch_space)
-
-    def _infer_batch_shape(self, space: Space, value: Any) -> tuple[int, ...]:
-        """Infer leading batch dimensions from a value and base space."""
-        if hasattr(space, "spaces") and isinstance(value, tuple) and value:
-            return self._infer_batch_shape(space.spaces[0], value[0])
-        shape = tuple(getattr(value, "shape", ()))
-        base_shape = tuple(space.shape)
-        if not base_shape:
-            return shape
-        if len(shape) < len(base_shape) or shape[-len(base_shape):] != base_shape:
-            raise ValueError(
-                f"Cannot infer leading batch shape for value shape {shape} "
-                f"and base space shape {base_shape}."
-            )
-        return shape[: len(shape) - len(base_shape)]
-
-    def _input_batch_space(
-        self,
-        space: Space,
-        value: Any,
-        batch_space: Space | None,
-    ) -> Space:
-        """Return the batch space used to validate batched inputs."""
-        if batch_space is not None:
-            return batch_space
-        batch_shape = self._infer_batch_shape(space, value)
-        return space.batch(batch_shape, tuple(range(len(batch_shape))))
-
-    def _output_batch_space(self, space: Space, input_batch_space: Space) -> Space:
-        """Return the batch space corresponding to a batched output."""
-        batch_shape = getattr(input_batch_space, "batch_shape", None)
-        batch_axes = getattr(input_batch_space, "batch_axes", None)
-        if batch_shape is None or batch_axes is None:
-            raise TypeError("batch_space must be a BatchSpace-compatible object.")
-        return space.batch(tuple(batch_shape), tuple(batch_axes))
-
-    def _fallback_vapply(self, xs: Any, batch_space: Space | None = None) -> Any:
-        """Apply ``self.apply`` over a leading batch with backend ``vmap``."""
-        in_space = self._input_batch_space(self.domain, xs, batch_space)
-        if self._enable_checks:
-            in_space._check_member(xs)
-        ys = self.ops.vmap(self.apply, in_axes=0, out_axes=0)(xs)
-        if self._enable_checks:
-            self._output_batch_space(self.codomain, in_space)._check_member(ys)
-        return ys
-
-    def _fallback_rvapply(self, ys: Any, batch_space: Space | None = None) -> Any:
-        """Apply ``self.rapply`` over a leading batch with backend ``vmap``."""
-        in_space = self._input_batch_space(self.codomain, ys, batch_space)
-        if self._enable_checks:
-            in_space._check_member(ys)
-        xs = self.ops.vmap(self.rapply, in_axes=0, out_axes=0)(ys)
-        if self._enable_checks:
-            self._output_batch_space(self.domain, in_space)._check_member(xs)
-        return xs
+    @checked_method(in_space="codomain", in_batched=True)
+    def rvapply(self, ys: Any) -> Any:
+        """Apply the adjoint over a leading batch axis. Input must have shape ``(N,) + codomain.shape``; use ``moveaxis`` for other layouts."""
+        return self.ops.vmap(self.rapply, in_axes=0, out_axes=0)(ys)
 
     @property
     def H(self) -> LinOp:
@@ -275,21 +224,59 @@ class LinOp(ContextBound, Generic[Domain, Codomain]):
         Materialize this operator as a dense backend array.
 
         The returned array has shape ``self.codomain.shape + self.domain.shape``.
-        The default implementation applies the operator to each standard basis
-        vector of the domain, stacks the flattened outputs as matrix columns,
-        and reshapes the result back to tensor-operator form. Subclasses that
-        already store the matrix should override this method for efficiency.
+        The default implementation is intended for small problems, debugging,
+        and tests. It materializes the full coordinate matrix, so subclasses
+        that already store a dense or sparse matrix should override this method
+        for efficiency.
+        """
+        return self.ops.reshape(self.to_matrix(), tuple(self.codomain.shape) + tuple(self.domain.shape))
+
+    def to_sparse(self):
+        raise NotImplementedError(
+            f"{type(self).__name__} does not define sparse materialization."
+        )
+
+    def to_matrix(self) -> Any:
+        """
+        Materialize this operator as a 2D dense coordinate matrix.
+
+        The returned array has shape
+        ``(prod(self.codomain.shape), prod(self.domain.shape))``. The default
+        implementation builds a batch of standard basis vectors and calls
+        :meth:`vapply` once. If a space cannot batch-flatten or batch-unflatten
+        its representation, it falls back to a safe Python loop. This method is
+        for small/testing use; concrete storage-backed subclasses should
+        override it when they can expose a matrix directly.
         """
         domain_size = prod(self.domain.shape)
+        codomain_size = prod(self.codomain.shape)
         eye = self.ops.eye(domain_size, dtype=self.dtype)
+
+        try:
+            xs = self.domain.unflatten_batch(eye)
+            ys = self.vapply(xs)
+            ys_flat = self.codomain.flatten_batch(ys)
+            matrix = self.ops.transpose(ys_flat, (1, 0))
+            return self.ops.reshape(matrix, (codomain_size, domain_size))
+        except (AttributeError, NotImplementedError, TypeError) as exc:
+            warnings.warn(
+                (
+                    f"{type(self).__name__}.to_matrix() could not use the batched "
+                    f"materialization path and is falling back to a Python loop. "
+                    f"This is slower and not JIT-friendly. Original error: "
+                    f"{type(exc).__name__}: {exc}"
+                ),
+                RuntimeWarning,
+                stacklevel=2,
+            )
+
         columns = []
         for i in range(domain_size):
             basis_vector = eye[:, i]
             x = self.domain.unflatten(basis_vector)
             y = self.apply(x)
             columns.append(self.codomain.flatten(y))
-        matrix = self.ops.stack(tuple(columns), axis=1)
-        return self.ops.reshape(matrix, tuple(self.codomain.shape) + tuple(self.domain.shape))
+        return self.ops.stack(tuple(columns), axis=1)
 
     def assert_domain(self, x: Any) -> None:
         """Raise if ``x`` is not in the domain."""

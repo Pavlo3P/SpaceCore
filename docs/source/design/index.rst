@@ -10,5 +10,7 @@ users should reason about them.
    conversion_policy
    dtype_policy
    checking_policy
+   geometry
+   performance
    jax_integration
    backend_ops_array_api

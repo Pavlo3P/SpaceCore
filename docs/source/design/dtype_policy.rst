@@ -27,8 +27,8 @@ selected backend.
 
    import spacecore as sc
 
-   X = sc.VectorSpace((3,), ctx=sc.Context(sc.NumpyOps(), dtype="float32"))
-   Y = sc.VectorSpace((3,), ctx=sc.Context(sc.NumpyOps(), dtype="float64"))
+   X = sc.DenseCoordinateSpace((3,), ctx=sc.Context(sc.NumpyOps(), dtype="float32"))
+   Y = sc.DenseCoordinateSpace((3,), ctx=sc.Context(sc.NumpyOps(), dtype="float64"))
 
    Z = sc.ProductSpace((X, Y))
 

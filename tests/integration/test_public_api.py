@@ -26,11 +26,11 @@ def test_expected_names_are_exported():
         "Functional", "LinearFunctional", "InnerProductFunctional",
         "ComposedFunctional", "MatrixFreeLinearFunctional", "QuadraticForm",
         "LinOpQuadraticForm", "make_functional_composed",
-        "VectorSpace", "HermitianSpace", "ProductSpace", "Space",
+        "DenseCoordinateSpace", "HermitianSpace", "ProductSpace", "ProductStructure",
+        "TupleStructure", "PytreeStructure", "StackedSpace", "Space",
+        "InnerProduct", "EuclideanInnerProduct", "WeightedInnerProduct",
         "DenseArray", "SparseArray", "ArrayLike",
         "set_context", "get_context", "resolve_context_priority", "register_ops",
-        "set_resolution_policy", "set_dtype_resolution_policy",
-        "get_resolution_policy", "get_dtype_resolution_policy",
         "LanczosResult", "lanczos_smallest",
         "ExpmMultiplyResult", "expm_multiply",
     }
@@ -59,7 +59,14 @@ def test_top_level_objects_match_source_modules():
     if has_torch():
         assert sc.TorchOps is backend.TorchOps
     assert sc.Space is space.Space
-    assert sc.VectorSpace is space.VectorSpace
+    assert sc.InnerProduct is space.InnerProduct
+    assert sc.EuclideanInnerProduct is space.EuclideanInnerProduct
+    assert sc.WeightedInnerProduct is space.WeightedInnerProduct
+    assert sc.DenseCoordinateSpace is space.DenseCoordinateSpace
+    assert sc.ProductStructure is space.ProductStructure
+    assert sc.TupleStructure is space.TupleStructure
+    assert sc.PytreeStructure is space.PytreeStructure
+    assert sc.StackedSpace is space.StackedSpace
     assert sc.DenseLinOp is linop.DenseLinOp
     assert sc.Functional is functional.Functional
     assert sc.ComposedFunctional is functional.ComposedFunctional
@@ -74,4 +81,8 @@ def test_top_level_objects_match_source_modules():
 def test_package_version_matches_project_metadata():
     sc = importlib.import_module("spacecore")
     metadata = tomllib.loads((ROOT / "pyproject.toml").read_text())
-    assert sc.__version__ == metadata["project"]["version"]
+    assert metadata["project"]["dynamic"] == ["version"]
+    assert metadata["tool"]["setuptools"]["dynamic"]["version"]["attr"] == (
+        "spacecore._version.__version__"
+    )
+    assert sc.__version__ == "0.3.0"

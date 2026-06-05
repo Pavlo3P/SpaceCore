@@ -1,6 +1,70 @@
 Release notes
 =============
 
+Version 0.3.0
+-------------
+
+SpaceCore 0.3.0 is a breaking release in the unstable ``0.x`` series. Space
+capabilities are recomputed from actual structure, dtype, and inner product,
+including after ``convert()``.
+
+Prominent migration
+~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: python
+
+   space.eigh(x)
+   # -> space.spectral_decompose(x)  # eigenvalues and frame
+   # -> space.spectrum(x)            # eigenvalues only
+
+Migration table
+~~~~~~~~~~~~~~~
+
+.. list-table::
+   :header-rows: 1
+
+   * - 0.2.x
+     - 0.3.0
+   * - ``sc.VectorSpace((n,))``
+     - ``sc.DenseVectorSpace((n,))``
+   * - ``sc.VectorSpace((d, d))``
+     - ``sc.DenseCoordinateSpace((d, d))``
+   * - ``space.eigh(x)``
+     - ``space.spectral_decompose(x)`` or ``space.spectrum(x)``
+   * - ``ProductInnerProductSpace(...)``
+     - ``ProductSpace(...)``
+   * - ``StackedInnerProductSpace(...)``
+     - ``StackedSpace(...)``
+
+Added
+~~~~~
+
+* ``spectrum``, ``spectral_decompose``, and ``from_spectrum`` as the Jordan
+  spectral contract.
+* ``ElementwiseJordanSpace`` and ``EuclideanElementwiseJordanSpace``.
+* ``ProductStructure``, ``TupleStructure``, ``PytreeStructure``, and
+  ``ProductSpace.from_template``.
+* ``ProductSpectralDecomposition`` for product spectral data independent of
+  product element structure.
+* ``StackedSpace`` and vectorizable axis-aware checks.
+* ``InnerProduct.validate_for(space)`` with strict ``WeightedInnerProduct``
+  construction validation.
+* ``scripts/api_audit.py`` for repository and downstream API migration audits.
+
+Changed and removed
+~~~~~~~~~~~~~~~~~~~
+
+* ``VectorSpace`` is abstract.
+* Previous concrete ``VectorSpace`` use cases moved to ``DenseVectorSpace`` and
+  ``DenseCoordinateSpace``.
+* ``DenseVectorSpace`` is now a plain one-dimensional dense vector space with
+  star and no Jordan capability by default.
+* Complex elementwise Jordan spaces no longer claim
+  ``EuclideanJordanAlgebraSpace``.
+* ``eigh`` was removed from spaces.
+* Specialized public product and stacked constructors were replaced by
+  auto-dispatching ``ProductSpace(...)`` and ``StackedSpace(...)`` factories.
+
 Version 0.2.0
 -------------
 
@@ -75,7 +139,7 @@ Spaces
 
 * Added :class:`BatchSpace` for batched elements with explicit batch shape and
   batch-axis metadata.
-* Improved :class:`VectorSpace`, :class:`HermitianSpace`, and
+* Improved :class:`DenseCoordinateSpace`, :class:`HermitianSpace`, and
   :class:`ProductSpace` conversion behavior, validation, batching support, and
   docstrings.
 

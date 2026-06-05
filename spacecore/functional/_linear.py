@@ -3,7 +3,7 @@ from __future__ import annotations
 from abc import abstractmethod
 from typing import Any, Callable
 
-from ._base import Domain, Functional
+from ._base import Domain, Functional, _check_scalar_shape
 from .._checks import checked_method
 from ..backend import Context, jax_pytree_class
 from ..space import Space
@@ -21,6 +21,17 @@ def _convert_space_element(space: Space, value: Any) -> Any:
             for component_space, component in zip(space.spaces, value)
         )
     return space.ctx.asarray(value)
+
+
+def _broadcast_space_element(space: Space, value: Any, n: int) -> Any:
+    """Broadcast a single space element to a leading-axis batch."""
+    parts = getattr(space, "spaces", None)
+    if parts is not None:
+        return tuple(
+            _broadcast_space_element(part, component, n)
+            for part, component in zip(parts, value)
+        )
+    return space.ops.broadcast_to(value, (n,) + tuple(space.shape))
 
 
 class LinearFunctional(Functional[Domain]):
@@ -44,6 +55,24 @@ class LinearFunctional(Functional[Domain]):
         Matrix-free functionals may not have a stored representer and should
         raise ``NotImplementedError``.
         """
+
+    @checked_method(in_space="domain", out_space="domain")
+    def grad(self, x: Any) -> Any:
+        """
+        Return the constant Riesz gradient of this linear functional.
+
+        For ``ell(x) = <c, x>_X``, the gradient is the space element ``c``.
+        Matrix-free functionals without a stored representer inherit the
+        ``NotImplementedError`` raised by :attr:`representer`.
+        """
+        return self.representer
+
+    @checked_method(in_space="domain", out_space="domain", in_batched=True, out_batched=True)
+    def vgrad(self, xs: Any) -> Any:
+        """Return the constant Riesz gradient over a leading batch axis."""
+        dom = self.dom
+        n = int(getattr(xs[0] if isinstance(xs, tuple) else xs, "shape", (0,))[0])
+        return _broadcast_space_element(dom, self.representer, n)
 
 
 @jax_pytree_class
@@ -89,6 +118,23 @@ class InnerProductFunctional(LinearFunctional[Domain]):
     def value(self, x: Any) -> Any:
         """Return ``domain.inner(representer, x)``."""
         return self.domain.inner(self._c, x)
+
+    @checked_method(in_space="domain", in_batched=True)
+    def vvalue(self, xs: Any) -> Any:
+        """Evaluate ``domain.inner(representer, xs[i])`` without a Python loop."""
+        dom = self.dom
+        ops = self.ctx.ops
+        if dom.is_euclidean and len(tuple(dom.shape)) == 1:
+            xs_flat = xs
+            c_flat = ops.conj(self._c)
+        else:
+            c_dual = self._c if dom.is_euclidean else dom.riesz(self._c)
+            c_flat = ops.conj(dom.flatten(c_dual))
+            xs_flat = dom.flatten_batch(xs)
+        values = xs_flat @ c_flat
+        if self._enable_checks:
+            _check_scalar_shape(values, (xs_flat.shape[0],))
+        return values
 
     def __eq__(self, other: Any) -> bool:
         """Return whether another inner-product functional has the same representer."""
@@ -219,10 +265,11 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
         """
         y = self.value_fn(x)
         if self._enable_checks:
-            self._check_scalar_batch(y, ())
+            _check_scalar_shape(y, ())
         return y
 
-    def vvalue(self, xs: Any, batch_space: Space | None = None) -> Any:
+    @checked_method(in_space="domain", in_batched=True)
+    def vvalue(self, xs: Any) -> Any:
         """
         Evaluate the scalar functional over a batch of domain elements.
 
@@ -230,8 +277,6 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
         ----------
         xs:
             Batched element of ``self.domain``.
-        batch_space:
-            Optional batch-space descriptor for ``xs``.
 
         Returns
         -------
@@ -240,14 +285,13 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
             batch shape.
         """
         if self.vvalue_fn is None:
-            return super().vvalue(xs, batch_space)
-        in_space = self._input_batch_space(self.domain, xs, batch_space)
-        batch_shape = self._require_leading_batch_axes(in_space)
-        if self._enable_checks:
-            in_space._check_member(xs)
+            return super().vvalue(xs)
         values = self.vvalue_fn(xs)
         if self._enable_checks:
-            self._check_scalar_batch(values, batch_shape)
+            shape = tuple(getattr(xs, "shape", ()))
+            base = tuple(self.domain.shape)
+            leading = shape if not base else shape[: len(shape) - len(base)]
+            _check_scalar_shape(values, leading)
         return values
 
     def __eq__(self, other: Any) -> bool:

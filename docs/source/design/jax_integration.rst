@@ -30,7 +30,7 @@ Example:
    import spacecore as sc
 
    ctx = sc.Context(sc.JaxOps(), dtype="float32")
-   X = sc.VectorSpace((128,), ctx)
+   X = sc.DenseCoordinateSpace((128,), ctx)
    A = build_operator(X)
    B = build_preconditioner(X)
 

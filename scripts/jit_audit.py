@@ -23,7 +23,7 @@ def _spd_operator(n: int):
     import spacecore as sc
 
     ctx = _ctx()
-    space = sc.VectorSpace((n,), ctx)
+    space = sc.DenseCoordinateSpace((n,), ctx)
     matrix = np.diag(np.arange(2.0, 2.0 + n))
     matrix += 0.05 * np.ones((n, n))
     return sc.DenseLinOp(ctx.asarray(matrix), space, space, ctx)
@@ -33,8 +33,8 @@ def _rect_operator():
     import spacecore as sc
 
     ctx = _ctx()
-    domain = sc.VectorSpace((2,), ctx)
-    codomain = sc.VectorSpace((3,), ctx)
+    domain = sc.DenseCoordinateSpace((2,), ctx)
+    codomain = sc.DenseCoordinateSpace((3,), ctx)
     matrix = np.array([[1.0, 0.0], [0.0, 2.0], [1.0, -1.0]])
     return sc.DenseLinOp(ctx.asarray(matrix), domain, codomain, ctx)
 
@@ -132,8 +132,8 @@ def main() -> None:
     R2 = _rect_operator()
     R3 = sc.DenseLinOp(
         _ctx().asarray([[1.0, 0.0, 0.5], [0.0, 2.0, -1.0], [1.0, -1.0, 0.25], [0.5, 0.0, 1.0]]),
-        sc.VectorSpace((3,), _ctx()),
-        sc.VectorSpace((4,), _ctx()),
+        sc.DenseCoordinateSpace((3,), _ctx()),
+        sc.DenseCoordinateSpace((4,), _ctx()),
         _ctx(),
     )
     b2a = R2.codomain.ctx.asarray([1.0, 2.0, 3.0])

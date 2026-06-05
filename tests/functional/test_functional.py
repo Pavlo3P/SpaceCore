@@ -11,7 +11,7 @@ def _ctx(dtype=np.float64, enable_checks=True):
 
 def _quadratic_problem(ctx):
     sc = importlib.import_module("spacecore")
-    dom = sc.VectorSpace((2,), ctx)
+    dom = sc.DenseCoordinateSpace((2,), ctx)
     Q = sc.DenseLinOp(ctx.asarray([[2.0, 0.0], [0.0, 4.0]]), dom, dom, ctx)
     linear = sc.InnerProductFunctional(ctx.asarray([1.0, -1.0]), dom, ctx)
     return sc.LinOpQuadraticForm(Q, linear, 3.0, ctx)
@@ -21,7 +21,7 @@ def test_explicit_context_overrides_inferred_contexts():
     sc = importlib.import_module("spacecore")
     inferred = _ctx(np.float32, enable_checks=True)
     explicit = _ctx(np.float64, enable_checks=False)
-    dom = sc.VectorSpace((2,), inferred)
+    dom = sc.DenseCoordinateSpace((2,), inferred)
     Q = sc.DenseLinOp(inferred.asarray([[1.0, 0.0], [0.0, 1.0]]), dom, dom, inferred)
     linear = sc.InnerProductFunctional(inferred.asarray([1.0, 2.0]), dom)
 
@@ -40,7 +40,7 @@ def test_domain_conversion_and_membership_checks_work():
     sc = importlib.import_module("spacecore")
     source = _ctx(np.float32, enable_checks=True)
     explicit = _ctx(np.float64, enable_checks=True)
-    dom = sc.VectorSpace((2,), source)
+    dom = sc.DenseCoordinateSpace((2,), source)
     functional = sc.InnerProductFunctional(source.asarray([1.0, 2.0]), dom, explicit)
 
     assert functional.ctx == explicit
@@ -62,7 +62,7 @@ def test_call_matches_value():
 def test_inner_product_functional_matches_domain_inner():
     sc = importlib.import_module("spacecore")
     ctx = _ctx()
-    dom = sc.VectorSpace((2,), ctx)
+    dom = sc.DenseCoordinateSpace((2,), ctx)
     c = ctx.asarray([1.0, -2.0])
     x = ctx.asarray([3.0, 4.0])
     functional = sc.InnerProductFunctional(c, dom, ctx)
@@ -73,7 +73,7 @@ def test_inner_product_functional_matches_domain_inner():
 def test_matrix_free_linear_functional_has_no_representer():
     sc = importlib.import_module("spacecore")
     ctx = _ctx()
-    dom = sc.VectorSpace((2,), ctx)
+    dom = sc.DenseCoordinateSpace((2,), ctx)
     c = ctx.asarray([2.0, 3.0])
     x = ctx.asarray([4.0, 5.0])
     functional = sc.MatrixFreeLinearFunctional(lambda y: dom.inner(c, y), dom, ctx)
@@ -86,8 +86,8 @@ def test_matrix_free_linear_functional_has_no_representer():
 def test_linear_functional_compose_specializes_to_inner_product_functional():
     sc = importlib.import_module("spacecore")
     ctx = _ctx()
-    X = sc.VectorSpace((2,), ctx)
-    Y = sc.VectorSpace((3,), ctx)
+    X = sc.DenseCoordinateSpace((2,), ctx)
+    Y = sc.DenseCoordinateSpace((3,), ctx)
     A = sc.DenseLinOp(ctx.asarray([[1.0, 2.0], [0.0, -1.0], [3.0, 0.5]]), X, Y, ctx)
     c = ctx.asarray([2.0, -1.0, 0.5])
     F = sc.InnerProductFunctional(c, Y, ctx)
@@ -102,8 +102,8 @@ def test_linear_functional_compose_specializes_to_inner_product_functional():
 def test_quadratic_form_compose_specializes_quadratic_and_linear_terms():
     sc = importlib.import_module("spacecore")
     ctx = _ctx()
-    X = sc.VectorSpace((2,), ctx)
-    Y = sc.VectorSpace((3,), ctx)
+    X = sc.DenseCoordinateSpace((2,), ctx)
+    Y = sc.DenseCoordinateSpace((3,), ctx)
     A = sc.DenseLinOp(ctx.asarray([[1.0, 2.0], [0.0, -1.0], [3.0, 0.5]]), X, Y, ctx)
     Q = sc.IdentityLinOp(Y, ctx)
     linear = sc.InnerProductFunctional(ctx.asarray([1.0, -2.0, 0.5]), Y, ctx)
@@ -119,8 +119,8 @@ def test_quadratic_form_compose_specializes_quadratic_and_linear_terms():
 def test_generic_functional_compose_forwards_value():
     sc = importlib.import_module("spacecore")
     ctx = _ctx()
-    X = sc.VectorSpace((2,), ctx)
-    Y = sc.VectorSpace((2,), ctx)
+    X = sc.DenseCoordinateSpace((2,), ctx)
+    Y = sc.DenseCoordinateSpace((2,), ctx)
     A = sc.DiagonalLinOp(ctx.asarray([2.0, -1.0]), X, ctx)
 
     class SumSquares(sc.Functional):
@@ -149,8 +149,8 @@ def test_generic_functional_compose_forwards_value():
 def test_functional_compose_rejects_incompatible_codomain():
     sc = importlib.import_module("spacecore")
     ctx = _ctx()
-    X = sc.VectorSpace((2,), ctx)
-    Y = sc.VectorSpace((3,), ctx)
+    X = sc.DenseCoordinateSpace((2,), ctx)
+    Y = sc.DenseCoordinateSpace((3,), ctx)
     A = sc.IdentityLinOp(X, ctx)
     F = sc.InnerProductFunctional(ctx.asarray([1.0, 2.0, 3.0]), Y, ctx)
 
@@ -171,7 +171,7 @@ def test_linop_quadratic_value_and_gradient_match_euclidean_hand_computation():
 def test_linop_quadratic_form_hermitian_gradient_is_q_apply():
     sc = importlib.import_module("spacecore")
     ctx = _ctx()
-    space = sc.VectorSpace((2,), ctx)
+    space = sc.DenseCoordinateSpace((2,), ctx)
     Q = sc.DenseLinOp(ctx.asarray([[2.0, 1.0], [1.0, 4.0]]), space, space, ctx)
     q = sc.LinOpQuadraticForm(Q, ctx=ctx)
     x = ctx.asarray([2.0, -1.0])
@@ -183,7 +183,7 @@ def test_linop_quadratic_form_hermitian_gradient_is_q_apply():
 def test_linop_quadratic_form_rejects_non_hermitian_dense_operator():
     sc = importlib.import_module("spacecore")
     ctx = _ctx()
-    space = sc.VectorSpace((2,), ctx)
+    space = sc.DenseCoordinateSpace((2,), ctx)
     Q = sc.DenseLinOp(ctx.asarray([[1.0, 2.0], [0.0, 3.0]]), space, space, ctx)
 
     with pytest.raises(ValueError, match="Hermitian"):
@@ -193,7 +193,7 @@ def test_linop_quadratic_form_rejects_non_hermitian_dense_operator():
 def test_linop_quadratic_form_does_not_validate_matrix_free_hermitian_assumption():
     sc = importlib.import_module("spacecore")
     ctx = _ctx()
-    space = sc.VectorSpace((2,), ctx)
+    space = sc.DenseCoordinateSpace((2,), ctx)
 
     def apply(x):
         return ctx.asarray([x[0] + 2.0 * x[1], 3.0 * x[1]])
@@ -211,7 +211,7 @@ def test_linop_quadratic_form_does_not_validate_matrix_free_hermitian_assumption
 def test_linop_quadratic_form_always_rejects_nonscalar_constant():
     sc = importlib.import_module("spacecore")
     ctx = _ctx(enable_checks=False)
-    space = sc.VectorSpace((2,), ctx)
+    space = sc.DenseCoordinateSpace((2,), ctx)
     Q = sc.IdentityLinOp(space, ctx)
 
     with pytest.raises(ValueError, match="scalar batch"):

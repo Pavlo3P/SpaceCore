@@ -9,7 +9,7 @@ to spaces and run only when ``Context.enable_checks`` is true.
    import spacecore as sc
 
    ctx = sc.Context(sc.NumpyOps(), dtype="float64", enable_checks=True)
-   X = sc.VectorSpace((3,), ctx=ctx)
+   X = sc.DenseCoordinateSpace((3,), ctx=ctx)
 
    x = X.ctx.asarray([1.0, 2.0, 3.0])
    X.check_member(x)
@@ -24,14 +24,16 @@ Built-in checks
    * dtype
    * square matrix structure
    * Hermitian matrix structure
-   * product tuple structure and component validity
+   * product element structure and component validity; tuple is the default
+     representation, and registered pytree/dataclass product elements are
+     validated through the product structure adapter
 
 Where checks run
 ----------------
 
 Spaces call ``check_member`` inside operations such as ``add``, ``inner``,
-``flatten``, and ``apply``. Linear operators call domain and codomain checks
-before ``apply`` and ``rapply`` when checking is enabled.
+``flatten``, and capability-specific methods such as ``spectral_apply``. Linear operators call domain and codomain checks
+before their ``apply`` and ``rapply`` methods when checking is enabled.
 
 For exploratory use, enabled checks produce clearer errors. For tight numerical
 loops, disabled checks reduce validation overhead.

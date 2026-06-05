@@ -112,8 +112,8 @@ then dense storage is a tensor compatible with domain and codomain shapes.
 
    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, enable_checks=True)
 
-   X = sc.VectorSpace((2,), ctx=ctx)
-   Y = sc.VectorSpace((3,), ctx=ctx)
+   X = sc.DenseCoordinateSpace((2,), ctx=ctx)
+   Y = sc.DenseCoordinateSpace((3,), ctx=ctx)
 
    A = np.array([
        [1.0, 2.0],
@@ -211,6 +211,11 @@ acts componentwise:
 
    x \mapsto (A_1x,\dots,A_kx).
 
+The result is a product element whose representation follows the codomain
+``ProductSpace``. This is a tuple for the default ``TupleStructure`` and the
+registered pytree/dataclass type when the codomain was built with
+``ProductSpace.from_template(...)`` or an explicit ``PytreeStructure``.
+
 Its adjoint combines contributions:
 
 .. math::
@@ -225,11 +230,42 @@ Its adjoint combines contributions:
 
    (x_1,\dots,x_k) \mapsto A_1x_1 + \cdots + A_kx_k.
 
-Its adjoint sends one output element back to a tuple:
+Its adjoint sends one output element back to a product element:
 
 .. math::
 
    y \mapsto (A_1^*y,\dots,A_k^*y).
+
+As with spaces, tuple is only the default product representation; structured
+domain products preserve their registered pytree/dataclass representation.
+
+.. code-block:: python
+
+   from dataclasses import dataclass
+   import jax
+   from spacecore.linop import IdentityLinOp
+   from spacecore.linop.product import StackedLinOp
+   from spacecore.space import ProductSpace, DenseCoordinateSpace
+
+   @jax.tree_util.register_pytree_node_class
+   @dataclass(frozen=True)
+   class Pair:
+       left: object
+       right: object
+
+       def tree_flatten(self):
+           return (self.left, self.right), None
+
+       @classmethod
+       def tree_unflatten(cls, aux, children):
+           return cls(*children)
+
+   X = DenseCoordinateSpace((2,), ctx=ctx)
+   template = Pair(ctx.asarray([0.0, 0.0]), ctx.asarray([0.0, 0.0]))
+   Y = ProductSpace.from_template((X, X), template, ctx=ctx)
+   op = StackedLinOp(X, Y, (IdentityLinOp(X), IdentityLinOp(X)), ctx=ctx)
+
+   y = op.apply(ctx.asarray([1.0, 2.0]))  # returns Pair
 
 Defining a custom operator
 --------------------------

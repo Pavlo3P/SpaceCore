@@ -2,14 +2,15 @@ from __future__ import annotations
 
 from typing import Any, Tuple, Callable
 
-from ._checks import HermitianCheck, SquareMatrixCheck
-from ._vector import VectorSpace
-from .._checks import checked_method
-from ..types import DenseArray
-from ..backend import Context
+from ..checks import HermitianCheck, SquareMatrixCheck
+from ..base import EuclideanJordanAlgebraSpace, StarSpace
+from ._dense_coordinate import DenseCoordinateSpace
+from ..._checks import checked_method
+from ...types import DenseArray
+from ...backend import Context
 
 
-class HermitianSpace(VectorSpace):
+class HermitianSpace(DenseCoordinateSpace, StarSpace, EuclideanJordanAlgebraSpace):
     r"""
     Represent dense Hermitian matrices with Frobenius geometry.
 
@@ -19,6 +20,11 @@ class HermitianSpace(VectorSpace):
     The inner product is Frobenius / Hilbert-Schmidt:
     ``<X, Y> = vdot(vec(X), vec(Y))``, where ``vdot`` conjugates the
     first argument according to backend rules.
+
+    ``HermitianSpace`` currently uses Euclidean/Frobenius geometry in flattened
+    coordinates and does not expose custom geometry injection. Metric-aware
+    Hermitian geometries should be introduced as a separate class or explicit
+    extension.
 
     Parameters
     ----------
@@ -90,12 +96,40 @@ class HermitianSpace(VectorSpace):
 
     def symmetrize(self, x: DenseArray) -> DenseArray:
         r"""Project ``x`` onto the Hermitian subspace as :math:`(X + X^*) / 2`."""
-        return (x + x.T.conj()) * 0.5
+        x_adj = self.ops.conj(self.ops.swapaxes(x, -1, -2))
+        return (x + x_adj) * 0.5
+
 
     @checked_method(in_space="self")
-    def eigh(self, x: DenseArray, k: int = None) -> Tuple[DenseArray, DenseArray]:
-        """Return the eigendecomposition of a Hermitian element."""
+    def star(self, x: DenseArray) -> DenseArray:
+        """Return the canonical star operation for Hermitian elements: identity."""
+        return x
+
+    @checked_method(in_space="self", arg_positions=(0, 1))
+    def jordan(self, x: DenseArray, y: DenseArray) -> DenseArray:
+        """Return the Hermitian Jordan product ``(xy + yx) / 2``."""
+        xy = self.ops.matmul(x, y)
+        yx = self.ops.matmul(y, x)
+        return self.symmetrize((xy + yx) * 0.5)
+
+    def _check_unbatched_member(self, x: DenseArray) -> None:
+        """Run member checks for a single element, while allowing batched spectra."""
+        if self._enable_checks and tuple(getattr(x, "shape", ())) == self.shape:
+            self._check_member(x)
+
+    def spectrum(self, x: DenseArray) -> DenseArray:
+        """Return the Hermitian eigenvalue spectrum of ``x``."""
+        self._check_unbatched_member(x)
+        return self.ops.eigh(x)[0]
+
+    def spectral_decompose(self, x: DenseArray) -> Tuple[DenseArray, DenseArray]:
+        """Return the Hermitian eigendecomposition ``(evals, evecs)``."""
+        self._check_unbatched_member(x)
         return self.ops.eigh(x)
+
+    def from_spectrum(self, eigvals: DenseArray, frame: DenseArray) -> DenseArray:
+        """Reconstruct a Hermitian element from eigenvalues and eigenvectors."""
+        return self.eig_to_dense(eigvals, frame)
 
     def unflatten(self, v: DenseArray) -> DenseArray:
         """Reshape dense coordinates and symmetrize the result."""
@@ -106,7 +140,7 @@ class HermitianSpace(VectorSpace):
     @checked_method(in_space="self")
     def psd_proj(self, x: DenseArray) -> DenseArray:
         """Project a Hermitian element onto the positive semidefinite cone."""
-        evals, evecs = self.ops.eigh(x)
+        evals, evecs = self.spectral_decompose(x)
         evals = self.ops.maximum(evals, 0.)
         return self.eig_to_dense(evals, evecs)
 
@@ -114,16 +148,26 @@ class HermitianSpace(VectorSpace):
         """Reconstruct a Hermitian matrix from eigenvalues and eigenvectors."""
         self.ctx.assert_dense(evals)
         self.ctx.assert_dense(evecs)
-        X = (evecs * evals) @ evecs.T.conj()
-        self.check_member(X)
+        X = self.ops.einsum("...ij,...j,...kj->...ik", evecs, evals, self.ops.conj(evecs))
+        self._check_unbatched_member(X)
         return X
 
     def _convert(self, new_ctx: Context) -> HermitianSpace:
         """Convert this Hermitian space to ``new_ctx``."""
         return HermitianSpace(self.n, self.atol, self.rtol, self.enforce_herm, new_ctx)
 
+    def _apply_entrywise(self, x: DenseArray, f: Callable[[DenseArray], DenseArray]) -> DenseArray:
+        """Apply ``f`` entrywise and verify that shape is preserved."""
+        try:
+            y = f(x)
+        except Exception:
+            y = self.ops.vectorize(f)(x)
+        if self._enable_checks and y.shape != x.shape:
+            raise ValueError("Function application changed shape.")
+        return y
+
     @checked_method(in_space="self")
-    def apply(self, x: DenseArray, f: Callable[[DenseArray], DenseArray]) -> DenseArray:
+    def spectral_apply(self, x: DenseArray, f: Callable[[DenseArray], DenseArray]) -> DenseArray:
         r"""
         Apply a scalar function to a Hermitian matrix via spectral calculus.
 
@@ -177,7 +221,8 @@ class HermitianSpace(VectorSpace):
         then the eigenvectors are preserved and only the eigenvalues are
         transformed.
         """
-        evals, evecs = self.ops.eigh(x)
+        evals, evecs = self.spectral_decompose(x)
         fevals = self._apply_entrywise(evals, f)
 
         return self.eig_to_dense(fevals, evecs)
+

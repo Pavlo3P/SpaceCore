@@ -15,7 +15,7 @@ def test_context_equality_depends_on_backend_and_checks():
     a = sc.Context(sc.NumpyOps(), dtype=np.float32, enable_checks=True)
     b = sc.Context(sc.NumpyOps(), dtype=np.float64, enable_checks=True)
     c = sc.Context(sc.NumpyOps(), dtype=np.float32, enable_checks=False)
-    assert a == b
+    assert a != b
     assert a != c
 
 

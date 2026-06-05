@@ -2,7 +2,6 @@ import numpy as np
 import pytest
 
 import spacecore as sc
-from spacecore._contextual import ContextConversionError
 
 from tests._helpers import has_jax, jax_real_dtype
 
@@ -17,8 +16,8 @@ def _unchecked_ctx(dtype=np.float64):
 
 def test_enable_checks_accepts_valid_space_and_linop_inputs():
     ctx = _checked_ctx()
-    dom = sc.VectorSpace((2,), ctx)
-    cod = sc.VectorSpace((3,), ctx)
+    dom = sc.DenseCoordinateSpace((2,), ctx)
+    cod = sc.DenseCoordinateSpace((3,), ctx)
     op = sc.DenseLinOp(ctx.asarray([[1., 2.], [3., 4.], [5., 6.]]), dom, cod, ctx)
 
     x = ctx.asarray([7., 8.])
@@ -31,7 +30,7 @@ def test_enable_checks_accepts_valid_space_and_linop_inputs():
 
 def test_enable_checks_rejects_vector_shape_mismatch():
     ctx = _checked_ctx(np.float32)
-    space = sc.VectorSpace((2,), ctx)
+    space = sc.DenseCoordinateSpace((2,), ctx)
 
     with pytest.raises(TypeError, match=r"Expected shape \(2,\), got \(3,\)"):
         space.check_member(np.asarray([1., 2., 3.], dtype=np.float32))
@@ -39,7 +38,7 @@ def test_enable_checks_rejects_vector_shape_mismatch():
 
 def test_enable_checks_rejects_vector_dtype_mismatch():
     ctx = _checked_ctx(np.float32)
-    space = sc.VectorSpace((2,), ctx)
+    space = sc.DenseCoordinateSpace((2,), ctx)
 
     with pytest.raises(TypeError, match=r"Expected dtype float32, got float64"):
         space.check_member(np.asarray([1., 2.], dtype=np.float64))
@@ -49,7 +48,7 @@ def test_enable_checks_rejects_vector_dtype_mismatch():
 def test_enable_checks_rejects_cross_backend_dense_array():
     np_ctx = _checked_ctx(jax_real_dtype())
     jx_ctx = sc.Context(sc.JaxOps(), dtype=jax_real_dtype(), enable_checks=True)
-    space = sc.VectorSpace((2,), np_ctx)
+    space = sc.DenseCoordinateSpace((2,), np_ctx)
 
     with pytest.raises(TypeError, match="Expected dense array for numpy"):
         space.check_member(jx_ctx.asarray([1., 2.]))
@@ -66,7 +65,7 @@ def test_enable_checks_rejects_non_hermitian_matrix():
 def test_enable_checks_rejects_invalid_product_structure():
     ctx = _checked_ctx()
     product = sc.ProductSpace(
-        (sc.VectorSpace((2,), ctx), sc.VectorSpace((3,), ctx)),
+        (sc.DenseCoordinateSpace((2,), ctx), sc.DenseCoordinateSpace((3,), ctx)),
         ctx,
     )
 
@@ -82,8 +81,8 @@ def test_enable_checks_rejects_invalid_product_structure():
 
 def test_enable_checks_rejects_dense_linop_matrix_and_vector_dimensions():
     ctx = _checked_ctx()
-    dom = sc.VectorSpace((2,), ctx)
-    cod = sc.VectorSpace((3,), ctx)
+    dom = sc.DenseCoordinateSpace((2,), ctx)
+    cod = sc.DenseCoordinateSpace((3,), ctx)
 
     with pytest.raises(TypeError, match=r"Expected A\.shape == cod\.shape \+ dom\.shape"):
         sc.DenseLinOp(ctx.asarray([[1., 2.], [3., 4.]]), dom, cod, ctx)
@@ -98,9 +97,9 @@ def test_enable_checks_rejects_dense_linop_matrix_and_vector_dimensions():
 
 def test_enable_checks_rejects_product_linop_domain_codomain_mismatch():
     ctx = _checked_ctx()
-    dom2 = sc.VectorSpace((2,), ctx)
-    dom3 = sc.VectorSpace((3,), ctx)
-    cod1 = sc.VectorSpace((1,), ctx)
+    dom2 = sc.DenseCoordinateSpace((2,), ctx)
+    dom3 = sc.DenseCoordinateSpace((3,), ctx)
+    cod1 = sc.DenseCoordinateSpace((1,), ctx)
     first = sc.DenseLinOp(ctx.asarray([[1., 2.]]), dom2, cod1, ctx)
     second = sc.DenseLinOp(ctx.asarray([[1., 2., 3.]]), dom3, cod1, ctx)
 
@@ -110,29 +109,15 @@ def test_enable_checks_rejects_product_linop_domain_codomain_mismatch():
 
 def test_enable_checks_rejects_invalid_conversion_target():
     ctx = _checked_ctx()
-    space = sc.VectorSpace((2,), ctx)
+    space = sc.DenseCoordinateSpace((2,), ctx)
 
     with pytest.raises(TypeError, match="Expected Context, BackendFamily, str, or None"):
         space.convert(object())
 
 
-@pytest.mark.skipif(not has_jax(), reason="jax is not installed")
-def test_enable_checks_rejects_forbidden_cross_backend_conversion():
-    original_policy = sc.get_resolution_policy()
-    try:
-        sc.set_resolution_policy("error")
-        ctx = _checked_ctx(jax_real_dtype())
-        space = sc.VectorSpace((2,), ctx)
-
-        with pytest.raises(ContextConversionError, match="Conversion from .* is forbidden"):
-            space.convert(sc.Context(sc.JaxOps(), dtype=jax_real_dtype(), enable_checks=True))
-    finally:
-        sc.set_resolution_policy(original_policy)
-
-
 def test_disabled_checks_skip_space_membership_validations():
     ctx = _unchecked_ctx()
-    vector = sc.VectorSpace((2,), ctx)
+    vector = sc.DenseCoordinateSpace((2,), ctx)
     hermitian = sc.HermitianSpace(2, ctx=ctx)
     product = sc.ProductSpace((vector, vector), ctx)
 

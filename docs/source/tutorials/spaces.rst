@@ -4,27 +4,35 @@ Spaces tutorial
 This tutorial follows ``tutorials/3_Space.ipynb``. It introduces ``Space`` as
 the abstraction for the geometry of admissible numerical objects.
 
-Current implemented spaces are:
+Current implemented concrete spaces are:
 
-* ``VectorSpace``
-* ``HermitianSpace``
-* ``ProductSpace``
+* ``DenseCoordinateSpace`` for dense arrays with an inner product;
+* ``DenseVectorSpace`` for plain one-dimensional dense vectors with star;
+* ``ElementwiseJordanSpace`` for dense arrays with elementwise star, Jordan, and
+  spectral operations;
+* ``EuclideanElementwiseJordanSpace`` for real Euclidean elementwise Jordan
+  algebras;
+* ``HermitianSpace`` for Hermitian or symmetric matrices;
+* ``ProductSpace`` for Cartesian products of spaces;
+* ``StackedSpace`` for repeated copies of a leaf space.
 
 What a Space signifies
 ----------------------
 
-A ``Space`` represents a Hilbert space of numerical objects. It encodes the
-geometric structure of its elements together with operations that are natural on
-them.
+A ``Space`` represents numerical objects together with their mathematical
+structure. It encodes the operations that are valid for elements of that space,
+not just the storage format.
 
 A space may encode:
 
 * shape;
 * linear structure;
 * inner product and norm;
+* star operations;
+* Jordan algebra operations and spectral calculus;
 * projections;
 * structural constraints such as Hermitian symmetry;
-* product structure.
+* product or stacked structure.
 
 Thus a space captures geometry, not merely storage format.
 
@@ -53,21 +61,22 @@ Core operations
    * ``norm(x)``
    * ``flatten(x)``
    * ``unflatten(v)``
-   * ``apply(x, f)``
 
 Concrete spaces differ, but they share the same idea: define valid elements,
 provide linear operations, define geometry, and create or validate elements in a
-backend-aware way.
+backend-aware way. Capability-specific methods such as ``star``, ``jordan``,
+``spectrum``, and ``spectral_apply`` are present only on spaces that implement
+the corresponding algebraic interfaces.
 
-VectorSpace
------------
+DenseCoordinateSpace
+--------------------
 
-``VectorSpace`` represents dense backend arrays with a fixed shape and
-Euclidean geometry. If
+``DenseCoordinateSpace`` represents dense backend arrays with a fixed shape and
+an inner-product geometry. If
 
 .. math::
 
-   X = \texttt{VectorSpace}(\texttt{shape}=(n_1,\dots,n_k)),
+   X = \texttt{DenseCoordinateSpace}(\texttt{shape}=(n_1,\dots,n_k)),
 
 then elements of ``X`` are dense arrays of shape ``(n_1, ..., n_k)`` compatible
 with the stored context.
@@ -76,22 +85,62 @@ with the stored context.
 
    import numpy as np
    from spacecore.backend import Context, NumpyOps
-   from spacecore.space import VectorSpace
+   from spacecore.space import DenseCoordinateSpace
 
    ctx = Context(NumpyOps(), dtype=np.float64, enable_checks=True)
-   X = VectorSpace((2, 3), ctx=ctx)
+   X = DenseCoordinateSpace((2, 3), ctx=ctx)
 
    x = X.zeros()
    y = ctx.asarray([[1, 2, 3], [4, 5, 6]])
 
-A vector space supports the standard operations
+``DenseCoordinateSpace`` supports linear operations and inner products:
 
 .. math::
 
    x + y,\qquad \alpha x,\qquad \langle x,y\rangle,\qquad \|x\|.
 
+Its default geometry is Euclidean. It also accepts compatible custom inner
+products such as ``WeightedInnerProduct``:
+
+.. code-block:: python
+
+   from spacecore.space import WeightedInnerProduct
+
+   weights = ctx.asarray([2.0, 5.0, 11.0])
+   X_weighted = DenseCoordinateSpace(
+       (3,), ctx=ctx, geometry=WeightedInnerProduct(weights)
+   )
+
 Membership is contextual and geometric: correct shape, correct backend
 representation, and correct dtype when checks are enabled.
+
+ElementwiseJordanSpace and DenseVectorSpace
+-------------------------------------------
+
+``ElementwiseJordanSpace`` is the dense coordinate space whose algebra is
+coordinatewise multiplication. It supports star, Jordan products, and spectral
+calculus:
+
+.. code-block:: python
+
+   from spacecore.space import ElementwiseJordanSpace
+
+   J = ElementwiseJordanSpace((3,), ctx=ctx)
+   x = ctx.asarray([1.0, 2.0, 3.0])
+   y = ctx.asarray([4.0, 5.0, 6.0])
+
+   z = J.jordan(x, y)      # coordinatewise product
+   s = J.spectrum(x)       # x itself for the elementwise algebra
+
+``ElementwiseJordanSpace`` may be real or complex, and may use valid custom
+inner products. It advertises ``EuclideanJordanAlgebraSpace`` only when the
+context dtype is real and the geometry is ``EuclideanInnerProduct``; complex or
+weighted elementwise spaces keep only the plain Jordan capability.
+
+``DenseVectorSpace`` is a plain one-dimensional dense vector space with star and
+no Jordan capability by default. Use ``DenseCoordinateSpace`` for generic dense
+arrays, ``DenseVectorSpace`` for plain vectors, and ``ElementwiseJordanSpace``
+when coordinatewise Jordan algebra is required.
 
 HermitianSpace
 --------------
@@ -148,14 +197,14 @@ Projection onto the PSD cone clips negative eigenvalues:
 ProductSpace
 ------------
 
-``ProductSpace`` represents a Cartesian product. Elements are tuples, one
-component per factor space. If
+``ProductSpace`` represents a Cartesian product. Tuple elements are the default
+representation, with one component per factor space. If
 
 .. math::
 
    X = X_1 \times \cdots \times X_k,
 
-then an element is a tuple
+then the default element representation is
 
 .. math::
 
@@ -163,7 +212,7 @@ then an element is a tuple
 
 This is useful whenever a variable is naturally block-structured.
 
-Addition, scaling, and inner products are componentwise:
+Addition, scaling, and supported capability methods are componentwise:
 
 .. math::
 
@@ -171,7 +220,16 @@ Addition, scaling, and inner products are componentwise:
    =
    (x_1+y_1,\dots,x_k+y_k).
 
-Flattening moves between tuple form and flat coordinates:
+When constructed through ``ProductSpace(...)``, SpaceCore returns an internal
+implementation class with the capabilities supported by all components: inner
+product, star, Jordan, and Euclidean-Jordan operations are available exactly
+when every component supports them.
+
+If any component lacks a capability, the resulting product does not advertise
+that capability. This keeps ``isinstance`` checks truthful.
+
+Flattening moves between any supported product element representation and flat
+coordinates:
 
 .. math::
 
@@ -179,27 +237,78 @@ Flattening moves between tuple form and flat coordinates:
    \mapsto
    \operatorname{concat}(\operatorname{flatten}(x_1),\dots,\operatorname{flatten}(x_k)).
 
+The flat vector depends only on the ordered components, not on whether the
+user-facing product element is a tuple or a registered pytree/dataclass.
+
 .. code-block:: python
 
-   from spacecore.space import ProductSpace, VectorSpace
+   from spacecore.space import ProductSpace, DenseCoordinateSpace
 
-   X1 = VectorSpace((2,), ctx=ctx)
-   X2 = VectorSpace((3,), ctx=ctx)
+   X1 = DenseCoordinateSpace((2,), ctx=ctx)
+   X2 = DenseCoordinateSpace((3,), ctx=ctx)
    X_prod = ProductSpace((X1, X2), ctx=ctx)
 
    x = (ctx.asarray([1.0, 2.0]), ctx.asarray([3.0, 4.0, 5.0]))
    flat = X_prod.flatten(x)
    x_back = X_prod.unflatten(flat)
 
+Structured product elements are available by building from a registered pytree
+template. For dataclasses used with JAX tree utilities, register the dataclass
+as a pytree; bare dataclasses are opaque leaves and are not automatically
+treated as product components.
+
+.. code-block:: python
+
+   from dataclasses import dataclass
+   import jax
+   from spacecore.space import ProductSpace, DenseCoordinateSpace
+
+   @jax.tree_util.register_pytree_node_class
+   @dataclass(frozen=True)
+   class State:
+       position: object
+       velocity: object
+
+       def tree_flatten(self):
+           return (self.position, self.velocity), None
+
+       @classmethod
+       def tree_unflatten(cls, aux, children):
+           return cls(*children)
+
+   X1 = DenseCoordinateSpace((2,), ctx=ctx)
+   X2 = DenseCoordinateSpace((2,), ctx=ctx)
+   template = State(ctx.asarray([0.0, 0.0]), ctx.asarray([0.0, 0.0]))
+   X_state = ProductSpace.from_template((X1, X2), template, ctx=ctx)
+
+   x = State(ctx.asarray([1.0, 2.0]), ctx.asarray([3.0, 4.0]))
+   y = X_state.scale(2.0, x)  # returns State, not a tuple
+   flat = X_state.flatten(x)
+
+StackedSpace
+------------
+
+``StackedSpace(base, count)`` represents ``count`` independent copies of a leaf
+space stacked on a leading axis. Like products, construction returns an
+internal implementation class preserving the base space capabilities.
+
+For product spaces, call ``ProductSpace(...).stacked(count)``. This stacks each
+component instead of wrapping the product as a single leaf.
+
 Choosing the right space
 ------------------------
 
-Use ``VectorSpace`` for generic dense arrays, ``HermitianSpace`` when Hermitian
-structure matters, and ``ProductSpace`` when variables are naturally
-block-structured.
+Use ``DenseCoordinateSpace`` for generic dense arrays, including weighted or
+custom inner-product geometry. Use ``ElementwiseJordanSpace`` when dense arrays
+need coordinatewise star, Jordan, or spectral operations. Use
+``HermitianSpace`` when Hermitian structure matters, ``ProductSpace`` when
+variables are naturally block-structured, and ``StackedSpace`` for repeated
+copies of a leaf space.
 
 Summary
 -------
 
 ``Space`` turns raw arrays into explicit geometric objects. It stores a context,
-defines valid elements, and provides the operations algorithms should use.
+defines valid elements, and provides the operations algorithms should use. The
+public hierarchy advertises only the capabilities each concrete space actually
+supports.

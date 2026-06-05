@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from ._base import Domain, Functional
+from ._base import Domain, Functional, _check_scalar_shape, _leading_batch_size, _warn_vmap_fallback_once
 from ._linear import LinearFunctional
+from .._batching import _batched_inner
 from .._checks import checked_method
 from .._contextual import resolve_context_priority
 from ..backend import Context, jax_pytree_class
 from ..linop import LinOp
-from ..space import Space
 
 
 class QuadraticForm(Functional[Domain]):
@@ -28,19 +28,14 @@ class QuadraticForm(Functional[Domain]):
         raise NotImplementedError(f"{type(self).__name__} does not define hess_apply.")
 
     def grad(self, x: Any) -> Any:
-        """Gradient at ``x`` when available."""
+        """Return the gradient with respect to ``domain.inner`` when available."""
         raise NotImplementedError(f"{type(self).__name__} does not define grad.")
 
-    def vgrad(self, xs: Any, batch_space: Space | None = None) -> Any:
+    @checked_method(in_space="domain", out_space="domain", in_batched=True, out_batched=True)
+    def vgrad(self, xs: Any) -> Any:
         """Evaluate ``grad`` independently over leading batch axes."""
-        in_space = self._input_batch_space(self.domain, xs, batch_space)
-        batch_shape = self._require_leading_batch_axes(in_space)
-        if self._enable_checks:
-            in_space._check_member(xs)
-        grads = self._vmap_leading(self.grad, len(batch_shape))(xs)
-        if self._enable_checks:
-            self._output_batch_space(self.domain, in_space)._check_member(grads)
-        return grads
+        _warn_vmap_fallback_once(self, "vgrad", _leading_batch_size(self.domain, xs))
+        return self.ops.vmap(self.grad, in_axes=0, out_axes=0)(xs)
 
 
 @jax_pytree_class
@@ -110,7 +105,7 @@ class LinOpQuadraticForm(QuadraticForm[Domain]):
         self.Q = Q
         self.linear = linear
         self.a = self.ctx.asarray(a)
-        self._check_scalar_batch(self.a, ())
+        _check_scalar_shape(self.a, ())
 
     @staticmethod
     def _check_hermitian_structure(Q: LinOp[Domain, Domain]) -> None:
@@ -131,7 +126,11 @@ class LinOpQuadraticForm(QuadraticForm[Domain]):
     @checked_method(in_space="domain", out_space="domain")
     def grad(self, x: Any) -> Any:
         """
-        Return the Euclidean/Riesz gradient.
+        Return the gradient with respect to ``domain.inner``.
+
+        This is the Riesz gradient: for Euclidean geometry it is the ordinary
+        coordinate gradient, while for non-Euclidean geometry it is corrected
+        by the domain inner product.
 
         ``LinOpQuadraticForm`` assumes ``Q`` is Hermitian/self-adjoint, so the
         quadratic contribution is exactly ``Q.apply(x)``.
@@ -145,6 +144,30 @@ class LinOpQuadraticForm(QuadraticForm[Domain]):
     def hess_apply(self, x: Any) -> Any:
         """Return the Hessian action ``Q x`` under the Hermitian assumption."""
         return self.Q.apply(x)
+
+    @checked_method(in_space="domain", in_batched=True)
+    def vvalue(self, xs: Any) -> Any:
+        """Evaluate the quadratic objective over a leading batch axis."""
+        qxs = self.Q.vapply(xs)
+        if self.domain.is_euclidean and hasattr(xs, "shape"):
+            axes = tuple(range(1, len(tuple(xs.shape))))
+            values = 0.5 * self.ops.sum(self.ops.conj(xs) * qxs, axis=axes)
+        else:
+            values = 0.5 * _batched_inner(self.domain, xs, qxs)
+        if self.linear is not None:
+            values = values + self.linear.vvalue(xs)
+        values = values + self.a
+        if self._enable_checks:
+            _check_scalar_shape(values, (_leading_batch_size(self.domain, xs),))
+        return values
+
+    @checked_method(in_space="domain", out_space="domain", in_batched=True, out_batched=True)
+    def vgrad(self, xs: Any) -> Any:
+        """Evaluate the Riesz gradient over a leading batch axis."""
+        grads = self.Q.vapply(xs)
+        if self.linear is not None:
+            grads = self.domain.add_batch(grads, self.linear.vgrad(xs))
+        return grads
 
     def __eq__(self, other: Any) -> bool:
         """Return whether another quadratic form has the same stored terms."""

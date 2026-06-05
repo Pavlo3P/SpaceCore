@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from abc import abstractmethod
 from typing import TYPE_CHECKING, Any, Generic, TypeVar
+import warnings
 
+from .._checks import checked_method
 from .._contextual import ContextBound, resolve_context_priority
 from ..backend import Context
 from ..space import Space
@@ -12,6 +14,45 @@ if TYPE_CHECKING:
 
 
 Domain = TypeVar("Domain", bound=Space)
+_VMAP_FALLBACK_WARNED: set[tuple[type, str]] = set()
+_VMAP_FALLBACK_WARN_BATCH = 32
+
+
+def _check_scalar_shape(values: Any, shape: tuple[int, ...]) -> None:
+    """Raise if scalar output does not have ``shape``."""
+    value_shape = tuple(getattr(values, "shape", ()))
+    if value_shape != shape:
+        raise ValueError(f"Expected scalar batch output with shape {shape}, got {value_shape}.")
+
+
+def _leading_batch_size(space: Space, xs: Any) -> int:
+    """Return the leading batch size for dense-array batches."""
+    if isinstance(xs, tuple) and xs:
+        return _leading_batch_size(getattr(space, "spaces", (space,))[0], xs[0])
+    shape = tuple(getattr(xs, "shape", ()))
+    base = tuple(space.shape)
+    if not shape:
+        return 0
+    if base:
+        return int(shape[0])
+    return int(shape[0])
+
+
+def _warn_vmap_fallback_once(obj: Any, method: str, batch_size: int) -> None:
+    """Warn once per class/method for NumPy-style Python-loop batched fallback."""
+    if batch_size <= _VMAP_FALLBACK_WARN_BATCH or obj.ops.has_native_vmap:
+        return
+    key = (type(obj), method)
+    if key in _VMAP_FALLBACK_WARNED:
+        return
+    _VMAP_FALLBACK_WARNED.add(key)
+    warnings.warn(
+        f"{type(obj).__name__}.{method} falls back to a Python loop on this backend "
+        "(no native vmap); this is O(batch). Provide a vectorized batched override, "
+        "or use JAX/Torch.",
+        RuntimeWarning,
+        stacklevel=3,
+    )
 
 
 class Functional(ContextBound, Generic[Domain]):
@@ -75,82 +116,11 @@ class Functional(ContextBound, Generic[Domain]):
 
         return make_functional_composed(self, A)
 
-    def vvalue(self, xs: Any, batch_space: Space | None = None) -> Any:
-        """Evaluate this functional independently over leading batch axes."""
-        return self._fallback_vvalue(xs, batch_space)
-
-    def _infer_batch_shape(self, space: Space, value: Any) -> tuple[int, ...]:
-        """Infer leading batch dimensions from a value and base space."""
-        if hasattr(space, "spaces") and isinstance(value, tuple) and value:
-            return self._infer_batch_shape(space.spaces[0], value[0])
-        shape = tuple(getattr(value, "shape", ()))
-        base_shape = tuple(space.shape)
-        if not base_shape:
-            return shape
-        if len(shape) < len(base_shape) or shape[-len(base_shape):] != base_shape:
-            raise ValueError(
-                f"Cannot infer leading batch shape for value shape {shape} "
-                f"and base space shape {base_shape}."
-            )
-        return shape[: len(shape) - len(base_shape)]
-
-    def _input_batch_space(
-        self,
-        space: Space,
-        value: Any,
-        batch_space: Space | None,
-    ) -> Space:
-        """Return the batch space used to validate batched inputs."""
-        if batch_space is not None:
-            return batch_space
-        batch_shape = self._infer_batch_shape(space, value)
-        return space.batch(batch_shape, tuple(range(len(batch_shape))))
-
-    def _output_batch_space(self, space: Space, input_batch_space: Space) -> Space:
-        """Return the batch space corresponding to a batched output."""
-        batch_shape = getattr(input_batch_space, "batch_shape", None)
-        batch_axes = getattr(input_batch_space, "batch_axes", None)
-        if batch_shape is None or batch_axes is None:
-            raise TypeError("batch_space must be a BatchSpace-compatible object.")
-        return space.batch(tuple(batch_shape), tuple(batch_axes))
-
-    def _require_leading_batch_axes(self, batch_space: Space) -> tuple[int, ...]:
-        """Return batch shape or raise when batch axes are not leading."""
-        batch_shape = tuple(getattr(batch_space, "batch_shape", ()))
-        batch_axes = tuple(getattr(batch_space, "batch_axes", ()))
-        expected_axes = tuple(range(len(batch_shape)))
-        if batch_axes != expected_axes:
-            raise ValueError(
-                "Functional batching currently expects leading batch axes; "
-                f"got batch_axes={batch_axes}, expected {expected_axes}."
-            )
-        return batch_shape
-
-    def _vmap_leading(self, fn: Any, batch_ndim: int) -> Any:
-        """Vectorize ``fn`` over ``batch_ndim`` leading axes."""
-        mapped = fn
-        for _ in range(batch_ndim):
-            mapped = self.ops.vmap(mapped, in_axes=0, out_axes=0)
-        return mapped
-
-    def _check_scalar_batch(self, values: Any, batch_shape: tuple[int, ...]) -> None:
-        """Raise if scalar batch output does not have ``batch_shape``."""
-        shape = tuple(getattr(values, "shape", ()))
-        if shape != batch_shape:
-            raise ValueError(
-                f"Expected scalar batch output with shape {batch_shape}, got {shape}."
-            )
-
-    def _fallback_vvalue(self, xs: Any, batch_space: Space | None = None) -> Any:
-        """Evaluate this functional over a leading batch with backend ``vmap``."""
-        in_space = self._input_batch_space(self.domain, xs, batch_space)
-        batch_shape = self._require_leading_batch_axes(in_space)
-        if self._enable_checks:
-            in_space._check_member(xs)
-        values = self._vmap_leading(self.value, len(batch_shape))(xs)
-        if self._enable_checks:
-            self._check_scalar_batch(values, batch_shape)
-        return values
+    @checked_method(in_space="domain", in_batched=True)
+    def vvalue(self, xs: Any) -> Any:
+        """Evaluate over a leading batch axis. Input must have shape ``(N,) + domain.shape``; use ``moveaxis`` for other layouts."""
+        _warn_vmap_fallback_once(self, "vvalue", _leading_batch_size(self.domain, xs))
+        return self.ops.vmap(self.value, in_axes=0, out_axes=0)(xs)
 
     def assert_domain(self, x: Any) -> None:
         """Raise if ``x`` is not in the domain."""

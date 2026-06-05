@@ -1,32 +1,47 @@
 from __future__ import annotations
 
+from enum import Enum, auto
 from functools import cached_property
 from math import prod
 from typing import Any
 
 from ._base import LinOp
+from ._metric import (
+    _metric_is_hermitian_by_basis,
+    _requires_euclidean_or_riesz,
+    metric_rapply,
+    metric_rvapply,
+)
 from .._checks import checked_method
 from ..backend import Context, jax_pytree_class
-from ..space import VectorSpace
+from ..space import DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace, Space, WeightedInnerProduct
 from ..types import DenseArray
 from .._contextual import resolve_context_priority
 
 
+class _DiagonalMode(Enum):
+    """Private computation modes for diagonal coordinate operators."""
+
+    EUCLIDEAN = auto()
+    WEIGHTED_FUSED = auto()
+    GENERAL_METRIC = auto()
+
+
 @jax_pytree_class
-class DiagonalLinOp(LinOp[VectorSpace, VectorSpace]):
+class DiagonalLinOp(LinOp[Space, Space]):
     r"""
     Represent a coordinatewise diagonal linear operator.
 
-    ``DiagonalLinOp(diagonal, space)`` maps ``x`` to ``diagonal * x`` on a
-    :class:`VectorSpace`. The adjoint uses the complex conjugate of the
-    diagonal, so complex-valued diagonals follow the SpaceCore adjoint
-    convention.
+    ``DiagonalLinOp(diagonal, space)`` maps ``x`` to ``diagonal * x`` in
+    coordinates. The adjoint is metric-aware: Euclidean spaces use the complex
+    conjugate of the diagonal, while non-Euclidean spaces use their Riesz maps
+    as ``R_X^{-1} D^dagger R_X``.
 
     Parameters
     ----------
     diagonal : DenseArray
         Dense backend array with shape ``space.shape``.
-    space : VectorSpace or None, optional
+    space : Space or None, optional
         Domain and codomain space. If omitted, a vector space is inferred from
         ``diagonal.shape``.
     ctx : Context, str, or None, optional
@@ -42,7 +57,7 @@ class DiagonalLinOp(LinOp[VectorSpace, VectorSpace]):
     >>> import numpy as np
     >>> import spacecore as sc
     >>> ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
-    >>> X = sc.VectorSpace((2,), ctx)
+    >>> X = sc.DenseCoordinateSpace((2,), ctx)
     >>> D = sc.DiagonalLinOp(ctx.asarray([2.0, 3.0]), X, ctx)
     >>> D.apply(ctx.asarray([4.0, 5.0]))
     array([ 8., 15.])
@@ -51,22 +66,34 @@ class DiagonalLinOp(LinOp[VectorSpace, VectorSpace]):
     def __init__(
         self,
         diagonal: DenseArray,
-        space: VectorSpace | None = None,
+        space: Space | None = None,
         ctx: Context | str | None = None,
     ) -> None:
         ctx = resolve_context_priority(ctx, space)
         ctx.assert_dense(diagonal)
         if space is None:
-            space = VectorSpace(tuple(diagonal.shape), ctx)
+            space = DenseCoordinateSpace(tuple(diagonal.shape), ctx)
+        _requires_euclidean_or_riesz(space, space, "DiagonalLinOp")
         super().__init__(space, space, ctx)
         expected = tuple(self.domain.shape)
         if tuple(diagonal.shape) != expected:
             raise TypeError(f"Expected diagonal.shape == space.shape == {expected}, got {diagonal.shape}")
         self.diagonal = diagonal
+        self._diag_flat = diagonal.reshape((prod(self.domain.shape),))
         dtype = self.ops.get_dtype(diagonal)
         self._diag_adjoint = (
             self.ops.conj(diagonal) if self.ops.is_complex_dtype(dtype) else diagonal
         )
+        self._diag_adjoint_flat = self._diag_adjoint.reshape((prod(self.domain.shape),))
+        self._mode = self._select_mode()
+
+    def _select_mode(self) -> _DiagonalMode:
+        """Select the diagonal computation mode once for this operator."""
+        if (type(self.domain) in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace)) and self.domain.is_euclidean:
+            return _DiagonalMode.EUCLIDEAN
+        if (type(self.domain) in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace)) and type(self.domain.geometry) is WeightedInnerProduct:
+            return _DiagonalMode.WEIGHTED_FUSED
+        return _DiagonalMode.GENERAL_METRIC
 
     @cached_property
     def A(self) -> DenseArray:
@@ -76,61 +103,116 @@ class DiagonalLinOp(LinOp[VectorSpace, VectorSpace]):
     @checked_method(in_space="domain", out_space="codomain")
     def apply(self, x: DenseArray) -> DenseArray:
         """Apply the diagonal operator to ``x``."""
-        return self.diagonal * x
+        return self._apply_core(x)
+
+    def _apply_core(self, x: DenseArray) -> DenseArray:
+        """Apply the diagonal operator without membership checks."""
+        if self._mode is _DiagonalMode.EUCLIDEAN:
+            return self.diagonal * x
+        if self._mode is _DiagonalMode.WEIGHTED_FUSED:
+            return self.diagonal * x
+        if type(self.domain) in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace):
+            return self.diagonal * x
+        x_flat = self.domain.flatten(x)
+        y_flat = self._diag_flat * x_flat
+        return self.codomain.unflatten(y_flat)
 
     @checked_method(in_space="codomain", out_space="domain")
     def rapply(self, y: DenseArray) -> DenseArray:
         """Apply the adjoint diagonal operator to ``y``."""
-        return self._diag_adjoint * y
+        return self._rapply_core(y)
 
-    def _reshape_diagonal_for_batch(self, diagonal: DenseArray, batch_space: Any) -> DenseArray:
-        """Broadcast diagonal values over a batch space."""
-        batch_shape = tuple(getattr(batch_space, "batch_shape", ()))
-        batch_axes = tuple(getattr(batch_space, "batch_axes", ()))
-        total_ndim = len(self.domain.shape) + len(batch_shape)
-        base_axes = [axis for axis in range(total_ndim) if axis not in batch_axes]
-        shape = [1] * total_ndim
-        for axis, dim in zip(base_axes, self.domain.shape, strict=True):
-            shape[axis] = dim
-        return self.ops.reshape(diagonal, tuple(shape))
+    def _rapply_core(self, y: DenseArray) -> DenseArray:
+        """Apply the metric adjoint without membership checks."""
+        if self._mode is _DiagonalMode.EUCLIDEAN:
+            return self._euclidean_rapply_core(y)
+        if self._mode is _DiagonalMode.WEIGHTED_FUSED:
+            return self._diag_adjoint * y
+        return metric_rapply(self.domain, self.codomain, self._euclidean_rapply_core, y)
 
-    def vapply(self, xs: DenseArray, batch_space=None) -> DenseArray:
-        """Apply this diagonal operator over a batch of domain elements."""
-        in_space = self._input_batch_space(self.domain, xs, batch_space)
-        if self._enable_checks:
-            in_space._check_member(xs)
-        diagonal = self._reshape_diagonal_for_batch(self.diagonal, in_space)
-        ys = diagonal * xs
-        if self._enable_checks:
-            self._output_batch_space(self.codomain, in_space)._check_member(ys)
-        return ys
+    def _euclidean_rapply_core(self, y: DenseArray) -> DenseArray:
+        """Apply the Euclidean diagonal adjoint without membership checks."""
+        if self._mode is _DiagonalMode.EUCLIDEAN:
+            return self._diag_adjoint * y
+        if self._mode is _DiagonalMode.WEIGHTED_FUSED:
+            return self._diag_adjoint * y
+        if type(self.domain) in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace):
+            return self._diag_adjoint * y
+        y_flat = self.codomain.flatten(y)
+        x_flat = self._diag_adjoint_flat * y_flat
+        return self.domain.unflatten(x_flat)
 
-    def rvapply(self, ys: DenseArray, batch_space=None) -> DenseArray:
-        """Apply the adjoint over a batch of codomain elements."""
-        in_space = self._input_batch_space(self.codomain, ys, batch_space)
-        if self._enable_checks:
-            in_space._check_member(ys)
-        diagonal = self._reshape_diagonal_for_batch(self._diag_adjoint, in_space)
-        xs = diagonal * ys
-        if self._enable_checks:
-            self._output_batch_space(self.domain, in_space)._check_member(xs)
-        return xs
+    @checked_method(in_space="domain", in_batched=True)
+    def vapply(self, xs: DenseArray) -> DenseArray:
+        """Apply over a leading batch axis. Input must have shape ``(N,) + domain.shape``; use ``moveaxis`` for other layouts."""
+        return self._vapply_core(xs)
+
+    def _vapply_core(self, xs: DenseArray) -> DenseArray:
+        """Apply over a leading batch axis without membership checks."""
+        if self._mode is _DiagonalMode.EUCLIDEAN:
+            return self.diagonal * xs
+        if self._mode is _DiagonalMode.WEIGHTED_FUSED:
+            return self.diagonal * xs
+        if type(self.domain) in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace):
+            return self.diagonal * xs
+        xs_flat = self.domain.flatten_batch(xs)
+        ys_flat = xs_flat * self._diag_flat
+        return self.codomain.unflatten_batch(ys_flat)
+
+    @checked_method(in_space="codomain", out_space="domain", in_batched=True, out_batched=True)
+    def rvapply(self, ys: DenseArray) -> DenseArray:
+        """Apply the adjoint over a leading batch axis. Input must have shape ``(N,) + codomain.shape``; use ``moveaxis`` for other layouts."""
+        return self._rvapply_core(ys)
+
+    def _rvapply_core(self, ys: DenseArray) -> DenseArray:
+        """Apply the metric adjoint over a leading batch axis without checks."""
+        if self._mode is _DiagonalMode.EUCLIDEAN:
+            return self._euclidean_rvapply_core(ys)
+        if self._mode is _DiagonalMode.WEIGHTED_FUSED:
+            return self._diag_adjoint * ys
+        return metric_rvapply(
+            self.domain,
+            self.codomain,
+            self._euclidean_rapply_core,
+            self._euclidean_rvapply_core,
+            ys,
+            opname=type(self).__name__,
+            ops=self.ops,
+        )
+
+    def _euclidean_rvapply_core(self, ys: DenseArray) -> DenseArray:
+        """Apply the Euclidean diagonal adjoint over a leading batch axis."""
+        if self._mode is _DiagonalMode.EUCLIDEAN:
+            return self._diag_adjoint * ys
+        if self._mode is _DiagonalMode.WEIGHTED_FUSED:
+            return self._diag_adjoint * ys
+        if type(self.domain) in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace):
+            return self._diag_adjoint * ys
+        ys_flat = self.codomain.flatten_batch(ys)
+        xs_flat = ys_flat * self._diag_adjoint_flat
+        return self.domain.unflatten_batch(xs_flat)
+
+    def to_matrix(self) -> DenseArray:
+        """Return the flattened dense diagonal matrix representation."""
+        return self.ops.diag(self._diag_flat)
 
     def to_dense(self) -> DenseArray:
         """Return a dense tensor representation of this diagonal operator."""
-        flat = self.diagonal.reshape((prod(self.domain.shape),))
-        matrix = self.ops.diag(flat)
+        matrix = self.to_matrix()
         return self.ops.reshape(matrix, tuple(self.codomain.shape) + tuple(self.domain.shape))
 
     def is_hermitian(self) -> bool | None:
         """
-        Return whether this diagonal operator is structurally Hermitian.
+        Return whether this diagonal operator is structurally self-adjoint.
 
         Returns
         -------
-        bool
-            ``True`` when the diagonal equals its complex conjugate.
+        bool or None
+            ``True`` or ``False`` when the structure can be checked, otherwise
+            ``None``.
         """
+        if not self.domain.is_euclidean:
+            return _metric_is_hermitian_by_basis(self)
         try:
             return bool(self.ops.allclose(self.diagonal, self._diag_adjoint))
         except Exception:
@@ -145,19 +227,22 @@ class DiagonalLinOp(LinOp[VectorSpace, VectorSpace]):
     def tree_flatten(self):
         """Flatten this operator for pytree registration."""
         children = (self.diagonal,)
-        aux = (self.domain, self.ctx)
+        aux = (self.domain, self.ctx, self._mode)
         return children, aux
 
     @classmethod
     def tree_unflatten(cls, aux, children):
         """Rebuild this operator from pytree data."""
-        domain, ctx = aux
+        if len(aux) == 3:
+            domain, ctx, _mode = aux
+        else:
+            domain, ctx = aux
         return cls(children[0], domain, ctx)
 
     def _convert(self, new_ctx: Context) -> DiagonalLinOp:
         """Convert the stored diagonal and space to ``new_ctx``."""
         return DiagonalLinOp(
             new_ctx.asarray(self.diagonal),
-            VectorSpace(tuple(self.domain.shape), new_ctx),
+            self.domain.convert(new_ctx),
             new_ctx,
         )

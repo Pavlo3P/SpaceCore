@@ -7,7 +7,7 @@ def test_dense_linop_conversion_preserves_action():
     sc = importlib.import_module("spacecore")
     src = sc.Context(sc.NumpyOps(), dtype=np.float32)
     dst = sc.Context(sc.NumpyOps(), dtype=np.float64)
-    op = sc.DenseLinOp(src.asarray([[1.,2.],[3.,4.],[5.,6.]]), sc.VectorSpace((2,),src), sc.VectorSpace((3,),src), src)
+    op = sc.DenseLinOp(src.asarray([[1.,2.],[3.,4.],[5.,6.]]), sc.DenseCoordinateSpace((2,),src), sc.DenseCoordinateSpace((3,),src), src)
     op2 = op.convert(dst)
     y = op2.apply(op2.ctx.asarray([7.,8.]))
     assert np.allclose(to_numpy(y), [23.,53.,83.])
@@ -17,8 +17,8 @@ def test_product_linop_conversion_same_backend_preserves_action():
     sc = importlib.import_module("spacecore")
     src = sc.Context(sc.NumpyOps(), dtype=np.float32)
     dst = sc.Context(sc.NumpyOps(), dtype=np.float64)
-    X = sc.VectorSpace((2,),src)
-    Y1,Y2 = sc.VectorSpace((2,),src), sc.VectorSpace((1,),src)
+    X = sc.DenseCoordinateSpace((2,),src)
+    Y1,Y2 = sc.DenseCoordinateSpace((2,),src), sc.DenseCoordinateSpace((1,),src)
     op = sc.StackedLinOp.from_operators((
         sc.DenseLinOp(src.asarray([[1.,2.],[3.,4.]]), X, Y1, src),
         sc.DenseLinOp(src.asarray([[5.,6.]]), X, Y2, src),
@@ -31,8 +31,8 @@ def test_product_linop_conversion_same_backend_preserves_action():
 def test_linop_conversion_to_same_effective_context_returns_self():
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float32)
-    X = sc.VectorSpace((2,), ctx)
-    Y = sc.VectorSpace((3,), ctx)
+    X = sc.DenseCoordinateSpace((2,), ctx)
+    Y = sc.DenseCoordinateSpace((3,), ctx)
     op = sc.DenseLinOp(ctx.asarray([[1.,2.],[3.,4.],[5.,6.]]), X, Y, ctx)
 
     assert op.convert(ctx) is op
@@ -45,6 +45,6 @@ def test_linop_conversion_to_jax_if_supported():
     dt = jax_real_dtype()
     src = sc.Context(sc.NumpyOps(), dtype=dt)
     dst = sc.Context(sc.JaxOps(), dtype=dt)
-    op = sc.DenseLinOp(src.asarray([[1.,2.],[3.,4.],[5.,6.]]), sc.VectorSpace((2,),src), sc.VectorSpace((3,),src), src)
+    op = sc.DenseLinOp(src.asarray([[1.,2.],[3.,4.],[5.,6.]]), sc.DenseCoordinateSpace((2,),src), sc.DenseCoordinateSpace((3,),src), src)
     op2 = op.convert(dst)
     assert op2.ctx.ops.family == 'jax'

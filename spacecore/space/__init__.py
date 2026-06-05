@@ -1,6 +1,6 @@
 """Vector space abstractions, concrete spaces, and validation checks."""
 
-from ._checks import (
+from .checks import (
     BackendCheck,
     DTypeCheck,
     HermitianCheck,
@@ -11,25 +11,59 @@ from ._checks import (
     SpaceValidationError,
     SquareMatrixCheck,
 )
-from ._base import Space
-from ._batch import BatchSpace
-from ._herm import HermitianSpace
-from ._vector import VectorSpace
-from ._product import ProductSpace
+from .base import (
+    CoordinateSpace,
+    EuclideanInnerProduct,
+    EuclideanJordanAlgebraSpace,
+    InnerProduct,
+    InnerProductSpace,
+    JordanAlgebraSpace,
+    Space,
+    StarSpace,
+    VectorSpace,
+    WeightedInnerProduct,
+)
+from .concrete import (
+    DenseCoordinateSpace,
+    DenseVectorSpace,
+    ElementwiseJordanSpace,
+    EuclideanElementwiseJordanSpace,
+    HermitianSpace,
+    ProductSpace,
+    ProductSpectralDecomposition,
+    StackedSpace,
+)
+from ._structure import ProductStructure, PytreeStructure, TupleStructure
 
 __all__ = [
-    "BatchSpace",
     "BackendCheck",
     "DTypeCheck",
     "HermitianCheck",
     "ProductComponentCheck",
     "ProductStructureCheck",
     "ShapeCheck",
+    "InnerProduct",
+    "EuclideanInnerProduct",
+    "WeightedInnerProduct",
+    "CoordinateSpace",
+    "InnerProductSpace",
+    "StarSpace",
+    "JordanAlgebraSpace",
+    "EuclideanJordanAlgebraSpace",
+    "DenseCoordinateSpace",
+    "DenseVectorSpace",
+    "ElementwiseJordanSpace",
+    "EuclideanElementwiseJordanSpace",
+    "HermitianSpace",
+    "ProductSpace",
+    "ProductSpectralDecomposition",
+    "ProductStructure",
+    "TupleStructure",
+    "PytreeStructure",
+    "StackedSpace",
     "Space",
     "SpaceCheck",
     "SpaceValidationError",
     "SquareMatrixCheck",
-    "HermitianSpace",
     "VectorSpace",
-    "ProductSpace",
 ]
