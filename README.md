@@ -15,11 +15,14 @@ import numpy as np
 
 # Define a space, a linear operator, and solve Ax = b
 ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
-X = sc.DenseCoordinateSpace((100,), ctx)
-A = sc.DenseLinOp(np.random.randn(100, 100) @ np.random.randn(100, 100).T + np.eye(100), X, X, ctx)
-b = ctx.asarray(np.random.randn(100))
+X = sc.DenseCoordinateSpace((20,), ctx)
+rng = np.random.default_rng(0)
+M = rng.standard_normal((20, 20))
+A_mat = M.T @ M + np.eye(20)  # Hermitian positive-definite
+A = sc.DenseLinOp(A_mat, X, X, ctx)
+b = ctx.asarray(rng.standard_normal(20))
 
-result = sc.cg(A, b, tol=1e-8)
+result = sc.cg(A, b, tol=1e-8, maxiter=100)
 print(f"Converged in {result.num_iters} iterations.")
 ```
 
@@ -75,18 +78,23 @@ result = sc.lanczos_smallest(A, initial_vector, max_iter=50)
 print(f"E_0 = {result.eigenvalue}, converged={result.converged}")
 ```
 
-**3. Custom Hilbert spaces with non-Euclidean geometry.** Subclass `DenseCoordinateSpace`, override `inner`, and every solver respects your geometry:
+**3. Custom Hilbert spaces with non-Euclidean geometry.** Attach an inner-product geometry with matching Riesz maps, and every solver respects it:
 
 ```python
-class WeightedL2(sc.DenseCoordinateSpace):
-    def __init__(self, shape, weights, ctx=None):
-        super().__init__(shape, ctx)
-        self.weights = self.ctx.asarray(weights)
+import spacecore as sc
+import numpy as np
 
-    def inner(self, x, y):
-        return self.ops.vdot(x, self.weights * y)
+ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+weights = ctx.asarray([2.0, 5.0, 11.0])
+X = sc.DenseCoordinateSpace((3,), ctx, geometry=sc.WeightedInnerProduct(weights))
 
-# CG, LSQR, Lanczos all use this inner product automatically
+x = ctx.asarray([1.0, 2.0, 3.0])
+y = ctx.asarray([4.0, 5.0, 6.0])
+
+print(X.inner(x, y))        # <x, y> = vdot(x, weights * y)
+print(X.riesz(x))           # weights * x
+print(X.riesz_inverse(y))   # y / weights
+print(X.is_euclidean)       # False
 ```
 
 This is the basis for RKHS spaces, truncated Fock spaces (quantum many-body), function spaces with quadrature, and anything else where the geometry isn't `sum(x * y)`.
@@ -97,13 +105,20 @@ This is the basis for RKHS spaces, truncated Fock spaces (quantum many-body), fu
 
 ```python
 import spacecore as sc
+import numpy as np
 
 ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
-X = sc.DenseCoordinateSpace((1000,), ctx)
-A = sc.DenseLinOp(make_spd_matrix(), X, X, ctx)
-b = ctx.asarray(rhs)
+X = sc.DenseCoordinateSpace((4,), ctx)
+M = ctx.asarray([
+    [3.0, 1.0, 0.0, 0.0],
+    [1.0, 4.0, 1.0, 0.0],
+    [0.0, 1.0, 5.0, 1.0],
+    [0.0, 0.0, 1.0, 6.0],
+])
+A = sc.DenseLinOp(M, X, X, ctx)  # Hermitian positive-definite
+b = ctx.asarray([1.0, 2.0, 3.0, 4.0])
 
-result = sc.cg(A, b, tol=1e-10, maxiter=500)
+result = sc.cg(A, b, tol=1e-10, maxiter=20)
 print(f"x = {result.x}, residual = {result.residual_norm}")
 ```
 
@@ -126,19 +141,23 @@ print(f"Krylov dimension used: {result.krylov_dim}")
 print(f"Converged: {result.converged}")
 ```
 
-### Building a custom operator
+### Building a matrix-free operator
 
 ```python
-class Convolution(sc.LinOp):
-    def __init__(self, kernel, space, ctx):
-        super().__init__(space, space, ctx)
-        self.kernel = kernel
+import spacecore as sc
+import numpy as np
 
-    def apply(self, x):
-        return self.ops.real(self.ops.fft.ifft(self.ops.fft.fft(x) * self.ops.fft.fft(self.kernel)))
+ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+X = sc.DenseCoordinateSpace((3,), ctx)
+diagonal = ctx.asarray([1.0, 2.0, 3.0])
 
-    def rapply(self, y):
-        return self.ops.real(self.ops.fft.ifft(self.ops.fft.fft(y) * self.ops.conj(self.ops.fft.fft(self.kernel))))
+op = sc.MatrixFreeLinOp(
+    apply=lambda x: diagonal * x,
+    rapply=lambda y: ctx.ops.conj(diagonal) * y,
+    dom=X,
+    cod=X,
+    ctx=ctx,
+)
 ```
 
 This operator works on NumPy, JAX, and PyTorch backends without modification.

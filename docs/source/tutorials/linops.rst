@@ -67,11 +67,11 @@ operator :math:`A^* : Y \to X`, satisfying
 
    \langle Ax, y\rangle_Y = \langle x, A^*y\rangle_X.
 
-Batched lifting
----------------
+Vectorized lifting
+------------------
 
-For a batch of elements, use ``Space.batch`` to describe the batched space and
-``vapply`` or ``rvapply`` to lift the operator:
+For a leading-axis batch of elements, use ``vapply`` or ``rvapply`` to lift the
+operator:
 
 .. math::
 
@@ -82,12 +82,9 @@ For a batch of elements, use ``Space.batch`` to describe the batched space and
 .. code-block:: python
 
    B = 8
-   XB = X.batch(batch_shape=(B,), batch_axes=(0,))
-   YB = Y.batch(batch_shape=(B,), batch_axes=(0,))
-
    xs = ctx.asarray(np.ones((B,) + X.shape))
-   ys = op.vapply(xs, batch_space=XB)
-   xs_back = op.rvapply(ys, batch_space=YB)
+   ys = op.vapply(xs)
+   xs_back = op.rvapply(ys)
 
 This is equivalent to stacking scalar applications:
 
@@ -97,7 +94,7 @@ This is equivalent to stacking scalar applications:
 
 The base fallback uses backend ``vmap``. Structured operators override this
 path when they can use matrix multiplication, sparse multi-vector products,
-broadcasting, or componentwise product-space batching.
+broadcasting, or componentwise product-space vectorization.
 
 DenseLinOp
 ----------

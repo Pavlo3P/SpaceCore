@@ -4,6 +4,8 @@ Release notes
 Version 0.3.0
 -------------
 
+Released 2026-06-05: `GitHub release <https://github.com/Pavlo3P/SpaceCore/releases/tag/v0.3.0>`_.
+
 SpaceCore 0.3.0 is a breaking release in the unstable ``0.x`` series. Space
 capabilities are recomputed from actual structure, dtype, and inner product,
 including after ``convert()``.
@@ -35,6 +37,14 @@ Migration table
      - ``ProductSpace(...)``
    * - ``StackedInnerProductSpace(...)``
      - ``StackedSpace(...)``
+   * - ``BatchSpace`` and ``space.batch(...)``
+     - leading-axis batched arrays with ``vapply(...)`` / ``rvapply(...)``
+   * - ``op.vapply(xs, batch_space=...)``
+     - ``op.vapply(xs)``
+   * - global context conversion policies
+     - explicit ``Context`` construction and ``obj.convert(ctx)``
+   * - global dtype preservation policies
+     - target-context dtype during explicit conversion
 
 Added
 ~~~~~
@@ -64,6 +74,11 @@ Changed and removed
 * ``eigh`` was removed from spaces.
 * Specialized public product and stacked constructors were replaced by
   auto-dispatching ``ProductSpace(...)`` and ``StackedSpace(...)`` factories.
+* ``BatchSpace``, ``Space.batch``, and ``batch_space=`` arguments were removed
+  from public batching APIs. Use leading-axis vectorization through ``vapply``
+  and ``rvapply``.
+* Global context-policy and dtype-policy APIs were removed. Conversion now
+  follows the requested target ``Context`` directly.
 
 Version 0.2.0
 -------------

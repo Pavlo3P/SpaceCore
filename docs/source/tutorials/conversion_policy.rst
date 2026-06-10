@@ -131,16 +131,10 @@ after data has already been validated.
 What was removed
 ----------------
 
-Older versions exposed speculative global policies such as:
-
-* ``set_resolution_policy(...)`` / ``get_resolution_policy(...)``;
-* ``set_dtype_resolution_policy(...)`` / ``get_dtype_resolution_policy(...)``;
-* ``ContextPolicy`` and ``DtypePreservePolicy`` values such as ``warning``,
-  ``error``, ``silent``, and ``keep_native``.
-
-These are no longer part of the current API. Conversion is deterministic
-without them: normalize the target context, rebuild if needed, and cast to the
-target context dtype.
+Older versions exposed speculative global conversion and dtype-preservation
+knobs. These are no longer part of the current API. Conversion is deterministic:
+normalize the target context, rebuild if needed, and cast to the target context
+dtype.
 
 Backend-specific dtype defaults
 -------------------------------

@@ -5,7 +5,14 @@ All notable changes to SpaceCore are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
-## [0.3.0]
+## Unreleased
+
+### Changed
+
+- `ProductLinOp` is intentionally exported from the top-level `spacecore`
+  namespace alongside the concrete product-structured operators.
+
+## [0.3.0] - 2026-06-05
 
 SpaceCore 0.3.0 is a breaking release for the unstable `0.x` series. Space
 capabilities are now derived from actual structure, dtype, and inner product,
@@ -28,6 +35,10 @@ are not retained.
 | `StackedStarSpace(...)` | `StackedSpace(...)` |
 | `StackedJordanAlgebraSpace(...)` | `StackedSpace(...)` |
 | `StackedEuclideanJordanAlgebraSpace(...)` | `StackedSpace(...)` |
+| `BatchSpace` and `space.batch(...)` | leading-axis batched arrays with `vapply(...)` / `rvapply(...)` |
+| `op.vapply(xs, batch_space=...)` | `op.vapply(xs)` |
+| global context conversion policies | explicit `Context` construction and `obj.convert(ctx)` |
+| global dtype preservation policies | target-context dtype during explicit conversion |
 
 Prominent `eigh` replacement:
 
@@ -79,6 +90,10 @@ space.eigh(x)
   and a reconstruction frame are needed, or `spectrum` for eigenvalues only.
 - Removed public specialized product and stacked constructors from the public
   API.
+- Removed `BatchSpace`, `Space.batch`, and `batch_space=` arguments from public
+  batching APIs. Use leading-axis vectorization through `vapply` and `rvapply`.
+- Removed global context-policy and dtype-policy APIs. Conversion now follows
+  the requested target `Context` directly.
 
 ## [0.2.0]
 
@@ -256,4 +271,5 @@ iterative solvers and structured result types.
 - The CuPy backend is provided as a preview. Coverage of non-standard
   operations and sparse handling may evolve in a subsequent release.
 
+[0.3.0]: https://github.com/Pavlo3P/SpaceCore/releases/tag/v0.3.0
 [0.2.0]: https://github.com/Pavlo3P/SpaceCore/releases/tag/v0.2.0
