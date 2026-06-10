@@ -46,7 +46,10 @@ class StackedLinOp(ProductLinOp[Domain, ProductSpace]):
 
     def _make_flat_dense_rapply_mats(self):
         """Return dense adjoint matrices for the exact flat-vector fast path."""
-        if type(self.dom) not in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace) or not self.dom.is_euclidean:
+        if (
+            type(self.dom) not in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace)
+            or not self.dom.is_euclidean
+        ):
             return None
         if tuple(self.dom.shape) != (self.dom._size,):
             return None
@@ -154,7 +157,11 @@ class StackedLinOp(ProductLinOp[Domain, ProductSpace]):
             xi = op.rvapply(yi)
             if acc is None:
                 acc = xi
-            elif type(self.domain) in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace):
+            elif type(self.domain) in (
+                DenseCoordinateSpace,
+                DenseVectorSpace,
+                ElementwiseJordanSpace,
+            ):
                 acc = acc + xi
             else:
                 acc = self.domain.add_batch(acc, xi)

@@ -25,7 +25,10 @@ def test_numpy_and_torch_agree_on_shape_reductions_and_linalg():
     assert np.allclose(to_numpy(np_ops.zeros_like(x_np)), to_numpy(th_ops.zeros_like(x_th)))
     assert np.allclose(to_numpy(np_ops.ones_like(x_np)), to_numpy(th_ops.ones_like(x_th)))
     assert np.allclose(to_numpy(np_ops.full_like(x_np, 7.0)), to_numpy(th_ops.full_like(x_th, 7.0)))
-    assert np.allclose(to_numpy(np_ops.broadcast_to(np_ops.asarray([1.0, 2.0, 3.0]), (2, 3))), to_numpy(th_ops.broadcast_to(th_ops.asarray([1.0, 2.0, 3.0], dtype=dt), (2, 3))))
+    assert np.allclose(
+        to_numpy(np_ops.broadcast_to(np_ops.asarray([1.0, 2.0, 3.0]), (2, 3))),
+        to_numpy(th_ops.broadcast_to(th_ops.asarray([1.0, 2.0, 3.0], dtype=dt), (2, 3))),
+    )
     assert np.allclose(to_numpy(np_ops.moveaxis(x_np, 0, 1)), to_numpy(th_ops.moveaxis(x_th, 0, 1)))
     assert np.allclose(to_numpy(np_ops.eigvalsh(A_np)), to_numpy(th_ops.eigvalsh(A_th)))
 

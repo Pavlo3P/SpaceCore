@@ -143,9 +143,8 @@ def make_sum(ops: Sequence[LinOp]) -> LinOp:
     domain = terms[0].domain
     codomain = terms[0].codomain
     for i, op in enumerate(terms[1:], start=1):
-        if (
-            not _same_space_for_algebra(op.domain, domain)
-            or not _same_space_for_algebra(op.codomain, codomain)
+        if not _same_space_for_algebra(op.domain, domain) or not _same_space_for_algebra(
+            op.codomain, codomain
         ):
             raise ValueError(
                 "All SumLinOp operands must have the same domain and codomain; "
@@ -358,9 +357,8 @@ class SumLinOp(LinOp[Domain, Codomain]):
         domain = parts[0].domain
         codomain = parts[0].codomain
         for i, op in enumerate(parts[1:], start=1):
-            if (
-                not _same_space_for_algebra(op.domain, domain)
-                or not _same_space_for_algebra(op.codomain, codomain)
+            if not _same_space_for_algebra(op.domain, domain) or not _same_space_for_algebra(
+                op.codomain, codomain
             ):
                 raise ValueError(
                     "All SumLinOp operands must have the same domain and codomain; "
@@ -381,7 +379,12 @@ class SumLinOp(LinOp[Domain, Codomain]):
         acc = self.ops_tuple[0].apply(x)
         for op in self.ops_tuple[1:]:
             yi = op.apply(x)
-            acc = acc + yi if type(self.codomain) in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace) else self.codomain.add(acc, yi)
+            acc = (
+                acc + yi
+                if type(self.codomain)
+                in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace)
+                else self.codomain.add(acc, yi)
+            )
         return acc
 
     @checked_method(in_space="codomain", out_space="domain")
@@ -390,7 +393,12 @@ class SumLinOp(LinOp[Domain, Codomain]):
         acc = self.ops_tuple[0].rapply(y)
         for op in self.ops_tuple[1:]:
             xi = op.rapply(y)
-            acc = acc + xi if type(self.domain) in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace) else self.domain.add(acc, xi)
+            acc = (
+                acc + xi
+                if type(self.domain)
+                in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace)
+                else self.domain.add(acc, xi)
+            )
         return acc
 
     @checked_method(in_space="domain", out_space="codomain", in_batched=True, out_batched=True)
@@ -399,7 +407,12 @@ class SumLinOp(LinOp[Domain, Codomain]):
         acc = self.ops_tuple[0].vapply(xs)
         for op in self.ops_tuple[1:]:
             yi = op.vapply(xs)
-            acc = acc + yi if type(self.codomain) in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace) else self.codomain.add_batch(acc, yi)
+            acc = (
+                acc + yi
+                if type(self.codomain)
+                in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace)
+                else self.codomain.add_batch(acc, yi)
+            )
         return acc
 
     @checked_method(in_space="codomain", out_space="domain", in_batched=True, out_batched=True)
@@ -408,7 +421,12 @@ class SumLinOp(LinOp[Domain, Codomain]):
         acc = self.ops_tuple[0].rvapply(ys)
         for op in self.ops_tuple[1:]:
             xi = op.rvapply(ys)
-            acc = acc + xi if type(self.domain) in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace) else self.domain.add_batch(acc, xi)
+            acc = (
+                acc + xi
+                if type(self.domain)
+                in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace)
+                else self.domain.add_batch(acc, xi)
+            )
         return acc
 
     def __eq__(self, other: Any) -> bool:
@@ -581,7 +599,9 @@ class ZeroLinOp(LinOp[Domain, Codomain]):
 
         The returned array has shape ``self.codomain.shape + self.domain.shape``.
         """
-        return self.ops.zeros(tuple(self.codomain.shape) + tuple(self.domain.shape), dtype=self.dtype)
+        return self.ops.zeros(
+            tuple(self.codomain.shape) + tuple(self.domain.shape), dtype=self.dtype
+        )
 
     def is_hermitian(self) -> bool:
         """
@@ -839,9 +859,8 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
                 "MatrixFreeLinOp coordinate-adjoint construction requires "
                 "_coordinate_rapply_fn metadata."
             )
-        if (
-            not self._uses_coordinate_adjoint
-            and (_coordinate_rapply_fn is not None or _coordinate_rvapply_fn is not None)
+        if not self._uses_coordinate_adjoint and (
+            _coordinate_rapply_fn is not None or _coordinate_rvapply_fn is not None
         ):
             raise ValueError(
                 "MatrixFreeLinOp direct-adjoint construction cannot store "
@@ -892,8 +911,7 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
             raise TypeError(f"apply must be callable, got {type(apply).__name__}.")
         if not callable(coordinate_rapply):
             raise TypeError(
-                "coordinate_rapply must be callable, "
-                f"got {type(coordinate_rapply).__name__}."
+                f"coordinate_rapply must be callable, got {type(coordinate_rapply).__name__}."
             )
 
         resolved_ctx = resolve_context_priority(ctx, dom, cod)
@@ -910,8 +928,7 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
         if coordinate_rvapply is not None:
             if not callable(coordinate_rvapply):
                 raise TypeError(
-                    "coordinate_rvapply must be callable, "
-                    f"got {type(coordinate_rvapply).__name__}."
+                    f"coordinate_rvapply must be callable, got {type(coordinate_rvapply).__name__}."
                 )
 
             def rvapply(ys):

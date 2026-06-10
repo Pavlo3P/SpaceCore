@@ -2,5 +2,13 @@ site/
 docs/build/
 guides/
 audit/
-audit_caching.md
-audit_jit.md
+
+.DS_Store
+.coverage
+.idea/
+.venv*/
+__pycache__/
+*.egg-info/
+build/
+dist/
+docs/_build/

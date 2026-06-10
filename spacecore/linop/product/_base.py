@@ -27,12 +27,9 @@ class ProductLinOp(LinOp[Domain, Codomain]):
 
     parts: Tuple[LinOp, ...]
 
-    def __init__(self,
-                 dom: Domain,
-                 cod: Codomain,
-                 parts: Sequence[LinOp],
-                 ctx: Context | str | None = None
-                 ) -> None:
+    def __init__(
+        self, dom: Domain, cod: Codomain, parts: Sequence[LinOp], ctx: Context | str | None = None
+    ) -> None:
         if not parts:
             raise ValueError("Parts must be non-empty.")
 
@@ -64,7 +61,8 @@ class ProductLinOp(LinOp[Domain, Codomain]):
     def __eq__(self, x: Any) -> bool:
         """Return whether another product operator has the same layout."""
         if type(x) is type(self):
-            return (self.dom == x.dom
+            return (
+                self.dom == x.dom
                 and self.cod == x.cod
                 and len(self.parts) == len(x.parts)
                 and all([op1 == op2 for op1, op2 in zip(self.parts, x.parts)])

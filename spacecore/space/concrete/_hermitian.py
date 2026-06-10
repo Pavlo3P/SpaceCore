@@ -45,13 +45,14 @@ class HermitianSpace(DenseCoordinateSpace, StarSpace, EuclideanJordanAlgebraSpac
         Matrix dimension.
     """
 
-    def __init__(self,
-                 n: int,
-                 atol: float = 0.,
-                 rtol: float = 0.,
-                 enforce_herm: bool = True,
-                 ctx: Context | str | None = None,
-                 ):
+    def __init__(
+        self,
+        n: int,
+        atol: float = 0.0,
+        rtol: float = 0.0,
+        enforce_herm: bool = True,
+        ctx: Context | str | None = None,
+    ):
         if n <= 0:
             raise ValueError("n must be positive.")
 
@@ -64,10 +65,12 @@ class HermitianSpace(DenseCoordinateSpace, StarSpace, EuclideanJordanAlgebraSpac
 
     def __eq__(self, other: Any) -> bool:
         if isinstance(other, HermitianSpace):
-           return (super(HermitianSpace, self).__eq__(other)
-                   and self.atol == other.atol
-                   and self.rtol == other.rtol
-                   and self.enforce_herm == other.enforce_herm)
+            return (
+                super(HermitianSpace, self).__eq__(other)
+                and self.atol == other.atol
+                and self.rtol == other.rtol
+                and self.enforce_herm == other.enforce_herm
+            )
         return False
 
     @property
@@ -98,7 +101,6 @@ class HermitianSpace(DenseCoordinateSpace, StarSpace, EuclideanJordanAlgebraSpac
         r"""Project ``x`` onto the Hermitian subspace as :math:`(X + X^*) / 2`."""
         x_adj = self.ops.conj(self.ops.swapaxes(x, -1, -2))
         return (x + x_adj) * 0.5
-
 
     @checked_method(in_space="self")
     def star(self, x: DenseArray) -> DenseArray:
@@ -141,7 +143,7 @@ class HermitianSpace(DenseCoordinateSpace, StarSpace, EuclideanJordanAlgebraSpac
     def psd_proj(self, x: DenseArray) -> DenseArray:
         """Project a Hermitian element onto the positive semidefinite cone."""
         evals, evecs = self.spectral_decompose(x)
-        evals = self.ops.maximum(evals, 0.)
+        evals = self.ops.maximum(evals, 0.0)
         return self.eig_to_dense(evals, evecs)
 
     def eig_to_dense(self, evals: DenseArray, evecs: DenseArray) -> DenseArray:
@@ -225,4 +227,3 @@ class HermitianSpace(DenseCoordinateSpace, StarSpace, EuclideanJordanAlgebraSpac
         fevals = self._apply_entrywise(evals, f)
 
         return self.eig_to_dense(fevals, evecs)
-

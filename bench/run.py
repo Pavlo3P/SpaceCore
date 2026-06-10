@@ -49,7 +49,9 @@ def _run_case(case: BenchCase, costs) -> BenchResult:
     predicted, components = predict_overhead(case, costs)
     gap = classify_gap(overhead, predicted)
     if case.size_name == "large":
-        jitter = max(sc["median_ns"] - sc["best_ns"], 0.0) + max(bare["median_ns"] - bare["best_ns"], 0.0)
+        jitter = max(sc["median_ns"] - sc["best_ns"], 0.0) + max(
+            bare["median_ns"] - bare["best_ns"], 0.0
+        )
         if ratio <= 1.15 or overhead <= 3.0 * jitter:
             gap = "ok"
     verdict = make_verdict(
@@ -144,7 +146,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--json", default="bench/out/overhead.json")
     parser.add_argument("--html", default="bench/out/overhead.html")
     parser.add_argument("--baseline", default=None)
-    parser.add_argument("--limit", type=int, default=None, help="Run only the first N cases for smoke testing.")
+    parser.add_argument(
+        "--limit", type=int, default=None, help="Run only the first N cases for smoke testing."
+    )
     args = parser.parse_args(argv)
 
     cases = full_sweep() if args.suite == "full" else default_cases()

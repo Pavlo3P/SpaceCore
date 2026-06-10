@@ -5,6 +5,44 @@ All notable changes to SpaceCore are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.3.1]
+
+SpaceCore 0.3.1 is a release-candidate stabilization release for the `0.3.x`
+API. It focuses on documentation consistency, tutorial execution, release
+artifact checks, and public API audit cleanup. It does not add new solver
+families or SDPLab-specific downstream integration.
+
+### Documentation
+
+- Reworked API reference landing pages for backend, context, spaces, linear
+  operators, functionals, and linalg.
+- Added design notes for context ownership, batching, and capability dispatch.
+- Clarified conversion and dtype policy documentation for explicit target
+  contexts.
+- Clarified adjoint documentation to distinguish coordinate transpose,
+  Euclidean adjoint, and metric/Riesz-represented adjoint behavior.
+
+### Examples and Tutorials
+
+- Added a SpaceCore-only weighted Tikhonov worked example demonstrating
+  weighted spaces, metric adjoints, lazy operator algebra, CG, and an
+  independent dense NumPy reference solve.
+- Integrated the weighted Tikhonov example into tests and documentation.
+
+### Testing and CI
+
+- Documentation CI now builds Sphinx with warnings as errors.
+- Release-candidate checks include full tests, strict docs build, public API
+  audit, artifact build, `twine check`, clean wheel installation, and smoke
+  testing.
+
+### Known limitations
+
+- Optional backend behavior depends on installed optional dependencies. CuPy is
+  not required for the core release-candidate gate.
+- The advanced regularized OT tutorial is an illustrative SpaceCore/JAX/Optax
+  example, not a claim that SpaceCore ships a production OT solver.
+
 ## [0.3.0]
 
 SpaceCore 0.3.0 is a breaking release for the unstable `0.x` series. Space
@@ -28,6 +66,10 @@ are not retained.
 | `StackedStarSpace(...)` | `StackedSpace(...)` |
 | `StackedJordanAlgebraSpace(...)` | `StackedSpace(...)` |
 | `StackedEuclideanJordanAlgebraSpace(...)` | `StackedSpace(...)` |
+| `BatchSpace` and `space.batch(...)` | leading-axis batched arrays with `vapply(...)` / `rvapply(...)` |
+| `op.vapply(xs, batch_space=...)` | `op.vapply(xs)` |
+| global context conversion policies | explicit `Context` construction and `obj.convert(ctx)` |
+| global dtype preservation policies | target-context dtype during explicit conversion |
 
 Prominent `eigh` replacement:
 
@@ -79,6 +121,10 @@ space.eigh(x)
   and a reconstruction frame are needed, or `spectrum` for eigenvalues only.
 - Removed public specialized product and stacked constructors from the public
   API.
+- Removed `BatchSpace`, `Space.batch`, and `batch_space=` arguments from public
+  batching APIs. Use leading-axis vectorization through `vapply` and `rvapply`.
+- Removed global context-policy and dtype-policy APIs. Conversion now follows
+  the requested target `Context` directly.
 
 ## [0.2.0]
 
@@ -256,4 +302,5 @@ iterative solvers and structured result types.
 - The CuPy backend is provided as a preview. Coverage of non-standard
   operations and sparse handling may evolve in a subsequent release.
 
+[0.3.0]: https://github.com/Pavlo3P/SpaceCore/releases/tag/v0.3.0
 [0.2.0]: https://github.com/Pavlo3P/SpaceCore/releases/tag/v0.2.0

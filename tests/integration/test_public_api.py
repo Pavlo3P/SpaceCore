@@ -18,21 +18,54 @@ def test___all___contains_importable_names():
 def test_expected_names_are_exported():
     sc = importlib.import_module("spacecore")
     expected = {
-        "Context", "BackendOps", "NumpyOps", "DenseLinOp", "SparseLinOp",
-        "ScaledLinOp", "SumLinOp", "ComposedLinOp", "ZeroLinOp",
-        "IdentityLinOp", "MatrixFreeLinOp", "make_sum", "make_scaled",
+        "Context",
+        "BackendOps",
+        "NumpyOps",
+        "DenseLinOp",
+        "SparseLinOp",
+        "ScaledLinOp",
+        "SumLinOp",
+        "ComposedLinOp",
+        "ZeroLinOp",
+        "IdentityLinOp",
+        "MatrixFreeLinOp",
+        "make_sum",
+        "make_scaled",
         "make_composed",
-        "BlockDiagonalLinOp", "StackedLinOp", "SumToSingleLinOp",
-        "Functional", "LinearFunctional", "InnerProductFunctional",
-        "ComposedFunctional", "MatrixFreeLinearFunctional", "QuadraticForm",
-        "LinOpQuadraticForm", "make_functional_composed",
-        "DenseCoordinateSpace", "HermitianSpace", "ProductSpace", "ProductStructure",
-        "TupleStructure", "PytreeStructure", "StackedSpace", "Space",
-        "InnerProduct", "EuclideanInnerProduct", "WeightedInnerProduct",
-        "DenseArray", "SparseArray", "ArrayLike",
-        "set_context", "get_context", "resolve_context_priority", "register_ops",
-        "LanczosResult", "lanczos_smallest",
-        "ExpmMultiplyResult", "expm_multiply",
+        "ProductLinOp",
+        "BlockDiagonalLinOp",
+        "StackedLinOp",
+        "SumToSingleLinOp",
+        "Functional",
+        "LinearFunctional",
+        "InnerProductFunctional",
+        "ComposedFunctional",
+        "MatrixFreeLinearFunctional",
+        "QuadraticForm",
+        "LinOpQuadraticForm",
+        "make_functional_composed",
+        "DenseCoordinateSpace",
+        "HermitianSpace",
+        "ProductSpace",
+        "ProductStructure",
+        "TupleStructure",
+        "PytreeStructure",
+        "StackedSpace",
+        "Space",
+        "InnerProduct",
+        "EuclideanInnerProduct",
+        "WeightedInnerProduct",
+        "DenseArray",
+        "SparseArray",
+        "ArrayLike",
+        "set_context",
+        "get_context",
+        "resolve_context_priority",
+        "register_ops",
+        "LanczosResult",
+        "lanczos_smallest",
+        "ExpmMultiplyResult",
+        "expm_multiply",
     }
     if has_jax():
         expected |= {"JaxOps", "jax_pytree_class"}
@@ -67,6 +100,7 @@ def test_top_level_objects_match_source_modules():
     assert sc.TupleStructure is space.TupleStructure
     assert sc.PytreeStructure is space.PytreeStructure
     assert sc.StackedSpace is space.StackedSpace
+    assert sc.ProductLinOp is linop.ProductLinOp
     assert sc.DenseLinOp is linop.DenseLinOp
     assert sc.Functional is functional.Functional
     assert sc.ComposedFunctional is functional.ComposedFunctional
@@ -85,4 +119,4 @@ def test_package_version_matches_project_metadata():
     assert metadata["tool"]["setuptools"]["dynamic"]["version"]["attr"] == (
         "spacecore._version.__version__"
     )
-    assert sc.__version__ == "0.3.0"
+    assert sc.__version__ == "0.3.1"

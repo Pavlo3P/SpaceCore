@@ -36,10 +36,11 @@ autodoc_default_options = {
     "inherited-members": True,
     "show-inheritance": True,
     "exclude-members": (
-            "tree_flatten, tree_unflatten, "
-            "ctx, ops, dtype, enable_checks, representer, A, parts, n, "
-            "__dict__, __weakref__, __module__"
-        ),
+        "tree_flatten, tree_unflatten, "
+        "ctx, ops, dtype, enable_checks, representer, A, parts, n, "
+        "xp, torch, "
+        "__dict__, __weakref__, __module__"
+    ),
 }
 
 napoleon_google_docstring = True

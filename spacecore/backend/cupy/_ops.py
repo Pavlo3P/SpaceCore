@@ -285,4 +285,6 @@ class CuPyOps(BackendOps):
         """Compare two CuPy sparse matrices by dense values."""
         if not self.is_sparse(a) or not self.is_sparse(b):
             raise TypeError("allclose_sparse expects two CuPy sparse matrices.")
-        return bool(self.cp.asnumpy(self.cp.allclose(a.toarray(), b.toarray(), rtol=rtol, atol=atol)))
+        return bool(
+            self.cp.asnumpy(self.cp.allclose(a.toarray(), b.toarray(), rtol=rtol, atol=atol))
+        )

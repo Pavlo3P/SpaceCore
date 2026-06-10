@@ -137,4 +137,6 @@ def test_cg_solves_diagonal_operator_on_stacked_space():
     expected = to_numpy(b) / to_numpy(diagonal)
     np.testing.assert_allclose(to_numpy(result.x), expected, rtol=1e-8, atol=1e-8)
     residual = b - op.apply(result.x)
-    np.testing.assert_allclose(to_numpy(result.residual_norm), to_numpy(stacked.norm(residual)), atol=1e-12)
+    np.testing.assert_allclose(
+        to_numpy(result.residual_norm), to_numpy(stacked.norm(residual)), atol=1e-12
+    )

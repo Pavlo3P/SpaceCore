@@ -13,7 +13,13 @@ from ._metric import (
     metric_rvapply,
 )
 from .._checks import checked_method
-from ..space import CoordinateSpace, DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace, WeightedInnerProduct
+from ..space import (
+    CoordinateSpace,
+    DenseCoordinateSpace,
+    DenseVectorSpace,
+    ElementwiseJordanSpace,
+    WeightedInnerProduct,
+)
 from ..types import DenseArray, SparseArray
 from ..backend import jax_pytree_class, Context
 from .._contextual import resolve_context_priority
@@ -82,12 +88,13 @@ class SparseLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
     array([1., 2.])
     """
 
-    def __init__(self,
-                 A: SparseArray,
-                 dom: CoordinateSpace,
-                 cod: CoordinateSpace,
-                 ctx: Context | str | None = None
-                 ) -> None:
+    def __init__(
+        self,
+        A: SparseArray,
+        dom: CoordinateSpace,
+        cod: CoordinateSpace,
+        ctx: Context | str | None = None,
+    ) -> None:
         ctx = resolve_context_priority(ctx, dom, cod)
         ctx.assert_sparse(A)  # Check if A is sparse array of ctx
         if not isinstance(dom, CoordinateSpace) or not isinstance(cod, CoordinateSpace):
@@ -99,7 +106,9 @@ class SparseLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
 
         expected = (prod(self.cod.shape), prod(self.dom.shape))
         if tuple(A.shape) != expected:
-            raise TypeError(f"Expected A.shape == (prod(cod.shape), prod(dom.shape)) == {expected}, got {A.shape}")
+            raise TypeError(
+                f"Expected A.shape == (prod(cod.shape), prod(dom.shape)) == {expected}, got {A.shape}"
+            )
 
         self._A = A  # No dtype conversion
         self._cod_size = expected[0]
@@ -108,8 +117,16 @@ class SparseLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
         self._A_is_complex = self.ops.is_complex_dtype(dtype)
         self._AT = self.A.T
         self._AH = self._sparse_conj(self._AT) if self._A_is_complex else self._AT
-        self._dom_dense_array = type(self.dom) in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace)
-        self._cod_dense_array = type(self.cod) in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace)
+        self._dom_dense_array = type(self.dom) in (
+            DenseCoordinateSpace,
+            DenseVectorSpace,
+            ElementwiseJordanSpace,
+        )
+        self._cod_dense_array = type(self.cod) in (
+            DenseCoordinateSpace,
+            DenseVectorSpace,
+            ElementwiseJordanSpace,
+        )
         self._dom_is_flat = self._dom_dense_array and tuple(self.dom.shape) == (self._dom_size,)
         self._cod_is_flat = self._cod_dense_array and tuple(self.cod.shape) == (self._cod_size,)
         self._mode = self._select_mode()
@@ -126,7 +143,12 @@ class SparseLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
             and type(getattr(self.cod, "geometry", None)) is WeightedInnerProduct
         ):
             return _SparseMode.WEIGHTED_FUSED
-        if self.domain.is_euclidean and self.codomain.is_euclidean and self._dom_dense_array and self._cod_dense_array:
+        if (
+            self.domain.is_euclidean
+            and self.codomain.is_euclidean
+            and self._dom_dense_array
+            and self._cod_dense_array
+        ):
             if self._dom_is_flat and self._cod_is_flat:
                 return _SparseMode.EUCLIDEAN_FLAT
             return _SparseMode.EUCLIDEAN_TENSOR
@@ -288,7 +310,9 @@ class SparseLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
 
         The returned array has shape ``self.codomain.shape + self.domain.shape``.
         """
-        return self.ops.reshape(self.to_matrix(), tuple(self.codomain.shape) + tuple(self.domain.shape))
+        return self.ops.reshape(
+            self.to_matrix(), tuple(self.codomain.shape) + tuple(self.domain.shape)
+        )
 
     def is_hermitian(self) -> bool | None:
         """
@@ -311,10 +335,7 @@ class SparseLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
 
     def __eq__(self, x: Any) -> bool:
         if type(x) is type(self):
-            return (self.dom == x.dom
-                and self.cod == x.cod
-                and self.ops.allclose_sparse(self.A, x.A)
-            )
+            return self.dom == x.dom and self.cod == x.cod and self.ops.allclose_sparse(self.A, x.A)
         return False
 
     def tree_flatten(self):

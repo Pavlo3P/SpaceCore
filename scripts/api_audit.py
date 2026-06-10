@@ -30,6 +30,7 @@ SKIP_DIRS = {
     ".pytest_cache",
     ".ruff_cache",
     ".venv",
+    ".venv312",
     "__pycache__",
     "build",
     "dist",
@@ -60,7 +61,7 @@ class Finding:
 
 def _iter_files(root: Path) -> Iterable[Path]:
     for path in root.rglob("*"):
-        if any(part in SKIP_DIRS for part in path.parts):
+        if any(part in SKIP_DIRS or part.startswith(".venv") for part in path.parts):
             continue
         if not path.is_file():
             continue
@@ -123,10 +124,7 @@ def _scan_python(path: Path) -> list[Finding]:
 def _scan_text(path: Path) -> list[Finding]:
     if path.name in MIGRATION_DOCS:
         return []
-    patterns = [
-        (name, re.compile(rf"\b{name}\s*\("))
-        for name in sorted(REMOVED_CALLS)
-    ]
+    patterns = [(name, re.compile(rf"\b{name}\s*\(")) for name in sorted(REMOVED_CALLS)]
     patterns.extend((f".{name}", re.compile(rf"\.{name}\s*\(")) for name in REMOVED_METHODS)
 
     findings: list[Finding] = []

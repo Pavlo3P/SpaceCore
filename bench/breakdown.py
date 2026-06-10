@@ -32,7 +32,9 @@ def measure_ladder(
     timings = []
     for name, fn in layers:
         timing = _time(fn, repeat=repeat, number=number, warmup=warmup)
-        timings.append({"layer": name, "time_ns": timing["best_ns"], "median_ns": timing["median_ns"]})
+        timings.append(
+            {"layer": name, "time_ns": timing["best_ns"], "median_ns": timing["median_ns"]}
+        )
 
     previous = None
     for entry in timings:
@@ -41,7 +43,9 @@ def measure_ladder(
             entry["delta_status"] = "baseline"
         else:
             delta = entry["time_ns"] - previous["time_ns"]
-            jitter = max(entry["median_ns"] - entry["time_ns"], 0.0) + max(previous["median_ns"] - previous["time_ns"], 0.0)
+            jitter = max(entry["median_ns"] - entry["time_ns"], 0.0) + max(
+                previous["median_ns"] - previous["time_ns"], 0.0
+            )
             entry["delta_ns"] = delta
             if delta < -max(jitter, 50.0):
                 entry["delta_status"] = "noise_negative"
@@ -62,7 +66,9 @@ def measure_ladder(
     if primitives:
         for name, fn in primitives.items():
             try:
-                measured_primitives[name] = _primitive(fn, repeat=repeat, number=number, warmup=warmup)
+                measured_primitives[name] = _primitive(
+                    fn, repeat=repeat, number=number, warmup=warmup
+                )
             except Exception:
                 measured_primitives[name] = None
 
@@ -72,7 +78,9 @@ def measure_ladder(
         "full_layer": full_name,
         "measured_primitives": measured_primitives,
         "ladder_sum_ns": ladder_sum,
-        "ladder_vs_total_gap_ns": None if total_overhead_ns is None else ladder_sum - total_overhead_ns,
+        "ladder_vs_total_gap_ns": None
+        if total_overhead_ns is None
+        else ladder_sum - total_overhead_ns,
     }
 
 
@@ -180,7 +188,15 @@ def linop_breakdown(
             ("bare_backend", bare_fn),
             ("core_dispatch", lambda: core(arg)),
             ("public_nocheck", lambda: public(arg)),
-            ("checks", lambda: _check_batched_apply(lambda v: _check_batched(op.domain, v), lambda v: _check_batched(op.codomain, v), core, arg)),
+            (
+                "checks",
+                lambda: _check_batched_apply(
+                    lambda v: _check_batched(op.domain, v),
+                    lambda v: _check_batched(op.codomain, v),
+                    core,
+                    arg,
+                ),
+            ),
         ]
         primitives = {"check_batch_in_ns": lambda: _check_batched(op.domain, arg)}
     elif operation == "rvapply":
@@ -188,7 +204,15 @@ def linop_breakdown(
             ("bare_backend", bare_fn),
             ("core_dispatch", lambda: core(arg)),
             ("public_nocheck", lambda: public(arg)),
-            ("checks", lambda: _check_batched_apply(lambda v: _check_batched(op.codomain, v), lambda v: _check_batched(op.domain, v), core, arg)),
+            (
+                "checks",
+                lambda: _check_batched_apply(
+                    lambda v: _check_batched(op.codomain, v),
+                    lambda v: _check_batched(op.domain, v),
+                    core,
+                    arg,
+                ),
+            ),
         ]
         primitives = {"check_batch_in_ns": lambda: _check_batched(op.codomain, arg)}
     else:

@@ -56,6 +56,7 @@ class ProductSpectralDecomposition:
         eigvals, frames = children
         return cls(tuple(eigvals), tuple(frames))
 
+
 _CAP_INNER = InnerProductSpace
 _CAP_STAR = StarSpace
 _CAP_JORDAN = JordanAlgebraSpace
@@ -91,10 +92,14 @@ def _space_capabilities(space: Space) -> CapabilitySet:
     return frozenset(caps)
 
 
-def _validate_product_spaces(spaces: Any, owner: str = "ProductSpace") -> tuple[CoordinateSpace, ...]:
+def _validate_product_spaces(
+    spaces: Any, owner: str = "ProductSpace"
+) -> tuple[CoordinateSpace, ...]:
     """Validate product components before capability-specific access."""
     if not isinstance(spaces, Sequence):
-        raise TypeError(f"{owner} requires a sequence of CoordinateSpace components; got {type(spaces).__name__}.")
+        raise TypeError(
+            f"{owner} requires a sequence of CoordinateSpace components; got {type(spaces).__name__}."
+        )
     spaces = tuple(spaces)
     if len(spaces) == 0:
         raise ValueError(f"{owner} requires at least one subspace.")
@@ -199,7 +204,8 @@ class ProductSpace(CoordinateSpace):
         self._structure = structure
         self._arity = len(uniform_spaces)
         self._vector_fast_path = all(
-            type(sp) in (
+            type(sp)
+            in (
                 DenseCoordinateSpace,
                 DenseVectorSpace,
                 ElementwiseJordanSpace,
@@ -541,10 +547,12 @@ class _ProductJordanMixin:
         """Apply each component space's spectral calculus independently."""
         parts = self._components(x)
         if self.arity == 2:
-            return self._from_components((
-                self.spaces[0].spectral_apply(parts[0], f),
-                self.spaces[1].spectral_apply(parts[1], f),
-            ))
+            return self._from_components(
+                (
+                    self.spaces[0].spectral_apply(parts[0], f),
+                    self.spaces[1].spectral_apply(parts[1], f),
+                )
+            )
         out = tuple(s.spectral_apply(xi, f) for s, xi in zip(self.spaces, parts))
         return self._from_components(out)
 
@@ -650,18 +658,24 @@ class _ProductEuclideanJordanStarSpace(
     """Product implementation for Euclidean-Jordan plus star capability."""
 
 
-_PRODUCT_REGISTRY.update({
-    frozenset(): ProductSpace,
-    frozenset({_CAP_INNER}): _ProductInnerProductSpace,
-    frozenset({_CAP_STAR}): _ProductStarSpace,
-    frozenset({_CAP_JORDAN}): _ProductJordanAlgebraSpace,
-    frozenset({_CAP_INNER, _CAP_STAR}): _ProductInnerProductStarSpace,
-    frozenset({_CAP_INNER, _CAP_JORDAN}): _ProductInnerProductJordanSpace,
-    frozenset({_CAP_STAR, _CAP_JORDAN}): _ProductStarJordanSpace,
-    frozenset({_CAP_INNER, _CAP_STAR, _CAP_JORDAN}): _ProductInnerProductStarJordanSpace,
-    frozenset({_CAP_INNER, _CAP_JORDAN, _CAP_EUCLIDEAN_JORDAN}): _ProductEuclideanJordanAlgebraSpace,
-    frozenset({_CAP_INNER, _CAP_STAR, _CAP_JORDAN, _CAP_EUCLIDEAN_JORDAN}): _ProductEuclideanJordanStarSpace,
-})
+_PRODUCT_REGISTRY.update(
+    {
+        frozenset(): ProductSpace,
+        frozenset({_CAP_INNER}): _ProductInnerProductSpace,
+        frozenset({_CAP_STAR}): _ProductStarSpace,
+        frozenset({_CAP_JORDAN}): _ProductJordanAlgebraSpace,
+        frozenset({_CAP_INNER, _CAP_STAR}): _ProductInnerProductStarSpace,
+        frozenset({_CAP_INNER, _CAP_JORDAN}): _ProductInnerProductJordanSpace,
+        frozenset({_CAP_STAR, _CAP_JORDAN}): _ProductStarJordanSpace,
+        frozenset({_CAP_INNER, _CAP_STAR, _CAP_JORDAN}): _ProductInnerProductStarJordanSpace,
+        frozenset(
+            {_CAP_INNER, _CAP_JORDAN, _CAP_EUCLIDEAN_JORDAN}
+        ): _ProductEuclideanJordanAlgebraSpace,
+        frozenset(
+            {_CAP_INNER, _CAP_STAR, _CAP_JORDAN, _CAP_EUCLIDEAN_JORDAN}
+        ): _ProductEuclideanJordanStarSpace,
+    }
+)
 
 
 __all__ = [

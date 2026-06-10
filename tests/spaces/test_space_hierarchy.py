@@ -191,12 +191,16 @@ def test_product_space_baseline_and_specialized_capabilities():
     assert not isinstance(base_product, sc.StarSpace)
     assert not isinstance(base_product, sc.JordanAlgebraSpace)
 
-    inner_product = sc.ProductSpace((sc.DenseCoordinateSpace((2,), ctx), sc.DenseCoordinateSpace((1,), ctx)), ctx)
+    inner_product = sc.ProductSpace(
+        (sc.DenseCoordinateSpace((2,), ctx), sc.DenseCoordinateSpace((1,), ctx)), ctx
+    )
     assert isinstance(inner_product, sc.ProductSpace)
     assert isinstance(inner_product, sc.InnerProductSpace)
     assert not isinstance(inner_product, sc.JordanAlgebraSpace)
 
-    jordan_product = sc.ProductSpace((sc.ElementwiseJordanSpace((2,), ctx), sc.HermitianSpace(2, ctx=ctx)), ctx)
+    jordan_product = sc.ProductSpace(
+        (sc.ElementwiseJordanSpace((2,), ctx), sc.HermitianSpace(2, ctx=ctx)), ctx
+    )
     assert isinstance(jordan_product, sc.StarSpace)
     assert isinstance(jordan_product, sc.EuclideanJordanAlgebraSpace)
 
@@ -216,7 +220,10 @@ def test_stacked_space_capability_dispatch_matches_base():
     assert isinstance(inner, sc.StackedSpace)
     assert isinstance(inner, sc.InnerProductSpace)
     assert not isinstance(inner, sc.JordanAlgebraSpace)
-    np.testing.assert_allclose(inner.inner(ctx.asarray([[1.0, 2.0], [3.0, 4.0]]), ctx.asarray([[5.0, 6.0], [7.0, 8.0]])), 70.0)
+    np.testing.assert_allclose(
+        inner.inner(ctx.asarray([[1.0, 2.0], [3.0, 4.0]]), ctx.asarray([[5.0, 6.0], [7.0, 8.0]])),
+        70.0,
+    )
 
     jordan = sc.ElementwiseJordanSpace((2,), ctx).stacked(2)
     assert isinstance(jordan, sc.StarSpace)
@@ -363,7 +370,11 @@ def test_no_repository_examples_instantiate_abstract_vector_space():
     offenders = []
     for rel in checked_roots:
         path = root / rel
-        files = [path] if path.is_file() else list(path.rglob("*.py")) + list(path.rglob("*.rst")) + list(path.rglob("*.md"))
+        files = (
+            [path]
+            if path.is_file()
+            else list(path.rglob("*.py")) + list(path.rglob("*.rst")) + list(path.rglob("*.md"))
+        )
         for file in files:
             if file == Path(__file__).resolve():
                 continue

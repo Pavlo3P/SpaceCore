@@ -68,7 +68,9 @@ def test_hermitian_space_uses_configured_check_parameters():
     almost = ctx.asarray([[1.0, 1.0], [1.0 + 1e-5, 1.0]])
     loose = sc.HermitianSpace(2, atol=1e-4, rtol=0.0, ctx=ctx)
     disabled = sc.HermitianSpace(2, enforce_herm=False, ctx=ctx)
-    loose_check = next(check for check in loose.member_checks() if isinstance(check, sc.HermitianCheck))
+    loose_check = next(
+        check for check in loose.member_checks() if isinstance(check, sc.HermitianCheck)
+    )
     disabled_check = next(
         check for check in disabled.member_checks() if isinstance(check, sc.HermitianCheck)
     )
@@ -83,7 +85,9 @@ def test_hermitian_space_uses_configured_check_parameters():
 
 def test_product_structure_check_rejects_non_tuple_and_wrong_arity():
     ctx = _ctx()
-    product = sc.ProductSpace((sc.DenseCoordinateSpace((2,), ctx), sc.DenseCoordinateSpace((3,), ctx)), ctx)
+    product = sc.ProductSpace(
+        (sc.DenseCoordinateSpace((2,), ctx), sc.DenseCoordinateSpace((3,), ctx)), ctx
+    )
 
     with pytest.raises(ValueError, match="ProductSpace element must be a tuple"):
         sc.ProductStructureCheck()(product, [ctx.asarray([1.0, 2.0]), ctx.asarray([3.0, 4.0, 5.0])])
@@ -94,7 +98,9 @@ def test_product_structure_check_rejects_non_tuple_and_wrong_arity():
 
 def test_product_component_check_rejects_invalid_component():
     ctx = _ctx()
-    product = sc.ProductSpace((sc.DenseCoordinateSpace((2,), ctx), sc.DenseCoordinateSpace((3,), ctx)), ctx)
+    product = sc.ProductSpace(
+        (sc.DenseCoordinateSpace((2,), ctx), sc.DenseCoordinateSpace((3,), ctx)), ctx
+    )
 
     with pytest.raises(ValueError, match=r"Invalid component 1.*Expected shape \(3,\)"):
         sc.ProductComponentCheck()(product, (ctx.asarray([1.0, 2.0]), ctx.asarray([3.0, 4.0])))

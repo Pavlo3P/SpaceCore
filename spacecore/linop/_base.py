@@ -12,8 +12,9 @@ from ..space import Space
 from ..backend import Context
 from .._contextual import ContextBound, resolve_context_priority
 
-Domain = TypeVar('Domain', bound=Space)
-Codomain = TypeVar('Codomain', bound=Space)
+Domain = TypeVar("Domain", bound=Space)
+Codomain = TypeVar("Codomain", bound=Space)
+
 
 class LinOp(ContextBound, Generic[Domain, Codomain]):
     r"""
@@ -229,12 +230,12 @@ class LinOp(ContextBound, Generic[Domain, Codomain]):
         that already store a dense or sparse matrix should override this method
         for efficiency.
         """
-        return self.ops.reshape(self.to_matrix(), tuple(self.codomain.shape) + tuple(self.domain.shape))
+        return self.ops.reshape(
+            self.to_matrix(), tuple(self.codomain.shape) + tuple(self.domain.shape)
+        )
 
     def to_sparse(self):
-        raise NotImplementedError(
-            f"{type(self).__name__} does not define sparse materialization."
-        )
+        raise NotImplementedError(f"{type(self).__name__} does not define sparse materialization.")
 
     def to_matrix(self) -> Any:
         """

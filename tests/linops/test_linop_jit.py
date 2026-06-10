@@ -23,19 +23,19 @@ def test_dense_linop_jit_apply_and_rapply_with_operator_argument():
 
     ctx = _jax_ctx()
     op = sc.DenseLinOp(
-        ctx.asarray([[1., 2.], [3., 4.], [5., 6.]]),
+        ctx.asarray([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]),
         sc.DenseCoordinateSpace((2,), ctx),
         sc.DenseCoordinateSpace((3,), ctx),
         ctx,
     )
-    x = ctx.asarray([7., 8.])
-    y = ctx.asarray([1., -1., 2.])
+    x = ctx.asarray([7.0, 8.0])
+    y = ctx.asarray([1.0, -1.0, 2.0])
 
     apply_jit = jax.jit(lambda A, z: A.apply(z))
     rapply_jit = jax.jit(lambda A, z: A.rapply(z))
 
-    np.testing.assert_allclose(to_numpy(apply_jit(op, x)), [23., 53., 83.])
-    np.testing.assert_allclose(to_numpy(rapply_jit(op, y)), [8., 10.])
+    np.testing.assert_allclose(to_numpy(apply_jit(op, x)), [23.0, 53.0, 83.0])
+    np.testing.assert_allclose(to_numpy(rapply_jit(op, y)), [8.0, 10.0])
 
 
 def test_decorated_apply_rapply_value_and_grad_jit_compile():
@@ -66,7 +66,7 @@ def test_tensor_dense_linop_jit_preserves_shapes():
     cod = sc.DenseCoordinateSpace((3, 1), ctx)
     A = ctx.asarray(np.arange(12, dtype=np.float32).reshape(cod.shape + dom.shape))
     op = sc.DenseLinOp(A, dom, cod, ctx)
-    x = ctx.asarray([[1., 2.], [3., 4.]])
+    x = ctx.asarray([[1.0, 2.0], [3.0, 4.0]])
 
     apply_jit = jax.jit(lambda Aop, z: Aop.apply(z))
     y = apply_jit(op, x)
@@ -82,48 +82,48 @@ def test_product_linops_jit_compile():
     X = sc.DenseCoordinateSpace((2,), ctx)
     Y1 = sc.DenseCoordinateSpace((2,), ctx)
     Y2 = sc.DenseCoordinateSpace((1,), ctx)
-    A1 = sc.DenseLinOp(ctx.asarray([[1., 2.], [3., 4.]]), X, Y1, ctx)
-    A2 = sc.DenseLinOp(ctx.asarray([[5., 6.]]), X, Y2, ctx)
+    A1 = sc.DenseLinOp(ctx.asarray([[1.0, 2.0], [3.0, 4.0]]), X, Y1, ctx)
+    A2 = sc.DenseLinOp(ctx.asarray([[5.0, 6.0]]), X, Y2, ctx)
     stacked = sc.StackedLinOp.from_operators((A1, A2))
-    x = ctx.asarray([7., 8.])
+    x = ctx.asarray([7.0, 8.0])
 
     stacked_apply = jax.jit(lambda Aop, z: Aop.apply(z))
     stacked_rapply = jax.jit(lambda Aop, a, b: Aop.rapply((a, b)))
     y = stacked_apply(stacked, x)
-    xr = stacked_rapply(stacked, ctx.asarray([1., -1.]), ctx.asarray([2.]))
+    xr = stacked_rapply(stacked, ctx.asarray([1.0, -1.0]), ctx.asarray([2.0]))
 
-    np.testing.assert_allclose(to_numpy(y[0]), [23., 53.])
-    np.testing.assert_allclose(to_numpy(y[1]), [83.])
-    np.testing.assert_allclose(to_numpy(xr), [8., 10.])
+    np.testing.assert_allclose(to_numpy(y[0]), [23.0, 53.0])
+    np.testing.assert_allclose(to_numpy(y[1]), [83.0])
+    np.testing.assert_allclose(to_numpy(xr), [8.0, 10.0])
 
     X1 = sc.DenseCoordinateSpace((2,), ctx)
     X2 = sc.DenseCoordinateSpace((3,), ctx)
     Z1 = sc.DenseCoordinateSpace((2,), ctx)
     Z2 = sc.DenseCoordinateSpace((1,), ctx)
-    B1 = sc.DenseLinOp(ctx.asarray([[1., 2.], [3., 4.]]), X1, Z1, ctx)
-    B2 = sc.DenseLinOp(ctx.asarray([[5., 6., 7.]]), X2, Z2, ctx)
+    B1 = sc.DenseLinOp(ctx.asarray([[1.0, 2.0], [3.0, 4.0]]), X1, Z1, ctx)
+    B2 = sc.DenseLinOp(ctx.asarray([[5.0, 6.0, 7.0]]), X2, Z2, ctx)
     block = sc.BlockDiagonalLinOp.from_operators((B1, B2))
-    x1 = ctx.asarray([7., 8.])
-    x2 = ctx.asarray([1., 2., 3.])
+    x1 = ctx.asarray([7.0, 8.0])
+    x2 = ctx.asarray([1.0, 2.0, 3.0])
 
     block_apply = jax.jit(lambda Aop, a, b: Aop.apply((a, b)))
     block_rapply = jax.jit(lambda Aop, a, b: Aop.rapply((a, b)))
     z = block_apply(block, x1, x2)
-    zr = block_rapply(block, ctx.asarray([1., -1.]), ctx.asarray([2.]))
+    zr = block_rapply(block, ctx.asarray([1.0, -1.0]), ctx.asarray([2.0]))
 
-    np.testing.assert_allclose(to_numpy(z[0]), [23., 53.])
-    np.testing.assert_allclose(to_numpy(z[1]), [38.])
-    np.testing.assert_allclose(to_numpy(zr[0]), [-2., -2.])
-    np.testing.assert_allclose(to_numpy(zr[1]), [10., 12., 14.])
+    np.testing.assert_allclose(to_numpy(z[0]), [23.0, 53.0])
+    np.testing.assert_allclose(to_numpy(z[1]), [38.0])
+    np.testing.assert_allclose(to_numpy(zr[0]), [-2.0, -2.0])
+    np.testing.assert_allclose(to_numpy(zr[1]), [10.0, 12.0, 14.0])
 
     sum_to_single = sc.SumToSingleLinOp.from_operators((A1, A1))
     sum_apply = jax.jit(lambda Aop, a, b: Aop.apply((a, b)))
     sum_rapply = jax.jit(lambda Aop, z: Aop.rapply(z))
 
-    np.testing.assert_allclose(to_numpy(sum_apply(sum_to_single, x, x)), [46., 106.])
-    yr = sum_rapply(sum_to_single, ctx.asarray([1., -1.]))
-    np.testing.assert_allclose(to_numpy(yr[0]), [-2., -2.])
-    np.testing.assert_allclose(to_numpy(yr[1]), [-2., -2.])
+    np.testing.assert_allclose(to_numpy(sum_apply(sum_to_single, x, x)), [46.0, 106.0])
+    yr = sum_rapply(sum_to_single, ctx.asarray([1.0, -1.0]))
+    np.testing.assert_allclose(to_numpy(yr[0]), [-2.0, -2.0])
+    np.testing.assert_allclose(to_numpy(yr[1]), [-2.0, -2.0])
 
 
 def test_sparse_linop_jit_apply_if_supported():
@@ -131,18 +131,18 @@ def test_sparse_linop_jit_apply_if_supported():
 
     ctx = _jax_ctx()
     op = sc.SparseLinOp(
-        ctx.assparse(np.asarray([[1., 2.], [3., 4.], [5., 6.]], dtype=jax_real_dtype())),
+        ctx.assparse(np.asarray([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=jax_real_dtype())),
         sc.DenseCoordinateSpace((2,), ctx),
         sc.DenseCoordinateSpace((3,), ctx),
         ctx,
     )
-    x = ctx.asarray([7., 8.])
+    x = ctx.asarray([7.0, 8.0])
 
     apply_jit = jax.jit(lambda Aop, z: Aop.apply(z))
     rapply_jit = jax.jit(lambda Aop, z: Aop.rapply(z))
 
-    np.testing.assert_allclose(to_numpy(apply_jit(op, x)), [23., 53., 83.])
-    np.testing.assert_allclose(to_numpy(rapply_jit(op, ctx.asarray([1., -1., 2.]))), [8., 10.])
+    np.testing.assert_allclose(to_numpy(apply_jit(op, x)), [23.0, 53.0, 83.0])
+    np.testing.assert_allclose(to_numpy(rapply_jit(op, ctx.asarray([1.0, -1.0, 2.0]))), [8.0, 10.0])
 
 
 def test_product_space_flatten_unflatten_jit_compile():
@@ -152,8 +152,8 @@ def test_product_space_flatten_unflatten_jit_compile():
     X1 = sc.DenseCoordinateSpace((2, 2), ctx)
     X2 = sc.DenseCoordinateSpace((3,), ctx)
     product = sc.ProductSpace((X1, X2), ctx)
-    x1 = ctx.asarray([[1., 2.], [3., 4.]])
-    x2 = ctx.asarray([5., 6., 7.])
+    x1 = ctx.asarray([[1.0, 2.0], [3.0, 4.0]])
+    x2 = ctx.asarray([5.0, 6.0, 7.0])
 
     flatten_jit = jax.jit(lambda a, b: product.flatten((a, b)))
     unflatten_jit = jax.jit(lambda v: product.unflatten(v))
@@ -161,6 +161,6 @@ def test_product_space_flatten_unflatten_jit_compile():
     flat = flatten_jit(x1, x2)
     roundtrip = unflatten_jit(flat)
 
-    np.testing.assert_allclose(to_numpy(flat), [1., 2., 3., 4., 5., 6., 7.])
+    np.testing.assert_allclose(to_numpy(flat), [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0])
     np.testing.assert_allclose(to_numpy(roundtrip[0]), to_numpy(x1))
     np.testing.assert_allclose(to_numpy(roundtrip[1]), to_numpy(x2))

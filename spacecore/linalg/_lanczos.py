@@ -117,7 +117,10 @@ def _lanczos_basis_and_tridiag(
     """Build a Lanczos basis and tridiagonal projection."""
     ops = A.ops
     ctx = A.ctx
-    use_euclidean_reorth = type(A.domain) in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace) and A.domain.is_euclidean
+    use_euclidean_reorth = (
+        type(A.domain) in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace)
+        and A.domain.is_euclidean
+    )
 
     v0 = A.domain.flatten(initial_vector)
     v0 = ctx.assert_dense(v0)
@@ -160,7 +163,9 @@ def _lanczos_basis_and_tridiag(
         i, _V, _alphas, _betas, _beta, m_true, keep_going = state
         return (i < max_iter) & keep_going
 
-    def body_fun(state: tuple[Any, Any, Any, Any, Any, Any, Any]) -> tuple[Any, Any, Any, Any, Any, Any, Any]:
+    def body_fun(
+        state: tuple[Any, Any, Any, Any, Any, Any, Any],
+    ) -> tuple[Any, Any, Any, Any, Any, Any, Any]:
         i, V_, alphas_, betas_, beta, m_true, keep_going = state
 
         v_i = V_[i]
@@ -364,9 +369,7 @@ def lanczos_smallest(
     ctx = A.ctx
     real_dtype = ops.real_dtype(ctx.dtype)
     idx = ops.arange(max_iter)
-    basis = _lanczos_basis_and_tridiag(
-        A, initial_vector, max_iter, tol, real_dtype, check_every
-    )
+    basis = _lanczos_basis_and_tridiag(A, initial_vector, max_iter, tol, real_dtype, check_every)
 
     m = basis.krylov_dim
     _eigvals, eigvecs = ops.eigh(basis.T)

@@ -3,6 +3,7 @@
 from ._version import __version__
 
 from .backend import Context, BackendOps, NumpyOps, jax_pytree_class
+
 try:
     from .backend import JaxOps as JaxOps
 except ImportError:
@@ -23,6 +24,7 @@ from .linop import (
     IdentityLinOp,
     LinOp,
     MatrixFreeLinOp,
+    ProductLinOp,
     ScaledLinOp,
     SparseLinOp,
     StackedLinOp,
@@ -92,21 +94,21 @@ from .types import DenseArray, SparseArray, ArrayLike
 from ._checks import checked_method
 from ._contextual import (
     ContextBound,
-    set_context, get_context,
+    set_context,
+    get_context,
     resolve_context_priority,
     register_ops,
-    normalize_ops, normalize_context,
+    normalize_ops,
+    normalize_context,
 )
 
 __all__ = [
     "__version__",
     "Context",
-
     "BackendOps",
     "JaxOps",
     "jax_pytree_class",
     "NumpyOps",
-
     "LinOp",
     "ComposedLinOp",
     "DiagonalLinOp",
@@ -120,10 +122,10 @@ __all__ = [
     "make_composed",
     "make_scaled",
     "make_sum",
+    "ProductLinOp",
     "BlockDiagonalLinOp",
     "SumToSingleLinOp",
     "StackedLinOp",
-
     "ComposedFunctional",
     "Functional",
     "LinearFunctional",
@@ -132,7 +134,6 @@ __all__ = [
     "QuadraticForm",
     "LinOpQuadraticForm",
     "make_functional_composed",
-
     "CGResult",
     "ExpmMultiplyResult",
     "LanczosResult",
@@ -143,7 +144,6 @@ __all__ = [
     "lanczos_smallest",
     "lsqr",
     "power_iteration",
-
     "BackendCheck",
     "DTypeCheck",
     "HermitianCheck",
@@ -174,11 +174,9 @@ __all__ = [
     "SpaceCheck",
     "SpaceValidationError",
     "SquareMatrixCheck",
-
     "DenseArray",
     "SparseArray",
     "ArrayLike",
-
     "checked_method",
     "ContextBound",
     "set_context",

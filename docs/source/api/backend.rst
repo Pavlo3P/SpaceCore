@@ -1,8 +1,11 @@
 Backend API
 ===========
 
-Backend classes define the execution layer used by spaces and linear
-operators.
+Backend objects implement the numerical operations used by spaces, operators,
+functionals, and solvers.
+
+Backend families
+----------------
 
 .. autosummary::
    :nosignatures:
@@ -12,64 +15,44 @@ operators.
    spacecore.backend.JaxOps
    spacecore.backend.TorchOps
 
-BackendOps
-----------
+* ``BackendOps`` is the abstract operation surface.
+* ``NumpyOps`` is always available and uses NumPy plus SciPy sparse.
+* ``JaxOps`` is optional and follows JAX tracing and dtype configuration.
+* ``TorchOps`` is optional and follows PyTorch tensor, dtype, device, and autograd semantics.
+* ``CuPyOps`` is optional and follows CuPy/CuPy sparse semantics.
 
-.. autoclass:: spacecore.backend.BackendOps
-   :members:
-   :undoc-members:
-   :inherited-members:
-   :show-inheritance:
+Choosing a backend
+------------------
 
-NumpyOps
---------
-
-.. autoclass:: spacecore.backend.NumpyOps
-   :members:
-   :undoc-members:
-   :inherited-members:
-   :show-inheritance:
-   :exclude-members: np, sp
-
-JaxOps
-------
-
-.. autoclass:: spacecore.backend.JaxOps
-   :members:
-   :undoc-members:
-   :inherited-members:
-   :show-inheritance:
-   :exclude-members: jax, jnp, jsparse
-
-CuPyOps
--------
-
-``CuPyOps`` is the optional CuPy backend implementation for GPU arrays and
-``cupyx.scipy.sparse`` matrices. It is exported as ``spacecore.backend.CuPyOps``
-only when CuPy is installed in the environment.
-
-Install the optional backend before using it:
-
-.. code-block:: bash
-
-   pip install spacecore[cupy]
-
-Use it through a normal SpaceCore context:
+Users normally choose a backend by constructing a ``Context``:
 
 .. code-block:: python
 
    import numpy as np
    import spacecore as sc
 
-   ctx = sc.Context(sc.CuPyOps(), dtype=np.float64)
-   x = ctx.asarray([1.0, 2.0, 3.0])
+   ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
 
-TorchOps
---------
+Backend portability means SpaceCore calls the same abstract operations and keeps
+the same space/operator model. It does not hide backend-specific dtype defaults,
+optional dependency availability, device placement, sparse support, tracing, or
+autograd behavior.
+
+Autodoc
+-------
+
+.. autoclass:: spacecore.backend.BackendOps
+   :members:
+
+.. autoclass:: spacecore.backend.NumpyOps
+   :members:
+   :inherited-members:
+
+.. autoclass:: spacecore.backend.JaxOps
+   :members:
+   :inherited-members:
 
 .. autoclass:: spacecore.backend.TorchOps
    :members:
-   :undoc-members:
    :inherited-members:
-   :show-inheritance:
-   :exclude-members: torch
+

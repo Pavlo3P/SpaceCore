@@ -33,8 +33,10 @@ class BenchCase:
 
 def _allclose(a: Any, b: Any, *, rtol=1e-5, atol=1e-6) -> bool:
     if isinstance(a, tuple):
-        return isinstance(b, tuple) and len(a) == len(b) and all(
-            _allclose(x, y, rtol=rtol, atol=atol) for x, y in zip(a, b)
+        return (
+            isinstance(b, tuple)
+            and len(a) == len(b)
+            and all(_allclose(x, y, rtol=rtol, atol=atol) for x, y in zip(a, b))
         )
     return np.allclose(np.asarray(a), np.asarray(b), rtol=rtol, atol=atol)
 
@@ -93,7 +95,9 @@ class GeneralDiagonalInnerProduct:
         return False
 
     def __eq__(self, other):
-        return type(other) is type(self) and np.allclose(_as_numpy(self.weights), _as_numpy(other.weights))
+        return type(other) is type(self) and np.allclose(
+            _as_numpy(self.weights), _as_numpy(other.weights)
+        )
 
 
 def _case_id(*parts: Any) -> str:
@@ -124,9 +128,17 @@ def _dense_cases(sc, rng, backend: str, size_name: str, n: int, checks: bool) ->
         bare, call = _wrap_jit(sc, backend, bare, call)
         breakdown = None
         if backend == "numpy-eager":
+
             def breakdown(
-                *, repeat, number, warmup, total_overhead_ns,
-                op=op, operation=operation, bare=bare, arg=arg
+                *,
+                repeat,
+                number,
+                warmup,
+                total_overhead_ns,
+                op=op,
+                operation=operation,
+                bare=bare,
+                arg=arg,
             ):
                 return linop_breakdown(
                     op,
@@ -138,6 +150,7 @@ def _dense_cases(sc, rng, backend: str, size_name: str, n: int, checks: bool) ->
                     warmup=warmup,
                     total_overhead_ns=total_overhead_ns,
                 )
+
         cases.append(
             BenchCase(
                 _case_id(backend, "dense", operation, size_name, "checks" if checks else "nocheck"),
@@ -195,12 +208,28 @@ def _diagonal_cases(
         ("rvapply", "d * ys", "op.rvapply(ys)", lambda: d * ys, lambda: op.rvapply(ys), batch),
     ]:
         bare, call = _wrap_jit(sc, backend, bare, call)
-        arg = x if operation == "apply" else y if operation == "rapply" else xs if operation == "vapply" else ys
+        arg = (
+            x
+            if operation == "apply"
+            else y
+            if operation == "rapply"
+            else xs
+            if operation == "vapply"
+            else ys
+        )
         breakdown = None
         if backend == "numpy-eager":
+
             def breakdown(
-                *, repeat, number, warmup, total_overhead_ns,
-                op=op, operation=operation, bare=bare, arg=arg
+                *,
+                repeat,
+                number,
+                warmup,
+                total_overhead_ns,
+                op=op,
+                operation=operation,
+                bare=bare,
+                arg=arg,
             ):
                 return linop_breakdown(
                     op,
@@ -212,9 +241,17 @@ def _diagonal_cases(
                     warmup=warmup,
                     total_overhead_ns=total_overhead_ns,
                 )
+
         rows.append(
             BenchCase(
-                _case_id(backend, geometry, "diagonal", operation, size_name, "checks" if checks else "nocheck"),
+                _case_id(
+                    backend,
+                    geometry,
+                    "diagonal",
+                    operation,
+                    size_name,
+                    "checks" if checks else "nocheck",
+                ),
                 f"{size_name} {geometry} diagonal {operation}",
                 backend,
                 "DiagonalLinOp",
@@ -253,6 +290,7 @@ def _sparse_cases(sc, rng, size_name: str, n: int, checks: bool, weighted=False)
         w = ctx.asarray(1.0 + rng.random(n))
         X = sc.DenseCoordinateSpace((n,), ctx, geometry=sc.WeightedInnerProduct(w))
         geometry = "weighted"
+
         def rbare():
             return (ST @ (w * y)) / w
 
@@ -263,6 +301,7 @@ def _sparse_cases(sc, rng, size_name: str, n: int, checks: bool, weighted=False)
     else:
         X = sc.DenseCoordinateSpace((n,), ctx)
         geometry = "euclidean"
+
         def rbare():
             return ST @ y
 
@@ -274,12 +313,21 @@ def _sparse_cases(sc, rng, size_name: str, n: int, checks: bool, weighted=False)
     specs = [
         ("apply", "S @ x", "op.apply(x)", lambda: S @ x, lambda: op.apply(x), None),
         ("rapply", "ST @ y", "op.rapply(y)", rbare, lambda: op.rapply(y), None),
-        ("vapply", "(S @ xs.T).T", "op.vapply(xs)", lambda: (S @ xs.T).T, lambda: op.vapply(xs), batch),
+        (
+            "vapply",
+            "(S @ xs.T).T",
+            "op.vapply(xs)",
+            lambda: (S @ xs.T).T,
+            lambda: op.vapply(xs),
+            batch,
+        ),
         ("rvapply", "(ST @ ys.T).T", "op.rvapply(ys)", rvbare, lambda: op.rvapply(ys), batch),
     ]
     return [
         BenchCase(
-            _case_id(backend, geometry, "sparse", operation, size_name, "checks" if checks else "nocheck"),
+            _case_id(
+                backend, geometry, "sparse", operation, size_name, "checks" if checks else "nocheck"
+            ),
             f"{size_name} {geometry} sparse {operation}",
             backend,
             "SparseLinOp",
@@ -301,7 +349,9 @@ def _sparse_cases(sc, rng, size_name: str, n: int, checks: bool, weighted=False)
     ]
 
 
-def _weighted_dense_cases(sc, rng, size_name: str, n: int, checks: bool, matrix_free=False) -> list[BenchCase]:
+def _weighted_dense_cases(
+    sc, rng, size_name: str, n: int, checks: bool, matrix_free=False
+) -> list[BenchCase]:
     backend = "numpy-eager"
     ctx = _ctx(sc, backend, checks)
     A = ctx.asarray(rng.standard_normal((n, n)))
@@ -329,41 +379,59 @@ def _weighted_dense_cases(sc, rng, size_name: str, n: int, checks: bool, matrix_
         op = sc.DenseLinOp(A, X, Y, ctx)
         operator_type = "DenseLinOp"
         mode = "WEIGHTED_FUSED"
+
     def rbare():
         return (AH @ (wy * y)) / wx
 
     def rvbare():
         return ((ys * wy) @ AH.T) / wx
 
-    rbreakdown = None if matrix_free else (
-        lambda *, repeat, number, warmup, total_overhead_ns, op=op, bare=rbare, y=y:
-        linop_breakdown(
-            op,
-            "rapply",
-            bare,
-            y,
-            repeat=repeat,
-            number=number,
-            warmup=warmup,
-            total_overhead_ns=total_overhead_ns,
+    rbreakdown = (
+        None
+        if matrix_free
+        else (
+            lambda *, repeat, number, warmup, total_overhead_ns, op=op, bare=rbare, y=y: (
+                linop_breakdown(
+                    op,
+                    "rapply",
+                    bare,
+                    y,
+                    repeat=repeat,
+                    number=number,
+                    warmup=warmup,
+                    total_overhead_ns=total_overhead_ns,
+                )
+            )
         )
     )
-    rvbreakdown = None if matrix_free else (
-        lambda *, repeat, number, warmup, total_overhead_ns, op=op, bare=rvbare, ys=ys:
-        linop_breakdown(
-            op,
-            "rvapply",
-            bare,
-            ys,
-            repeat=repeat,
-            number=number,
-            warmup=warmup,
-            total_overhead_ns=total_overhead_ns,
+    rvbreakdown = (
+        None
+        if matrix_free
+        else (
+            lambda *, repeat, number, warmup, total_overhead_ns, op=op, bare=rvbare, ys=ys: (
+                linop_breakdown(
+                    op,
+                    "rvapply",
+                    bare,
+                    ys,
+                    repeat=repeat,
+                    number=number,
+                    warmup=warmup,
+                    total_overhead_ns=total_overhead_ns,
+                )
+            )
         )
     )
     return [
         BenchCase(
-            _case_id(backend, "weighted", operator_type, "rapply", size_name, "checks" if checks else "nocheck"),
+            _case_id(
+                backend,
+                "weighted",
+                operator_type,
+                "rapply",
+                size_name,
+                "checks" if checks else "nocheck",
+            ),
             f"{size_name} weighted {operator_type} rapply",
             backend,
             operator_type,
@@ -383,7 +451,14 @@ def _weighted_dense_cases(sc, rng, size_name: str, n: int, checks: bool, matrix_
             rbreakdown,
         ),
         BenchCase(
-            _case_id(backend, "weighted", operator_type, "rvapply", size_name, "checks" if checks else "nocheck"),
+            _case_id(
+                backend,
+                "weighted",
+                operator_type,
+                "rvapply",
+                size_name,
+                "checks" if checks else "nocheck",
+            ),
             f"{size_name} weighted {operator_type} rvapply",
             backend,
             operator_type,
@@ -417,17 +492,58 @@ def _algebra_cases(sc, rng, size_name: str, n: int, checks: bool) -> list[BenchC
     Aop = sc.DenseLinOp(A, X, X, ctx)
     Bop = sc.DenseLinOp(B, X, X, ctx)
     cases = [
-        ("ComposedLinOp", "apply", "B @ (A @ x)", "(Bop @ Aop).apply(x)", lambda: B @ (A @ x), lambda: (Bop @ Aop).apply(x)),
-        ("SumLinOp", "apply", "A @ x + B @ x", "(Aop + Bop).apply(x)", lambda: A @ x + B @ x, lambda: (Aop + Bop).apply(x)),
-        ("ScaledLinOp", "apply", "2.5 * (A @ x)", "(2.5 * Aop).apply(x)", lambda: 2.5 * (A @ x), lambda: (2.5 * Aop).apply(x)),
-        ("ProductLinOp", "apply", "(A @ x, B @ y)", "block.apply((x, y))", lambda: (A @ x, B @ y), lambda: sc.BlockDiagonalLinOp.from_operators((Aop, Bop)).apply((x, y))),
-        ("ProductLinOp", "rapply", "AH @ y + BH @ y", "stacked.rapply((y, y))", lambda: AH @ y + BH @ y, lambda: sc.StackedLinOp.from_operators((Aop, Bop)).rapply((y, y))),
+        (
+            "ComposedLinOp",
+            "apply",
+            "B @ (A @ x)",
+            "(Bop @ Aop).apply(x)",
+            lambda: B @ (A @ x),
+            lambda: (Bop @ Aop).apply(x),
+        ),
+        (
+            "SumLinOp",
+            "apply",
+            "A @ x + B @ x",
+            "(Aop + Bop).apply(x)",
+            lambda: A @ x + B @ x,
+            lambda: (Aop + Bop).apply(x),
+        ),
+        (
+            "ScaledLinOp",
+            "apply",
+            "2.5 * (A @ x)",
+            "(2.5 * Aop).apply(x)",
+            lambda: 2.5 * (A @ x),
+            lambda: (2.5 * Aop).apply(x),
+        ),
+        (
+            "ProductLinOp",
+            "apply",
+            "(A @ x, B @ y)",
+            "block.apply((x, y))",
+            lambda: (A @ x, B @ y),
+            lambda: sc.BlockDiagonalLinOp.from_operators((Aop, Bop)).apply((x, y)),
+        ),
+        (
+            "ProductLinOp",
+            "rapply",
+            "AH @ y + BH @ y",
+            "stacked.rapply((y, y))",
+            lambda: AH @ y + BH @ y,
+            lambda: sc.StackedLinOp.from_operators((Aop, Bop)).rapply((y, y)),
+        ),
     ]
     out = []
     for operator_type, operation, bare_label, sc_label, bare, call in cases:
         out.append(
             BenchCase(
-                _case_id("numpy-eager", operator_type, operation, size_name, "checks" if checks else "nocheck"),
+                _case_id(
+                    "numpy-eager",
+                    operator_type,
+                    operation,
+                    size_name,
+                    "checks" if checks else "nocheck",
+                ),
                 f"{size_name} {operator_type} {operation}",
                 "numpy-eager",
                 operator_type,
@@ -459,9 +575,39 @@ def _functional_cases(sc, rng, size_name: str, n: int, checks: bool) -> list[Ben
     D = sc.DiagonalLinOp(ctx.asarray(1.0 + rng.random(n)), X, ctx)
     Q = sc.LinOpQuadraticForm(D, sc.InnerProductFunctional(c, X, ctx), 0.25, ctx)
     specs = [
-        ("InnerProductFunctional", "value", "X.inner(c, x)", "F.value(x)", lambda: X.inner(c, x), lambda: F.value(x), None, F, x),
-        ("InnerProductFunctional", "grad", "c", "F.grad(x)", lambda: c, lambda: F.grad(x), None, F, x),
-        ("InnerProductFunctional", "vvalue", "xs @ c", "F.vvalue(xs)", lambda: xs @ c, lambda: F.vvalue(xs), xs.shape[0], F, xs),
+        (
+            "InnerProductFunctional",
+            "value",
+            "X.inner(c, x)",
+            "F.value(x)",
+            lambda: X.inner(c, x),
+            lambda: F.value(x),
+            None,
+            F,
+            x,
+        ),
+        (
+            "InnerProductFunctional",
+            "grad",
+            "c",
+            "F.grad(x)",
+            lambda: c,
+            lambda: F.grad(x),
+            None,
+            F,
+            x,
+        ),
+        (
+            "InnerProductFunctional",
+            "vvalue",
+            "xs @ c",
+            "F.vvalue(xs)",
+            lambda: xs @ c,
+            lambda: F.vvalue(xs),
+            xs.shape[0],
+            F,
+            xs,
+        ),
         (
             "InnerProductFunctional",
             "vgrad",
@@ -473,8 +619,28 @@ def _functional_cases(sc, rng, size_name: str, n: int, checks: bool) -> list[Ben
             F,
             xs,
         ),
-        ("LinOpQuadraticForm", "value", "0.5*inner(x,Dx)+inner(c,x)+a", "Q.value(x)", lambda: 0.5 * X.inner(x, D.apply(x)) + X.inner(c, x) + 0.25, lambda: Q.value(x), None, Q, x),
-        ("LinOpQuadraticForm", "grad", "D.apply(x)+c", "Q.grad(x)", lambda: D.apply(x) + c, lambda: Q.grad(x), None, Q, x),
+        (
+            "LinOpQuadraticForm",
+            "value",
+            "0.5*inner(x,Dx)+inner(c,x)+a",
+            "Q.value(x)",
+            lambda: 0.5 * X.inner(x, D.apply(x)) + X.inner(c, x) + 0.25,
+            lambda: Q.value(x),
+            None,
+            Q,
+            x,
+        ),
+        (
+            "LinOpQuadraticForm",
+            "grad",
+            "D.apply(x)+c",
+            "Q.grad(x)",
+            lambda: D.apply(x) + c,
+            lambda: Q.grad(x),
+            None,
+            Q,
+            x,
+        ),
         (
             "LinOpQuadraticForm",
             "vvalue",
@@ -500,9 +666,17 @@ def _functional_cases(sc, rng, size_name: str, n: int, checks: bool) -> list[Ben
     ]
     out = []
     for operator_type, operation, bare_label, sc_label, bare, call, batch, functional, arg in specs:
+
         def breakdown(
-            *, repeat, number, warmup, total_overhead_ns,
-            functional=functional, operation=operation, bare=bare, arg=arg
+            *,
+            repeat,
+            number,
+            warmup,
+            total_overhead_ns,
+            functional=functional,
+            operation=operation,
+            bare=bare,
+            arg=arg,
         ):
             return functional_breakdown(
                 functional,
@@ -514,26 +688,35 @@ def _functional_cases(sc, rng, size_name: str, n: int, checks: bool) -> list[Ben
                 warmup=warmup,
                 total_overhead_ns=total_overhead_ns,
             )
-        out.append(BenchCase(
-            _case_id("numpy-eager", operator_type, operation, size_name, "checks" if checks else "nocheck"),
-            f"{size_name} {operator_type} {operation}",
-            "numpy-eager",
-            operator_type,
-            operation,
-            "euclidean",
-            "flat",
-            size_name,
-            n,
-            checks,
-            batch,
-            "functional",
-            bare_label,
-            sc_label,
-            bare,
-            call,
-            lambda bare=bare, call=call: _assert_close(bare, call),
-            breakdown,
-        ))
+
+        out.append(
+            BenchCase(
+                _case_id(
+                    "numpy-eager",
+                    operator_type,
+                    operation,
+                    size_name,
+                    "checks" if checks else "nocheck",
+                ),
+                f"{size_name} {operator_type} {operation}",
+                "numpy-eager",
+                operator_type,
+                operation,
+                "euclidean",
+                "flat",
+                size_name,
+                n,
+                checks,
+                batch,
+                "functional",
+                bare_label,
+                sc_label,
+                bare,
+                call,
+                lambda bare=bare, call=call: _assert_close(bare, call),
+                breakdown,
+            )
+        )
     return out
 
 

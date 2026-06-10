@@ -18,6 +18,7 @@ def has_cupy() -> bool:
         return False
     try:
         import cupy
+
         cupy.asarray([0]).sum()
     except Exception:
         return False
@@ -28,6 +29,7 @@ def jax_real_dtype():
     if not has_jax():
         return np.float32
     import jax
+
     return np.float64 if bool(jax.config.read("jax_enable_x64")) else np.float32
 
 
@@ -39,6 +41,7 @@ def torch_real_dtype():
     if not has_torch():
         return np.float32
     import torch
+
     return torch.get_default_dtype()
 
 
@@ -46,6 +49,7 @@ def torch_complex_dtype():
     if not has_torch():
         return np.complex64
     import torch
+
     return torch.complex128 if torch.get_default_dtype() == torch.float64 else torch.complex64
 
 
@@ -62,10 +66,12 @@ def to_numpy(x):
         return tuple(to_numpy(xi) for xi in x)
     if has_cupy():
         import cupy
+
         if isinstance(x, cupy.ndarray):
             return cupy.asnumpy(x)
         try:
             import cupyx.scipy.sparse as cupy_sparse
+
             sparse_types = tuple(
                 typ
                 for typ in (
@@ -82,6 +88,7 @@ def to_numpy(x):
             pass
     if has_torch():
         import torch
+
         if isinstance(x, torch.Tensor):
             if x.layout != torch.strided:
                 x = x.to_dense()

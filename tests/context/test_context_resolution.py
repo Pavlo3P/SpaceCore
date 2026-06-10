@@ -106,7 +106,10 @@ def test_cross_backend_product_space_resolution_raises_if_available():
         return
     sc = importlib.import_module("spacecore")
     import pytest
+
     np_ctx = sc.Context(sc.NumpyOps(), dtype=np.float32, enable_checks=True)
     jx_ctx = sc.Context(sc.JaxOps(), dtype=jax_real_dtype(), enable_checks=True)
     with pytest.raises(Exception):
-        sc.ProductSpace((sc.DenseCoordinateSpace((2,), np_ctx), sc.DenseCoordinateSpace((3,), jx_ctx)))
+        sc.ProductSpace(
+            (sc.DenseCoordinateSpace((2,), np_ctx), sc.DenseCoordinateSpace((3,), jx_ctx))
+        )

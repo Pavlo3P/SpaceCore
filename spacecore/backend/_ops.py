@@ -107,30 +107,36 @@ class BackendOps(ABC):
         ...
 
     @abstractmethod
-    def logsumexp(self, a: DenseArray, axis: int | Sequence[int] | None = None, b: DenseArray | None = None,
-                  keepdims: bool = False, return_sign: bool = False) -> DenseArray | Tuple[DenseArray, DenseArray]:
+    def logsumexp(
+        self,
+        a: DenseArray,
+        axis: int | Sequence[int] | None = None,
+        b: DenseArray | None = None,
+        keepdims: bool = False,
+        return_sign: bool = False,
+    ) -> DenseArray | Tuple[DenseArray, DenseArray]:
         """Compute a stable log-sum-exp reduction."""
         ...
 
     @abstractmethod
     def index_set(
-            self,
-            x: DenseArray,
-            index: Index,
-            values: ArrayLike,
-            *,
-            copy: bool = True,
+        self,
+        x: DenseArray,
+        index: Index,
+        values: ArrayLike,
+        *,
+        copy: bool = True,
     ) -> DenseArray:
         """Set indexed values using backend mutation semantics."""
 
     @abstractmethod
     def index_add(
-            self,
-            x: DenseArray,
-            index: Index,
-            values: DenseArray,
-            *,
-            copy: bool = True,
+        self,
+        x: DenseArray,
+        index: Index,
+        values: DenseArray,
+        *,
+        copy: bool = True,
     ) -> DenseArray:
         """Add values into indexed positions using backend mutation semantics."""
         ...
@@ -142,53 +148,53 @@ class BackendOps(ABC):
 
     @abstractmethod
     def fori_loop(
-            self,
-            lower: int,
-            upper: int,
-            body_fun: Callable[[int, T], T],
-            init_val: T,
+        self,
+        lower: int,
+        upper: int,
+        body_fun: Callable[[int, T], T],
+        init_val: T,
     ) -> T:
         """Run a counted loop primitive."""
 
     @abstractmethod
     def while_loop(
-            self,
-            cond_fun: Callable[[T], bool],
-            body_fun: Callable[[T], T],
-            init_val: T,
+        self,
+        cond_fun: Callable[[T], bool],
+        body_fun: Callable[[T], T],
+        init_val: T,
     ) -> T:
         """Run a while-loop primitive."""
 
     @abstractmethod
     def scan(
-            self,
-            f: Callable[[Carry, X], Tuple[Carry, Y]],
-            init: Carry,
-            xs: X,
-            length: Optional[int] = None,
-            reverse: bool = False,
-            unroll: int = 1,
+        self,
+        f: Callable[[Carry, X], Tuple[Carry, Y]],
+        init: Carry,
+        xs: X,
+        length: Optional[int] = None,
+        reverse: bool = False,
+        unroll: int = 1,
     ) -> Tuple[Carry, Y]:
         """Run a scan primitive."""
 
     @abstractmethod
     def cond(
-            self,
-            pred: bool,
-            true_fun: Callable[[T], R],
-            false_fun: Callable[[T], R],
-            *operands: Any,
+        self,
+        pred: bool,
+        true_fun: Callable[[T], R],
+        false_fun: Callable[[T], R],
+        *operands: Any,
     ) -> R:
         """Run backend-compatible conditional branch selection."""
         ...
 
     @abstractmethod
     def allclose_sparse(
-            self,
-            a: SparseArray,
-            b: SparseArray,
-            rtol: float = 1e-5,
-            atol: float = 1e-8,
+        self,
+        a: SparseArray,
+        b: SparseArray,
+        rtol: float = 1e-5,
+        atol: float = 1e-8,
     ) -> bool:
         """Compare sparse arrays elementwise within tolerances."""
         ...
@@ -374,7 +380,9 @@ class BackendOps(ABC):
             return self.xp.arange(start, stop, dtype=dtype)
         return self.xp.arange(start, stop, step, dtype=dtype)
 
-    def full(self, shape: Tuple[int, ...], fill_value: Any, dtype: DType | None = None) -> DenseArray:
+    def full(
+        self, shape: Tuple[int, ...], fill_value: Any, dtype: DType | None = None
+    ) -> DenseArray:
         """Create a value-filled array (delegates to xp.full)."""
         return self.xp.full(shape, fill_value, dtype=self._dtype_arg(dtype))
 
@@ -493,10 +501,7 @@ class BackendOps(ABC):
             first = xs[0]
             if isinstance(first, tuple):
                 axes = axis if isinstance(axis, (tuple, list)) else (axis,) * len(first)
-                return tuple(
-                    tree_stack(tuple(x[i] for x in xs), ai)
-                    for i, ai in enumerate(axes)
-                )
+                return tuple(tree_stack(tuple(x[i] for x in xs), ai) for i, ai in enumerate(axes))
             if axis is None:
                 return first
             return self.stack(xs, axis=int(axis))
@@ -511,8 +516,7 @@ class BackendOps(ABC):
             if size is None:
                 return fn(*args)
             outputs = tuple(
-                fn(*(tree_take(arg, axis, i) for arg, axis in zip(args, axes)))
-                for i in range(size)
+                fn(*(tree_take(arg, axis, i) for arg, axis in zip(args, axes))) for i in range(size)
             )
             return tree_stack(outputs, out_axes)
 
@@ -779,12 +783,12 @@ class BackendOps(ABC):
         return self.xp.triu(x)
 
     def allclose(
-            self,
-            a: DenseArray,
-            b: DenseArray,
-            rtol: float = 1e-5,
-            atol: float = 1e-8,
-            equal_nan: bool = False,
+        self,
+        a: DenseArray,
+        b: DenseArray,
+        rtol: float = 1e-5,
+        atol: float = 1e-8,
+        equal_nan: bool = False,
     ) -> bool:
         """Return whether dense arrays are close within tolerances."""
         return bool(self.xp.allclose(a, b, rtol=rtol, atol=atol, equal_nan=equal_nan))

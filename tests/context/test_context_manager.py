@@ -29,6 +29,7 @@ def test_set_context_with_backend_name():
 def test_set_context_invalid_name_raises():
     sc = importlib.import_module("spacecore")
     import pytest
+
     with pytest.raises(Exception):
         sc.set_context("definitely_not_a_backend")
 

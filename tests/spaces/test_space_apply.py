@@ -48,9 +48,7 @@ def test_product_spectral_apply_numpy_componentwise():
     y = psp.spectral_apply(x, np.square)
 
     np.testing.assert_allclose(y[0], np.asarray([1.0, 4.0], dtype=psp.spaces[0].dtype))
-    np.testing.assert_allclose(
-        y[1], np.asarray([9.0, 16.0, 25.0], dtype=psp.spaces[1].dtype)
-    )
+    np.testing.assert_allclose(y[1], np.asarray([9.0, 16.0, 25.0], dtype=psp.spaces[1].dtype))
     assert not hasattr(psp, "apply")
 
 

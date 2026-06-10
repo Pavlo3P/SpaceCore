@@ -33,7 +33,9 @@ def _weighted_space(ctx):
 def _weighted_vector_space(ctx, weights):
     sc = importlib.import_module("spacecore")
     weights = ctx.asarray(weights)
-    return sc.DenseCoordinateSpace(tuple(to_numpy(weights).shape), ctx, geometry=_weighted_geometry(weights))
+    return sc.DenseCoordinateSpace(
+        tuple(to_numpy(weights).shape), ctx, geometry=_weighted_geometry(weights)
+    )
 
 
 def _self_adjoint_metric_matrix(ctx):
@@ -146,8 +148,12 @@ def test_inner_product_functional_vectorized_batches_match_elementwise(ctx, eps,
     expected_values = functional.ops.stack(tuple(functional.value(x) for x in xs), axis=0)
     expected_grads = functional.ops.stack(tuple(functional.grad(x) for x in xs), axis=0)
 
-    np.testing.assert_allclose(to_numpy(functional.vvalue(xs)), to_numpy(expected_values), rtol=5e-6, atol=atol)
-    np.testing.assert_allclose(to_numpy(functional.vgrad(xs)), to_numpy(expected_grads), rtol=5e-6, atol=atol)
+    np.testing.assert_allclose(
+        to_numpy(functional.vvalue(xs)), to_numpy(expected_values), rtol=5e-6, atol=atol
+    )
+    np.testing.assert_allclose(
+        to_numpy(functional.vgrad(xs)), to_numpy(expected_grads), rtol=5e-6, atol=atol
+    )
 
 
 @pytest.mark.parametrize("ctx,eps,atol", list(_contexts()))
@@ -155,12 +161,16 @@ def test_inner_product_functional_vectorized_batches_match_elementwise(ctx, eps,
 def test_linop_quadratic_form_vectorized_batches_match_elementwise(ctx, eps, atol, weighted):
     sc = importlib.import_module("spacecore")
     space = _weighted_space(ctx) if weighted else sc.DenseCoordinateSpace((3,), ctx)
-    matrix = _self_adjoint_metric_matrix(ctx) if weighted else ctx.asarray(
-        [
-            [4.0, 1.0, -0.5],
-            [1.0, 6.0, 2.0],
-            [-0.5, 2.0, 3.0],
-        ]
+    matrix = (
+        _self_adjoint_metric_matrix(ctx)
+        if weighted
+        else ctx.asarray(
+            [
+                [4.0, 1.0, -0.5],
+                [1.0, 6.0, 2.0],
+                [-0.5, 2.0, 3.0],
+            ]
+        )
     )
     Q = sc.DenseLinOp(matrix, space, space, ctx)
     linear = sc.InnerProductFunctional(ctx.asarray([0.25, -1.5, 2.0]), space, ctx)
@@ -176,8 +186,12 @@ def test_linop_quadratic_form_vectorized_batches_match_elementwise(ctx, eps, ato
     expected_values = functional.ops.stack(tuple(functional.value(x) for x in xs), axis=0)
     expected_grads = functional.ops.stack(tuple(functional.grad(x) for x in xs), axis=0)
 
-    np.testing.assert_allclose(to_numpy(functional.vvalue(xs)), to_numpy(expected_values), rtol=5e-6, atol=atol)
-    np.testing.assert_allclose(to_numpy(functional.vgrad(xs)), to_numpy(expected_grads), rtol=5e-6, atol=atol)
+    np.testing.assert_allclose(
+        to_numpy(functional.vvalue(xs)), to_numpy(expected_values), rtol=5e-6, atol=atol
+    )
+    np.testing.assert_allclose(
+        to_numpy(functional.vgrad(xs)), to_numpy(expected_grads), rtol=5e-6, atol=atol
+    )
 
 
 def test_matrix_free_functional_vvalue_python_loop_warns_once_on_numpy():

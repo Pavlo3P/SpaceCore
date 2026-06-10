@@ -232,11 +232,13 @@ def lsqr(
         k_next = k + 1
 
         if residual_mode == "exact":
+
             def refresh_residuals(payload: tuple[Any, Any, Any]) -> tuple[Any, Any]:
                 x_candidate, _old_residual_norm, _old_normal_residual = payload
                 residual_next = A.codomain.add(A.apply(x_candidate), A.codomain.scale(-1.0, b))
                 return A.codomain.norm(residual_next), A.domain.norm(A.H.apply(residual_next))
         else:
+
             def refresh_residuals(payload: tuple[Any, Any, Any]) -> tuple[Any, Any]:
                 _x_candidate, _old_residual_norm, _old_normal_residual = payload
                 return recurrence_residual_norm, recurrence_normal_residual_norm

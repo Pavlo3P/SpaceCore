@@ -1,8 +1,76 @@
 Release notes
 =============
 
+Version 0.3.1
+-------------
+
+SpaceCore 0.3.1 is a stabilization release for the ``0.3.x`` API. It focuses
+on release-candidate verification, documentation consistency, executable
+tutorials, package artifacts, and public API audit cleanup. It does not add new
+solver families and does not include SDPLab-specific downstream validation.
+
+Fixes
+~~~~~
+
+* Updated active tutorial notebooks to use current public APIs:
+  ``MatrixFreeLinOp`` for action-defined operators, ``lanczos_smallest`` for
+  smallest-Ritz-eigenpair estimation, and ``DenseVectorSpace`` for dense vector
+  construction.
+* Removed invalid notebook output metadata that produced nbformat validation
+  warnings during execution.
+* Updated the removed-API audit to skip ``.venv*`` directories so installed
+  third-party packages are not reported as SpaceCore migration findings.
+
+Documentation
+~~~~~~~~~~~~~
+
+* Reworked API reference pages for backend, context, spaces, linear operators,
+  functionals, and linalg.
+* Added design notes for context ownership, batching, and capability dispatch.
+* Clarified conversion and dtype policies around explicit target contexts.
+* Clarified adjoint language so metric adjoints are not described as merely
+  coordinate transposes outside Euclidean coordinate spaces.
+* Added a public docstring audit record for the ``0.3.1`` release candidate.
+
+Examples and tutorials
+~~~~~~~~~~~~~~~~~~~~~~
+
+* Added a SpaceCore-only weighted Tikhonov worked example that exercises
+  weighted spaces, metric adjoints, lazy operator algebra, conjugate gradients,
+  and an independent dense NumPy reference solve.
+* Added tests for the weighted Tikhonov example.
+* Re-executed the active tutorial notebooks and worked example as part of the
+  release-candidate gate. The retained regularized OT notebook is explicitly
+  outside that gate.
+
+Testing and packaging
+~~~~~~~~~~~~~~~~~~~~~
+
+* Documentation CI builds Sphinx with warnings treated as errors.
+* ``scripts/verify_release_candidate.sh`` is the source of truth for the
+  release-candidate gate. It covers the editable install, full test suite,
+  Ruff, docstring audit, public API audit, strict Sphinx docs build, source
+  distribution and wheel build, ``twine check``, and active tutorial notebook
+  execution when notebook tooling is available.
+
+Known limitations
+~~~~~~~~~~~~~~~~~
+
+* Solver coverage remains intentionally narrow: CG, LSQR, power iteration,
+  Lanczos smallest-eigenpair estimation, and matrix-exponential actions.
+* Optional backend support depends on installed optional dependencies. CuPy is
+  not required for the core release-candidate gate.
+* The regularized optimal transport tutorial is retained as an illustrative
+  advanced example and depends on optional JAX/Optax/Matplotlib packages; it is
+  not part of the 0.3.1 release-candidate gate and is not a production OT
+  solver.
+* SDPLab-specific downstream validation is intentionally out of scope for this
+  release-candidate check.
+
 Version 0.3.0
 -------------
+
+Released 2026-06-05: `GitHub release <https://github.com/Pavlo3P/SpaceCore/releases/tag/v0.3.0>`_.
 
 SpaceCore 0.3.0 is a breaking release in the unstable ``0.x`` series. Space
 capabilities are recomputed from actual structure, dtype, and inner product,
@@ -35,6 +103,14 @@ Migration table
      - ``ProductSpace(...)``
    * - ``StackedInnerProductSpace(...)``
      - ``StackedSpace(...)``
+   * - ``BatchSpace`` and ``space.batch(...)``
+     - leading-axis batched arrays with ``vapply(...)`` / ``rvapply(...)``
+   * - ``op.vapply(xs, batch_space=...)``
+     - ``op.vapply(xs)``
+   * - global context conversion policies
+     - explicit ``Context`` construction and ``obj.convert(ctx)``
+   * - global dtype preservation policies
+     - target-context dtype during explicit conversion
 
 Added
 ~~~~~
@@ -64,6 +140,11 @@ Changed and removed
 * ``eigh`` was removed from spaces.
 * Specialized public product and stacked constructors were replaced by
   auto-dispatching ``ProductSpace(...)`` and ``StackedSpace(...)`` factories.
+* ``BatchSpace``, ``Space.batch``, and ``batch_space=`` arguments were removed
+  from public batching APIs. Use leading-axis vectorization through ``vapply``
+  and ``rvapply``.
+* Global context-policy and dtype-policy APIs were removed. Conversion now
+  follows the requested target ``Context`` directly.
 
 Version 0.2.0
 -------------

@@ -27,38 +27,57 @@ def test_register_ops_adds_backend():
         def sparse_array(self):
             return None
 
-        def sanitize_dtype(self, dtype): return np.dtype(dtype) if dtype is not None else np.dtype(np.float64)
-        def assparse(self, x, dtype=None): raise NotImplementedError
-        def sparse_matmul(self, a, b): raise NotImplementedError
-        def logsumexp(self, *args, **kwargs): raise NotImplementedError
+        def sanitize_dtype(self, dtype):
+            return np.dtype(dtype) if dtype is not None else np.dtype(np.float64)
+
+        def assparse(self, x, dtype=None):
+            raise NotImplementedError
+
+        def sparse_matmul(self, a, b):
+            raise NotImplementedError
+
+        def logsumexp(self, *args, **kwargs):
+            raise NotImplementedError
 
         def index_set(self, x, index, values, copy=True):
             y = np.array(x, copy=True)
             y[index] = values
             return y
 
-        def ix_(self, *args): return np.ix_(*args)
+        def ix_(self, *args):
+            return np.ix_(*args)
+
         def fori_loop(self, lower, upper, body_fun, init_val, **kwargs):
             val = init_val
-            for i in range(lower, upper): val = body_fun(i, val)
+            for i in range(lower, upper):
+                val = body_fun(i, val)
             return val
+
         def while_loop(self, cond_fun, body_fun, init_val):
-            val=init_val
-            while cond_fun(val): val=body_fun(val)
+            val = init_val
+            while cond_fun(val):
+                val = body_fun(val)
             return val
+
         def scan(self, f, init, xs, **kwargs):
-            carry=init
-            ys=[]
+            carry = init
+            ys = []
             for x in xs:
                 carry, y = f(carry, x)
                 ys.append(y)
             return carry, np.array(ys)
-        def cond(self, pred, true_fun, false_fun, *operands): return true_fun(*operands) if pred else false_fun(*operands)
+
+        def cond(self, pred, true_fun, false_fun, *operands):
+            return true_fun(*operands) if pred else false_fun(*operands)
+
         def index_add(self, x, index, values, copy=True):
-            y=np.array(x, copy=True)
-            y[index]+=values
+            y = np.array(x, copy=True)
+            y[index] += values
             return y
-        def allclose_sparse(self, a, b, **kwargs): return False
+
+        def allclose_sparse(self, a, b, **kwargs):
+            return False
+
     sc.register_ops(DummyOps)
     assert sc.DenseCoordinateSpace((1,), "dummy").ctx.ops.family == "dummy"
     ops = DummyOps()

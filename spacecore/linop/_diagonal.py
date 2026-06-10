@@ -14,7 +14,13 @@ from ._metric import (
 )
 from .._checks import checked_method
 from ..backend import Context, jax_pytree_class
-from ..space import DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace, Space, WeightedInnerProduct
+from ..space import (
+    DenseCoordinateSpace,
+    DenseVectorSpace,
+    ElementwiseJordanSpace,
+    Space,
+    WeightedInnerProduct,
+)
 from ..types import DenseArray
 from .._contextual import resolve_context_priority
 
@@ -77,7 +83,9 @@ class DiagonalLinOp(LinOp[Space, Space]):
         super().__init__(space, space, ctx)
         expected = tuple(self.domain.shape)
         if tuple(diagonal.shape) != expected:
-            raise TypeError(f"Expected diagonal.shape == space.shape == {expected}, got {diagonal.shape}")
+            raise TypeError(
+                f"Expected diagonal.shape == space.shape == {expected}, got {diagonal.shape}"
+            )
         self.diagonal = diagonal
         self._diag_flat = diagonal.reshape((prod(self.domain.shape),))
         dtype = self.ops.get_dtype(diagonal)
@@ -89,9 +97,13 @@ class DiagonalLinOp(LinOp[Space, Space]):
 
     def _select_mode(self) -> _DiagonalMode:
         """Select the diagonal computation mode once for this operator."""
-        if (type(self.domain) in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace)) and self.domain.is_euclidean:
+        if (
+            type(self.domain) in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace)
+        ) and self.domain.is_euclidean:
             return _DiagonalMode.EUCLIDEAN
-        if (type(self.domain) in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace)) and type(self.domain.geometry) is WeightedInnerProduct:
+        if (
+            type(self.domain) in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace)
+        ) and type(self.domain.geometry) is WeightedInnerProduct:
             return _DiagonalMode.WEIGHTED_FUSED
         return _DiagonalMode.GENERAL_METRIC
 
