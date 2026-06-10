@@ -38,6 +38,7 @@ autodoc_default_options = {
     "exclude-members": (
         "tree_flatten, tree_unflatten, "
         "ctx, ops, dtype, enable_checks, representer, A, parts, n, "
+        "xp, torch, "
         "__dict__, __weakref__, __module__"
     ),
 }
