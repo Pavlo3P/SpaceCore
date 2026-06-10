@@ -6,19 +6,31 @@ import pytest
 from tests._helpers import has_jax, jax_real_dtype, to_numpy
 
 
-def _contexts():
+def _numpy_context():
     sc = importlib.import_module("spacecore")
-    yield pytest.param(sc.Context(sc.NumpyOps(), dtype=np.float64), id="numpy")
+
+    return sc.Context(sc.NumpyOps(), dtype=np.float64)
+
+
+def _jax_context():
+    sc = importlib.import_module("spacecore")
+
+    return sc.Context(sc.JaxOps(), dtype=jax_real_dtype(), enable_checks=False)
+
+
+def _contexts():
+    yield pytest.param(_numpy_context, id="numpy")
     yield pytest.param(
-        sc.Context(sc.JaxOps(), dtype=jax_real_dtype(), enable_checks=False),
+        _jax_context,
         marks=pytest.mark.skipif(not has_jax(), reason="jax is not installed"),
         id="jax",
     )
 
 
-@pytest.mark.parametrize("ctx", list(_contexts()))
-def test_stacked_space_core_contract_euclidean(ctx):
+@pytest.mark.parametrize("ctx_factory", list(_contexts()))
+def test_stacked_space_core_contract_euclidean(ctx_factory):
     sc = importlib.import_module("spacecore")
+    ctx = ctx_factory()
     base = sc.DenseCoordinateSpace((3,), ctx)
     space = sc.StackedSpace(base, 4, ctx)
     x = ctx.asarray(np.arange(12.0).reshape(4, 3))
@@ -36,9 +48,10 @@ def test_stacked_space_core_contract_euclidean(ctx):
     np.testing.assert_allclose(to_numpy(space.unflatten(space.flatten(x))), to_numpy(x))
 
 
-@pytest.mark.parametrize("ctx", list(_contexts()))
-def test_stacked_space_weighted_geometry_lifts_elementwise(ctx):
+@pytest.mark.parametrize("ctx_factory", list(_contexts()))
+def test_stacked_space_weighted_geometry_lifts_elementwise(ctx_factory):
     sc = importlib.import_module("spacecore")
+    ctx = ctx_factory()
     weights = ctx.asarray([2.0, 5.0, 11.0])
     base = sc.DenseCoordinateSpace((3,), ctx, geometry=sc.WeightedInnerProduct(weights))
     space = base.stacked(2)
@@ -100,9 +113,10 @@ def test_product_space_stacked_nests_products_outside_stacks():
         sc.StackedSpace(product, 4, ctx)
 
 
-@pytest.mark.parametrize("ctx", list(_contexts()))
-def test_operator_vapply_on_stacked_element_and_adjoint_identity(ctx):
+@pytest.mark.parametrize("ctx_factory", list(_contexts()))
+def test_operator_vapply_on_stacked_element_and_adjoint_identity(ctx_factory):
     sc = importlib.import_module("spacecore")
+    ctx = ctx_factory()
     weights = ctx.asarray([2.0, 5.0])
     base = sc.DenseCoordinateSpace((2,), ctx, geometry=sc.WeightedInnerProduct(weights))
     stacked = base.stacked(3)

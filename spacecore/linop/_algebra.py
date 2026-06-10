@@ -4,7 +4,7 @@ from numbers import Number
 from typing import Any, Callable, Sequence
 
 from ._base import LinOp, Domain, Codomain
-from ._metric import _requires_euclidean_or_riesz
+from ._metric import _requires_euclidean_or_riesz, metric_rapply, metric_rvapply
 from .._checks import checked_method
 from .._contextual import resolve_context_priority
 from .._contextual._bound import _same_math_context
@@ -749,10 +749,11 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
     ``rapply`` callable must already be the true adjoint with respect to the
     declared domain and codomain inner products:
     ``<apply(x), y>_Y = <x, rapply(y)>_X``. It is not automatically corrected
-    with Riesz maps. For non-Euclidean spaces, use
-    :meth:`from_coordinate_adjoint` when you have a Euclidean coordinate
-    adjoint. When checks are enabled, inputs and callable outputs are validated
-    against the corresponding domain and codomain.
+    with Riesz maps. If you only have a Euclidean coordinate adjoint in
+    non-Euclidean spaces, compute the metric adjoint outside SpaceCore and pass
+    that callable as ``rapply``. When checks are enabled, inputs and callable
+    outputs are validated against the corresponding domain and codomain, but
+    construction does not run adjoint dot-tests.
 
     Parameters
     ----------
@@ -780,19 +781,18 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
         Optional callable with signature ``rvapply(ys: Any) -> Any`` for
         batched adjoint application. If omitted, backend ``vmap`` fallback is
         used.
-    _uses_coordinate_adjoint : bool, optional
-        Internal flag indicating whether the stored adjoint callable is a
-        Euclidean coordinate adjoint that should be adapted with Riesz maps.
-    _coordinate_rapply_fn : callable or None, optional
-        Internal coordinate-adjoint callable used by conversion.
-    _coordinate_rvapply_fn : callable or None, optional
-        Internal batched coordinate-adjoint callable used by conversion.
 
     Returns
     -------
     MatrixFreeLinOp
         Operator using the supplied callables for forward, adjoint, and
         optionally batched actions.
+
+    Notes
+    -----
+    See ``docs/dev/adr/009_metric_adjoint.md`` for the full design rationale
+    for metric adjoints and the distinction between direct matrix-free adjoints
+    and coordinate-adjoint wrapping.
     """
 
     def __init__(
@@ -804,10 +804,6 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
         ctx: Context | str | None = None,
         vapply: Callable[[Any], Any] | None = None,
         rvapply: Callable[[Any], Any] | None = None,
-        *,
-        _uses_coordinate_adjoint: bool = False,
-        _coordinate_rapply_fn: Callable[[Any], Any] | None = None,
-        _coordinate_rvapply_fn: Callable[[Any], Any] | None = None,
     ) -> None:
         """
         Initialize a matrix-free linear operator.
@@ -853,21 +849,6 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
         self.rapply_fn = rapply
         self.vapply_fn = vapply
         self.rvapply_fn = rvapply
-        self._uses_coordinate_adjoint = bool(_uses_coordinate_adjoint)
-        if self._uses_coordinate_adjoint and _coordinate_rapply_fn is None:
-            raise ValueError(
-                "MatrixFreeLinOp coordinate-adjoint construction requires "
-                "_coordinate_rapply_fn metadata."
-            )
-        if not self._uses_coordinate_adjoint and (
-            _coordinate_rapply_fn is not None or _coordinate_rvapply_fn is not None
-        ):
-            raise ValueError(
-                "MatrixFreeLinOp direct-adjoint construction cannot store "
-                "coordinate-adjoint metadata."
-            )
-        self._coordinate_rapply_fn = _coordinate_rapply_fn
-        self._coordinate_rvapply_fn = _coordinate_rvapply_fn
 
     @classmethod
     def from_coordinate_adjoint(
@@ -883,22 +864,37 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
         r"""
         Build a matrix-free operator from a Euclidean coordinate adjoint.
 
-        ``coordinate_rapply`` implements the coordinate adjoint
-        :math:`A^\dagger`. This constructor wraps it with the spaces' Riesz
-        maps to form the true adjoint
-        :math:`A^\sharp y = R_X^{-1} A^\dagger R_Y y`. The forward callable
-        still defines the coordinate action ``A x``.
+        ``coordinate_rapply`` is interpreted as the Euclidean coordinate
+        adjoint ``A^dagger`` of ``apply``. The stored ``rapply`` callable is the
+        metric adjoint
+
+        ``A^sharp(y) = R_X^-1 A^dagger R_Y y``
+
+        for the declared domain ``X`` and codomain ``Y``. Euclidean spaces have
+        identity Riesz maps, so this degenerates to the supplied coordinate
+        adjoint. Non-Euclidean spaces must expose usable Riesz maps at
+        construction time; otherwise the constructor rejects the operator rather
+        than storing an incoherent adjoint.
+
+        When ``coordinate_rvapply`` is provided, it is treated as the batched
+        Euclidean coordinate adjoint and wrapped with batched Riesz maps. If
+        batched Riesz application is unavailable, the public metric-adjoint
+        helper falls back to vectorized scalar ``rapply`` consistently. When
+        ``coordinate_rvapply`` is omitted, ``rvapply_fn`` remains ``None`` and
+        the normal ``rvapply`` fallback vectorizes the wrapped scalar adjoint.
+
+        See ``docs/dev/adr/009_metric_adjoint.md`` for the full design
+        rationale.
 
         Parameters
         ----------
         apply : callable
             Forward coordinate action from ``dom`` to ``cod``.
         coordinate_rapply : callable
-            Euclidean coordinate adjoint from ``cod`` dual coordinates to
-            ``dom`` dual coordinates.
+            Euclidean coordinate adjoint from ``cod`` coordinates to ``dom``
+            coordinates.
         dom, cod : Space
-            Domain and codomain spaces. Non-Euclidean spaces must provide
-            usable Riesz maps.
+            Domain and codomain spaces.
         ctx : Context, str, or None, optional
             Optional context specification.
         vapply : callable or None, optional
@@ -913,41 +909,38 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
             raise TypeError(
                 f"coordinate_rapply must be callable, got {type(coordinate_rapply).__name__}."
             )
-
-        resolved_ctx = resolve_context_priority(ctx, dom, cod)
-        dom = dom.convert(resolved_ctx)
-        cod = cod.convert(resolved_ctx)
-        _requires_euclidean_or_riesz(dom, cod, "MatrixFreeLinOp.from_coordinate_adjoint")
-
-        def rapply(y):
-            yd = cod.riesz(y)
-            x_dual = coordinate_rapply(yd)
-            return dom.riesz_inverse(x_dual)
-
-        rvapply = None
         if coordinate_rvapply is not None:
             if not callable(coordinate_rvapply):
                 raise TypeError(
                     f"coordinate_rvapply must be callable, got {type(coordinate_rvapply).__name__}."
                 )
 
-            def rvapply(ys):
-                yd = cod.riesz(ys)
-                x_dual = coordinate_rvapply(yd)
-                return dom.riesz_inverse(x_dual)
+        resolved_ctx = resolve_context_priority(ctx, dom, cod)
+        dom = dom.convert(resolved_ctx)
+        cod = cod.convert(resolved_ctx)
+        try:
+            _requires_euclidean_or_riesz(dom, cod, "MatrixFreeLinOp.from_coordinate_adjoint")
+        except TypeError as exc:
+            raise ValueError(str(exc)) from exc
 
-        return cls(
-            apply,
-            rapply,
-            dom,
-            cod,
-            resolved_ctx,
-            vapply,
-            rvapply,
-            _uses_coordinate_adjoint=True,
-            _coordinate_rapply_fn=coordinate_rapply,
-            _coordinate_rvapply_fn=coordinate_rvapply,
-        )
+        def wrapped_rapply(y: Any) -> Any:
+            return metric_rapply(dom, cod, coordinate_rapply, y)
+
+        wrapped_rvapply = None
+        if coordinate_rvapply is not None:
+
+            def wrapped_rvapply(ys: Any) -> Any:
+                return metric_rvapply(
+                    dom,
+                    cod,
+                    coordinate_rapply,
+                    coordinate_rvapply,
+                    ys,
+                    opname="MatrixFreeLinOp.from_coordinate_adjoint",
+                    ops=resolved_ctx.ops,
+                )
+
+        return cls(apply, wrapped_rapply, dom, cod, resolved_ctx, vapply, wrapped_rvapply)
 
     @checked_method(in_space="domain", out_space="codomain")
     def apply(self, x: Any) -> Any:
@@ -1024,6 +1017,7 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
         ----------
         xs:
             Batched element of ``self.domain``.
+
         Returns
         -------
         Any
@@ -1043,6 +1037,7 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
         ----------
         ys:
             Batched element of ``self.codomain``.
+
         Returns
         -------
         Any
@@ -1055,39 +1050,18 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
 
     def __eq__(self, other: Any) -> bool:
         if type(other) is type(self):
-            base_equal = (
+            return (
                 self.domain == other.domain
                 and self.codomain == other.codomain
                 and self.apply_fn is other.apply_fn
                 and self.vapply_fn is other.vapply_fn
-                and self._uses_coordinate_adjoint == other._uses_coordinate_adjoint
+                and self.rapply_fn is other.rapply_fn
+                and self.rvapply_fn is other.rvapply_fn
             )
-            if not base_equal:
-                return False
-            if self._uses_coordinate_adjoint:
-                return (
-                    self._coordinate_rapply_fn is other._coordinate_rapply_fn
-                    and self._coordinate_rvapply_fn is other._coordinate_rvapply_fn
-                )
-            return self.rapply_fn is other.rapply_fn and self.rvapply_fn is other.rvapply_fn
         return False
 
     def tree_flatten(self):
         children = ()
-        if self._uses_coordinate_adjoint:
-            aux = (
-                self.apply_fn,
-                None,
-                self.domain,
-                self.codomain,
-                self.ctx,
-                self.vapply_fn,
-                None,
-                True,
-                self._coordinate_rapply_fn,
-                self._coordinate_rvapply_fn,
-            )
-            return children, aux
         aux = (
             self.apply_fn,
             self.rapply_fn,
@@ -1096,9 +1070,6 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
             self.ctx,
             self.vapply_fn,
             self.rvapply_fn,
-            False,
-            None,
-            None,
         )
         return children, aux
 
@@ -1112,20 +1083,7 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
             ctx,
             vapply_fn,
             rvapply_fn,
-            uses_coordinate_adjoint,
-            coordinate_rapply_fn,
-            coordinate_rvapply_fn,
         ) = aux
-        if uses_coordinate_adjoint:
-            return cls.from_coordinate_adjoint(
-                apply_fn,
-                coordinate_rapply_fn,
-                domain,
-                codomain,
-                ctx,
-                vapply_fn,
-                coordinate_rvapply_fn,
-            )
         return cls(apply_fn, rapply_fn, domain, codomain, ctx, vapply_fn, rvapply_fn)
 
     def _convert(self, new_ctx: Context) -> MatrixFreeLinOp:
@@ -1143,16 +1101,6 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
             Operator with converted spaces and the same user-supplied
             callables.
         """
-        if self._uses_coordinate_adjoint:
-            return MatrixFreeLinOp.from_coordinate_adjoint(
-                self.apply_fn,
-                self._coordinate_rapply_fn,
-                self.domain.convert(new_ctx),
-                self.codomain.convert(new_ctx),
-                new_ctx,
-                self.vapply_fn,
-                self._coordinate_rvapply_fn,
-            )
         return MatrixFreeLinOp(
             self.apply_fn,
             self.rapply_fn,

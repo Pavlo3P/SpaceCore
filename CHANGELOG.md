@@ -5,7 +5,15 @@ All notable changes to SpaceCore are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
-## [0.3.1]
+## [Unreleased]
+
+### Fixed
+
+- Corrected the matrix-free adjoint contract so `MatrixFreeLinOp` and its
+  adjoint view use user-supplied forward and reverse callables directly, without
+  applying matrix-backed Riesz-map adjoint corrections.
+
+## [0.3.1] — 2026-06-10
 
 SpaceCore 0.3.1 is a release-candidate stabilization release for the `0.3.x`
 API. It focuses on documentation consistency, tutorial execution, release
@@ -302,5 +310,6 @@ iterative solvers and structured result types.
 - The CuPy backend is provided as a preview. Coverage of non-standard
   operations and sparse handling may evolve in a subsequent release.
 
+[0.3.1]: https://github.com/Pavlo3P/SpaceCore/releases/tag/v0.3.1
 [0.3.0]: https://github.com/Pavlo3P/SpaceCore/releases/tag/v0.3.0
 [0.2.0]: https://github.com/Pavlo3P/SpaceCore/releases/tag/v0.2.0

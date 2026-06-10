@@ -55,6 +55,7 @@ def test_jax_ops_inherits_common_delegated_methods():
         assert getattr(sc.JaxOps, name) is getattr(sc.BackendOps, name)
 
 
+@pytest.mark.skipif(not has_torch(), reason="torch is not installed")
 def test_torch_ops_uses_aac_namespace_when_available():
     sc = importlib.import_module("spacecore")
 

@@ -6,12 +6,11 @@ import numpy as np
 import pytest
 
 import spacecore as sc
+from spacecore.backend import jax_pytree_class
 from tests._helpers import has_jax, jax_real_dtype, to_numpy
 
-jax = pytest.importorskip("jax")
 
-
-@jax.tree_util.register_pytree_node_class
+@jax_pytree_class
 @dataclass(frozen=True)
 class State:
     a: object
@@ -25,7 +24,7 @@ class State:
         return cls(*children)
 
 
-@jax.tree_util.register_pytree_node_class
+@jax_pytree_class
 @dataclass(frozen=True)
 class OtherState:
     a: object
@@ -39,7 +38,7 @@ class OtherState:
         return cls(*children)
 
 
-@jax.tree_util.register_pytree_node_class
+@jax_pytree_class
 @dataclass(frozen=True)
 class NestedState:
     left: object
@@ -98,6 +97,7 @@ def test_tuple_default_regression_accepts_and_returns_plain_tuples():
     np.testing.assert_allclose(y[1], x[1])
 
 
+@pytest.mark.skipif(not has_jax(), reason="pytree product structures require jax")
 def test_registered_pytree_element_numpy_operations_and_flat_boundary():
     ctx = _np_ctx()
     spaces = _spaces(ctx)
@@ -119,9 +119,8 @@ def test_registered_pytree_element_numpy_operations_and_flat_boundary():
     _assert_state_allclose(xr, [1.0, 2.0], [3.0, 4.0, 5.0])
 
 
+@pytest.mark.skipif(not has_jax(), reason="pytree product structures require jax")
 def test_registered_pytree_element_jax_operations_when_available():
-    if not has_jax():
-        pytest.skip("JAX is not available")
     ctx = _jax_ctx()
     spaces = _spaces(ctx)
     x = _state(ctx)
@@ -133,6 +132,7 @@ def test_registered_pytree_element_jax_operations_when_available():
     _assert_state_allclose(P.unflatten(P.flatten(x)), [1.0, 2.0], [3.0, 4.0, 5.0])
 
 
+@pytest.mark.skipif(not has_jax(), reason="pytree product structures require jax")
 def test_round_trip_law_for_tuple_and_registered_pytree_structures():
     ctx = _np_ctx()
     x_tuple = (ctx.asarray([1.0, 2.0]), ctx.asarray([3.0, 4.0, 5.0]))
@@ -149,6 +149,7 @@ def test_round_trip_law_for_tuple_and_registered_pytree_structures():
     np.testing.assert_allclose(y.b, x.b)
 
 
+@pytest.mark.skipif(not has_jax(), reason="pytree product structures require jax")
 def test_mismatch_errors_are_clear():
     ctx = _np_ctx()
     P = sc.ProductSpace(_spaces(ctx), ctx)
@@ -170,6 +171,7 @@ def test_mismatch_errors_are_clear():
         structure.from_components((x.a,), arity=2)
 
 
+@pytest.mark.skipif(not has_jax(), reason="pytree product structures require jax")
 def test_structure_equality_and_product_equality_include_structure():
     ctx = _np_ctx()
     x = _state(ctx)
@@ -188,6 +190,7 @@ def test_structure_equality_and_product_equality_include_structure():
     assert tuple_product != pytree_product
 
 
+@pytest.mark.skipif(not has_jax(), reason="pytree product structures require jax")
 def test_convert_preserves_tuple_and_pytree_structure():
     ctx = _np_ctx()
     target = sc.Context(sc.NumpyOps(), dtype=np.float32)
@@ -201,6 +204,7 @@ def test_convert_preserves_tuple_and_pytree_structure():
     assert converted != tuple_product.convert(target)
 
 
+@pytest.mark.skipif(not has_jax(), reason="pytree product structures require jax")
 def test_batch_semantics_are_structure_of_batched_components():
     ctx = _np_ctx()
     spaces = _spaces(ctx)
@@ -230,6 +234,7 @@ def test_batch_semantics_are_structure_of_batched_components():
         _check_batched(P, [State(batch.a[0], batch.b[0]), State(batch.a[1], batch.b[1])])
 
 
+@pytest.mark.skipif(not has_jax(), reason="pytree product structures require jax")
 def test_solver_smoke_with_registered_pytree_product_space():
     ctx = _np_ctx()
     spaces = _spaces(ctx)
@@ -246,9 +251,10 @@ def test_solver_smoke_with_registered_pytree_product_space():
     _assert_state_allclose(result.x, [1.0, 2.0], [3.0, 4.0, 5.0])
 
 
+@pytest.mark.skipif(not has_jax(), reason="pytree product structures require jax")
 def test_product_space_jax_pytree_registration_preserves_structure_static_aux():
-    if not has_jax():
-        pytest.skip("JAX is not available")
+    import jax
+
     ctx = _jax_ctx()
     template = _state(ctx)
     P = sc.ProductSpace.from_template(_spaces(ctx), template, ctx)

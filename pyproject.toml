@@ -79,6 +79,7 @@ include = ["spacecore*"]
 addopts = [
   "--doctest-modules",
   "--ignore-glob=spacecore/_contextual/*",
+  "--ignore-glob=spacecore/backend/jax/_ops.py",
   "--ignore-glob=spacecore/backend/cupy/*",
   "--ignore-glob=spacecore/backend/torch/*",
 ]

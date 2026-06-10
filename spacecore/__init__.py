@@ -106,7 +106,6 @@ __all__ = [
     "__version__",
     "Context",
     "BackendOps",
-    "JaxOps",
     "jax_pytree_class",
     "NumpyOps",
     "LinOp",
@@ -187,6 +186,8 @@ __all__ = [
     "normalize_context",
 ]
 
+if "JaxOps" in globals():
+    __all__.append("JaxOps")
 if "TorchOps" in globals():
     __all__.append("TorchOps")
 if "CuPyOps" in globals():

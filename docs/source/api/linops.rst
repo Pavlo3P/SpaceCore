@@ -31,7 +31,8 @@ Matrix-free and canonical operators
    spacecore.linop.ZeroLinOp
 
 * ``LinOp`` is the abstract base contract.
-* ``MatrixFreeLinOp`` wraps forward and adjoint callables.
+* ``MatrixFreeLinOp`` wraps forward and metric-adjoint callables exactly as
+  supplied; it does not derive or Riesz-correct matrix-free adjoints.
 * ``IdentityLinOp`` represents ``I : X -> X``.
 * ``ZeroLinOp`` represents ``0 : X -> Y``.
 

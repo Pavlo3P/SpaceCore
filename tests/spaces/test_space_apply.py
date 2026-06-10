@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from spacecore import Context, JaxOps, NumpyOps
+from spacecore import Context, NumpyOps
 from spacecore.space import ElementwiseJordanSpace, HermitianSpace, ProductSpace
 
 
@@ -10,7 +10,9 @@ def _np_ctx():
 
 
 def _jax_ctx():
-    return Context(ops=JaxOps(), enable_checks=False)
+    import spacecore as sc
+
+    return Context(ops=sc.JaxOps(), enable_checks=False)
 
 
 def test_elementwise_spectral_apply_numpy_entrywise():

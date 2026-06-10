@@ -1,3 +1,5 @@
+"""Composable validation checks for spaces and arrays."""
+
 from ._base import (
     BackendCheck,
     DTypeCheck,

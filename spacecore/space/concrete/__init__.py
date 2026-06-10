@@ -1,3 +1,5 @@
+"""Concrete coordinate, product, stacked, and Hermitian spaces."""
+
 from ._dense_coordinate import DenseCoordinateSpace
 from ._dense_vector import DenseVectorSpace, ElementwiseJordanSpace, EuclideanElementwiseJordanSpace
 from ._hermitian import HermitianSpace
