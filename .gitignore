@@ -2,8 +2,6 @@ site/
 docs/build/
 guides/
 audit/
-audit_caching.md
-audit_jit.md
 
 .DS_Store
 .coverage
@@ -14,8 +12,3 @@ __pycache__/
 build/
 dist/
 docs/_build/
-
-playpit.ipynb
-sphere_descent.ipynb
-sphere_descent_fixed.ipynb
-test_speed_good.ipynb
