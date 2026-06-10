@@ -28,3 +28,9 @@ Process
 
 .. literalinclude:: ../../dev/contributing/process.md
    :language: markdown
+
+Labels
+------
+
+.. literalinclude:: ../../dev/contributing/labels.md
+   :language: markdown
