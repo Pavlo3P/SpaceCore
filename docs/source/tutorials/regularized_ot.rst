@@ -1,6 +1,15 @@
 Example: Regularized optimal transport
 ======================================
 
+Status
+   Retained advanced example.
+Release gate
+   Not part of the 0.3.1 release-candidate gate. The active release-gate
+   notebook set is listed in :doc:`index` and executed by
+   ``scripts/verify_release_candidate.sh``.
+Optional dependencies
+   JAX, Optax, and Matplotlib.
+
 Optimal transport asks how to move mass from a source distribution to a
 target distribution with minimal total cost. In the discrete setting,
 the source marginal is :math:`a \in \mathbb{R}^m_+`, the target marginal
@@ -45,7 +54,7 @@ loop.
     import optax
     
     from spacecore.backend import Context, JaxOps, NumpyOps
-    from spacecore.space import DenseCoordinateSpace
+    from spacecore.space import DenseCoordinateSpace, DenseVectorSpace
     from spacecore.linop import MatrixFreeLinOp
 
 Encoding the mathematics once
@@ -100,7 +109,7 @@ these formulas.
 
         # A(P) contains all equality constraints in one vector:
         #     [row sums of P, column sums of P].
-        marginal_space = DenseCoordinateSpace((m + n,), ctx=resolved_ctx)
+        marginal_space = DenseVectorSpace((m + n,), ctx=resolved_ctx)
         ops = resolved_ctx.ops
 
         def apply(plan):

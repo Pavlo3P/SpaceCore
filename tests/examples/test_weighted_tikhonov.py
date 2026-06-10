@@ -4,10 +4,13 @@ import subprocess
 import sys
 
 import numpy as np
+import spacecore as sc
 
 from examples.weighted_tikhonov import (
     adjoint_diagnostics,
+    build_spacecore_operator,
     dense_reference_solve,
+    first_order_residual,
     make_weighted_tikhonov_problem,
     objective_value,
     run_example,
@@ -45,6 +48,31 @@ def test_metric_adjoint_holds_and_coordinate_transpose_fails():
 
     assert adjoint.metric_identity_error <= 1e-12
     assert adjoint.wrong_transpose_identity_error >= 1e-2
+
+
+def test_spacecore_normal_operator_uses_weighted_metrics_and_linop_algebra():
+    problem = make_weighted_tikhonov_problem(n=10, m=14, seed=8)
+    ctx, X, Y, A = build_spacecore_operator(problem)
+    x = ctx.asarray(np.linspace(-0.4, 0.6, problem.M.shape[1]))
+
+    assert not np.allclose(problem.x_weights, 1.0)
+    assert not np.allclose(problem.y_weights, 1.0)
+    assert isinstance(X, sc.DenseVectorSpace)
+    assert isinstance(Y, sc.DenseVectorSpace)
+
+    normal = A.H @ A + problem.lam * sc.IdentityLinOp(X)
+    rhs = A.H.apply(ctx.asarray(problem.b))
+    spacecore_residual = np.asarray(normal.apply(x) - rhs)
+
+    # SpaceCore's normal equation is written in X-coordinates. Multiplying by
+    # Gx recovers the independent dense first-order residual.
+    weighted_spacecore_residual = problem.Gx @ spacecore_residual
+    np.testing.assert_allclose(
+        weighted_spacecore_residual,
+        first_order_residual(problem, np.asarray(x)),
+        rtol=1e-12,
+        atol=1e-12,
+    )
 
 
 def test_run_example_returns_expected_accuracy():

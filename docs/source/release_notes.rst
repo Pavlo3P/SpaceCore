@@ -40,15 +40,18 @@ Examples and tutorials
   and an independent dense NumPy reference solve.
 * Added tests for the weighted Tikhonov example.
 * Re-executed the active tutorial notebooks and worked example as part of the
-  release-candidate gate.
+  release-candidate gate. The retained regularized OT notebook is explicitly
+  outside that gate.
 
 Testing and packaging
 ~~~~~~~~~~~~~~~~~~~~~
 
 * Documentation CI builds Sphinx with warnings treated as errors.
-* Release-candidate verification covers the full test suite, strict docs build,
-  public API audit, source distribution and wheel build, ``twine check``, clean
-  wheel installation, and installed-package smoke testing.
+* ``scripts/verify_release_candidate.sh`` is the source of truth for the
+  release-candidate gate. It covers the editable install, full test suite,
+  Ruff, docstring audit, public API audit, strict Sphinx docs build, source
+  distribution and wheel build, ``twine check``, and active tutorial notebook
+  execution when notebook tooling is available.
 
 Known limitations
 ~~~~~~~~~~~~~~~~~
@@ -57,8 +60,10 @@ Known limitations
   Lanczos smallest-eigenpair estimation, and matrix-exponential actions.
 * Optional backend support depends on installed optional dependencies. CuPy is
   not required for the core release-candidate gate.
-* The regularized optimal transport tutorial is illustrative and depends on
-  optional JAX/Optax packages; it is not a production OT solver.
+* The regularized optimal transport tutorial is retained as an illustrative
+  advanced example and depends on optional JAX/Optax/Matplotlib packages; it is
+  not part of the 0.3.1 release-candidate gate and is not a production OT
+  solver.
 * SDPLab-specific downstream validation is intentionally out of scope for this
   release-candidate check.
 
