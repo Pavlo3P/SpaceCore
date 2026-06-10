@@ -208,9 +208,7 @@ def run_example() -> dict[str, Any]:
     x_ref, ref_diag = dense_reference_solve(problem)
     sc_solve = solve_with_spacecore(problem)
     adjoint = adjoint_diagnostics(problem)
-    rel_solution_error = float(
-        np.linalg.norm(sc_solve.x - x_ref) / max(1.0, np.linalg.norm(x_ref))
-    )
+    rel_solution_error = float(np.linalg.norm(sc_solve.x - x_ref) / max(1.0, np.linalg.norm(x_ref)))
     return {
         "problem": problem,
         "x_reference": x_ref,

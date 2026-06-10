@@ -24,15 +24,29 @@ jobs:
 
       - run: python -m pip install --upgrade pip
       - run: pip install -e ".[jax,torch,dev]"
-      - run: pytest --cov=spacecore --cov-report=term-missing --cov-fail-under=70
+      - run: pytest --durations=25 --cov=spacecore --cov-report=term-missing --cov-fail-under=70
       - run: python scripts/jit_audit.py --check
       - run: ruff check .
       - run: ruff check --select D spacecore/ || true
       - run: python scripts/docstring_audit.py || true
 
+  package:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: python -m pip install --upgrade pip build twine
+      - run: python -m build
+      - run: python -m twine check dist/*
+
   publish:
     if: startsWith(github.ref, 'refs/tags/')
-    needs: test
+    needs: [test, package]
     runs-on: ubuntu-latest
     permissions:
       id-token: write

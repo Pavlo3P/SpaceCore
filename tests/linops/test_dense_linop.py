@@ -27,13 +27,17 @@ def test_dense_linop_construct_apply_rapply():
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
     dom = sc.DenseCoordinateSpace((2,), ctx)
     cod = sc.DenseCoordinateSpace((3,), ctx)
-    A = ctx.asarray([[1.,2.],[3.,4.],[5.,6.]])
+    A = ctx.asarray([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])
     op = sc.DenseLinOp(A, dom, cod, ctx)
-    x = ctx.asarray([7.,8.])
-    y = ctx.asarray([1.,-1.,2.])
-    assert np.allclose(op.apply(x), np.array([[1.,2.],[3.,4.],[5.,6.]]) @ np.array([7.,8.]))
-    assert np.allclose(op.rapply(y), np.array([[1.,2.],[3.,4.],[5.,6.]]).T @ np.array([1.,-1.,2.]))
-    assert np.allclose(op.to_dense(), np.array([[1., 2.], [3., 4.], [5., 6.]]))
+    x = ctx.asarray([7.0, 8.0])
+    y = ctx.asarray([1.0, -1.0, 2.0])
+    assert np.allclose(
+        op.apply(x), np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]) @ np.array([7.0, 8.0])
+    )
+    assert np.allclose(
+        op.rapply(y), np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]).T @ np.array([1.0, -1.0, 2.0])
+    )
+    assert np.allclose(op.to_dense(), np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]))
 
 
 def test_dense_linop_rectangular_batched_apply_and_rapply():
@@ -118,15 +122,15 @@ def test_dense_linop_reuses_cached_matrix_reshape():
     dom = sc.DenseCoordinateSpace((2,), ctx)
     cod = sc.DenseCoordinateSpace((3,), ctx)
     counter = {"calls": 0}
-    A = ReshapeCountingArray([[1., 2.], [3., 4.], [5., 6.]], counter)
+    A = ReshapeCountingArray([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], counter)
 
     op = sc.DenseLinOp(A, dom, cod, ctx)
     matrix_reshape_calls = counter["calls"]
 
-    op.apply(ctx.asarray([7., 8.]))
-    op.rapply(ctx.asarray([1., -1., 2.]))
-    op.apply(ctx.asarray([9., 10.]))
-    op.rapply(ctx.asarray([3., -2., 1.]))
+    op.apply(ctx.asarray([7.0, 8.0]))
+    op.rapply(ctx.asarray([1.0, -1.0, 2.0]))
+    op.apply(ctx.asarray([9.0, 10.0]))
+    op.rapply(ctx.asarray([3.0, -2.0, 1.0]))
 
     assert matrix_reshape_calls == 1
     assert counter["calls"] == matrix_reshape_calls
@@ -136,20 +140,30 @@ def test_dense_linop_bad_shape_raises():
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
     with pytest.raises(Exception):
-        sc.DenseLinOp(ctx.asarray([[1.,2.],[3.,4.]]), sc.DenseCoordinateSpace((2,), ctx), sc.DenseCoordinateSpace((3,), ctx), ctx)
+        sc.DenseLinOp(
+            ctx.asarray([[1.0, 2.0], [3.0, 4.0]]),
+            sc.DenseCoordinateSpace((2,), ctx),
+            sc.DenseCoordinateSpace((3,), ctx),
+            ctx,
+        )
 
 
 def test_dense_linop_convert_preserves_action():
     sc = importlib.import_module("spacecore")
     src = sc.Context(sc.NumpyOps(), dtype=np.float32)
     dst = sc.Context(sc.NumpyOps(), dtype=np.float64)
-    op = sc.DenseLinOp(src.asarray([[1.,2.],[3.,4.],[5.,6.]]), sc.DenseCoordinateSpace((2,), src), sc.DenseCoordinateSpace((3,), src), src)
+    op = sc.DenseLinOp(
+        src.asarray([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]),
+        sc.DenseCoordinateSpace((2,), src),
+        sc.DenseCoordinateSpace((3,), src),
+        src,
+    )
     op2 = op.convert(dst)
-    x = op2.ctx.asarray([7.,8.])
+    x = op2.ctx.asarray([7.0, 8.0])
     assert type(op2.dom) is sc.DenseCoordinateSpace
     assert type(op2.cod) is sc.DenseCoordinateSpace
     assert op2.ops.get_dtype(op2.A) == dst.dtype
-    assert np.allclose(to_numpy(op2.apply(x)), [23.,53.,83.])
+    assert np.allclose(to_numpy(op2.apply(x)), [23.0, 53.0, 83.0])
 
 
 def test_dense_linop_tree_flatten_unflatten_round_trip():
@@ -176,7 +190,12 @@ def test_dense_linop_convert_to_jax_if_supported():
     dt = jax_real_dtype()
     src = sc.Context(sc.NumpyOps(), dtype=dt)
     dst = sc.Context(sc.JaxOps(), dtype=dt)
-    op = sc.DenseLinOp(src.asarray([[1.,2.],[3.,4.],[5.,6.]]), sc.DenseCoordinateSpace((2,), src), sc.DenseCoordinateSpace((3,), src), src)
+    op = sc.DenseLinOp(
+        src.asarray([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]),
+        sc.DenseCoordinateSpace((2,), src),
+        sc.DenseCoordinateSpace((3,), src),
+        src,
+    )
     op2 = op.convert(dst)
     assert op2.ctx.ops.family == "jax"
 

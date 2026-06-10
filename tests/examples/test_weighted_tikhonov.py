@@ -20,7 +20,9 @@ def test_reference_solution_satisfies_dense_optimality_system():
     x_ref, ref_diag = dense_reference_solve(problem)
 
     assert ref_diag.first_order_residual_norm <= 1e-10
-    np.testing.assert_allclose(objective_value(problem, x_ref), ref_diag.objective, rtol=0.0, atol=0.0)
+    np.testing.assert_allclose(
+        objective_value(problem, x_ref), ref_diag.objective, rtol=0.0, atol=0.0
+    )
 
 
 def test_spacecore_solution_matches_dense_reference():
@@ -31,7 +33,9 @@ def test_spacecore_solution_matches_dense_reference():
     relerr = np.linalg.norm(sc_solve.x - x_ref) / max(1.0, np.linalg.norm(x_ref))
     assert sc_solve.cg_converged
     assert relerr <= 1e-8
-    np.testing.assert_allclose(sc_solve.diagnostics.objective, ref_diag.objective, rtol=1e-10, atol=1e-12)
+    np.testing.assert_allclose(
+        sc_solve.diagnostics.objective, ref_diag.objective, rtol=1e-10, atol=1e-12
+    )
     assert sc_solve.diagnostics.first_order_residual_norm <= 1e-8
 
 

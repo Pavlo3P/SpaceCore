@@ -87,8 +87,7 @@ class PytreeStructure(ProductStructure):
         leaves, treedef = tree_flatten(x)
         if treedef != self._treedef:
             raise TypeError(
-                "ProductSpace pytree structure mismatch: "
-                f"expected {self._treedef}, got {treedef}."
+                f"ProductSpace pytree structure mismatch: expected {self._treedef}, got {treedef}."
             )
         if len(leaves) != arity:
             raise ValueError(

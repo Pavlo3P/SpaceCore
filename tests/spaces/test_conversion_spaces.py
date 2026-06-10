@@ -7,7 +7,7 @@ def test_vector_and_hermitian_conversion_use_target_dtype():
     sc = importlib.import_module("spacecore")
     src = sc.Context(sc.NumpyOps(), dtype=np.float32)
     dst = sc.Context(sc.NumpyOps(), dtype=np.float64)
-    X = sc.DenseCoordinateSpace((2,3), src)
+    X = sc.DenseCoordinateSpace((2, 3), src)
     Y = X.convert(dst)
     assert Y.shape == X.shape and Y.dtype == dst.dtype
     H = sc.HermitianSpace(2, ctx=src)
@@ -18,9 +18,11 @@ def test_vector_and_hermitian_conversion_use_target_dtype():
 def test_product_conversion_preserves_component_shapes():
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float32)
-    P = sc.ProductSpace((sc.DenseCoordinateSpace((2,2),ctx), sc.DenseCoordinateSpace((3,),ctx)), ctx)
+    P = sc.ProductSpace(
+        (sc.DenseCoordinateSpace((2, 2), ctx), sc.DenseCoordinateSpace((3,), ctx)), ctx
+    )
     Q = P.convert(sc.Context(sc.NumpyOps(), dtype=np.float64))
-    assert [sp.shape for sp in Q.spaces] == [(2,2),(3,)]
+    assert [sp.shape for sp in Q.spaces] == [(2, 2), (3,)]
 
 
 def test_space_conversion_to_same_effective_context_returns_self():
@@ -40,4 +42,4 @@ def test_space_conversion_to_jax_if_supported():
     dt = jax_real_dtype()
     X = sc.DenseCoordinateSpace((3,), sc.Context(sc.NumpyOps(), dtype=dt))
     Y = X.convert(sc.Context(sc.JaxOps(), dtype=dt))
-    assert Y.ctx.ops.family == 'jax'
+    assert Y.ctx.ops.family == "jax"

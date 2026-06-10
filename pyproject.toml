@@ -101,7 +101,7 @@ ignore = [
 convention = "numpy"
 
 [tool.ruff.lint.per-file-ignores]
-"tutorials/*.ipynb" = ["E741"]
+"tutorials/*.ipynb" = ["E402", "E741"]
 "tests/*.py" = ["E701"]
 "tests/*" = ["D"]
 

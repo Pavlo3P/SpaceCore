@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Any
 
+
 def dominant_component(components: list[dict[str, float]]) -> str:
     visible = [c for c in components if c["name"] != "amortized_per_element"]
     if not visible:
@@ -76,6 +77,11 @@ def add_trend_flags(results: list[dict[str, Any]]) -> None:
             trend = "constant-above-1.0"
         for row in rows:
             row["trend"] = trend
-            if row is large and trend != "decays-to-1.0" and row["gap"] == "ok" and row["ratio"] > 1.15:
+            if (
+                row is large
+                and trend != "decays-to-1.0"
+                and row["gap"] == "ok"
+                and row["ratio"] > 1.15
+            ):
                 row["gap"] = "slightly_high"
                 row["verdict"] = row["verdict"].replace("✅", "⚠️", 1) + f" Trend: {trend}."

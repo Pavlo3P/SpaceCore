@@ -44,15 +44,13 @@ class SpaceCheck(ABC):
     def __call__(self, space: Any, x: Any) -> None:
         """Raise :class:`SpaceValidationError` when ``x`` is invalid."""
         if not self.validate(space, x, allow_leading=False):
-            raise SpaceValidationError(
-                self.validation_message(space, x, allow_leading=False)
-            )
+            raise SpaceValidationError(self.validation_message(space, x, allow_leading=False))
 
     def core_shape(self, space: Any) -> tuple[int, ...]:
         """Return the trailing shape that defines one element for this check."""
         if self.core_rank == 0:
             return ()
-        return tuple(space.shape)[-self.core_rank:]
+        return tuple(space.shape)[-self.core_rank :]
 
     def leading_dims(self, x: Any, space: Any) -> tuple[int, ...] | None:
         """Return leading batch dimensions before this check's core axes."""
@@ -74,9 +72,7 @@ class SpaceCheck(ABC):
             core_shape = self.core_shape(space)
             core_rank = len(core_shape)
             trailing_matches = core_rank == 0 or (
-                shape is not None
-                and len(shape) >= core_rank
-                and shape[-core_rank:] == core_shape
+                shape is not None and len(shape) >= core_rank and shape[-core_rank:] == core_shape
             )
             if shape is None or not trailing_matches:
                 return False
@@ -324,10 +320,7 @@ class ProductComponentCheck(SpaceCheck):
             try:
                 _run_checks(subspace, component, allow_leading=allow_leading)
             except Exception as exc:
-                return (
-                    f"Invalid component {i} for spaces[{i}] "
-                    f"({type(subspace).__name__}): {exc}"
-                )
+                return f"Invalid component {i} for spaces[{i}] ({type(subspace).__name__}): {exc}"
         return "Invalid product-space component."
 
 

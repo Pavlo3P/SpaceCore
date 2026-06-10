@@ -18,14 +18,14 @@ def test_enable_checks_accepts_valid_space_and_linop_inputs():
     ctx = _checked_ctx()
     dom = sc.DenseCoordinateSpace((2,), ctx)
     cod = sc.DenseCoordinateSpace((3,), ctx)
-    op = sc.DenseLinOp(ctx.asarray([[1., 2.], [3., 4.], [5., 6.]]), dom, cod, ctx)
+    op = sc.DenseLinOp(ctx.asarray([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]), dom, cod, ctx)
 
-    x = ctx.asarray([7., 8.])
+    x = ctx.asarray([7.0, 8.0])
     y = op.apply(x)
 
     dom.check_member(x)
     cod.check_member(y)
-    np.testing.assert_allclose(y, [23., 53., 83.])
+    np.testing.assert_allclose(y, [23.0, 53.0, 83.0])
 
 
 def test_enable_checks_rejects_vector_shape_mismatch():
@@ -33,7 +33,7 @@ def test_enable_checks_rejects_vector_shape_mismatch():
     space = sc.DenseCoordinateSpace((2,), ctx)
 
     with pytest.raises(TypeError, match=r"Expected shape \(2,\), got \(3,\)"):
-        space.check_member(np.asarray([1., 2., 3.], dtype=np.float32))
+        space.check_member(np.asarray([1.0, 2.0, 3.0], dtype=np.float32))
 
 
 def test_enable_checks_rejects_vector_dtype_mismatch():
@@ -41,7 +41,7 @@ def test_enable_checks_rejects_vector_dtype_mismatch():
     space = sc.DenseCoordinateSpace((2,), ctx)
 
     with pytest.raises(TypeError, match=r"Expected dtype float32, got float64"):
-        space.check_member(np.asarray([1., 2.], dtype=np.float64))
+        space.check_member(np.asarray([1.0, 2.0], dtype=np.float64))
 
 
 @pytest.mark.skipif(not has_jax(), reason="jax is not installed")
@@ -51,7 +51,7 @@ def test_enable_checks_rejects_cross_backend_dense_array():
     space = sc.DenseCoordinateSpace((2,), np_ctx)
 
     with pytest.raises(TypeError, match="Expected dense array for numpy"):
-        space.check_member(jx_ctx.asarray([1., 2.]))
+        space.check_member(jx_ctx.asarray([1.0, 2.0]))
 
 
 def test_enable_checks_rejects_non_hermitian_matrix():
@@ -59,7 +59,7 @@ def test_enable_checks_rejects_non_hermitian_matrix():
     space = sc.HermitianSpace(2, ctx=ctx)
 
     with pytest.raises(TypeError, match="not Hermitian"):
-        space.check_member(ctx.asarray([[1., 2.], [0., 1.]]))
+        space.check_member(ctx.asarray([[1.0, 2.0], [0.0, 1.0]]))
 
 
 def test_enable_checks_rejects_invalid_product_structure():
@@ -70,13 +70,13 @@ def test_enable_checks_rejects_invalid_product_structure():
     )
 
     with pytest.raises(TypeError, match="ProductSpace element must be a tuple"):
-        product.check_member([ctx.asarray([1., 2.]), ctx.asarray([3., 4., 5.])])
+        product.check_member([ctx.asarray([1.0, 2.0]), ctx.asarray([3.0, 4.0, 5.0])])
 
     with pytest.raises(ValueError, match="Expected tuple of length 2, got 1"):
-        product.check_member((ctx.asarray([1., 2.]),))
+        product.check_member((ctx.asarray([1.0, 2.0]),))
 
     with pytest.raises(TypeError, match=r"Invalid component 1.*Expected shape \(3,\)"):
-        product.check_member((ctx.asarray([1., 2.]), ctx.asarray([3., 4.])))
+        product.check_member((ctx.asarray([1.0, 2.0]), ctx.asarray([3.0, 4.0])))
 
 
 def test_enable_checks_rejects_dense_linop_matrix_and_vector_dimensions():
@@ -85,14 +85,14 @@ def test_enable_checks_rejects_dense_linop_matrix_and_vector_dimensions():
     cod = sc.DenseCoordinateSpace((3,), ctx)
 
     with pytest.raises(TypeError, match=r"Expected A\.shape == cod\.shape \+ dom\.shape"):
-        sc.DenseLinOp(ctx.asarray([[1., 2.], [3., 4.]]), dom, cod, ctx)
+        sc.DenseLinOp(ctx.asarray([[1.0, 2.0], [3.0, 4.0]]), dom, cod, ctx)
 
-    op = sc.DenseLinOp(ctx.asarray([[1., 2.], [3., 4.], [5., 6.]]), dom, cod, ctx)
+    op = sc.DenseLinOp(ctx.asarray([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]), dom, cod, ctx)
     with pytest.raises(TypeError, match=r"Expected shape \(2,\), got \(3,\)"):
-        op.apply(ctx.asarray([1., 2., 3.]))
+        op.apply(ctx.asarray([1.0, 2.0, 3.0]))
 
     with pytest.raises(TypeError, match=r"Expected shape \(3,\), got \(2,\)"):
-        op.rapply(ctx.asarray([1., 2.]))
+        op.rapply(ctx.asarray([1.0, 2.0]))
 
 
 def test_enable_checks_rejects_product_linop_domain_codomain_mismatch():
@@ -100,8 +100,8 @@ def test_enable_checks_rejects_product_linop_domain_codomain_mismatch():
     dom2 = sc.DenseCoordinateSpace((2,), ctx)
     dom3 = sc.DenseCoordinateSpace((3,), ctx)
     cod1 = sc.DenseCoordinateSpace((1,), ctx)
-    first = sc.DenseLinOp(ctx.asarray([[1., 2.]]), dom2, cod1, ctx)
-    second = sc.DenseLinOp(ctx.asarray([[1., 2., 3.]]), dom3, cod1, ctx)
+    first = sc.DenseLinOp(ctx.asarray([[1.0, 2.0]]), dom2, cod1, ctx)
+    second = sc.DenseLinOp(ctx.asarray([[1.0, 2.0, 3.0]]), dom3, cod1, ctx)
 
     with pytest.raises(TypeError, match=r"Component op 1 must map dom -> cod\.spaces\[1\]"):
         sc.StackedLinOp.from_operators((first, second))
@@ -121,6 +121,6 @@ def test_disabled_checks_skip_space_membership_validations():
     hermitian = sc.HermitianSpace(2, ctx=ctx)
     product = sc.ProductSpace((vector, vector), ctx)
 
-    vector.check_member(np.asarray([1., 2., 3.], dtype=np.float32))
-    hermitian.check_member(ctx.asarray([[1., 2.], [0., 1.]]))
-    product.check_member([ctx.asarray([1.]), ctx.asarray([2., 3., 4.])])
+    vector.check_member(np.asarray([1.0, 2.0, 3.0], dtype=np.float32))
+    hermitian.check_member(ctx.asarray([[1.0, 2.0], [0.0, 1.0]]))
+    product.check_member([ctx.asarray([1.0]), ctx.asarray([2.0, 3.0, 4.0])])

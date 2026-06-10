@@ -1,164 +1,102 @@
-Conversion and context guide
-============================
+Conversion Tutorial
+===================
 
-This tutorial follows ``tutorials/5_Conversion_Policy.ipynb``. It describes
-the current conversion behavior in SpaceCore.
+Goal
+   Convert spaces and operators to an explicit target context and understand
+   what is rebuilt.
+Prerequisites
+   Complete :doc:`context` and :doc:`linops`.
+Estimated time
+   10 minutes.
+Backends used
+   NumPy only, converting dtype within the same backend.
 
-The policy model is intentionally small:
+1. Build an object in one context
+---------------------------------
 
-* every object is attached to a ``Context``;
-* constructors resolve one context by a fixed priority rule;
-* conversion always targets the backend, dtype, and checking flag of the
-  requested context;
-* there are no warning/error/silent conversion policies and no
-  dtype-preservation policy.
-
-The important practical rule is: **the target context wins during explicit
-conversion**.
-
-What a context controls
------------------------
-
-SpaceCore is built around the chain:
-
-.. math::
-
-   \texttt{BackendOps} \to \texttt{Context} \to \texttt{Space} \to \texttt{LinOp}.
-
-A ``Context`` stores three runtime choices:
-
-* ``ops``: the backend implementation, such as ``NumpyOps``, ``JaxOps``, or
-  ``TorchOps``;
-* ``dtype``: the backend-normalized dtype used for arrays created or converted
-  through the context;
-* ``enable_checks``: whether spaces, operators, and functionals validate inputs
-  and outputs.
-
-This means spaces and operators always carry an execution policy, but that
-policy is just the context itself. The old global conversion knobs have been
-removed.
-
-Context resolution order
-------------------------
-
-When a constructor needs a context, SpaceCore resolves it in this order:
-
-1. use an explicit ``ctx=...`` argument if one was provided;
-2. otherwise infer a context from inputs that carry a ``ctx`` attribute or from
-   registered backend arrays;
-3. otherwise use the global default context from ``spacecore.get_context()``.
-
-If the explicit context is a backend name or backend family, missing fields are
-filled from backend defaults. For example, ``ctx="jax"`` selects JAX and lets
-``JaxOps.sanitize_dtype(None)`` choose the dtype.
-
-Inference is conservative. A common context can be inferred only when all
-context-carrying inputs use the same backend family. If compatible inputs have
-different dtypes, SpaceCore chooses the most general dtype for that backend. If
-their ``enable_checks`` flags differ, the inferred flag is the conjunction:
-checks stay enabled only if all source contexts have checks enabled.
-
-Explicit conversion
--------------------
-
-Calling
+The source context uses NumPy float32.
 
 .. code-block:: python
 
-   obj2 = obj.convert(new_ctx)
+   import numpy as np
+   import spacecore as sc
 
-normalizes ``new_ctx`` into a full ``Context``. If ``obj.ctx == new_ctx``,
-conversion returns ``obj`` unchanged. Otherwise, the object is rebuilt in
-``new_ctx`` by its ``_convert(...)`` implementation.
+   src = sc.Context(sc.NumpyOps(), dtype=np.float32, enable_checks=True)
+   X = sc.DenseCoordinateSpace((2,), src)
+   A = sc.DiagonalLinOp(src.asarray([2.0, 3.0]), X, src)
 
-There is no separate conversion policy. A backend change is allowed, and no
-warning/error/silent mode is consulted. Use explicit contexts in library code
-when backend migration should be controlled tightly.
+   print(A.ctx.dtype == np.dtype("float32"))
 
-There is also no dtype-preservation policy. The converted object uses the dtype
-of the target context. If you want to preserve a dtype, make that dtype part of
-the target context explicitly:
+Expected output:
+
+.. code-block:: text
+
+   True
+
+Checkpoint: ``A.domain.dtype`` is also ``float32``.
+
+2. Convert to a target context
+------------------------------
+
+Explicit conversion is target-context driven. The target dtype and checks win.
 
 .. code-block:: python
 
-   jax64 = spacecore.Context(spacecore.JaxOps(), dtype="float64", enable_checks=False)
-   obj_jax64 = obj.convert(jax64)
+   dst = sc.Context(sc.NumpyOps(), dtype=np.float64, enable_checks=False)
+   B = A.convert(dst)
 
-Dtype behavior
---------------
+   print(B.ctx.dtype == np.dtype("float64"))
+   print(B.ctx.enable_checks)
+   print(B.apply(dst.asarray([1.0, 2.0])))
 
-Dtype behavior now has two simple cases.
+Expected output:
 
-During context inference
-~~~~~~~~~~~~~~~~~~~~~~~~
+.. code-block:: text
 
-When a context is inferred from several compatible inputs, dtypes are normalized
-to the inferred backend and joined:
+   True
+   False
+   [2. 6.]
 
-.. math::
+Checkpoint: ``B is A`` should be false because the context changed.
 
-   \{d_1,\dots,d_k\}
-   \mapsto
-   \begin{cases}
-   d_1, & \text{if all } d_i \text{ agree},\\
-   \texttt{result\_type}(d_1,\dots,d_k), & \text{otherwise}.
-   \end{cases}
+3. Know what is copied or preserved
+-----------------------------------
 
-During explicit conversion
-~~~~~~~~~~~~~~~~~~~~~~~~~~
+Matrix-backed operators convert stored arrays. Spaces are reconstructed.
+Matrix-free callables are preserved, so their Python functions must be valid for
+the target backend.
 
-The target context dtype wins. Objects are converted to that dtype. There is no
-``keep_native`` mode.
+.. code-block:: python
 
-Backend defaults still come from ``BackendOps.sanitize_dtype(None)``. In the
-current implementation, NumPy defaults to ``float64``; JAX follows the active
-JAX dtype configuration; Torch follows the active PyTorch default dtype rules.
+   print(B.domain == X.convert(dst))
 
-Checking behavior
+Expected output:
+
+.. code-block:: text
+
+   True
+
+Checkpoint: conversion changes representation policy, not the mathematical map.
+
+What can go wrong
 -----------------
 
-``enable_checks`` is a context field, not a conversion policy.
+.. admonition:: Optional backend missing
 
-* Explicit contexts use their own ``enable_checks`` value.
-* Inferred contexts enable checks only if all inferred source contexts have
-  checks enabled.
-* Converted objects use the target context's ``enable_checks`` value.
+   ``sc.Context(sc.JaxOps(), ...)`` works only when JAX is installed and
+   ``JaxOps`` is exported. Install ``spacecore[jax]`` or use a backend that is
+   available in the current environment.
 
-Checks validate shapes, membership, dtype/backend representation, and operator
-input/output contracts. Disabling checks can reduce overhead in tight loops
-after data has already been validated.
+Recap
+-----
 
-What was removed
-----------------
+* ``convert`` is explicit and target-context driven.
+* Spaces and matrix-backed operators are rebuilt in the target context.
+* Matrix-free callables are not rewritten for another backend.
+* Backend-specific dtype, sparse, device, and tracing behavior remains visible.
 
-Older versions exposed speculative global conversion and dtype-preservation
-knobs. These are no longer part of the current API. Conversion is deterministic:
-normalize the target context, rebuild if needed, and cast to the target context
-dtype.
+Next steps
+----------
 
-Backend-specific dtype defaults
--------------------------------
-
-Each backend implementation defines dtype normalization through
-``sanitize_dtype(dtype)``. This method normalizes dtype into backend-native form
-and determines the backend default dtype when ``dtype=None``.
-
-* ``NumpyOps.sanitize_dtype(None)`` currently returns ``numpy.float64``.
-* ``JaxOps.sanitize_dtype(None)`` depends on JAX configuration: ``float64``
-  when ``jax_enable_x64=True``, otherwise ``float32``.
-* ``TorchOps.sanitize_dtype(None)`` follows PyTorch default dtype behavior.
-
-If exact dtype matters, pass it explicitly in the ``Context`` you construct.
-
-Summary
--------
-
-When a new object is created, SpaceCore resolves a context by priority:
-
-1. explicit ``ctx``;
-2. compatible inferred contexts from inputs;
-3. global default context.
-
-When an existing object is converted, the requested target context wins
-completely: backend, dtype, and ``enable_checks`` all come from that context.
-This is the current conversion policy.
+Read :doc:`../design/conversion_policy` for the full policy and
+:doc:`../design/dtype_policy` for dtype rules.

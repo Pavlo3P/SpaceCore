@@ -256,7 +256,9 @@ def test_cg_final_iteration_refreshes_residual_with_sparse_checks():
 
     actual_residual = space.norm(A.apply(result.x) - b)
     assert bool(to_numpy(result.converged))
-    np.testing.assert_allclose(to_numpy(result.residual_norm), to_numpy(actual_residual), atol=1e-14)
+    np.testing.assert_allclose(
+        to_numpy(result.residual_norm), to_numpy(actual_residual), atol=1e-14
+    )
 
 
 def test_lsqr_solves_complex_least_squares():
@@ -316,7 +318,9 @@ def test_power_iteration_uses_one_application_per_iteration_after_initial_produc
 
     A = sc.MatrixFreeLinOp(apply, apply, space, space, ctx)
 
-    result = sc.power_iteration(A, x0=ctx.asarray([1.0, 1.0]), tol=1e-4, maxiter=60, check_every=1000)
+    result = sc.power_iteration(
+        A, x0=ctx.asarray([1.0, 1.0]), tol=1e-4, maxiter=60, check_every=1000
+    )
 
     assert calls["apply"] == int(result.num_iters) + 1
     np.testing.assert_allclose(to_numpy(result.eigenvalue), 5.0, rtol=1e-4, atol=1e-4)
@@ -366,7 +370,9 @@ def test_power_iteration_large_check_every_no_longer_delays_convergence():
     space = sc.DenseCoordinateSpace((2,), ctx)
     A = sc.DiagonalLinOp(ctx.asarray([1.0, 5.0]), space, ctx)
 
-    result = sc.power_iteration(A, x0=ctx.asarray([0.0, 1.0]), tol=1e-12, maxiter=65, check_every=10_000)
+    result = sc.power_iteration(
+        A, x0=ctx.asarray([0.0, 1.0]), tol=1e-12, maxiter=65, check_every=10_000
+    )
 
     assert int(to_numpy(result.num_iters)) == 1
     np.testing.assert_allclose(to_numpy(result.eigenvalue), 5.0, rtol=1e-12, atol=1e-12)
@@ -802,7 +808,9 @@ def test_safe_inverse_nonneg_returns_reciprocal_for_positive_values_only():
 
     values = ctx.asarray([-2.0, 0.0, 4.0])
 
-    np.testing.assert_allclose(to_numpy(utils.safe_inverse_nonneg(sc.NumpyOps(), values)), [0.0, 0.0, 0.25])
+    np.testing.assert_allclose(
+        to_numpy(utils.safe_inverse_nonneg(sc.NumpyOps(), values)), [0.0, 0.0, 0.25]
+    )
 
 
 def test_iterative_solvers_poll_convergence_on_check_interval():

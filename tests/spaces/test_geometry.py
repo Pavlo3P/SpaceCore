@@ -161,10 +161,18 @@ def test_space_equality_is_symmetric_and_requires_exact_space_type():
     vector = sc.DenseCoordinateSpace((2, 2), ctx)
     hermitian_a = sc.HermitianSpace(2, ctx=ctx)
     hermitian_b = sc.HermitianSpace(2, ctx=ctx)
-    weighted = sc.DenseCoordinateSpace((2, 2), ctx, geometry=_weighted_geometry([1.0, 2.0, 3.0, 4.0], ctx))
-    product_a = sc.ProductSpace((sc.DenseCoordinateSpace((2,), ctx), sc.DenseCoordinateSpace((1,), ctx)), ctx)
-    product_b = sc.ProductSpace((sc.DenseCoordinateSpace((2,), ctx), sc.DenseCoordinateSpace((1,), ctx)), ctx)
-    product_reordered = sc.ProductSpace((sc.DenseCoordinateSpace((1,), ctx), sc.DenseCoordinateSpace((2,), ctx)), ctx)
+    weighted = sc.DenseCoordinateSpace(
+        (2, 2), ctx, geometry=_weighted_geometry([1.0, 2.0, 3.0, 4.0], ctx)
+    )
+    product_a = sc.ProductSpace(
+        (sc.DenseCoordinateSpace((2,), ctx), sc.DenseCoordinateSpace((1,), ctx)), ctx
+    )
+    product_b = sc.ProductSpace(
+        (sc.DenseCoordinateSpace((2,), ctx), sc.DenseCoordinateSpace((1,), ctx)), ctx
+    )
+    product_reordered = sc.ProductSpace(
+        (sc.DenseCoordinateSpace((1,), ctx), sc.DenseCoordinateSpace((2,), ctx)), ctx
+    )
 
     assert vector != hermitian_a
     assert hermitian_a != vector

@@ -93,7 +93,6 @@ class NumpyOps(BackendOps):
             types.append(sparse.sparray)
         return tuple(types)
 
-
     def sanitize_dtype(self, dtype: DType | None) -> DType:
         """
         Normalize a dtype specifier using NumPy.
@@ -111,7 +110,9 @@ class NumpyOps(BackendOps):
             return self.np.float64
         return self.np.dtype(dtype)
 
-    def assparse(self, x: Any, *, format: Literal["csr", "csc", "coo"] = "csr", dtype: DType | None = None) -> SparseArray:
+    def assparse(
+        self, x: Any, *, format: Literal["csr", "csc", "coo"] = "csr", dtype: DType | None = None
+    ) -> SparseArray:
         """
         Convert input to a sparse array using SciPy.
 
@@ -174,8 +175,14 @@ class NumpyOps(BackendOps):
             raise TypeError("sparse_matmul expects `b` to be a Numpy dense object.")
         return a @ b
 
-    def logsumexp(self, a: DenseArray, axis: int | Sequence[int] | None = None, b: DenseArray | None = None,
-                  keepdims: bool = False, return_sign: bool = False) -> DenseArray | Tuple[DenseArray, DenseArray]:
+    def logsumexp(
+        self,
+        a: DenseArray,
+        axis: int | Sequence[int] | None = None,
+        b: DenseArray | None = None,
+        keepdims: bool = False,
+        return_sign: bool = False,
+    ) -> DenseArray | Tuple[DenseArray, DenseArray]:
         """
         Compute a stable log-sum-exp reduction using SciPy.
 
@@ -188,7 +195,9 @@ class NumpyOps(BackendOps):
         See:
             https://docs.scipy.org/doc/scipy/reference/generated/scipy.special.logsumexp.html
         """
-        return self.sp.special.logsumexp(a, axis=axis, b=b, keepdims=keepdims, return_sign=return_sign)
+        return self.sp.special.logsumexp(
+            a, axis=axis, b=b, keepdims=keepdims, return_sign=return_sign
+        )
 
     def index_set(self, x: DenseArray, index: Index, values: DenseArray, *, copy: bool = True):
         """
@@ -230,11 +239,11 @@ class NumpyOps(BackendOps):
         return self.np.ix_(*args)
 
     def fori_loop(
-            self,
-            lower: int,
-            upper: int,
-            body_fun: Callable[[int, T], T],
-            init_val: T,
+        self,
+        lower: int,
+        upper: int,
+        body_fun: Callable[[int, T], T],
+        init_val: T,
     ) -> T:
         """
         Run a counted loop primitive using NumPy.
@@ -257,10 +266,10 @@ class NumpyOps(BackendOps):
         return val
 
     def while_loop(
-            self,
-            cond_fun: Callable[[T], bool],
-            body_fun: Callable[[T], T],
-            init_val: T,
+        self,
+        cond_fun: Callable[[T], bool],
+        body_fun: Callable[[T], T],
+        init_val: T,
     ) -> T:
         """
         Run a while-loop primitive using NumPy.
@@ -343,13 +352,13 @@ class NumpyOps(BackendOps):
         return self._tree_multimap(_stack_leaves, *ys_list)
 
     def scan(
-            self,
-            f: Callable[[Carry, X], Tuple[Carry, Y]],
-            init: Carry,
-            xs: X,
-            length: Optional[int] = None,
-            reverse: bool = False,
-            unroll: int = 1,
+        self,
+        f: Callable[[Carry, X], Tuple[Carry, Y]],
+        init: Carry,
+        xs: X,
+        length: Optional[int] = None,
+        reverse: bool = False,
+        unroll: int = 1,
     ) -> Tuple[Carry, Y]:
         """
         Run a scan primitive using NumPy.
@@ -406,11 +415,11 @@ class NumpyOps(BackendOps):
         return carry, self._tree_stack(ys_steps)
 
     def cond(
-            self,
-            pred: bool,
-            true_fun: Callable[[T], R],
-            false_fun: Callable[[T], R],
-            *operands: Any,
+        self,
+        pred: bool,
+        true_fun: Callable[[T], R],
+        false_fun: Callable[[T], R],
+        *operands: Any,
     ) -> R:
         # Eager branch selection (NumPy has no tracing semantics)
         """
@@ -431,12 +440,12 @@ class NumpyOps(BackendOps):
         return true_fun(*operands) if bool(pred) else false_fun(*operands)
 
     def index_add(
-            self,
-            x: DenseArray,
-            index: Index,
-            values: DenseArray,
-            *,
-            copy: bool = True,
+        self,
+        x: DenseArray,
+        index: Index,
+        values: DenseArray,
+        *,
+        copy: bool = True,
     ) -> DenseArray:
         """
         Add into indexed values using NumPy.

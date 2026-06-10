@@ -39,7 +39,6 @@ class JordanAlgebraSpace(VectorSpace):
         return self.from_spectrum(feigvals, frame)
 
 
-
 class EuclideanJordanAlgebraSpace(JordanAlgebraSpace, InnerProductSpace):
     """
     Jordan algebra capability with a compatible inner product.

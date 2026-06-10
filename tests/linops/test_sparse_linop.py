@@ -28,11 +28,11 @@ def test_sparse_linop_construct_apply_rapply():
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
     dom = sc.DenseCoordinateSpace((2,), ctx)
     cod = sc.DenseCoordinateSpace((3,), ctx)
-    dense = np.array([[1., 2.], [3., 4.], [5., 6.]])
+    dense = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])
     op = sc.SparseLinOp(ctx.assparse(dense), dom, cod, ctx)
 
-    x = ctx.asarray([7., 8.])
-    y = ctx.asarray([1., -1., 2.])
+    x = ctx.asarray([7.0, 8.0])
+    y = ctx.asarray([1.0, -1.0, 2.0])
 
     assert np.allclose(op.apply(x), dense @ np.asarray(x))
     assert np.allclose(op.rapply(y), dense.T @ np.asarray(y))
@@ -123,7 +123,9 @@ def test_sparse_linop_accepts_coordinate_product_spaces():
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
     vector = sc.DenseCoordinateSpace((2,), ctx)
-    product = sc.ProductSpace((sc.DenseCoordinateSpace((1,), ctx), sc.DenseCoordinateSpace((1,), ctx)), ctx)
+    product = sc.ProductSpace(
+        (sc.DenseCoordinateSpace((1,), ctx), sc.DenseCoordinateSpace((1,), ctx)), ctx
+    )
     matrix = ctx.assparse(np.eye(2))
     x_product = (ctx.asarray([1.0]), ctx.asarray([-2.0]))
     x_vector = ctx.asarray([0.5, 3.0])
@@ -140,8 +142,12 @@ def test_sparse_linop_accepts_coordinate_product_spaces():
 def test_sparse_linop_weighted_metric_adjoint_identity():
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
-    domain = sc.DenseCoordinateSpace((2,), ctx, geometry=sc.WeightedInnerProduct(ctx.asarray([2.0, 5.0])))
-    codomain = sc.DenseCoordinateSpace((3,), ctx, geometry=sc.WeightedInnerProduct(ctx.asarray([3.0, 7.0, 11.0])))
+    domain = sc.DenseCoordinateSpace(
+        (2,), ctx, geometry=sc.WeightedInnerProduct(ctx.asarray([2.0, 5.0]))
+    )
+    codomain = sc.DenseCoordinateSpace(
+        (3,), ctx, geometry=sc.WeightedInnerProduct(ctx.asarray([3.0, 7.0, 11.0]))
+    )
     dense = np.array([[1.0, -2.0], [0.5, 3.0], [4.0, -1.0]])
     op = sc.SparseLinOp(ctx.assparse(dense), domain, codomain, ctx)
     x = ctx.asarray([0.25, -1.5])
@@ -173,8 +179,12 @@ def test_sparse_linop_general_metric_adjoint_identity():
         def is_euclidean(self):
             return False
 
-    domain = sc.DenseCoordinateSpace((2,), ctx, geometry=ScalingInnerProduct(ctx.asarray([2.0, 5.0])))
-    codomain = sc.DenseCoordinateSpace((3,), ctx, geometry=ScalingInnerProduct(ctx.asarray([3.0, 7.0, 11.0])))
+    domain = sc.DenseCoordinateSpace(
+        (2,), ctx, geometry=ScalingInnerProduct(ctx.asarray([2.0, 5.0]))
+    )
+    codomain = sc.DenseCoordinateSpace(
+        (3,), ctx, geometry=ScalingInnerProduct(ctx.asarray([3.0, 7.0, 11.0]))
+    )
     dense = np.array([[1.0, -2.0], [0.5, 3.0], [4.0, -1.0]])
     op = sc.SparseLinOp(ctx.assparse(dense), domain, codomain, ctx)
     x = ctx.asarray([0.25, -1.5])
@@ -222,13 +232,13 @@ def test_sparse_linop_reuses_cached_transpose():
     dom = sc.DenseCoordinateSpace((2,), ctx)
     cod = sc.DenseCoordinateSpace((3,), ctx)
     counter = {"calls": 0}
-    A = TransposeCountingCSR([[1., 2.], [3., 4.], [5., 6.]], counter=counter)
+    A = TransposeCountingCSR([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], counter=counter)
 
     op = sc.SparseLinOp(A, dom, cod, ctx)
     transpose_calls = counter["calls"]
 
-    op.rapply(ctx.asarray([1., -1., 2.]))
-    op.rapply(ctx.asarray([3., -2., 1.]))
+    op.rapply(ctx.asarray([1.0, -1.0, 2.0]))
+    op.rapply(ctx.asarray([3.0, -2.0, 1.0]))
 
     assert transpose_calls == 1
     assert counter["calls"] == transpose_calls

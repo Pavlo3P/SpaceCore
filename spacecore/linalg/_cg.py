@@ -176,7 +176,9 @@ def cg(
         _x, _r, _p, _rs, res_norm, k, active = carry
         return (k < maxiter) & (res_norm > threshold_value) & active
 
-    def body_fun(carry: tuple[Any, Any, Any, Any, Any, int, Any]) -> tuple[Any, Any, Any, Any, Any, int, Any]:
+    def body_fun(
+        carry: tuple[Any, Any, Any, Any, Any, int, Any],
+    ) -> tuple[Any, Any, Any, Any, Any, int, Any]:
         x, r, p, rs, _residual_norm, k, _active = carry
         Ap = A.apply(p)
         pAp = real_inner(A.domain, p, Ap)
@@ -185,7 +187,9 @@ def cg(
         x_next = A.domain.axpy(alpha, p, x)
         r_next = A.codomain.axpy(-alpha, Ap, r)
         rs_next = real_inner(A.domain, r_next, r_next)
-        beta = A.ops.where(active, rs_next * safe_inverse_nonneg(A.ops, rs), A.ops.zeros_like(rs_next))
+        beta = A.ops.where(
+            active, rs_next * safe_inverse_nonneg(A.ops, rs), A.ops.zeros_like(rs_next)
+        )
         p_next = A.domain.axpy(beta, p, r_next)
         k_next = k + 1
         should_refresh_residual = should_check_iteration(k_next, maxiter, check_every) | (~active)

@@ -46,7 +46,10 @@ class SumToSingleLinOp(ProductLinOp[ProductSpace, Codomain]):
 
     def _make_flat_dense_apply_mats(self):
         """Return dense matrices for the exact flat-vector fast path."""
-        if type(self.cod) not in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace) or not self.cod.is_euclidean:
+        if (
+            type(self.cod) not in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace)
+            or not self.cod.is_euclidean
+        ):
             return None
         if tuple(self.cod.shape) != (self.cod._size,):
             return None
@@ -144,7 +147,11 @@ class SumToSingleLinOp(ProductLinOp[ProductSpace, Codomain]):
             yi = op.vapply(xi)
             if acc is None:
                 acc = yi
-            elif type(self.codomain) in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace):
+            elif type(self.codomain) in (
+                DenseCoordinateSpace,
+                DenseVectorSpace,
+                ElementwiseJordanSpace,
+            ):
                 acc = acc + yi
             else:
                 acc = self.codomain.add_batch(acc, yi)

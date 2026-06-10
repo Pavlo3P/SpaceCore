@@ -12,6 +12,7 @@ from ._policies import (
     ContextInferenceError,
     UnknownBackendError,
 )
+
 try:
     from ..backend.jax import JaxOps
 except ImportError:
@@ -49,7 +50,7 @@ class Contextual:
         self.default_ctx = Context(
             ops=ops,
             dtype=ops.sanitize_dtype(self._default_dtype),
-            enable_checks=self._default_enable_checks
+            enable_checks=self._default_enable_checks,
         )
 
         self._available_ops = {
@@ -62,45 +63,46 @@ class Contextual:
         if "TorchOps" in globals():
             self._available_ops[self._backend_key(TorchOps)] = TorchOps
 
-    def normalize_context(self,
-                          ctx: Context | BackendFamily | str | None = None,
-                          dtype: Any = None,
-                          enable_checks: bool | None = None
-                          ) -> Context:
+    def normalize_context(
+        self,
+        ctx: Context | BackendFamily | str | None = None,
+        dtype: Any = None,
+        enable_checks: bool | None = None,
+    ) -> Context:
         Context = _context_type()
         if ctx is None:
             if dtype is not None or enable_checks is not None:
                 warn(
-                    'Provided context is None, dtype and enable_checks parameters are ignored.',
+                    "Provided context is None, dtype and enable_checks parameters are ignored.",
                     UserWarning,
                 )
             return self.default_ctx
         if isinstance(ctx, Context):
             if dtype is not None or enable_checks is not None:
                 warn(
-                    'Provided concrete context, dtype and enable_checks parameters are ignored.',
+                    "Provided concrete context, dtype and enable_checks parameters are ignored.",
                     UserWarning,
                 )
             return Context(
                 ops=ctx.ops,
                 dtype=ctx.ops.sanitize_dtype(ctx.dtype),
-                enable_checks=ctx.enable_checks
+                enable_checks=ctx.enable_checks,
             )
         if isinstance(ctx, (str, BackendFamily)):
             ctx = self._backend_key(ctx)
             ops = self.get_ops(ctx)
             return self.ctx_from_ops(ops, dtype=dtype, enable_checks=enable_checks)
         else:
-            raise TypeError(f'Expected Context, BackendFamily, str, or None, got {type(ctx)}.')
+            raise TypeError(f"Expected Context, BackendFamily, str, or None, got {type(ctx)}.")
 
-    def ctx_from_ops(self, ops: BackendOps, dtype: DType | None = None, enable_checks: bool | None = None) -> Context:
+    def ctx_from_ops(
+        self, ops: BackendOps, dtype: DType | None = None, enable_checks: bool | None = None
+    ) -> Context:
         Context = _context_type()
         dtype = ops.sanitize_dtype(dtype)
         if enable_checks is None:
             enable_checks = self._default_enable_checks
-        return Context(ops=ops,
-                       dtype=dtype,
-                       enable_checks=enable_checks)
+        return Context(ops=ops, dtype=dtype, enable_checks=enable_checks)
 
     @property
     def default_ctx(self) -> Context:
@@ -111,14 +113,13 @@ class Contextual:
         ctx = self.normalize_context(ctx)
         self._default_ctx = ctx
 
-    def get_ops(self, name: str | BackendFamily | BackendOps | type[BackendOps] | Context) -> BackendOps:
+    def get_ops(
+        self, name: str | BackendFamily | BackendOps | type[BackendOps] | Context
+    ) -> BackendOps:
         name = self._backend_key(name)
         if name not in self.available_ops:
             allowed = ", ".join(k for k in self.available_ops.keys())
-            raise UnknownBackendError(
-                f"Unknown backend: {name!r}. "
-                f"Expected one of: {allowed}"
-            )
+            raise UnknownBackendError(f"Unknown backend: {name!r}. Expected one of: {allowed}")
         return self.available_ops[name]()
 
     @property
@@ -131,7 +132,7 @@ class Contextual:
         else:
             family = self._backend_key(ops)
             if family in self.available_ops.keys():
-                raise ContextConflictError(f'BackendOps {family} is already registered.')
+                raise ContextConflictError(f"BackendOps {family} is already registered.")
             self._available_ops[family] = ops
             return ops
 
@@ -193,7 +194,9 @@ class Contextual:
         first = ops[0]
         return all(op.family == first.family for op in ops)
 
-    def enforce_convert_policy(self, x: Any, to: Context | BackendFamily | str | None = None) -> Tuple[Any, Context]:
+    def enforce_convert_policy(
+        self, x: Any, to: Context | BackendFamily | str | None = None
+    ) -> Tuple[Any, Context]:
         """Resolve the target context for ``x``."""
         self.infer_context(x)
         ctx = self.normalize_context(to)
@@ -215,9 +218,9 @@ class Contextual:
         raise TypeError(f"Unsupported backend key source: {type(x)!r}")
 
     def resolve_context_priority(
-            self,
-            priority_ctx: Context | BackendFamily | str | None = None,
-            *other_ctx: object,
+        self,
+        priority_ctx: Context | BackendFamily | str | None = None,
+        *other_ctx: object,
     ) -> Context:
         """Resolve explicit context first, then compatible inferred contexts."""
         if priority_ctx is not None:
@@ -263,9 +266,9 @@ def _state() -> Contextual:
 
 
 def set_context(
-        ctx: Context | BackendFamily | str | None = None,
-        dtype: Any = None,
-        enable_checks: bool | None = None
+    ctx: Context | BackendFamily | str | None = None,
+    dtype: Any = None,
+    enable_checks: bool | None = None,
 ) -> None:
     """
     Set the process-wide default SpaceCore context.
@@ -296,8 +299,8 @@ def get_context() -> Context:
 
 
 def resolve_context_priority(
-        priority_ctx: Context | BackendFamily | str | None = None,
-        *other_ctx: object,
+    priority_ctx: Context | BackendFamily | str | None = None,
+    *other_ctx: object,
 ) -> Context:
     """
     Resolve the context assigned to a newly created object.
@@ -359,9 +362,7 @@ def normalize_context(
     return _state().normalize_context(ctx, dtype=dtype, enable_checks=enable_checks)
 
 
-def normalize_ops(
-    ops: str | BackendFamily | BackendOps | type[BackendOps] | Context
-) -> BackendOps:
+def normalize_ops(ops: str | BackendFamily | BackendOps | type[BackendOps] | Context) -> BackendOps:
     """
     Normalize backend operations through the process-wide state.
 

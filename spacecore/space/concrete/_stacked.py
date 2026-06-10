@@ -31,8 +31,7 @@ def _validate_stacked_base(base: Any, owner: str = "StackedSpace") -> Coordinate
     """Validate a stacked-space base before capability-specific access."""
     if not isinstance(base, CoordinateSpace):
         raise TypeError(
-            f"{owner} requires base to be a CoordinateSpace; "
-            f"base is {type(base).__name__}."
+            f"{owner} requires base to be a CoordinateSpace; base is {type(base).__name__}."
         )
     if isinstance(base, ProductSpace):
         raise TypeError(
@@ -64,8 +63,7 @@ def _require_base(base: Space, capability: type, owner: str) -> None:
     """Raise if ``base`` lacks ``capability``."""
     if not isinstance(base, capability):
         raise TypeError(
-            f"{owner} requires base to be a {capability.__name__}; "
-            f"base is {type(base).__name__}."
+            f"{owner} requires base to be a {capability.__name__}; base is {type(base).__name__}."
         )
 
 
@@ -260,14 +258,18 @@ class _StackedJordanMixin:
         try:
             return self.base.from_spectrum(eigvals, frame)
         except _STACKED_FALLBACK_ERRORS:
-            return self.ops.vmap(self.base.from_spectrum, in_axes=(0, 0), out_axes=0)(eigvals, frame)
+            return self.ops.vmap(self.base.from_spectrum, in_axes=(0, 0), out_axes=0)(
+                eigvals, frame
+            )
 
     def spectral_apply(self, x: Any, f: Any) -> Any:
         """Apply the base-space spectral calculus to each stacked copy."""
         try:
             return self.base.spectral_apply(x, f)
         except _STACKED_FALLBACK_ERRORS:
-            return self.ops.vmap(lambda xi: self.base.spectral_apply(xi, f), in_axes=0, out_axes=0)(x)
+            return self.ops.vmap(lambda xi: self.base.spectral_apply(xi, f), in_axes=0, out_axes=0)(
+                x
+            )
 
 
 @jax_pytree_class
@@ -371,18 +373,24 @@ class _StackedEuclideanJordanStarSpace(
     """Stacked implementation for Euclidean-Jordan plus star capability."""
 
 
-_STACKED_REGISTRY.update({
-    frozenset(): StackedSpace,
-    frozenset({_CAP_INNER}): _StackedInnerProductSpace,
-    frozenset({_CAP_STAR}): _StackedStarSpace,
-    frozenset({_CAP_JORDAN}): _StackedJordanAlgebraSpace,
-    frozenset({_CAP_INNER, _CAP_STAR}): _StackedInnerProductStarSpace,
-    frozenset({_CAP_INNER, _CAP_JORDAN}): _StackedInnerProductJordanSpace,
-    frozenset({_CAP_STAR, _CAP_JORDAN}): _StackedStarJordanSpace,
-    frozenset({_CAP_INNER, _CAP_STAR, _CAP_JORDAN}): _StackedInnerProductStarJordanSpace,
-    frozenset({_CAP_INNER, _CAP_JORDAN, _CAP_EUCLIDEAN_JORDAN}): _StackedEuclideanJordanAlgebraSpace,
-    frozenset({_CAP_INNER, _CAP_STAR, _CAP_JORDAN, _CAP_EUCLIDEAN_JORDAN}): _StackedEuclideanJordanStarSpace,
-})
+_STACKED_REGISTRY.update(
+    {
+        frozenset(): StackedSpace,
+        frozenset({_CAP_INNER}): _StackedInnerProductSpace,
+        frozenset({_CAP_STAR}): _StackedStarSpace,
+        frozenset({_CAP_JORDAN}): _StackedJordanAlgebraSpace,
+        frozenset({_CAP_INNER, _CAP_STAR}): _StackedInnerProductStarSpace,
+        frozenset({_CAP_INNER, _CAP_JORDAN}): _StackedInnerProductJordanSpace,
+        frozenset({_CAP_STAR, _CAP_JORDAN}): _StackedStarJordanSpace,
+        frozenset({_CAP_INNER, _CAP_STAR, _CAP_JORDAN}): _StackedInnerProductStarJordanSpace,
+        frozenset(
+            {_CAP_INNER, _CAP_JORDAN, _CAP_EUCLIDEAN_JORDAN}
+        ): _StackedEuclideanJordanAlgebraSpace,
+        frozenset(
+            {_CAP_INNER, _CAP_STAR, _CAP_JORDAN, _CAP_EUCLIDEAN_JORDAN}
+        ): _StackedEuclideanJordanStarSpace,
+    }
+)
 
 
 __all__ = [

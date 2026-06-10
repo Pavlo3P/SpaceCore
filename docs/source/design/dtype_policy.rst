@@ -1,51 +1,62 @@
 Dtype Behavior
 ==============
 
-Each ``Context`` stores a backend-normalized ``dtype``. Array construction
-through ``ctx.asarray(...)`` and ``ctx.assparse(...)`` uses that dtype unless a
-method explicitly receives another dtype.
+Each ``Context`` stores a backend-normalized ``dtype``. ``Context.asarray`` and
+``Context.assparse`` use that dtype unless a backend method receives an explicit
+dtype argument.
 
-Dtype Resolution
-----------------
+Stored and inferred dtype
+-------------------------
 
-When a constructor infers several compatible contexts, SpaceCore joins their
-dtypes using backend-compatible promotion and then sanitizes the result for the
-selected backend.
+A concrete ``Context`` sanitizes its dtype through ``ops.sanitize_dtype``.
+Constructors that receive several context-bearing inputs resolve one backend
+family and one dtype through backend promotion. Explicit ``ctx=...`` takes
+priority over inference.
+
+Spaces use ``space.dtype`` for zeros, ones, unflattened arrays, and membership
+checks. Operators use their context dtype for stored matrices and scalar helper
+values.
+
+Real and complex spaces
+-----------------------
+
+Most coordinate spaces accept real or complex floating dtypes. Geometry can add
+extra restrictions. ``WeightedInnerProduct`` requires real, positive, finite
+weights even in a complex coordinate space. ``EuclideanElementwiseJordanSpace``
+requires a real dtype and Euclidean geometry; complex elementwise Jordan spaces
+use ``ElementwiseJordanSpace`` instead.
+
+Linear algebra assumptions
+--------------------------
+
+Solvers use the operator domain and codomain inner products. Hermitian and
+positive-definite assumptions are with respect to those inner products, not just
+the coordinate matrix. Complex problems require complex-compatible dtypes when
+inputs or scalars are complex.
+
+Expected errors
+---------------
+
+Invalid dtype usage usually appears as ``TypeError`` from membership checks,
+backend dtype conversion, or sparse conversion. Invalid Euclidean-Jordan dtype
+usage raises ``ValueError``.
+
+Example
+-------
 
 .. code-block:: python
 
+   import numpy as np
    import spacecore as sc
 
-   X = sc.DenseCoordinateSpace((3,), ctx=sc.Context(sc.NumpyOps(), dtype="float32"))
-   Y = sc.DenseCoordinateSpace((3,), ctx=sc.Context(sc.NumpyOps(), dtype="float64"))
+   ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, enable_checks=True)
+   try:
+       sc.EuclideanElementwiseJordanSpace((2,), sc.Context(sc.NumpyOps(), dtype=np.complex128))
+   except ValueError as exc:
+       print(exc)
 
-   Z = sc.ProductSpace((X, Y))
+Expected output:
 
-The product space resolves to one backend family and a dtype capable of
-representing both inputs.
+.. code-block:: text
 
-Explicit Conversion
--------------------
-
-During explicit conversion, the target context dtype wins:
-
-.. code-block:: python
-
-   target = sc.Context(sc.NumpyOps(), dtype="float64", enable_checks=True)
-   converted = obj.convert(target)
-
-The converted object uses ``target.dtype``. If exact dtype matters, make it
-part of the ``Context`` you construct.
-
-Backend Defaults
-----------------
-
-Every ``BackendOps`` implementation defines dtype normalization through
-``sanitize_dtype(dtype)``. That method normalizes dtype objects into
-backend-native dtype representations and determines the backend default when
-``dtype=None``.
-
-For ``NumpyOps``, ``sanitize_dtype(None)`` currently resolves to
-``numpy.float64``. For ``JaxOps``, the default depends on JAX configuration: if
-``jax_enable_x64=True`` the default is ``float64``; otherwise the default is
-``float32``.
+   EuclideanElementwiseJordanSpace requires a real dtype.

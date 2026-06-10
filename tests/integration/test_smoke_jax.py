@@ -17,13 +17,13 @@ def test_smoke_jax_conversion_workflow():
     x_space = sc.DenseCoordinateSpace((2,), np_ctx)
     y_space = sc.DenseCoordinateSpace((3,), np_ctx)
     op = sc.DenseLinOp(
-        np_ctx.asarray([[1., 2.], [3., 4.], [5., 6.]]),
+        np_ctx.asarray([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]),
         x_space,
         y_space,
         np_ctx,
     )
 
     converted = op.convert(jx_ctx)
-    y = converted.apply(jx_ctx.asarray([7., 8.]))
+    y = converted.apply(jx_ctx.asarray([7.0, 8.0]))
 
-    assert np.allclose(to_numpy(y), [23., 53., 83.])
+    assert np.allclose(to_numpy(y), [23.0, 53.0, 83.0])

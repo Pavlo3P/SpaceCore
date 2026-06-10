@@ -13,7 +13,9 @@ def _ctx(dtype=np.float64, enable_checks=True):
 
 def _weighted_space(weights, ctx):
     sc = importlib.import_module("spacecore")
-    return sc.DenseCoordinateSpace(tuple(np.asarray(weights).shape), ctx, sc.WeightedInnerProduct(ctx.asarray(weights)))
+    return sc.DenseCoordinateSpace(
+        tuple(np.asarray(weights).shape), ctx, sc.WeightedInnerProduct(ctx.asarray(weights))
+    )
 
 
 def test_apply_and_rapply_flat_diagonal():
@@ -53,7 +55,9 @@ def test_complex_diagonal_satisfies_adjoint_identity_and_hermitian_predicate():
     np.testing.assert_allclose(to_numpy(lhs), to_numpy(rhs))
     assert hermitian.is_hermitian() is True
     assert non_hermitian.is_hermitian() is False
-    np.testing.assert_allclose(non_hermitian.rapply(v), np.conj(np.asarray(non_hermitian.diagonal)) * np.asarray(v))
+    np.testing.assert_allclose(
+        non_hermitian.rapply(v), np.conj(np.asarray(non_hermitian.diagonal)) * np.asarray(v)
+    )
 
 
 def test_vapply_and_rvapply_with_leading_batch():
@@ -92,8 +96,12 @@ def test_weighted_diagonal_satisfies_metric_adjoint_identity_and_batches():
     ys = ctx.asarray([[2.0, -0.5, 1.25], [-1.0, 4.0, 0.75]])
 
     np.testing.assert_allclose(space.inner(op.apply(x), y), space.inner(x, op.rapply(y)))
-    np.testing.assert_allclose(to_numpy(op.vapply(xs)), np.stack([to_numpy(op.apply(xi)) for xi in xs]))
-    np.testing.assert_allclose(to_numpy(op.rvapply(ys)), np.stack([to_numpy(op.rapply(yi)) for yi in ys]))
+    np.testing.assert_allclose(
+        to_numpy(op.vapply(xs)), np.stack([to_numpy(op.apply(xi)) for xi in xs])
+    )
+    np.testing.assert_allclose(
+        to_numpy(op.rvapply(ys)), np.stack([to_numpy(op.rapply(yi)) for yi in ys])
+    )
 
 
 def test_product_space_diagonal_uses_flatten_unflatten_paths():

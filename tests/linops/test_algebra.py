@@ -481,13 +481,21 @@ def test_factories_reject_matching_shapes_with_different_geometry():
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
 
     euclidean = sc.DenseCoordinateSpace((2,), ctx)
-    weighted_a = sc.DenseCoordinateSpace((2,), ctx, geometry=sc.WeightedInnerProduct(ctx.asarray([2.0, 3.0])))
-    weighted_b = sc.DenseCoordinateSpace((2,), ctx, geometry=sc.WeightedInnerProduct(ctx.asarray([2.0, 3.0])))
-    differently_weighted = sc.DenseCoordinateSpace((2,), ctx, geometry=sc.WeightedInnerProduct(ctx.asarray([2.0, 4.0])))
+    weighted_a = sc.DenseCoordinateSpace(
+        (2,), ctx, geometry=sc.WeightedInnerProduct(ctx.asarray([2.0, 3.0]))
+    )
+    weighted_b = sc.DenseCoordinateSpace(
+        (2,), ctx, geometry=sc.WeightedInnerProduct(ctx.asarray([2.0, 3.0]))
+    )
+    differently_weighted = sc.DenseCoordinateSpace(
+        (2,), ctx, geometry=sc.WeightedInnerProduct(ctx.asarray([2.0, 4.0]))
+    )
 
     A = sc.DenseLinOp(ctx.asarray([[1.0, 0.0], [0.0, 1.0]]), euclidean, euclidean, ctx)
     B = sc.DenseLinOp(ctx.asarray([[2.0, 0.0], [0.0, 3.0]]), weighted_a, weighted_a, ctx)
-    C = sc.DenseLinOp(ctx.asarray([[4.0, 0.0], [0.0, 5.0]]), differently_weighted, differently_weighted, ctx)
+    C = sc.DenseLinOp(
+        ctx.asarray([[4.0, 0.0], [0.0, 5.0]]), differently_weighted, differently_weighted, ctx
+    )
     B_same_geometry = sc.DenseLinOp(
         ctx.asarray([[0.5, 0.0], [0.0, 0.25]]), weighted_b, weighted_b, ctx
     )

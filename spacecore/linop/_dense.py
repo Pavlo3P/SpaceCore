@@ -13,7 +13,12 @@ from ._metric import (
     metric_rapply,
     metric_rvapply,
 )
-from ..space import DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace, WeightedInnerProduct
+from ..space import (
+    DenseCoordinateSpace,
+    DenseVectorSpace,
+    ElementwiseJordanSpace,
+    WeightedInnerProduct,
+)
 from ..types import DenseArray
 from ..backend import jax_pytree_class, Context
 from .._contextual import resolve_context_priority
@@ -72,12 +77,13 @@ class DenseLinOp(LinOp[Domain, Codomain]):
     array([2., 6.])
     """
 
-    def __init__(self,
-                 A: DenseArray,
-                 dom: Domain,
-                 cod: Codomain | None = None,
-                 ctx: Context | str | None = None
-                 ) -> None:
+    def __init__(
+        self,
+        A: DenseArray,
+        dom: Domain,
+        cod: Codomain | None = None,
+        ctx: Context | str | None = None,
+    ) -> None:
         ctx = resolve_context_priority(ctx, dom, cod)
         ctx.assert_dense(A)  # Check if A is ndarray of ctx
 
@@ -91,7 +97,9 @@ class DenseLinOp(LinOp[Domain, Codomain]):
 
         expected = tuple(self.cod.shape) + tuple(self.dom.shape)
         if tuple(A.shape) != expected:
-            raise TypeError(f"Expected A.shape == cod.shape + dom.shape == {expected}, got {A.shape}")
+            raise TypeError(
+                f"Expected A.shape == cod.shape + dom.shape == {expected}, got {A.shape}"
+            )
 
         self._A = A  # Intentionally no dtype conversion to avoid extra memory use.
         self._cod_size = prod(self.cod.shape)
@@ -114,8 +122,16 @@ class DenseLinOp(LinOp[Domain, Codomain]):
 
     def _select_mode(self) -> _DenseMode:
         """Select the dense computation mode once for this operator."""
-        vector_dom = type(self.dom) in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace)
-        vector_cod = type(self.cod) in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace)
+        vector_dom = type(self.dom) in (
+            DenseCoordinateSpace,
+            DenseVectorSpace,
+            ElementwiseJordanSpace,
+        )
+        vector_cod = type(self.cod) in (
+            DenseCoordinateSpace,
+            DenseVectorSpace,
+            ElementwiseJordanSpace,
+        )
         if (
             vector_dom
             and vector_cod
@@ -280,10 +296,7 @@ class DenseLinOp(LinOp[Domain, Codomain]):
     def __eq__(self, x: Any) -> bool:
         """Return whether another dense operator has the same spaces and values."""
         if type(x) is type(self):
-            return (self.dom == x.dom
-                and self.cod == x.cod
-                and self.ops.allclose(self.A, x.A)
-            )
+            return self.dom == x.dom and self.cod == x.cod and self.ops.allclose(self.A, x.A)
         return False
 
     def tree_flatten(self):

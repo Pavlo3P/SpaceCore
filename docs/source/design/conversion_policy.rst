@@ -1,64 +1,57 @@
 Conversion Policy
 =================
 
-SpaceCore is built around the chain
+Context-bound objects expose ``convert(new_ctx)``. In ``0.3.x`` conversion is
+explicit and target-context driven: the requested context controls backend,
+dtype, and ``enable_checks``.
 
-.. math::
+What moves
+----------
 
-   \texttt{BackendOps} \to \texttt{Context} \to \texttt{Space} \to \texttt{LinOp}.
+Spaces are reconstructed in the target context. Shape, structure, tolerances,
+and geometry definitions are preserved. Geometry data that stores arrays, such
+as ``WeightedInnerProduct.weights``, is converted with ``target.asarray``.
 
-Objects that inherit from ``ContextBound`` can be rebuilt under a target
-context:
+Operators are reconstructed in the target context when they implement
+``_convert``. Matrix-backed operators convert stored dense or sparse matrices.
+Algebraic operators convert their operands. Matrix-free operators preserve their
+Python callables and rebuild only their domain, codomain, and context; the
+callables must already be valid for the target backend.
+
+What may fail
+-------------
+
+Conversion may fail when the target backend lacks a required sparse format,
+when dtype conversion is unsupported, when backend-specific callables cannot run
+on the target arrays, or when structural validation rejects the converted data.
+Optional backends are available only when their packages are installed.
+
+Backend differences
+-------------------
+
+NumPy conversion creates NumPy arrays and SciPy sparse objects. JAX conversion
+creates JAX arrays and follows JAX dtype configuration, including
+``jax_enable_x64``. Torch conversion creates tensors and follows PyTorch dtype
+and device semantics; SpaceCore does not silently move tensors across devices.
+CuPy conversion creates CuPy arrays and CuPy sparse objects when CuPy is
+installed.
+
+Example
+-------
 
 .. code-block:: python
 
-   converted = obj.convert(target_context)
+   import numpy as np
+   import spacecore as sc
 
-The current policy is intentionally fixed: the target context wins. Conversion
-uses the target backend, target dtype, and target ``enable_checks`` value. There
-are no global warning/error/silent conversion knobs.
+   src = sc.Context(sc.NumpyOps(), dtype=np.float32)
+   dst = sc.Context(sc.NumpyOps(), dtype=np.float64)
+   X = sc.DenseCoordinateSpace((2,), src)
+   Y = X.convert(dst)
+   print(Y.dtype == np.dtype("float64"))
 
-Context Resolution
-------------------
+Expected output:
 
-When a new context-bound object is created, SpaceCore resolves its context in a
-fixed order:
+.. code-block:: text
 
-1. use an explicit context provided through ``ctx=...``;
-2. otherwise infer a context from inputs that carry ``ctx`` or from registered
-   backend arrays;
-3. otherwise use the global default context from ``spacecore.get_context()``.
-
-A common context is inferred only when all context-carrying inputs use the same
-backend family. If compatible inputs have different dtypes, SpaceCore promotes
-them to a common dtype for that backend. The inferred ``enable_checks`` flag is
-enabled only if all inferred contexts have checks enabled.
-
-Explicit Conversion
--------------------
-
-Calling ``obj.convert(new_ctx)`` normalizes ``new_ctx`` into a full
-``Context``. If the object already uses that context, conversion returns the
-object unchanged. Otherwise, the object is rebuilt in the target context by its
-implementation-specific conversion method.
-
-Backend changes are explicit because the call site supplies the target context.
-If backend migration should be restricted in library code, enforce that policy
-before calling ``convert``.
-
-Dtype Behavior
---------------
-
-During context inference, compatible input dtypes are joined with backend
-promotion rules. During explicit conversion, arrays are converted to the target
-context dtype. To preserve a source dtype across backend conversion, include
-that dtype in the target ``Context``.
-
-Summary
--------
-
-* Constructors resolve one context by priority: explicit ``ctx``, compatible
-  inferred context, then the global default context.
-* Explicit conversion is deterministic: the requested target context controls
-  backend, dtype, and checking behavior.
-* Runtime validation is controlled by ``Context.enable_checks``.
+   True

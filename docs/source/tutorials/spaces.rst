@@ -1,314 +1,124 @@
-Spaces tutorial
+Spaces Tutorial
 ===============
 
-This tutorial follows ``tutorials/3_Space.ipynb``. It introduces ``Space`` as
-the abstraction for the geometry of admissible numerical objects.
+Goal
+   Build a dense vector space, verify its geometry, and see how weighted inner
+   products differ from Euclidean dot products.
+Prerequisites
+   Basic Python and NumPy; no previous SpaceCore experience.
+Estimated time
+   10 minutes.
+Backends used
+   NumPy only.
 
-Current implemented concrete spaces are:
+1. Create a context
+-------------------
 
-* ``DenseCoordinateSpace`` for dense arrays with an inner product;
-* ``DenseVectorSpace`` for plain one-dimensional dense vectors with star;
-* ``ElementwiseJordanSpace`` for dense arrays with elementwise star, Jordan, and
-  spectral operations;
-* ``EuclideanElementwiseJordanSpace`` for real Euclidean elementwise Jordan
-  algebras;
-* ``HermitianSpace`` for Hermitian or symmetric matrices;
-* ``ProductSpace`` for Cartesian products of spaces;
-* ``StackedSpace`` for repeated copies of a leaf space.
-
-What a Space signifies
-----------------------
-
-A ``Space`` represents numerical objects together with their mathematical
-structure. It encodes the operations that are valid for elements of that space,
-not just the storage format.
-
-A space may encode:
-
-* shape;
-* linear structure;
-* inner product and norm;
-* star operations;
-* Jordan algebra operations and spectral calculus;
-* projections;
-* structural constraints such as Hermitian symmetry;
-* product or stacked structure.
-
-Thus a space captures geometry, not merely storage format.
-
-.. math::
-
-   \texttt{BackendOps} \to \texttt{Context} \to \texttt{Space} \to \texttt{LinOp}.
-
-Every space stores a Context
-----------------------------
-
-Each space carries a ``Context``. This means a space knows under which backend,
-dtype, and checking policy its elements live. If ``X`` is a space, then
-``X.ctx`` determines which backend arrays are expected, which dtype is targeted,
-and whether runtime validation checks are enabled.
-
-Core operations
----------------
-
-.. dropdown:: Common Space methods
-
-   * ``zeros()``
-   * ``add(x, y)``
-   * ``scale(a, x)``
-   * ``axpy(a, x, y)``
-   * ``inner(x, y)``
-   * ``norm(x)``
-   * ``flatten(x)``
-   * ``unflatten(v)``
-
-Concrete spaces differ, but they share the same idea: define valid elements,
-provide linear operations, define geometry, and create or validate elements in a
-backend-aware way. Capability-specific methods such as ``star``, ``jordan``,
-``spectrum``, and ``spectral_apply`` are present only on spaces that implement
-the corresponding algebraic interfaces.
-
-DenseCoordinateSpace
---------------------
-
-``DenseCoordinateSpace`` represents dense backend arrays with a fixed shape and
-an inner-product geometry. If
-
-.. math::
-
-   X = \texttt{DenseCoordinateSpace}(\texttt{shape}=(n_1,\dots,n_k)),
-
-then elements of ``X`` are dense arrays of shape ``(n_1, ..., n_k)`` compatible
-with the stored context.
+A context owns the backend operations, dtype, and runtime checking policy used
+by the objects you create.
 
 .. code-block:: python
 
    import numpy as np
-   from spacecore.backend import Context, NumpyOps
-   from spacecore.space import DenseCoordinateSpace
+   import spacecore as sc
 
-   ctx = Context(NumpyOps(), dtype=np.float64, enable_checks=True)
-   X = DenseCoordinateSpace((2, 3), ctx=ctx)
+   ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, enable_checks=True)
+   print(ctx.ops.family)
+   print(ctx.dtype == np.dtype("float64"))
 
-   x = X.zeros()
-   y = ctx.asarray([[1, 2, 3], [4, 5, 6]])
+Expected output:
 
-``DenseCoordinateSpace`` supports linear operations and inner products:
+.. code-block:: text
 
-.. math::
+   numpy
+   True
 
-   x + y,\qquad \alpha x,\qquad \langle x,y\rangle,\qquad \|x\|.
+Checkpoint: ``ctx.asarray([1.0]).dtype`` should be ``float64``.
 
-Its default geometry is Euclidean. It also accepts compatible custom inner
-products such as ``WeightedInnerProduct``:
+2. Build a Euclidean coordinate space
+-------------------------------------
 
-.. code-block:: python
-
-   from spacecore.space import WeightedInnerProduct
-
-   weights = ctx.asarray([2.0, 5.0, 11.0])
-   X_weighted = DenseCoordinateSpace(
-       (3,), ctx=ctx, geometry=WeightedInnerProduct(weights)
-   )
-
-Membership is contextual and geometric: correct shape, correct backend
-representation, and correct dtype when checks are enabled.
-
-ElementwiseJordanSpace and DenseVectorSpace
--------------------------------------------
-
-``ElementwiseJordanSpace`` is the dense coordinate space whose algebra is
-coordinatewise multiplication. It supports star, Jordan products, and spectral
-calculus:
+``DenseCoordinateSpace((2,), ctx)`` represents one element of
+:math:`\mathbb{R}^2` stored as a dense backend array with shape ``(2,)``.
 
 .. code-block:: python
 
-   from spacecore.space import ElementwiseJordanSpace
+   X = sc.DenseCoordinateSpace((2,), ctx)
+   x = ctx.asarray([3.0, 4.0])
+   y = ctx.asarray([1.0, 2.0])
 
-   J = ElementwiseJordanSpace((3,), ctx=ctx)
-   x = ctx.asarray([1.0, 2.0, 3.0])
-   y = ctx.asarray([4.0, 5.0, 6.0])
+   print(X.shape)
+   print(X.inner(x, y))
+   print(X.norm(x))
 
-   z = J.jordan(x, y)      # coordinatewise product
-   s = J.spectrum(x)       # x itself for the elementwise algebra
+Expected output:
 
-``ElementwiseJordanSpace`` may be real or complex, and may use valid custom
-inner products. It advertises ``EuclideanJordanAlgebraSpace`` only when the
-context dtype is real and the geometry is ``EuclideanInnerProduct``; complex or
-weighted elementwise spaces keep only the plain Jordan capability.
+.. code-block:: text
 
-``DenseVectorSpace`` is a plain one-dimensional dense vector space with star and
-no Jordan capability by default. Use ``DenseCoordinateSpace`` for generic dense
-arrays, ``DenseVectorSpace`` for plain vectors, and ``ElementwiseJordanSpace``
-when coordinatewise Jordan algebra is required.
+   (2,)
+   11.0
+   5.0
 
-HermitianSpace
---------------
+Checkpoint: ``X.check_member(x)`` should run without raising.
 
-``HermitianSpace`` represents Hermitian matrices of fixed square shape. If
-``H = HermitianSpace(n)``, then its elements satisfy
-
-.. math::
-
-   A \in \mathbb{F}^{n \times n},
-   \qquad
-   A = A^*.
-
-This space encodes Hermitian symmetry in addition to shape. Because of that, it
-provides geometry-specific operations such as symmetrization, eigendecomposition,
-and projection onto the positive semidefinite cone.
-
-Given a square matrix :math:`M`, symmetrization computes
-
-.. math::
-
-   \frac{M + M^*}{2}.
-
-Hermitian eigendecomposition has the form
-
-.. math::
-
-   A = U \operatorname{diag}(\lambda) U^*.
-
-Projection onto the PSD cone clips negative eigenvalues:
-
-.. math::
-
-   U \operatorname{diag}(\lambda) U^*
-   \mapsto
-   U \operatorname{diag}(\max(\lambda,0)) U^*.
-
-.. code-block:: python
-
-   import numpy as np
-   from spacecore.backend import Context, NumpyOps
-   from spacecore.space import HermitianSpace
-
-   ctx = Context(NumpyOps(), dtype=np.complex128, enable_checks=True)
-   H = HermitianSpace(3, ctx=ctx)
-
-   A = ctx.asarray([
-       [1, 1 + 2j, 0],
-       [1 - 2j, 3, 4j],
-       [0, -4j, 2],
-   ])
-   H.check_member(A)
-
-ProductSpace
-------------
-
-``ProductSpace`` represents a Cartesian product. Tuple elements are the default
-representation, with one component per factor space. If
-
-.. math::
-
-   X = X_1 \times \cdots \times X_k,
-
-then the default element representation is
-
-.. math::
-
-   (x_1,\dots,x_k), \qquad x_i \in X_i.
-
-This is useful whenever a variable is naturally block-structured.
-
-Addition, scaling, and supported capability methods are componentwise:
-
-.. math::
-
-   (x_1,\dots,x_k) + (y_1,\dots,y_k)
-   =
-   (x_1+y_1,\dots,x_k+y_k).
-
-When constructed through ``ProductSpace(...)``, SpaceCore returns an internal
-implementation class with the capabilities supported by all components: inner
-product, star, Jordan, and Euclidean-Jordan operations are available exactly
-when every component supports them.
-
-If any component lacks a capability, the resulting product does not advertise
-that capability. This keeps ``isinstance`` checks truthful.
-
-Flattening moves between any supported product element representation and flat
-coordinates:
-
-.. math::
-
-   (x_1,\dots,x_k)
-   \mapsto
-   \operatorname{concat}(\operatorname{flatten}(x_1),\dots,\operatorname{flatten}(x_k)).
-
-The flat vector depends only on the ordered components, not on whether the
-user-facing product element is a tuple or a registered pytree/dataclass.
-
-.. code-block:: python
-
-   from spacecore.space import ProductSpace, DenseCoordinateSpace
-
-   X1 = DenseCoordinateSpace((2,), ctx=ctx)
-   X2 = DenseCoordinateSpace((3,), ctx=ctx)
-   X_prod = ProductSpace((X1, X2), ctx=ctx)
-
-   x = (ctx.asarray([1.0, 2.0]), ctx.asarray([3.0, 4.0, 5.0]))
-   flat = X_prod.flatten(x)
-   x_back = X_prod.unflatten(flat)
-
-Structured product elements are available by building from a registered pytree
-template. For dataclasses used with JAX tree utilities, register the dataclass
-as a pytree; bare dataclasses are opaque leaves and are not automatically
-treated as product components.
-
-.. code-block:: python
-
-   from dataclasses import dataclass
-   import jax
-   from spacecore.space import ProductSpace, DenseCoordinateSpace
-
-   @jax.tree_util.register_pytree_node_class
-   @dataclass(frozen=True)
-   class State:
-       position: object
-       velocity: object
-
-       def tree_flatten(self):
-           return (self.position, self.velocity), None
-
-       @classmethod
-       def tree_unflatten(cls, aux, children):
-           return cls(*children)
-
-   X1 = DenseCoordinateSpace((2,), ctx=ctx)
-   X2 = DenseCoordinateSpace((2,), ctx=ctx)
-   template = State(ctx.asarray([0.0, 0.0]), ctx.asarray([0.0, 0.0]))
-   X_state = ProductSpace.from_template((X1, X2), template, ctx=ctx)
-
-   x = State(ctx.asarray([1.0, 2.0]), ctx.asarray([3.0, 4.0]))
-   y = X_state.scale(2.0, x)  # returns State, not a tuple
-   flat = X_state.flatten(x)
-
-StackedSpace
-------------
-
-``StackedSpace(base, count)`` represents ``count`` independent copies of a leaf
-space stacked on a leading axis. Like products, construction returns an
-internal implementation class preserving the base space capabilities.
-
-For product spaces, call ``ProductSpace(...).stacked(count)``. This stacks each
-component instead of wrapping the product as a single leaf.
-
-Choosing the right space
+3. Add weighted geometry
 ------------------------
 
-Use ``DenseCoordinateSpace`` for generic dense arrays, including weighted or
-custom inner-product geometry. Use ``ElementwiseJordanSpace`` when dense arrays
-need coordinatewise star, Jordan, or spectral operations. Use
-``HermitianSpace`` when Hermitian structure matters, ``ProductSpace`` when
-variables are naturally block-structured, and ``StackedSpace`` for repeated
-copies of a leaf space.
+A weighted space has the same element representation but a different inner
+product. For weights ``w``, SpaceCore computes
+:math:`\langle x, y \rangle_X = \operatorname{vdot}(x, w y)`.
 
-Summary
--------
+.. code-block:: python
 
-``Space`` turns raw arrays into explicit geometric objects. It stores a context,
-defines valid elements, and provides the operations algorithms should use. The
-public hierarchy advertises only the capabilities each concrete space actually
-supports.
+   weights = ctx.asarray([2.0, 5.0])
+   Xw = sc.DenseCoordinateSpace((2,), ctx, geometry=sc.WeightedInnerProduct(weights))
+
+   print(Xw.inner(x, y))
+   print(Xw.riesz(x))
+   print(Xw.is_euclidean)
+
+Expected output:
+
+.. code-block:: text
+
+   46.0
+   [ 6. 20.]
+   False
+
+Checkpoint: ``X.inner(x, y)`` is ``11.0`` but ``Xw.inner(x, y)`` is ``46.0``.
+
+What can go wrong
+-----------------
+
+.. admonition:: Wrong weight shape
+
+   ``WeightedInnerProduct`` weights must match the coordinate shape exactly.
+
+   .. code-block:: python
+
+      try:
+          sc.DenseCoordinateSpace(
+              (3,), ctx, geometry=sc.WeightedInnerProduct(weights)
+          )
+      except ValueError as exc:
+          print(exc)
+
+   Expected output:
+
+   .. code-block:: text
+
+      WeightedInnerProduct weights must have exactly the coordinate shape (3,); got (2,).
+
+Recap
+-----
+
+* A ``Context`` fixes backend, dtype, and checking policy.
+* A ``DenseCoordinateSpace`` describes one element shape, not a batch.
+* Geometry changes ``inner``, ``norm``, and adjoint semantics.
+* ``riesz`` maps coordinate elements to dual coordinates for the metric.
+
+Next steps
+----------
+
+Continue with :doc:`linops` to build maps between spaces. Read
+:doc:`../design/geometry` for metric adjoint details.

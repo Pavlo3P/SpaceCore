@@ -36,7 +36,9 @@ def space_has_riesz_maps(space) -> bool:
 def _requires_euclidean_or_riesz(dom, cod, opname: str) -> None:
     """Reject non-Euclidean spaces that cannot define metric adjoints."""
     for space, role in ((dom, "domain"), (cod, "codomain")):
-        if isinstance(space, InnerProductSpace) and (space.is_euclidean or space_has_riesz_maps(space)):
+        if isinstance(space, InnerProductSpace) and (
+            space.is_euclidean or space_has_riesz_maps(space)
+        ):
             continue
         raise TypeError(
             f"{opname} on non-Euclidean {role} {type(space).__name__} "
@@ -111,6 +113,7 @@ def metric_rvapply(
         return domain.riesz_inverse(tmp)
     except _METRIC_BATCH_FALLBACK_ERRORS as err:
         _warn_metric_batch_fallback(opname, err)
+
         def per_elem(y):
             return metric_rapply(domain, codomain, euclidean_rapply, y)
 

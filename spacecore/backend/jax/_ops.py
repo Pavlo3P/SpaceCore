@@ -59,6 +59,7 @@ class JaxOps(BackendOps):
     import jax
     import jax.numpy as jnp
     import jax.experimental.sparse as jsparse
+
     xp = jnp
 
     _family = BackendFamily.jax.value.lower()
@@ -89,7 +90,7 @@ class JaxOps(BackendOps):
                 warn(
                     "jax_enable_x64 is set to False, so default JAX dtype is set to float32. "
                     "If you need float64, run `jax.config.update('jax_enable_x64', True)`.",
-                    UserWarning
+                    UserWarning,
                 )
                 return self.jnp.float32
             return self.jnp.float64
@@ -147,13 +148,13 @@ class JaxOps(BackendOps):
         return (self.jsparse.BCOO, self.jsparse.BCSR)
 
     def assparse(
-            self,
-            x: Any,
-            *,
-            format: Literal["bcoo", "bcsr"] = "bcoo",
-            index_dtype: DType | None = None,
-            nse: int | None = None,
-            dtype: DType | None = None,
+        self,
+        x: Any,
+        *,
+        format: Literal["bcoo", "bcsr"] = "bcoo",
+        index_dtype: DType | None = None,
+        nse: int | None = None,
+        dtype: DType | None = None,
     ) -> SparseArray:
         """
         Convert input to a sparse array using JAX.
@@ -237,10 +238,10 @@ class JaxOps(BackendOps):
         return a @ b
 
     def vmap(
-            self,
-            fn: Callable,
-            in_axes: int | Sequence[int | None] | None = 0,
-            out_axes: int | Sequence[int | None] | None = 0,
+        self,
+        fn: Callable,
+        in_axes: int | Sequence[int | None] | None = 0,
+        out_axes: int | Sequence[int | None] | None = 0,
     ) -> Callable:
         """Vectorize a function using ``jax.vmap``."""
         return self.jax.vmap(fn, in_axes=in_axes, out_axes=out_axes)
@@ -250,8 +251,15 @@ class JaxOps(BackendOps):
         """Return ``True`` because JAX provides native ``vmap``."""
         return True
 
-    def logsumexp(self, a: DenseArray, axis: int | Sequence[int] | None = None, b: DenseArray | None = None, keepdims: bool = False,
-                  return_sign: bool = False, where: DenseArray | None = None) -> DenseArray | Tuple[DenseArray, DenseArray]:
+    def logsumexp(
+        self,
+        a: DenseArray,
+        axis: int | Sequence[int] | None = None,
+        b: DenseArray | None = None,
+        keepdims: bool = False,
+        return_sign: bool = False,
+        where: DenseArray | None = None,
+    ) -> DenseArray | Tuple[DenseArray, DenseArray]:
         """
         Compute a stable log-sum-exp reduction using JAX.
 
@@ -264,7 +272,9 @@ class JaxOps(BackendOps):
         See:
             https://docs.jax.dev/en/latest/_autosummary/jax.scipy.special.logsumexp.html
         """
-        return self.jax.scipy.special.logsumexp(a, axis=axis, b=b, keepdims=keepdims, return_sign=return_sign, where=where)
+        return self.jax.scipy.special.logsumexp(
+            a, axis=axis, b=b, keepdims=keepdims, return_sign=return_sign, where=where
+        )
 
     def index_set(self, x: DenseArray, index: Index, values: ArrayLike, *, copy: bool = True):
         """
@@ -283,9 +293,7 @@ class JaxOps(BackendOps):
             JAX arrays are immutable; copy=False raises NotImplementedError.
         """
         if not copy:
-            raise NotImplementedError(
-                "JAX arrays are immutable; copy=False is not supported."
-            )
+            raise NotImplementedError("JAX arrays are immutable; copy=False is not supported.")
         return x.at[index].set(values)
 
     def ix_(self, *args: Any) -> Any:
@@ -377,14 +385,22 @@ class JaxOps(BackendOps):
         Backend-specific notes:
             Inputs and outputs may be pytrees and are staged according to JAX lax.scan semantics.
         """
-        return self.jax.lax.scan(f, init, xs, length=length, reverse=reverse, unroll=unroll, _split_transpose=_split_transpose)
+        return self.jax.lax.scan(
+            f,
+            init,
+            xs,
+            length=length,
+            reverse=reverse,
+            unroll=unroll,
+            _split_transpose=_split_transpose,
+        )
 
     def cond(
-            self,
-            pred: bool,
-            true_fun: Callable[[T], R],
-            false_fun: Callable[[T], R],
-            *operands: Any,
+        self,
+        pred: bool,
+        true_fun: Callable[[T], R],
+        false_fun: Callable[[T], R],
+        *operands: Any,
     ) -> R:
         """
         Run conditional branch selection using JAX.
@@ -420,17 +436,15 @@ class JaxOps(BackendOps):
             JAX arrays are immutable; copy=False raises NotImplementedError and repeated indices follow JAX scatter-add semantics.
         """
         if not copy:
-            raise NotImplementedError(
-                "JAX arrays are immutable; copy=False is not supported."
-            )
+            raise NotImplementedError("JAX arrays are immutable; copy=False is not supported.")
         return x.at[index].add(values)
 
     def allclose_sparse(
-            self,
-            a: SparseArray,
-            b: SparseArray,
-            rtol: float = 1e-5,
-            atol: float = 1e-8,
+        self,
+        a: SparseArray,
+        b: SparseArray,
+        rtol: float = 1e-5,
+        atol: float = 1e-8,
     ) -> bool:
         """
         Compare sparse arrays elementwise within tolerances using JAX.

@@ -13,9 +13,7 @@ def _convert_space_element(space: Space, value: Any) -> Any:
     """Convert a value recursively into a possibly product-valued space."""
     if hasattr(space, "spaces") and isinstance(value, tuple):
         if len(value) != len(space.spaces):
-            raise ValueError(
-                f"Expected tuple of length {len(space.spaces)}, got {len(value)}."
-            )
+            raise ValueError(f"Expected tuple of length {len(space.spaces)}, got {len(value)}.")
         return tuple(
             _convert_space_element(component_space, component)
             for component_space, component in zip(space.spaces, value)
@@ -28,8 +26,7 @@ def _broadcast_space_element(space: Space, value: Any, n: int) -> Any:
     parts = getattr(space, "spaces", None)
     if parts is not None:
         return tuple(
-            _broadcast_space_element(part, component, n)
-            for part, component in zip(parts, value)
+            _broadcast_space_element(part, component, n) for part, component in zip(parts, value)
         )
     return space.ops.broadcast_to(value, (n,) + tuple(space.shape))
 
@@ -244,9 +241,7 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
         Any
             This property never returns; it raises ``NotImplementedError``.
         """
-        raise NotImplementedError(
-            f"{type(self).__name__} does not store a Riesz representer."
-        )
+        raise NotImplementedError(f"{type(self).__name__} does not store a Riesz representer.")
 
     @checked_method(in_space="domain")
     def value(self, x: Any) -> Any:

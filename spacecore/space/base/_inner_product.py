@@ -109,7 +109,9 @@ class WeightedInnerProduct(InnerProduct):
         try:
             weights_np = _np.asarray(weights)
         except Exception as exc:
-            raise TypeError("WeightedInnerProduct weights must be host-readable for validation.") from exc
+            raise TypeError(
+                "WeightedInnerProduct weights must be host-readable for validation."
+            ) from exc
         if space.ops.is_complex_dtype(dtype):
             if not _np.allclose(_np.imag(weights_np), 0):
                 raise ValueError("WeightedInnerProduct weights must be real-valued.")

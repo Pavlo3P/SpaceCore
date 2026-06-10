@@ -76,19 +76,33 @@ def _check_raw_delegated_ops(ops, dtype):
     cube = ops.reshape(ops.arange(24, dtype=dtype), (2, 3, 4))
     singleton = ops.reshape(ops.arange(6, dtype=dtype), (1, 2, 1, 3))
 
-    np.testing.assert_allclose(to_numpy(ops.matmul(h, ops.asarray([1.0, 2.0], dtype=dtype))), [4.0, 7.0])
+    np.testing.assert_allclose(
+        to_numpy(ops.matmul(h, ops.asarray([1.0, 2.0], dtype=dtype))), [4.0, 7.0]
+    )
     np.testing.assert_allclose(to_numpy(ops.reshape(x, (6,))), np.arange(1.0, 7.0))
     np.testing.assert_allclose(to_numpy(ops.sum(x, axis=0)), [5.0, 7.0, 9.0])
-    np.testing.assert_allclose(to_numpy(ops.sum(cube, axis=(0, 2))), np.arange(24.0).reshape(2, 3, 4).sum(axis=(0, 2)))
-    np.testing.assert_allclose(to_numpy(ops.prod(cube + 1, axis=(0, 2))), (np.arange(24.0).reshape(2, 3, 4) + 1).prod(axis=(0, 2)))
-    np.testing.assert_allclose(to_numpy(ops.mean(cube, axis=(0, 2))), np.arange(24.0).reshape(2, 3, 4).mean(axis=(0, 2)))
+    np.testing.assert_allclose(
+        to_numpy(ops.sum(cube, axis=(0, 2))), np.arange(24.0).reshape(2, 3, 4).sum(axis=(0, 2))
+    )
+    np.testing.assert_allclose(
+        to_numpy(ops.prod(cube + 1, axis=(0, 2))),
+        (np.arange(24.0).reshape(2, 3, 4) + 1).prod(axis=(0, 2)),
+    )
+    np.testing.assert_allclose(
+        to_numpy(ops.mean(cube, axis=(0, 2))), np.arange(24.0).reshape(2, 3, 4).mean(axis=(0, 2))
+    )
     assert ops.shape(ops.squeeze(singleton)) == (2, 3)
     np.testing.assert_allclose(to_numpy(ops.trace(h)), 5.0)
-    np.testing.assert_allclose(to_numpy(ops.concatenate((x, x), axis=0)), np.concatenate((to_numpy(x), to_numpy(x)), axis=0))
+    np.testing.assert_allclose(
+        to_numpy(ops.concatenate((x, x), axis=0)),
+        np.concatenate((to_numpy(x), to_numpy(x)), axis=0),
+    )
     np.testing.assert_allclose(to_numpy(ops.transpose(y)), to_numpy(y).T)
 
     evals, evecs = ops.eigh(h)
-    np.testing.assert_allclose(to_numpy(evecs @ ops.diag(evals) @ ops.transpose(evecs)), to_numpy(h), atol=1e-6)
+    np.testing.assert_allclose(
+        to_numpy(evecs @ ops.diag(evals) @ ops.transpose(evecs)), to_numpy(h), atol=1e-6
+    )
 
 
 def test_numpy_raw_delegated_ops():
@@ -115,7 +129,9 @@ def test_numpy_eps_uses_default_dtype():
     sc = importlib.import_module("spacecore")
     ops = sc.NumpyOps()
 
-    np.testing.assert_allclose(ops.eps(ops.sanitize_dtype(None)), np.finfo(ops.sanitize_dtype(None)).eps)
+    np.testing.assert_allclose(
+        ops.eps(ops.sanitize_dtype(None)), np.finfo(ops.sanitize_dtype(None)).eps
+    )
 
 
 @pytest.mark.skipif(not has_jax(), reason="jax is not installed")
@@ -132,7 +148,9 @@ def test_torch_eps_uses_default_dtype():
     import torch
 
     ops = sc.TorchOps()
-    np.testing.assert_allclose(ops.eps(ops.sanitize_dtype(None)), torch.finfo(ops.sanitize_dtype(None)).eps)
+    np.testing.assert_allclose(
+        ops.eps(ops.sanitize_dtype(None)), torch.finfo(ops.sanitize_dtype(None)).eps
+    )
 
 
 def test_backend_ops_hash_and_repr():

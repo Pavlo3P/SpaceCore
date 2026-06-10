@@ -23,8 +23,10 @@ def _resolve_elementwise_geometry(
     """Resolve the public geometry aliases for elementwise coordinate spaces."""
     if geometry is not None and inner_product is not None:
         raise TypeError("Specify either geometry or inner_product, not both.")
-    return EuclideanInnerProduct() if geometry is None and inner_product is None else (
-        inner_product if inner_product is not None else geometry
+    return (
+        EuclideanInnerProduct()
+        if geometry is None and inner_product is None
+        else (inner_product if inner_product is not None else geometry)
     )
 
 

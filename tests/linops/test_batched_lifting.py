@@ -142,17 +142,25 @@ def test_product_linops_batched_lifting_matches_stacked_apply():
     single_y = ctx.asarray([[1.0, 2.0], [3.0, -2.0]])
 
     block_v = block.vapply(xb)
-    block_expected = tuple(ctx.ops.stack(tuple(block.apply((xb[0][i], xb[1][i]))[j] for i in range(2))) for j in range(2))
+    block_expected = tuple(
+        ctx.ops.stack(tuple(block.apply((xb[0][i], xb[1][i]))[j] for i in range(2)))
+        for j in range(2)
+    )
     assert np.allclose(block_v[0], block_expected[0])
     assert np.allclose(block_v[1], block_expected[1])
 
     block_rv = block.rvapply(yb)
-    block_r_expected = tuple(ctx.ops.stack(tuple(block.rapply((yb[0][i], yb[1][i]))[j] for i in range(2))) for j in range(2))
+    block_r_expected = tuple(
+        ctx.ops.stack(tuple(block.rapply((yb[0][i], yb[1][i]))[j] for i in range(2)))
+        for j in range(2)
+    )
     assert np.allclose(block_rv[0], block_r_expected[0])
     assert np.allclose(block_rv[1], block_r_expected[1])
 
     stacked_v = stacked.vapply(single_x)
-    stacked_expected = tuple(ctx.ops.stack(tuple(stacked.apply(single_x[i])[j] for i in range(2))) for j in range(2))
+    stacked_expected = tuple(
+        ctx.ops.stack(tuple(stacked.apply(single_x[i])[j] for i in range(2))) for j in range(2)
+    )
     assert np.allclose(stacked_v[0], stacked_expected[0])
     assert np.allclose(stacked_v[1], stacked_expected[1])
 

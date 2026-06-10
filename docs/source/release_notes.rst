@@ -1,6 +1,67 @@
 Release notes
 =============
 
+Version 0.3.1
+-------------
+
+SpaceCore 0.3.1 is a stabilization release for the ``0.3.x`` API. It focuses
+on release-candidate verification, documentation consistency, executable
+tutorials, package artifacts, and public API audit cleanup. It does not add new
+solver families and does not include SDPLab-specific downstream validation.
+
+Fixes
+~~~~~
+
+* Updated active tutorial notebooks to use current public APIs:
+  ``MatrixFreeLinOp`` for action-defined operators, ``lanczos_smallest`` for
+  smallest-Ritz-eigenpair estimation, and ``DenseVectorSpace`` for dense vector
+  construction.
+* Removed invalid notebook output metadata that produced nbformat validation
+  warnings during execution.
+* Updated the removed-API audit to skip ``.venv*`` directories so installed
+  third-party packages are not reported as SpaceCore migration findings.
+
+Documentation
+~~~~~~~~~~~~~
+
+* Reworked API reference pages for backend, context, spaces, linear operators,
+  functionals, and linalg.
+* Added design notes for context ownership, batching, and capability dispatch.
+* Clarified conversion and dtype policies around explicit target contexts.
+* Clarified adjoint language so metric adjoints are not described as merely
+  coordinate transposes outside Euclidean coordinate spaces.
+* Added a public docstring audit record for the ``0.3.1`` release candidate.
+
+Examples and tutorials
+~~~~~~~~~~~~~~~~~~~~~~
+
+* Added a SpaceCore-only weighted Tikhonov worked example that exercises
+  weighted spaces, metric adjoints, lazy operator algebra, conjugate gradients,
+  and an independent dense NumPy reference solve.
+* Added tests for the weighted Tikhonov example.
+* Re-executed the active tutorial notebooks and worked example as part of the
+  release-candidate gate.
+
+Testing and packaging
+~~~~~~~~~~~~~~~~~~~~~
+
+* Documentation CI builds Sphinx with warnings treated as errors.
+* Release-candidate verification covers the full test suite, strict docs build,
+  public API audit, source distribution and wheel build, ``twine check``, clean
+  wheel installation, and installed-package smoke testing.
+
+Known limitations
+~~~~~~~~~~~~~~~~~
+
+* Solver coverage remains intentionally narrow: CG, LSQR, power iteration,
+  Lanczos smallest-eigenpair estimation, and matrix-exponential actions.
+* Optional backend support depends on installed optional dependencies. CuPy is
+  not required for the core release-candidate gate.
+* The regularized optimal transport tutorial is illustrative and depends on
+  optional JAX/Optax packages; it is not a production OT solver.
+* SDPLab-specific downstream validation is intentionally out of scope for this
+  release-candidate check.
+
 Version 0.3.0
 -------------
 

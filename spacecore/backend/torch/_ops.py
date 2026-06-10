@@ -54,6 +54,7 @@ class TorchOps(BackendOps):
     """
 
     import torch
+
     xp = LazyNamespace("array_api_compat.torch")
 
     _family = BackendFamily.torch.value.lower()
@@ -633,7 +634,9 @@ class TorchOps(BackendOps):
         See:
             https://docs.pytorch.org/docs/stable/generated/torch.meshgrid.html
         """
-        tensors = tuple(arg if isinstance(arg, self.torch.Tensor) else self.asarray(arg) for arg in args)
+        tensors = tuple(
+            arg if isinstance(arg, self.torch.Tensor) else self.asarray(arg) for arg in args
+        )
         return self.torch.meshgrid(*tensors, indexing="ij")
 
     def fori_loop(self, lower: int, upper: int, body_fun: Callable[[int, T], T], init_val: T) -> T:
@@ -659,7 +662,9 @@ class TorchOps(BackendOps):
             val = body_fun(i, val)
         return val
 
-    def while_loop(self, cond_fun: Callable[[T], bool], body_fun: Callable[[T], T], init_val: T) -> T:
+    def while_loop(
+        self, cond_fun: Callable[[T], bool], body_fun: Callable[[T], T], init_val: T
+    ) -> T:
         """
         Run a while loop eagerly in Python for PyTorch.
 
@@ -767,7 +772,9 @@ class TorchOps(BackendOps):
             ys_steps.reverse()
         return carry, self._tree_stack(ys_steps)
 
-    def cond(self, pred: bool, true_fun: Callable[[T], R], false_fun: Callable[[T], R], *operands: Any) -> R:
+    def cond(
+        self, pred: bool, true_fun: Callable[[T], R], false_fun: Callable[[T], R], *operands: Any
+    ) -> R:
         """
         Run conditional branch selection eagerly in Python for PyTorch.
 
@@ -786,7 +793,9 @@ class TorchOps(BackendOps):
         """
         return true_fun(*operands) if bool(pred) else false_fun(*operands)
 
-    def allclose_sparse(self, a: SparseArray, b: SparseArray, rtol: float = 1e-5, atol: float = 1e-8) -> bool:
+    def allclose_sparse(
+        self, a: SparseArray, b: SparseArray, rtol: float = 1e-5, atol: float = 1e-8
+    ) -> bool:
         """
         Compare sparse tensors elementwise within tolerances using PyTorch.
 

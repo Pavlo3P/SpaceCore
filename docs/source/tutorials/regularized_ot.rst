@@ -38,7 +38,7 @@ the same problem definition across backends: NumPy for a reference
 Sinkhorn solve, and JAX/Optax for a differentiable dual optimization
 loop.
 
-.. code:: ipython3
+.. code:: python
 
     import numpy as np
     import matplotlib.pyplot as plt
@@ -46,7 +46,7 @@ loop.
     
     from spacecore.backend import Context, JaxOps, NumpyOps
     from spacecore.space import DenseCoordinateSpace
-    from spacecore.linop import LinOp
+    from spacecore.linop import MatrixFreeLinOp
 
 Encoding the mathematics once
 -----------------------------
@@ -59,7 +59,7 @@ The marginal constraints can be written as one linear equation
    A(P) = \begin{bmatrix} P \mathbf{1}_n \\ P^\top \mathbf{1}_m \end{bmatrix}
    = \begin{bmatrix} a \\ b \end{bmatrix}.
 
-``MarginalLinOp`` is this operator :math:`A`. Its forward pass computes
+``make_marginal_linop`` builds this operator :math:`A` with ``MatrixFreeLinOp``. Its forward pass computes
 row and column sums. Its adjoint :math:`A^*` takes marginal dual
 variables and broadcasts them back to a matrix-shaped object, so each
 entry :math:`(i, j)` receives the source potential for row :math:`i` and
@@ -89,47 +89,37 @@ Because the operator, arrays, and spaces all carry a ``Context``, the
 same implementation can be converted from NumPy to JAX without rewriting
 these formulas.
 
-.. code:: ipython3
+.. code:: python
 
-    class MarginalLinOp(LinOp):
-        def __init__(self, plan_space, *, ctx=None):
-            # The variable of the OT problem is a matrix P with shape (m, n).
-            # Row i stores mass sent out of source bin i; column j stores mass
-            # received by target bin j.
-            m, n = plan_space.shape
-            resolved_ctx = plan_space.ctx if ctx is None else ctx
-    
-            # A(P) contains all equality constraints in one vector:
-            #     [row sums of P, column sums of P].
-            marginal_space = DenseCoordinateSpace((m + n,), ctx=resolved_ctx)
-            super().__init__(dom=plan_space, cod=marginal_space, ctx=resolved_ctx)
-            self.m = m
-            self.n = n
-    
-        def apply(self, plan):
-            if self._enable_checks:
-                self.dom.check_member(plan)
-    
+    def make_marginal_linop(plan_space, *, ctx=None):
+        # The variable of the OT problem is a matrix P with shape (m, n).
+        # Row i stores mass sent out of source bin i; column j stores mass
+        # received by target bin j.
+        m, n = plan_space.shape
+        resolved_ctx = plan_space.ctx if ctx is None else ctx
+
+        # A(P) contains all equality constraints in one vector:
+        #     [row sums of P, column sums of P].
+        marginal_space = DenseCoordinateSpace((m + n,), ctx=resolved_ctx)
+        ops = resolved_ctx.ops
+
+        def apply(plan):
             # Forward map A(P): transport plan -> achieved marginals.
-            row_sums = self.ops.sum(plan, axis=1)
-            column_sums = self.ops.sum(plan, axis=0)
-            return self.ops.concatenate([row_sums, column_sums])
-    
-        def rapply(self, marginal_dual):
-            if self._enable_checks:
-                self.cod.check_member(marginal_dual)
-    
+            row_sums = ops.sum(plan, axis=1)
+            column_sums = ops.sum(plan, axis=0)
+            return ops.concatenate([row_sums, column_sums])
+
+        def rapply(marginal_dual):
             # Adjoint map A^*(lambda): marginal potentials -> plan-shaped scores.
             # The first m entries price source constraints; the last n entries
             # price target constraints. Each transport entry P[i, j] sees both.
-            row_dual = marginal_dual[:self.m]
-            column_dual = marginal_dual[self.m:]
+            row_dual = marginal_dual[:m]
+            column_dual = marginal_dual[m:]
             return row_dual[:, None] + column_dual[None, :]
-    
-        def _convert(self, new_ctx):
-            return MarginalLinOp(self.dom.convert(new_ctx), ctx=new_ctx)
-    
-    
+
+        return MatrixFreeLinOp(apply, rapply, plan_space, marginal_space, ctx=resolved_ctx)
+
+
     class RegularizedOTProblem:
         def __init__(self, source, target, cost, epsilon, *, ctx):
             self.ctx = ctx
@@ -148,7 +138,7 @@ these formulas.
                 raise ValueError('target must match the number of cost columns')
     
             self.plan_space = DenseCoordinateSpace((self.m, self.n), ctx=ctx)
-            self.marginal_op = MarginalLinOp(self.plan_space, ctx=ctx)
+            self.marginal_op = make_marginal_linop(self.plan_space, ctx=ctx)
             self.marginal_target = self.ops.concatenate([self.source, self.target])
     
         def convert(self, new_ctx):
@@ -226,7 +216,7 @@ of the same size. Keeping the source and target marginals the same
 length is not required by OT, but it removes shape distractions and
 keeps attention on the operator-based formulation.
 
-.. code:: ipython3
+.. code:: python
 
     np_ctx = Context(NumpyOps(), dtype='float64', enable_checks=True)
     np_ops = np_ctx.ops
@@ -277,7 +267,7 @@ Sinkhorn scaling. This gives a reliable reference transport plan and
 also checks that the data, cost, and marginal operator agree before
 moving to a different backend.
 
-.. code:: ipython3
+.. code:: python
 
     def solve_sinkhorn(problem, *, max_iter=20_000, tolerance=1e-12):
         ops = problem.ops
@@ -334,7 +324,7 @@ column potentials. We leave that invariance alone here; no extra
 normalization dual variable or penalty is needed for the notebook’s
 purpose.
 
-.. code:: ipython3
+.. code:: python
 
     import jax
     jax.config.update('jax_enable_x64', True)
@@ -506,7 +496,7 @@ These plots are intentionally backend-level diagnostics: they confirm
 that the JAX version of the reusable problem object is behaving like the
 NumPy reference problem.
 
-.. code:: ipython3
+.. code:: python
 
     def plot_convergence(history):
         # The history was collected only at printed checkpoints, not every Optax
@@ -556,7 +546,7 @@ they are solving the same regularized OT problem. This comparison is
 mainly a sanity check that the context conversion preserved the model
 rather than changing the mathematics.
 
-.. code:: ipython3
+.. code:: python
 
     plan_jax_np = to_numpy(plan_jax)
     plan_np_array = to_numpy(plan_np)
@@ -591,7 +581,7 @@ The important point is that both plots come from the same
 ``RegularizedOTProblem`` definition. The backend changed; the
 mathematical model and the surrounding object structure did not.
 
-.. code:: ipython3
+.. code:: python
 
     def plot_distributions(source_grid, source, target_grid, target):
         # Plot the two 1D measures before looking at the 2D transport matrix.

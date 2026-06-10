@@ -51,6 +51,7 @@ def _measure(fn) -> float:
 
 def calibrate_primitives() -> PrimitiveCosts:
     """Measure machine-local Python primitive costs used by the model."""
+
     class Box:
         value = 1
 
@@ -155,7 +156,12 @@ def predict_overhead(case: Any, costs: PrimitiveCosts) -> tuple[float, list[dict
     riesz = 0.0
     vmap = 0.0
 
-    if "vapply" in operation or "rvapply" in operation or "vvalue" in operation or "vgrad" in operation:
+    if (
+        "vapply" in operation
+        or "rvapply" in operation
+        or "vvalue" in operation
+        or "vgrad" in operation
+    ):
         frames += 0.5
         attrs += 2.0
         if "fallback" in case.mode:
@@ -191,7 +197,9 @@ def predict_overhead(case: Any, costs: PrimitiveCosts) -> tuple[float, list[dict
 
     predicted = sum(c["ns"] for c in components)
     if batch > 1 and operation in {"vapply", "rvapply", "vvalue"}:
-        components.append({"name": "amortized_per_element", "count": float(batch), "ns": float(predicted / batch)})
+        components.append(
+            {"name": "amortized_per_element", "count": float(batch), "ns": float(predicted / batch)}
+        )
     return float(predicted), components
 
 

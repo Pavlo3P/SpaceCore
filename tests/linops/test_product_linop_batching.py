@@ -10,7 +10,9 @@ sc = importlib.import_module("spacecore")
 
 
 def _weighted_space(weights, ctx):
-    return sc.DenseCoordinateSpace(tuple(np.asarray(weights).shape), ctx, sc.WeightedInnerProduct(ctx.asarray(weights)))
+    return sc.DenseCoordinateSpace(
+        tuple(np.asarray(weights).shape), ctx, sc.WeightedInnerProduct(ctx.asarray(weights))
+    )
 
 
 def _assert_product_allclose(actual, expected):
@@ -31,7 +33,9 @@ def _slice_product_batch(xs, i):
 
 def _stack_product_rows(rows):
     if isinstance(rows[0], tuple):
-        return tuple(_stack_product_rows(tuple(row[i] for row in rows)) for i in range(len(rows[0])))
+        return tuple(
+            _stack_product_rows(tuple(row[i] for row in rows)) for i in range(len(rows[0]))
+        )
     return np.stack([to_numpy(row) for row in rows], axis=0)
 
 
@@ -52,7 +56,9 @@ def _inner(space, x, y):
 def test_space_add_batch_for_vector_and_recursive_product_space():
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
     vector = sc.DenseCoordinateSpace((2,), ctx)
-    product = sc.ProductSpace((vector, sc.ProductSpace((sc.DenseCoordinateSpace((1,), ctx), vector), ctx)), ctx)
+    product = sc.ProductSpace(
+        (vector, sc.ProductSpace((sc.DenseCoordinateSpace((1,), ctx), vector), ctx)), ctx
+    )
 
     x = ctx.asarray([[1.0, 2.0], [3.0, 4.0]])
     y = ctx.asarray([[5.0, 6.0], [7.0, 8.0]])
@@ -112,8 +118,16 @@ def test_product_linops_use_space_add_batch_for_accumulation():
 
 def test_block_diagonal_vapply_and_rvapply_match_loops_for_two_and_three_components():
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
-    x1, x2, x3 = sc.DenseCoordinateSpace((2,), ctx), sc.DenseCoordinateSpace((1,), ctx), sc.DenseCoordinateSpace((2,), ctx)
-    y1, y2, y3 = sc.DenseCoordinateSpace((1,), ctx), sc.DenseCoordinateSpace((2,), ctx), sc.DenseCoordinateSpace((2,), ctx)
+    x1, x2, x3 = (
+        sc.DenseCoordinateSpace((2,), ctx),
+        sc.DenseCoordinateSpace((1,), ctx),
+        sc.DenseCoordinateSpace((2,), ctx),
+    )
+    y1, y2, y3 = (
+        sc.DenseCoordinateSpace((1,), ctx),
+        sc.DenseCoordinateSpace((2,), ctx),
+        sc.DenseCoordinateSpace((2,), ctx),
+    )
     parts = (
         sc.DenseLinOp(ctx.asarray([[1.0, 2.0]]), x1, y1, ctx),
         sc.DenseLinOp(ctx.asarray([[3.0], [-1.0]]), x2, y2, ctx),
@@ -144,7 +158,9 @@ def test_stacked_adjoint_identity_and_batched_rvapply_with_weighted_space():
     x = ctx.asarray([1.0, -2.0])
     y = (ctx.asarray([0.5, 3.0]), ctx.asarray([-1.0]))
 
-    np.testing.assert_allclose(_inner(op.codomain, op.apply(x), y), _inner(op.domain, x, op.rapply(y)))
+    np.testing.assert_allclose(
+        _inner(op.codomain, op.apply(x), y), _inner(op.domain, x, op.rapply(y))
+    )
 
     ys = (ctx.asarray([[0.5, 3.0], [1.0, -2.0]]), ctx.asarray([[-1.0], [4.0]]))
     rows = tuple(op.rapply(_slice_product_batch(ys, i)) for i in range(2))
@@ -162,7 +178,9 @@ def test_sum_to_single_adjoint_identity_and_batched_vapply_with_weighted_space()
     x = (ctx.asarray([1.0, -2.0]), ctx.asarray([3.0]))
     y = ctx.asarray([0.5, 3.0])
 
-    np.testing.assert_allclose(_inner(op.codomain, op.apply(x), y), _inner(op.domain, x, op.rapply(y)))
+    np.testing.assert_allclose(
+        _inner(op.codomain, op.apply(x), y), _inner(op.domain, x, op.rapply(y))
+    )
 
     xs = (ctx.asarray([[1.0, -2.0], [0.5, 4.0]]), ctx.asarray([[3.0], [-1.0]]))
     rows = tuple(op.apply(_slice_product_batch(xs, i)) for i in range(2))

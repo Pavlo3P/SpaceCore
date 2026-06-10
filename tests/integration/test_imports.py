@@ -9,9 +9,17 @@ def test_import_spacecore():
 def test_top_level_exports_exist():
     sc = importlib.import_module("spacecore")
     for name in [
-        "Context", "BackendOps", "NumpyOps", "DenseLinOp",
-        "DenseCoordinateSpace", "HermitianSpace", "ProductSpace", "StackedSpace",
-        "set_context", "get_context", "register_ops",
+        "Context",
+        "BackendOps",
+        "NumpyOps",
+        "DenseLinOp",
+        "DenseCoordinateSpace",
+        "HermitianSpace",
+        "ProductSpace",
+        "StackedSpace",
+        "set_context",
+        "get_context",
+        "register_ops",
     ]:
         assert hasattr(sc, name)
 
