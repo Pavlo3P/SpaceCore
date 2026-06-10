@@ -46,10 +46,10 @@ Tutorial status for the 0.3.1 docs baseline
      - Explicit target-context conversion
      - updated
      - NumPy-to-NumPy dtype conversion shown
-   * - ``weighted_tikhonov.rst``
+   * - ``weighted_tikhonov.rst`` and ``tutorials/weighted_tikhonov.ipynb``
      - Weighted inverse problem
      - added
-     - NumPy-only, executable example covered by tests
+     - NumPy-only, script and notebook code cells covered by tests
    * - ``regularized_ot.rst``
      - Advanced optimal-transport example
      - retained

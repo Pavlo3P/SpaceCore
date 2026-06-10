@@ -1,3 +1,5 @@
+import json
+from pathlib import Path
 import subprocess
 import sys
 
@@ -61,3 +63,15 @@ def test_example_script_runs_from_command_line():
 
     assert "CG converged: True" in completed.stdout
     assert "wrong-transpose identity error" in completed.stdout
+
+
+def test_weighted_tikhonov_notebook_code_cells_execute():
+    notebook_path = Path("tutorials/weighted_tikhonov.ipynb")
+    notebook = json.loads(notebook_path.read_text())
+    namespace = {"__name__": "__notebook_test__"}
+
+    for index, cell in enumerate(notebook["cells"]):
+        if cell["cell_type"] != "code":
+            continue
+        source = "".join(cell["source"])
+        exec(compile(source, f"{notebook_path}:cell-{index}", "exec"), namespace)

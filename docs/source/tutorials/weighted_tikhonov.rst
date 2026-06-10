@@ -9,6 +9,11 @@ Prerequisites
    Know :doc:`spaces`, :doc:`linops`, and the meaning of a Hilbert-space adjoint.
 Backends used
    NumPy only.
+Companion notebook
+   Download and execute
+   :download:`tutorials/weighted_tikhonov.ipynb <../../../tutorials/weighted_tikhonov.ipynb>`.
+   The notebook reuses the executable example module and is covered by the
+   example test suite.
 
 Problem statement
 -----------------
