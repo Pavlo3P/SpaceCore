@@ -1024,6 +1024,7 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
         ----------
         xs:
             Batched element of ``self.domain``.
+
         Returns
         -------
         Any
@@ -1043,6 +1044,7 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
         ----------
         ys:
             Batched element of ``self.codomain``.
+
         Returns
         -------
         Any

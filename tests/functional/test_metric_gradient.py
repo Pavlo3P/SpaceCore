@@ -7,11 +7,22 @@ import pytest
 from tests._helpers import has_jax, jax_real_dtype, to_numpy
 
 
-def _contexts():
+def _numpy_context():
     sc = importlib.import_module("spacecore")
-    yield pytest.param(sc.Context(sc.NumpyOps(), dtype=np.float64), 1e-6, 2e-5, id="numpy")
+
+    return sc.Context(sc.NumpyOps(), dtype=np.float64)
+
+
+def _jax_context():
+    sc = importlib.import_module("spacecore")
+
+    return sc.Context(sc.JaxOps(), dtype=jax_real_dtype(), enable_checks=False)
+
+
+def _contexts():
+    yield pytest.param(_numpy_context, 1e-6, 2e-5, id="numpy")
     yield pytest.param(
-        sc.Context(sc.JaxOps(), dtype=jax_real_dtype(), enable_checks=False),
+        _jax_context,
         1e-3,
         5e-3,
         marks=pytest.mark.skipif(not has_jax(), reason="jax is not installed"),
@@ -63,9 +74,10 @@ def _assert_gradient_identity(functional, x, v, eps, atol):
     np.testing.assert_allclose(to_numpy(lhs), to_numpy(rhs), rtol=5e-3, atol=atol)
 
 
-@pytest.mark.parametrize("ctx,eps,atol", list(_contexts()))
-def test_linop_quadratic_gradient_identity_on_weighted_space(ctx, eps, atol):
+@pytest.mark.parametrize("ctx_factory,eps,atol", list(_contexts()))
+def test_linop_quadratic_gradient_identity_on_weighted_space(ctx_factory, eps, atol):
     sc = importlib.import_module("spacecore")
+    ctx = ctx_factory()
     space = _weighted_space(ctx)
     Q = sc.DenseLinOp(_self_adjoint_metric_matrix(ctx), space, space, ctx)
     c = ctx.asarray([0.25, -1.5, 2.0])
@@ -76,9 +88,10 @@ def test_linop_quadratic_gradient_identity_on_weighted_space(ctx, eps, atol):
     _assert_gradient_identity(functional, x, v, eps, atol)
 
 
-@pytest.mark.parametrize("ctx,eps,atol", list(_contexts()))
-def test_inner_product_functional_gradient_identity_on_weighted_space(ctx, eps, atol):
+@pytest.mark.parametrize("ctx_factory,eps,atol", list(_contexts()))
+def test_inner_product_functional_gradient_identity_on_weighted_space(ctx_factory, eps, atol):
     sc = importlib.import_module("spacecore")
+    ctx = ctx_factory()
     space = _weighted_space(ctx)
     c = ctx.asarray([0.25, -1.5, 2.0])
     functional = sc.InnerProductFunctional(c, space, ctx)
@@ -102,9 +115,10 @@ def test_euclidean_quadratic_gradient_behavior_is_unchanged():
     np.testing.assert_allclose(to_numpy(functional.hess_apply(x)), [3.0, -2.0])
 
 
-@pytest.mark.parametrize("ctx,eps,atol", list(_contexts()))
-def test_inner_product_functional_compose_uses_metric_adjoint_pullback(ctx, eps, atol):
+@pytest.mark.parametrize("ctx_factory,eps,atol", list(_contexts()))
+def test_inner_product_functional_compose_uses_metric_adjoint_pullback(ctx_factory, eps, atol):
     sc = importlib.import_module("spacecore")
+    ctx = ctx_factory()
     domain = _weighted_vector_space(ctx, [2.0, 5.0])
     codomain = _weighted_vector_space(ctx, [3.0, 7.0, 11.0])
     matrix = ctx.asarray([[1.0, -2.0], [0.5, 3.0], [4.0, -1.0]])
@@ -130,10 +144,13 @@ def test_inner_product_functional_compose_uses_metric_adjoint_pullback(ctx, eps,
     _assert_gradient_identity(composed, x, v, eps, atol)
 
 
-@pytest.mark.parametrize("ctx,eps,atol", list(_contexts()))
+@pytest.mark.parametrize("ctx_factory,eps,atol", list(_contexts()))
 @pytest.mark.parametrize("weighted", [False, True])
-def test_inner_product_functional_vectorized_batches_match_elementwise(ctx, eps, atol, weighted):
+def test_inner_product_functional_vectorized_batches_match_elementwise(
+    ctx_factory, eps, atol, weighted
+):
     sc = importlib.import_module("spacecore")
+    ctx = ctx_factory()
     space = _weighted_space(ctx) if weighted else sc.DenseCoordinateSpace((3,), ctx)
     c = ctx.asarray([0.25, -1.5, 2.0])
     functional = sc.InnerProductFunctional(c, space, ctx)
@@ -156,10 +173,13 @@ def test_inner_product_functional_vectorized_batches_match_elementwise(ctx, eps,
     )
 
 
-@pytest.mark.parametrize("ctx,eps,atol", list(_contexts()))
+@pytest.mark.parametrize("ctx_factory,eps,atol", list(_contexts()))
 @pytest.mark.parametrize("weighted", [False, True])
-def test_linop_quadratic_form_vectorized_batches_match_elementwise(ctx, eps, atol, weighted):
+def test_linop_quadratic_form_vectorized_batches_match_elementwise(
+    ctx_factory, eps, atol, weighted
+):
     sc = importlib.import_module("spacecore")
+    ctx = ctx_factory()
     space = _weighted_space(ctx) if weighted else sc.DenseCoordinateSpace((3,), ctx)
     matrix = (
         _self_adjoint_metric_matrix(ctx)

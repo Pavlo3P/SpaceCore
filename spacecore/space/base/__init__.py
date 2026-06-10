@@ -1,3 +1,5 @@
+"""Base space abstractions and inner-product geometry."""
+
 from ._space import Space
 from ._vector import VectorSpace
 from ._coordinate import CoordinateSpace

@@ -15,7 +15,8 @@ run "$PYTHON_BIN" -m pip install -e ".[dev,docs,examples]"
 
 run "$PYTHON_BIN" -m pytest tests/ spacecore/ -x -q
 run "$PYTHON_BIN" -m ruff check .
-run "$PYTHON_BIN" scripts/docstring_audit.py
+run "$PYTHON_BIN" -m ruff check --select D spacecore/
+run "$PYTHON_BIN" scripts/docstring_audit.py --check
 run "$PYTHON_BIN" scripts/api_audit.py
 run "$PYTHON_BIN" -m sphinx -W -b html docs/source docs/source/_build/html
 run "$PYTHON_BIN" -m build
