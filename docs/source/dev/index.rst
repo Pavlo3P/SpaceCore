@@ -9,9 +9,4 @@ and maintenance guidance for SpaceCore.
 
    contributing
    adr
-
-Vision
-------
-
-.. literalinclude:: ../../dev/vision.md
-   :language: markdown
+   vision

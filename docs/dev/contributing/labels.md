@@ -22,6 +22,8 @@ scripts/setup_labels.sh
 
 `fix` marks bug fixes or correctness fixes.
 
+`bug` marks reports of incorrect behavior or regressions.
+
 `feature` marks new features or API extensions.
 
 ## Component labels

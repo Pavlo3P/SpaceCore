@@ -2,11 +2,11 @@
 
 ## Purpose
 
-SpaceCore gives typed mathematical structure to linear maps, spaces, inner
-products, and geometry-aware algorithms across numerical backends. Its role is
-to make domain, codomain, scalar field, shape, context, and adjoint semantics
-explicit so code can move between NumPy, JAX, Torch, and related backends
-without losing the mathematical contract.
+SpaceCore gives typed mathematical structure to spaces, elements, scalar fields,
+contexts, inner products, Riesz maps, linear operators, functionals, and
+geometry-aware algorithms across numerical backends. Its role is to make domain,
+codomain, scalar field, shape, context, and adjoint semantics explicit so code
+can move across supported backends without losing the mathematical contract.
 
 SpaceCore should not hide problem-specific mathematics from the caller. It
 should give callers precise places to state that mathematics and reusable
@@ -26,25 +26,23 @@ ecosystems.
 
 ## Ecosystem position
 
-SpaceCore is intended to sit between array libraries and domain-specific
-scientific or optimization libraries. Its tentative role is to provide a small
-core of explicit mathematical contracts: spaces, elements, scalar fields,
-contexts, inner products, Riesz maps, linear operators, functionals, and
-geometry-aware algorithms.
+SpaceCore probably sits between array libraries and domain-specific scientific
+or optimization packages. Its tentative role is to provide a small core of
+explicit mathematical contracts around spaces, geometry, operators, and
+functionals.
 
 This position is provisional. The exact boundary should be refined through
 examples, interoperability work, and downstream use. In particular, SpaceCore
 should avoid copying broad APIs from adjacent projects before there is a clear
-mathematical reason to do so. The current priority is to keep the core small 
+mathematical reason to do so. The current priority is to keep the core small
 enough that its invariants remain visible and reviewable.
 
-A likely useful boundary is the following: SpaceCore owns the typed mathematical
-structure of linear and functional-analytic objects; downstream packages own
-problem-specific modeling, discretization choices, application-level solvers,
-and domain terminology. When interoperability adapters are added, they should
-document which information is preserved and which information is lost, especially
-for non-Euclidean geometry, structured elements, backend context, and generalized
-adjoints.
+A likely useful boundary is emerging around typed mathematical structure rather
+than problem-specific modeling, but that boundary should stay tentative until it
+is tested through realistic examples and interoperability work. When adapters
+are added, they should document which information is preserved and which
+information is lost, especially for non-Euclidean geometry, structured elements,
+backend context, and generalized adjoints.
 
 ## Release sequencing
 
@@ -64,6 +62,7 @@ from scattered code.
 SpaceCore reaches 1.0.0 when its core abstractions are exercised in realistic
 internal and external examples; backend contracts are stable and documented;
 extension APIs are demonstrated outside the core package; interoperability
-adapters are reliable for the supported external ecosystems; benchmarks and
-regression tracking are established; a deprecation policy is defined and
-followed; and the implementation paper is submitted or publication-ready.
+adapters are reliable enough for downstream packages and external use;
+benchmarks and regression tracking are established; a deprecation policy is
+defined and followed; and the implementation paper is submitted or
+publication-ready.

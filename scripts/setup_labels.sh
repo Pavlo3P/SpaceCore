@@ -32,6 +32,10 @@ gh label create "fix" --force \
   --description "Bug fix or correctness fix" \
   --color "d73a4a"
 
+gh label create "bug" --force \
+  --description "Incorrect behavior or regression report" \
+  --color "d73a4a"
+
 gh label create "feature" --force \
   --description "New feature or API extension" \
   --color "a2eeef"
