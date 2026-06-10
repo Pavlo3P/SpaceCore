@@ -21,6 +21,7 @@ Core navigation
 * :doc:`api/backend` and :doc:`api/context` - backend operations and contexts.
 * :doc:`tutorials/index` - step-by-step learning path.
 * :doc:`design/index` - conversion, dtype, batching, capability, and geometry notes.
+* :doc:`dev/index` - contributor-facing architecture decision records.
 * :doc:`release_notes` - migration and release information.
 
 Where do I start?
@@ -81,5 +82,6 @@ Expected output:
 
    tutorials/index
    design/index
+   dev/index
    api/index
    release_notes
