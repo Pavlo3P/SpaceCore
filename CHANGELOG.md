@@ -5,6 +5,14 @@ All notable changes to SpaceCore are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- Corrected the matrix-free adjoint contract so `MatrixFreeLinOp` and its
+  adjoint view use user-supplied forward and reverse callables directly, without
+  applying matrix-backed Riesz-map adjoint corrections.
+
 ## [0.3.1]
 
 SpaceCore 0.3.1 is a release-candidate stabilization release for the `0.3.x`
