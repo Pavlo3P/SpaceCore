@@ -13,7 +13,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   adjoint view use user-supplied forward and reverse callables directly, without
   applying matrix-backed Riesz-map adjoint corrections.
 
-## [0.3.1]
+## [0.3.1] — 2026-06-10
 
 SpaceCore 0.3.1 is a release-candidate stabilization release for the `0.3.x`
 API. It focuses on documentation consistency, tutorial execution, release

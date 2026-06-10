@@ -370,15 +370,16 @@ def test_matrix_free_non_euclidean_batched_application_matches_rows(ctx):
     _assert_rvapply_loop(fixture["op"], fixture["ys"])
 
 
-def test_matrix_free_from_coordinate_adjoint_stores_reverse_callable_directly():
+@pytest.mark.parametrize("ctx", list(_contexts(False)))
+def test_matrix_free_from_coordinate_adjoint_wraps_coordinate_adjoint_to_metric_adjoint(ctx):
     sc = importlib.import_module("spacecore")
-    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
-    WeightedVectorSpace = _weighted_space_class()
-    domain = WeightedVectorSpace([2.0, 5.0], ctx)
-    codomain = WeightedVectorSpace([3.0, 7.0, 11.0], ctx)
-    matrix = ctx.asarray([[1.0, -2.0], [0.5, 3.0], [4.0, -1.0]])
-    x = ctx.asarray([0.25, -1.5])
-    y = ctx.asarray([2.0, -0.5, 1.25])
+    fixture = _non_euclidean_matrix_free_fixture(ctx)
+    domain = fixture["domain"]
+    codomain = fixture["codomain"]
+    matrix = ctx.asarray(fixture["matrix_np"])
+    metric_adjoint_np = fixture["metric_adjoint_np"]
+    x = fixture["x"]
+    y = fixture["y"]
 
     def apply(z):
         return matrix @ z
@@ -391,10 +392,40 @@ def test_matrix_free_from_coordinate_adjoint_stores_reverse_callable_directly():
     )
 
     np.testing.assert_allclose(to_numpy(op.apply(x)), to_numpy(apply(x)))
-    np.testing.assert_allclose(to_numpy(op.rapply(y)), to_numpy(coordinate_rapply(y)))
-    lhs = codomain.inner(op.apply(x), y)
-    rhs = domain.inner(x, op.rapply(y))
-    assert not np.allclose(to_numpy(lhs), to_numpy(rhs))
+    np.testing.assert_allclose(to_numpy(op.rapply(y)), metric_adjoint_np @ to_numpy(y))
+    assert not np.allclose(to_numpy(op.rapply(y)), to_numpy(coordinate_rapply(y)))
+    _assert_adjoint_identity(op, x, y)
+
+
+@pytest.mark.parametrize("ctx", list(_contexts(False)))
+def test_matrix_free_direct_and_coordinate_adjoint_constructors_are_distinct(ctx):
+    sc = importlib.import_module("spacecore")
+    fixture = _non_euclidean_matrix_free_fixture(ctx)
+    domain = fixture["domain"]
+    codomain = fixture["codomain"]
+    matrix = ctx.asarray(fixture["matrix_np"])
+    metric_adjoint = ctx.asarray(fixture["metric_adjoint_np"])
+    y = fixture["y"]
+
+    def apply(z):
+        return matrix @ z
+
+    def metric_rapply(w):
+        return metric_adjoint @ w
+
+    def coordinate_rapply(w):
+        return matrix.T @ w
+
+    direct = sc.MatrixFreeLinOp(apply, metric_rapply, domain, codomain, ctx)
+    wrapped = sc.MatrixFreeLinOp.from_coordinate_adjoint(
+        apply, coordinate_rapply, domain, codomain, ctx
+    )
+
+    assert direct.rapply_fn is metric_rapply
+    assert wrapped.rapply_fn is not coordinate_rapply
+    np.testing.assert_allclose(to_numpy(direct.rapply(y)), to_numpy(metric_rapply(y)))
+    np.testing.assert_allclose(to_numpy(wrapped.rapply(y)), to_numpy(metric_rapply(y)))
+    assert not np.allclose(to_numpy(wrapped.rapply(y)), to_numpy(coordinate_rapply(y)))
 
 
 def test_matrix_free_conversion_preserves_direct_reverse_callable_without_riesz_maps():
@@ -405,19 +436,27 @@ def test_matrix_free_conversion_preserves_direct_reverse_callable_without_riesz_
     domain = WeightedVectorSpace([2.0, 5.0], ctx)
     codomain = WeightedVectorSpace([3.0, 7.0, 11.0], ctx)
     matrix = ctx.asarray([[1.0, -2.0], [0.5, 3.0], [4.0, -1.0]])
+    metric_adjoint = ctx.asarray(
+        np.diag([1.0 / 2.0, 1.0 / 5.0])
+        @ to_numpy(matrix.T)
+        @ np.diag([3.0, 7.0, 11.0])
+    )
 
     def apply(z):
         return matrix @ z
 
     def rapply(w):
-        return matrix.T @ w
+        return metric_adjoint @ w
 
     op = sc.MatrixFreeLinOp(apply, rapply, domain, codomain, ctx)
     converted = op.convert(new_ctx)
+    x = new_ctx.asarray([0.25, -1.5])
     y = new_ctx.asarray([2.0, -0.5, 1.25])
 
     assert converted.rapply_fn is rapply
     np.testing.assert_allclose(to_numpy(converted.rapply(y)), to_numpy(rapply(y)))
+    _assert_adjoint_identity(op, ctx.asarray([0.25, -1.5]), ctx.asarray([2.0, -0.5, 1.25]))
+    _assert_adjoint_identity(converted, x, y)
 
 
 def test_matrix_free_compatibility_constructor_preserves_batched_reverse_on_convert():
@@ -444,9 +483,13 @@ def test_matrix_free_compatibility_constructor_preserves_batched_reverse_on_conv
         apply, rapply, domain, codomain, ctx, coordinate_rvapply=rvapply
     )
     converted = op.convert(new_ctx)
+    x = new_ctx.asarray([0.25, -1.5])
+    y = new_ctx.asarray([2.0, -0.5, 1.25])
     ys = new_ctx.asarray([[2.0, -0.5, 1.25], [-1.0, 3.0, 0.75]])
     expected = np.stack([to_numpy(converted.rapply(y)) for y in ys], axis=0)
 
+    _assert_adjoint_identity(op, ctx.asarray([0.25, -1.5]), ctx.asarray([2.0, -0.5, 1.25]))
+    _assert_adjoint_identity(converted, x, y)
     np.testing.assert_allclose(to_numpy(converted.rvapply(ys)), expected)
     assert calls["rvapply"] == 1
 
@@ -470,8 +513,23 @@ def test_matrix_free_compatibility_constructor_without_rvapply_uses_fallback():
     ys = new_ctx.asarray([[2.0, -0.5, 1.25], [-1.0, 3.0, 0.75]])
     expected = np.stack([to_numpy(converted.rapply(y)) for y in ys], axis=0)
 
+    assert op.rvapply_fn is None
     assert converted.rvapply_fn is None
     np.testing.assert_allclose(to_numpy(converted.rvapply(ys)), expected)
+
+
+def test_weighted_matrix_free_bench_coordinate_adjoint_assertions_pass():
+    sc = importlib.import_module("spacecore")
+    cases = importlib.import_module("bench.cases")
+    rng = np.random.default_rng(20240610)
+
+    weighted_matrix_free = cases._weighted_dense_cases(
+        sc, rng, "tiny", 8, False, matrix_free=True
+    )
+
+    for case in weighted_matrix_free:
+        if case.operation in {"rapply", "rvapply"}:
+            case.assert_equal()
 
 
 @pytest.mark.skipif(not has_jax(), reason="jax is not installed")
@@ -730,6 +788,8 @@ def test_non_euclidean_space_without_riesz_maps_is_rejected():
         sc.DenseLinOp(ctx.asarray([[1.0, 0.0], [0.0, 1.0]]), space, space, ctx)
     with pytest.raises(TypeError, match="riesz/riesz_inverse"):
         sc.DiagonalLinOp(ctx.asarray([1.0, 2.0]), space, ctx)
+    with pytest.raises(ValueError, match="MatrixFreeLinOp.from_coordinate_adjoint"):
+        sc.MatrixFreeLinOp.from_coordinate_adjoint(lambda x: x, lambda y: y, space, space, ctx)
 
 
 def test_product_space_with_component_missing_riesz_maps_is_rejected():

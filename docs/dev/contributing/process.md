@@ -13,6 +13,13 @@ test/<short-name>
 
 Choose the prefix by the dominant intent of the change. Split unrelated work instead of hiding multiple intents in one branch.
 
+## Branch and merge policy
+
+Contributor infrastructure and documentation changes may be drafted on a
+feature branch, but they must be merged into the default branch before the
+release tag is applied. Stranded contributor docs on side branches do not count
+toward the release gate.
+
 ## Before opening a PR
 
 A PR should normally include:
