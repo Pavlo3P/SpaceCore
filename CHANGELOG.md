@@ -5,23 +5,12 @@ All notable changes to SpaceCore are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
-## [0.3.1] - 2026-06-09
+## [0.3.1]
 
 SpaceCore 0.3.1 is a release-candidate stabilization release for the `0.3.x`
 API. It focuses on documentation consistency, tutorial execution, release
 artifact checks, and public API audit cleanup. It does not add new solver
 families or SDPLab-specific downstream integration.
-
-### Fixed
-
-- Updated active tutorial notebooks to use current public APIs:
-  `MatrixFreeLinOp` for action-defined operators, `lanczos_smallest` for the
-  smallest-Ritz-eigenpair example, and `DenseVectorSpace` for dense vector
-  construction.
-- Removed invalid notebook output metadata that caused nbformat validation
-  warnings during tutorial execution.
-- Updated `scripts/api_audit.py` to skip `.venv*` directories so removed-API
-  checks do not report third-party package internals.
 
 ### Documentation
 
@@ -32,8 +21,6 @@ families or SDPLab-specific downstream integration.
   contexts.
 - Clarified adjoint documentation to distinguish coordinate transpose,
   Euclidean adjoint, and metric/Riesz-represented adjoint behavior.
-- Added a checked public docstring audit record for the `0.3.1` release
-  candidate.
 
 ### Examples and Tutorials
 
@@ -41,8 +28,6 @@ families or SDPLab-specific downstream integration.
   weighted spaces, metric adjoints, lazy operator algebra, CG, and an
   independent dense NumPy reference solve.
 - Integrated the weighted Tikhonov example into tests and documentation.
-- Re-executed active tutorial notebooks and the worked example as part of the
-  release-candidate check.
 
 ### Testing and CI
 
@@ -53,23 +38,12 @@ families or SDPLab-specific downstream integration.
 
 ### Known limitations
 
-- Solver coverage remains intentionally narrow: CG, LSQR, power iteration,
-  Lanczos smallest-eigenpair estimation, and matrix-exponential actions.
 - Optional backend behavior depends on installed optional dependencies. CuPy is
   not required for the core release-candidate gate.
 - The advanced regularized OT tutorial is an illustrative SpaceCore/JAX/Optax
   example, not a claim that SpaceCore ships a production OT solver.
-- SDPLab-specific downstream migration validation is intentionally out of scope
-  for this release-candidate check.
 
-## Unreleased
-
-### Changed
-
-- `ProductLinOp` is intentionally exported from the top-level `spacecore`
-  namespace alongside the concrete product-structured operators.
-
-## [0.3.0] - 2026-06-05
+## [0.3.0]
 
 SpaceCore 0.3.0 is a breaking release for the unstable `0.x` series. Space
 capabilities are now derived from actual structure, dtype, and inner product,
