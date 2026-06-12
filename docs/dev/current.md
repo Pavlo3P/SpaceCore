@@ -15,14 +15,26 @@ The `0.4.0` Phase B check-policy implementation is complete. Public contexts
 use `check_level` with `none`, `cheap`, `standard`, and `strict`; deprecated
 `enable_checks` values map to `none` or `standard`.
 
+The `0.4.0` Phase C Stage 1 dtype/field contract is implemented. `Context.dtype`
+is the default array representation dtype, while `Space.field` is the derived
+real/complex mathematical contract. There is no constructor-level field
+override in 0.4.0 because ADR-015 did not authorize one. Exact dtype membership
+remains strict, and conversion refuses silent complex-to-real narrowing.
+
+ADR-015 Stage 2 is deferred to `0.5.0`. In particular, `Context.asarray` still
+uses the context dtype by default, exact dtype checking is not opt-in, and
+solver vector workspaces are not generally operand-dtype driven.
+
 Milestone tracking: [0.3.2 milestone placeholder](https://github.com/Pavlo3P/SpaceCore/milestones).
 
 ## Open questions
 
-- Dtype defaults versus scalar-field contract.
 - Dispatch architecture.
 - Tensor-product spaces.
-- Mixed precision and cross-precision compatibility.
+- Mixed precision: which operations may combine precisions without explicit conversion?
+- Solver workspaces: when should vector workspaces follow operand dtype rather than context dtype?
+- Backend promotion: which NumPy, JAX, Torch, and CuPy promotion differences are contractual?
+- Cross-backend dtype compatibility: which dtype pairs represent the same portable precision?
 - Batching limitations and batch-conformance boundaries.
 - Strict runtime checking intentionally uses bounded probes. Exhaustive
   basis-based adjoint, metric-positive-definiteness, spectral, batched/single,

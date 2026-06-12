@@ -172,8 +172,11 @@ class JaxOps(BackendOps):
             Dense inputs are converted with JAX sparse BCOO/BCSR constructors; SciPy sparse inputs use from_scipy_sparse.
         """
         import scipy.sparse as sps
+        self._reject_complex_to_real(x, dtype, operation="assparse")
 
         if self.is_sparse(x):
+            if dtype is not None and self.get_dtype(x) != self.sanitize_dtype(dtype):
+                return x.astype(self.sanitize_dtype(dtype))
             return x
 
         if sps.issparse(x):
@@ -183,7 +186,8 @@ class JaxOps(BackendOps):
                     kwargs["index_dtype"] = index_dtype
                 if nse is not None:
                     kwargs["nse"] = nse
-                return self.jsparse.BCOO.from_scipy_sparse(x, **kwargs)
+                out = self.jsparse.BCOO.from_scipy_sparse(x, **kwargs)
+                return out.astype(self.sanitize_dtype(dtype)) if dtype is not None else out
 
             if format == "bcsr":
                 if self.jsparse.BCSR is None:
@@ -193,11 +197,12 @@ class JaxOps(BackendOps):
                     kwargs["index_dtype"] = index_dtype
                 if nse is not None:
                     kwargs["nse"] = nse
-                return self.jsparse.BCSR.from_scipy_sparse(x, **kwargs)
+                out = self.jsparse.BCSR.from_scipy_sparse(x, **kwargs)
+                return out.astype(self.sanitize_dtype(dtype)) if dtype is not None else out
 
             raise ValueError(f"Unknown sparse format: {format!r}")
 
-        x_arr = self.asarray(x)
+        x_arr = self.asarray(x, dtype=dtype)
 
         if format == "bcoo":
             kwargs = {}

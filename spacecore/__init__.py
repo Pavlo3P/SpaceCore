@@ -60,6 +60,7 @@ from .linalg import (
 from .space import (
     BackendCheck,
     DTypeCheck,
+    FieldCheck,
     HermitianCheck,
     ProductComponentCheck,
     CoordinateSpace,
@@ -147,6 +148,7 @@ __all__ = [
     "power_iteration",
     "BackendCheck",
     "DTypeCheck",
+    "FieldCheck",
     "HermitianCheck",
     "ProductComponentCheck",
     "ProductStructureCheck",

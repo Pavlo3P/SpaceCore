@@ -4,7 +4,7 @@ import inspect
 import numpy as np
 import pytest
 
-from tests._helpers import has_torch, to_numpy, torch_real_dtype
+from tests._helpers import has_torch, to_numpy, torch_complex_dtype, torch_real_dtype
 
 pytestmark = pytest.mark.skipif(not has_torch(), reason="torch is not installed")
 
@@ -106,3 +106,14 @@ def test_torch_ops_preserve_autograd_for_tensor_ops():
     y.backward()
 
     assert np.allclose(x.grad.detach().numpy(), np.array([2.0, 4.0, 6.0]))
+
+
+def test_torch_ops_reject_complex_to_real_casts():
+    sc = importlib.import_module("spacecore")
+    ops = sc.TorchOps()
+    x = ops.asarray([1.0 + 1.0j], dtype=torch_complex_dtype())
+
+    with pytest.raises(TypeError, match="rejected complex-valued input"):
+        ops.asarray(x, dtype=torch_real_dtype())
+    with pytest.raises(TypeError, match="rejected complex-valued input"):
+        ops.astype(x, torch_real_dtype())

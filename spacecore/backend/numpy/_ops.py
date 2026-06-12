@@ -129,8 +129,11 @@ class NumpyOps(BackendOps):
             SpaceCore currently converts dense inputs to 2-D SciPy sparse matrices in the requested format.
         """
         sparse = self.sp.sparse
+        self._reject_complex_to_real(x, dtype, operation="assparse")
 
         if self.is_sparse(x):
+            if dtype is not None and self.get_dtype(x) != self.sanitize_dtype(dtype):
+                x = x.astype(self.sanitize_dtype(dtype))
             if format == "csr":
                 return x.tocsr()
             if format == "csc":
@@ -139,7 +142,7 @@ class NumpyOps(BackendOps):
                 return x.tocoo()
             raise ValueError(f"Unknown sparse format: {format!r}")
 
-        x_arr = self.asarray(x)
+        x_arr = self.asarray(x, dtype=dtype)
 
         if x_arr.ndim != 2:
             raise ValueError("NumPy/SciPy sparse conversion currently expects a 2D array.")

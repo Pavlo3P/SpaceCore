@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Callable, Tuple
+from typing import Any, Callable, Literal, Tuple
 
 from ..base import (
     EuclideanInnerProduct,
@@ -31,12 +31,12 @@ def _resolve_elementwise_geometry(
 
 
 def _euclidean_elementwise_jordan_incompatibility(
-    ctx: Context,
+    field: Literal["real", "complex"],
     geometry: InnerProduct,
 ) -> str | None:
     """Return the violated Euclidean-elementwise invariant, if any."""
-    if ctx.ops.is_complex_dtype(ctx.dtype):
-        return "dtype"
+    if field != "real":
+        return "field"
     if type(geometry) is not EuclideanInnerProduct:
         return "geometry"
     return None
@@ -44,14 +44,18 @@ def _euclidean_elementwise_jordan_incompatibility(
 
 def _is_euclidean_elementwise_jordan_compatible(ctx: Context, geometry: InnerProduct) -> bool:
     """Return whether elementwise coordinates have Euclidean-Jordan geometry."""
-    return _euclidean_elementwise_jordan_incompatibility(ctx, geometry) is None
+    field = "complex" if ctx.ops.is_complex_dtype(ctx.dtype) else "real"
+    return _euclidean_elementwise_jordan_incompatibility(field, geometry) is None
 
 
-def _validate_euclidean_elementwise_jordan(ctx: Context, geometry: InnerProduct) -> None:
+def _validate_euclidean_elementwise_jordan(
+    space: DenseCoordinateSpace,
+    geometry: InnerProduct,
+) -> None:
     """Raise if a Euclidean elementwise Jordan space would be untruthful."""
-    reason = _euclidean_elementwise_jordan_incompatibility(ctx, geometry)
-    if reason == "dtype":
-        raise ValueError("EuclideanElementwiseJordanSpace requires a real dtype.")
+    reason = _euclidean_elementwise_jordan_incompatibility(space.field, geometry)
+    if reason == "field":
+        raise ValueError("EuclideanElementwiseJordanSpace requires a real scalar field.")
     if reason == "geometry":
         raise TypeError("EuclideanElementwiseJordanSpace requires EuclideanInnerProduct.")
 
@@ -224,5 +228,5 @@ class EuclideanElementwiseJordanSpace(ElementwiseJordanSpace, EuclideanJordanAlg
     ) -> None:
         resolved_ctx = normalize_context(ctx)
         geometry = _resolve_elementwise_geometry(geometry, inner_product)
-        _validate_euclidean_elementwise_jordan(resolved_ctx, geometry)
         DenseCoordinateSpace.__init__(self, shape, resolved_ctx, geometry=geometry)
+        _validate_euclidean_elementwise_jordan(self, self.geometry)

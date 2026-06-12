@@ -1,5 +1,6 @@
 import importlib
 import numpy as np
+import pytest
 from tests._helpers import has_jax, jax_real_dtype, to_numpy
 
 
@@ -43,6 +44,17 @@ def test_linop_conversion_to_same_effective_context_returns_self():
     op = sc.DenseLinOp(ctx.asarray([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]), X, Y, ctx)
 
     assert op.convert(ctx) is op
+
+
+def test_dense_linop_conversion_rejects_complex_to_real_narrowing():
+    sc = importlib.import_module("spacecore")
+    src = sc.Context(sc.NumpyOps(), dtype=np.complex64)
+    dst = sc.Context(sc.NumpyOps(), dtype=np.float32)
+    space = sc.DenseCoordinateSpace((2,), src)
+    op = sc.DenseLinOp(src.asarray([[1.0, 0.0j], [0.0j, 1.0]]), space, space, src)
+
+    with pytest.raises(TypeError, match="rejected complex-valued input.*x.real"):
+        op.convert(dst)
 
 
 def test_linop_conversion_to_jax_if_supported():

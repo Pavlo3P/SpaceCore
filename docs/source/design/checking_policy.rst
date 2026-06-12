@@ -26,8 +26,8 @@ Levels
    layout, still run. Backend errors may otherwise surface later.
 
 ``cheap``
-   Adds deterministic local checks: backend representation, shape/rank, dtype,
-   product structure and arity, product leaf interface checks, and
+   Adds deterministic local checks: backend representation, shape/rank, scalar
+   field, exact dtype, product structure and arity, product leaf interface checks, and
    domain/codomain membership at that same level. These checks are suitable for
    performance-sensitive trusted code that still needs interface validation.
 

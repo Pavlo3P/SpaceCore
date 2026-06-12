@@ -4,7 +4,7 @@ from math import prod
 from typing import Any, Tuple
 
 from ..base import CoordinateSpace, EuclideanInnerProduct, InnerProduct, InnerProductSpace
-from ..checks import BackendCheck, DTypeCheck, ShapeCheck
+from ..checks import BackendCheck, DTypeCheck, FieldCheck, ShapeCheck
 from ..._checks import checked_method
 from ...backend import Context
 from ...types import DenseArray
@@ -48,7 +48,7 @@ class DenseCoordinateSpace(CoordinateSpace, InnerProductSpace):
 
     def _local_checks(self):
         """Return membership checks local to dense coordinate spaces."""
-        return BackendCheck(), ShapeCheck(), DTypeCheck()
+        return BackendCheck(), ShapeCheck(), FieldCheck(), DTypeCheck()
 
     def zeros(self) -> DenseArray:
         """Return the zero vector in this space."""

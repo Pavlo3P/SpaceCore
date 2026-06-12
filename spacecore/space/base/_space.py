@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Literal
 
 from ..._contextual import ContextBound
 from ...backend import Context
@@ -21,6 +21,15 @@ class Space(ContextBound):
 
     def __init__(self, ctx: Context | str | None = None) -> None:
         super().__init__(ctx)
+
+    @property
+    def field(self) -> Literal["real", "complex"]:
+        """Return the mathematical scalar field derived from the context dtype.
+
+        ``Context.dtype`` controls array representation. This property records
+        only whether the space is over the real or complex scalar field.
+        """
+        return "complex" if self.ops.is_complex_dtype(self.dtype) else "real"
 
     def __eq__(self, other: Any) -> bool:
         if type(self) is type(other):

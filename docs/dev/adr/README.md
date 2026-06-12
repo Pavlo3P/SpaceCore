@@ -66,6 +66,6 @@ Rules contributors must preserve when touching this area.
 | [ADR-012](012_jordan_spectrum.md) | `012_jordan_spectrum` | Accepted | Jordan spectral API and product spectral decomposition. |
 | [ADR-013](013_tree_structured_spaces.md) | `013_tree_structured_spaces` | Proposed | Planned tree-structured space direction. |
 | [ADR-014](014_check_policy.md) | `014_check_policy` | Proposed | Intended check levels for 0.4.0 test generation. |
-| [ADR-015](015_dtype_default_vs_scalar_field.md) | `015_dtype_default_vs_scalar_field` | Proposed | Dtype defaults and planned scalar-field contract. |
+| [ADR-015](015_dtype_default_vs_scalar_field.md) | `015_dtype_default_vs_scalar_field` | Accepted | Dtype defaults and scalar-field contract. |
 | ADR-016 | `016_dispatch_architecture` | Reserved | Reserved for dispatch/fusion architecture before implementation. |
 | ADR-017 | `017_tensor_product_spaces` | Reserved | Reserved for tensor-product spaces and tensor/Kronecker LinOp design before implementation. |

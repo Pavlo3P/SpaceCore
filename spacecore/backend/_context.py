@@ -9,7 +9,7 @@ from ..types import DenseArray, SparseArray, DType, ArrayLike
 @dataclass(frozen=True, slots=True, init=False)
 class Context:
     """
-    Select backend operations, dtype, and validation policy.
+    Select backend operations, representation dtype, and validation policy.
 
     A context collects the backend operations object, default dtype, and runtime
     validation policy used by spaces, linear operators, and context-bound
@@ -25,8 +25,11 @@ class Context:
         :class:`spacecore.backend.NumpyOps` or
         :class:`spacecore.backend.JaxOps`.
     dtype : dtype-like or None, optional
-        Default dtype used by :meth:`asarray` and :meth:`assparse`. The value is
-        normalized through ``ops.sanitize_dtype`` during initialization.
+        Default array representation dtype used by :meth:`asarray` and
+        :meth:`assparse`. The value is normalized through
+        ``ops.sanitize_dtype`` during initialization. It does not independently
+        define a mathematical scalar field; spaces expose that contract through
+        :attr:`spacecore.space.Space.field`.
     check_level : {"none", "cheap", "standard", "strict"}, optional
         Runtime validation policy. The default is ``"standard"``.
     enable_checks : bool or None, optional
@@ -163,6 +166,13 @@ class Context:
         -------
         DenseArray
             Backend-native dense array with dtype ``self.dtype``.
+
+        Raises
+        ------
+        TypeError
+            If conversion to ``self.dtype`` would discard a complex
+            representation. Extract the real part explicitly before conversion
+            when that loss is intentional.
         """
         return self.ops.asarray(x, dtype=self.dtype)
 
@@ -183,7 +193,9 @@ class Context:
         Raises
         ------
         TypeError
-            If the backend implementation does not support sparse conversion.
+            If the backend implementation does not support sparse conversion,
+            or conversion to ``self.dtype`` would discard a complex
+            representation.
         """
         return self.ops.assparse(x, dtype=self.dtype)
 

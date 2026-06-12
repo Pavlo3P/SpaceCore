@@ -3,6 +3,7 @@
 from .checks import (
     BackendCheck,
     DTypeCheck,
+    FieldCheck,
     HermitianCheck,
     ProductComponentCheck,
     ProductStructureCheck,
@@ -38,6 +39,7 @@ from ._structure import ProductStructure, PytreeStructure, TupleStructure
 __all__ = [
     "BackendCheck",
     "DTypeCheck",
+    "FieldCheck",
     "HermitianCheck",
     "ProductComponentCheck",
     "ProductStructureCheck",

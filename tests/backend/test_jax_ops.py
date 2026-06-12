@@ -1,7 +1,7 @@
 import importlib
 import numpy as np
 import pytest
-from tests._helpers import has_jax, jax_real_dtype
+from tests._helpers import has_jax, jax_complex_dtype, jax_real_dtype
 
 pytestmark = pytest.mark.skipif(not has_jax(), reason="jax is not installed")
 
@@ -41,3 +41,14 @@ def test_jax_ops_swapaxes():
 
     assert y.shape == (4, 3, 2)
     assert np.allclose(np.asarray(y), np.swapaxes(np.arange(24).reshape(2, 3, 4), 0, 2))
+
+
+def test_jax_ops_reject_complex_to_real_casts():
+    sc = importlib.import_module("spacecore")
+    ops = sc.JaxOps()
+    x = ops.asarray([1.0 + 1.0j], dtype=jax_complex_dtype())
+
+    with pytest.raises(TypeError, match="rejected complex-valued input"):
+        ops.asarray(x, dtype=jax_real_dtype())
+    with pytest.raises(TypeError, match="rejected complex-valued input"):
+        ops.astype(x, jax_real_dtype())

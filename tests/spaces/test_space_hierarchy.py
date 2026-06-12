@@ -287,7 +287,7 @@ def test_euclidean_elementwise_direct_construction_validates_invariant():
     assert isinstance(direct, sc.EuclideanElementwiseJordanSpace)
     assert direct == factory
 
-    with pytest.raises(ValueError, match="requires a real dtype"):
+    with pytest.raises(ValueError, match="requires a real scalar field"):
         sc.EuclideanElementwiseJordanSpace((2,), complex_ctx)
 
     with pytest.raises(TypeError, match="requires EuclideanInnerProduct"):
@@ -356,7 +356,7 @@ def test_euclidean_elementwise_jax_pytree_reconstruction_revalidates_invariant()
 
     assert leaves == []
     assert rebuilt == space
-    with pytest.raises(ValueError, match="requires a real dtype"):
+    with pytest.raises(ValueError, match="requires a real scalar field"):
         type(space).tree_unflatten(((2,), complex_ctx, sc.EuclideanInnerProduct()), ())
 
 

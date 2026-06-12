@@ -127,7 +127,7 @@ def test_subclass_checks_extend_parent_checks():
     ctx = _ctx()
     space = ChildVectorSpace((1,), ctx)
     names = [check.name for check in space.member_checks()]
-    assert names == ["backend", "shape", "dtype", "parent_reject", "child_reject"]
+    assert names == ["backend", "shape", "field", "dtype", "parent_reject", "child_reject"]
 
     with pytest.raises(ValueError, match="1.0"):
         space.check_member(ctx.asarray([1.0]))
@@ -159,6 +159,6 @@ def test_instance_specific_local_checks_extend_parent_checks():
     space = ParameterizedVectorSpace((1,), 3.0, ctx)
     names = [check.name for check in space.member_checks()]
 
-    assert names == ["backend", "shape", "dtype", "instance_reject"]
+    assert names == ["backend", "shape", "field", "dtype", "instance_reject"]
     with pytest.raises(ValueError, match="3.0"):
         space.check_member(ctx.asarray([3.0]))

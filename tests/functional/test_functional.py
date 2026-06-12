@@ -52,6 +52,16 @@ def test_domain_conversion_and_membership_checks_work():
         functional.value(explicit.asarray([1.0, 2.0, 3.0]))
 
 
+def test_functional_construction_rejects_complex_data_for_real_space():
+    sc = importlib.import_module("spacecore")
+    ctx = _ctx(np.float32)
+    dom = sc.DenseCoordinateSpace((2,), ctx)
+    representer = np.asarray([1.0 + 1.0j, 2.0], dtype=np.complex64)
+
+    with pytest.raises(TypeError, match="rejected complex-valued input.*x.real"):
+        sc.InnerProductFunctional(representer, dom, ctx)
+
+
 def test_call_matches_value():
     ctx = _ctx()
     q = _quadratic_problem(ctx)

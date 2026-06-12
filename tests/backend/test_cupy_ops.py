@@ -3,10 +3,12 @@ import importlib
 import numpy as np
 import pytest
 
-from tests._helpers import has_cupy, to_numpy
+from tests._helpers import cupy_complex_dtype, cupy_real_dtype, has_cupy, to_numpy
 
 
-pytestmark = pytest.mark.skipif(not has_cupy(), reason="cupy is not installed")
+pytestmark = pytest.mark.skipif(
+    not has_cupy(), reason="CuPy is not installed or no usable CUDA device is available"
+)
 
 
 def _ctx(dtype=np.float64):
@@ -64,3 +66,14 @@ def test_cupy_sparse_linop_apply_and_to_dense():
 
     np.testing.assert_allclose(to_numpy(op.apply(x)), dense @ np.asarray([7.0, 8.0]))
     np.testing.assert_allclose(to_numpy(op.to_dense()), dense)
+
+
+def test_cupy_ops_reject_complex_to_real_casts():
+    sc = importlib.import_module("spacecore")
+    ops = sc.CuPyOps()
+    x = ops.asarray([1.0 + 1.0j], dtype=cupy_complex_dtype())
+
+    with pytest.raises(TypeError, match="rejected complex-valued input"):
+        ops.asarray(x, dtype=cupy_real_dtype())
+    with pytest.raises(TypeError, match="rejected complex-valued input"):
+        ops.astype(x, cupy_real_dtype())

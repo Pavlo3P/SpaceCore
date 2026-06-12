@@ -1,5 +1,6 @@
 import importlib
 import numpy as np
+import pytest
 
 
 def test_numpy_ops_basic_array_creation():
@@ -37,3 +38,14 @@ def test_numpy_ops_swapaxes():
 
     assert y.shape == (4, 3, 2)
     assert np.allclose(y, np.swapaxes(np.arange(24).reshape(2, 3, 4), 0, 2))
+
+
+def test_numpy_ops_reject_complex_to_real_casts():
+    sc = importlib.import_module("spacecore")
+    ops = sc.NumpyOps()
+    x = np.asarray([1.0 + 1.0j], dtype=np.complex64)
+
+    with pytest.raises(TypeError, match="rejected complex-valued input"):
+        ops.asarray(x, dtype=np.float32)
+    with pytest.raises(TypeError, match="rejected complex-valued input"):
+        ops.astype(x, np.float32)

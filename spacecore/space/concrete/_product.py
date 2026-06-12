@@ -87,7 +87,7 @@ def _space_capabilities(space: Space) -> CapabilitySet:
         caps.add(_CAP_JORDAN)
     if isinstance(space, EuclideanJordanAlgebraSpace):
         if isinstance(space, EuclideanElementwiseJordanSpace):
-            _validate_euclidean_elementwise_jordan(space.ctx, space.geometry)
+            _validate_euclidean_elementwise_jordan(space, space.geometry)
         caps.add(_CAP_EUCLIDEAN_JORDAN)
     return frozenset(caps)
 

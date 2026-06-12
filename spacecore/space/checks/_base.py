@@ -185,6 +185,27 @@ class DTypeCheck(SpaceCheck):
 
 
 @dataclass(frozen=True)
+class FieldCheck(SpaceCheck):
+    """Check that a value is compatible with a space's mathematical field."""
+
+    name: str = "field"
+    core_rank: ClassVar[int] = 0
+    minimum_level: ClassVar[CheckLevel] = "cheap"
+
+    def is_valid(self, space: Any, x: Any) -> bool:
+        dtype = _dtype_of(space, x)
+        if dtype is None:
+            return False
+        return space.field == "complex" or not space.ops.is_complex_dtype(dtype)
+
+    def error_message(self, space: Any, x: Any) -> str:
+        return (
+            f"Expected an element compatible with the {space.field} scalar field, "
+            f"got dtype {_dtype_of(space, x)}"
+        )
+
+
+@dataclass(frozen=True)
 class SquareMatrixCheck(SpaceCheck):
     """
     Check that a value has square trailing matrix axes.

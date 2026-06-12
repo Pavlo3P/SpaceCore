@@ -202,6 +202,40 @@ class BackendOps(ABC):
     def _dtype_arg(self, dtype: DType | None) -> DType | None:
         return None if dtype is None else self.sanitize_dtype(dtype)
 
+    def _source_is_complex(self, x: Any) -> bool:
+        """Return whether ``x`` carries a complex representation."""
+        dtype = getattr(x, "dtype", None)
+        if dtype is not None:
+            return getattr(dtype, "kind", None) == "c" or "complex" in str(dtype)
+        if isinstance(x, complex):
+            return True
+        data = getattr(x, "data", None)
+        if data is not None and data is not x:
+            data_dtype = getattr(data, "dtype", None)
+            if data_dtype is not None:
+                return getattr(data_dtype, "kind", None) == "c" or "complex" in str(data_dtype)
+        if isinstance(x, (list, tuple)):
+            return any(self._source_is_complex(value) for value in x)
+        return False
+
+    def _reject_complex_to_real(
+        self,
+        x: Any,
+        dtype: DType | None,
+        *,
+        operation: str,
+    ) -> None:
+        """Reject implicit loss of a complex representation during conversion."""
+        if dtype is None:
+            return
+        target_dtype = self.sanitize_dtype(dtype)
+        if not self.is_complex_dtype(target_dtype) and self._source_is_complex(x):
+            raise TypeError(
+                f"{operation} rejected complex-valued input for non-complex dtype "
+                f"{target_dtype}. Explicitly discard the imaginary part first, for "
+                "example with `x.real` or a backend real-part operation, then convert."
+            )
+
     def _to_axis_tuple(self, axis: int | Sequence[int] | None) -> int | tuple[int, ...] | None:
         if axis is None or isinstance(axis, int):
             return axis
@@ -325,6 +359,7 @@ class BackendOps(ABC):
 
     def asarray(self, x: Any, dtype: DType | None = None, **backend_kwargs: Any) -> DenseArray:
         """Convert input to a dense backend array (delegates to xp.asarray)."""
+        self._reject_complex_to_real(x, dtype, operation="asarray")
         if self.is_sparse(x) and hasattr(x, "to_dense"):
             x = x.to_dense()
         dtype = self._dtype_arg(dtype)
@@ -336,6 +371,7 @@ class BackendOps(ABC):
         """Cast x to dtype, returning x unchanged when dtype is None."""
         if dtype is None:
             return x
+        self._reject_complex_to_real(x, dtype, operation="astype")
         dtype = self.sanitize_dtype(dtype)
         if hasattr(x, "astype"):
             return x.astype(dtype, **backend_kwargs)

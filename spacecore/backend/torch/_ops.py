@@ -213,6 +213,7 @@ class TorchOps(BackendOps):
             SciPy sparse inputs are converted through COO indices and values.
             Dense inputs are converted through PyTorch's sparse COO conversion.
         """
+        self._reject_complex_to_real(x, dtype, operation="assparse")
         dtype = self.sanitize_dtype(dtype) if dtype is not None else None
         if self.is_sparse(x):
             y = x.to(dtype=dtype, device=device) if dtype is not None or device is not None else x
@@ -258,6 +259,7 @@ class TorchOps(BackendOps):
         copy: bool | None = None,
         backend_kwargs: dict[str, Any] | None = None,
     ) -> DenseArray:
+        self._reject_complex_to_real(x, dtype, operation="asarray")
         kwargs = {} if backend_kwargs is None else dict(backend_kwargs)
         if device is not None:
             kwargs["device"] = device
@@ -279,6 +281,7 @@ class TorchOps(BackendOps):
     ) -> DenseArray:
         if dtype is None:
             return x
+        self._reject_complex_to_real(x, dtype, operation="astype")
         kwargs = {} if backend_kwargs is None else dict(backend_kwargs)
         kwargs.update(self._defined_kwargs(memory_format=memory_format))
         return x.to(

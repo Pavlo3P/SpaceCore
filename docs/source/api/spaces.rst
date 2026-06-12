@@ -85,6 +85,7 @@ Validation
    spacecore.space.SpaceValidationError
    spacecore.space.BackendCheck
    spacecore.space.ShapeCheck
+   spacecore.space.FieldCheck
    spacecore.space.DTypeCheck
    spacecore.space.SquareMatrixCheck
    spacecore.space.HermitianCheck
@@ -180,6 +181,9 @@ Autodoc
    :members:
 
 .. autoclass:: spacecore.space.ShapeCheck
+   :members:
+
+.. autoclass:: spacecore.space.FieldCheck
    :members:
 
 .. autoclass:: spacecore.space.DTypeCheck

@@ -71,8 +71,11 @@ class CuPyOps(BackendOps):
         converted to the requested sparse format.
         """
         sparse = self.cpx_sparse
+        self._reject_complex_to_real(x, dtype, operation="assparse")
 
         if self.is_sparse(x):
+            if dtype is not None and self.get_dtype(x) != self.sanitize_dtype(dtype):
+                x = x.astype(self.sanitize_dtype(dtype))
             if format == "csr":
                 return x.tocsr()
             if format == "csc":

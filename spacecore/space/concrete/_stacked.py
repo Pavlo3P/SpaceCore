@@ -15,7 +15,7 @@ from ..._checks import checked_method
 from ..._contextual import resolve_context_priority
 from ...backend import Context, jax_pytree_class
 from ...types import DenseArray
-from ..checks import BackendCheck, DTypeCheck, ShapeCheck
+from ..checks import BackendCheck, DTypeCheck, FieldCheck, ShapeCheck
 
 _STACKED_FALLBACK_ERRORS = (TypeError, ValueError, AttributeError, IndexError)
 
@@ -111,7 +111,7 @@ class StackedSpace(CoordinateSpace):
 
     def _local_checks(self):
         """Return membership checks local to stacked dense coordinate spaces."""
-        return BackendCheck(), ShapeCheck(), DTypeCheck()
+        return BackendCheck(), ShapeCheck(), FieldCheck(), DTypeCheck()
 
     def zeros(self) -> DenseArray:
         """Return the stacked zero element."""

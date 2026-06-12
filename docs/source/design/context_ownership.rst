@@ -4,7 +4,7 @@ Context Ownership and Normalization
 A ``Context`` owns three pieces of execution policy:
 
 * ``ops`` - a ``BackendOps`` instance such as ``NumpyOps``;
-* ``dtype`` - the backend-normalized default dtype;
+* ``dtype`` - the backend-normalized default representation dtype;
 * ``check_level`` - the ordered runtime-validation policy.
 
 It does not own array memory, devices, gradient state, or sparse storage. Those
@@ -20,8 +20,11 @@ is sanitized by their backend. Backend names such as ``"numpy"`` and
 default context.
 
 ``Context.asarray(x)`` and ``Context.assparse(x)`` convert user input into the
-context backend and dtype. Space constructors keep the normalized context and
-use it for later array construction and validation.
+context backend and representation dtype. They reject complex-to-real
+narrowing unless the caller first extracts the real part explicitly. Space
+constructors keep the normalized context and use it for later array
+construction and validation. Spaces expose their mathematical real/complex
+contract separately through ``space.field``.
 
 Accepted as-is versus converted
 -------------------------------
