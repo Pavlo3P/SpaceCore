@@ -100,7 +100,7 @@ Compact SpaceCore solve
 
 .. code-block:: python
 
-   ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, enable_checks=True)
+   ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="standard")
    X = sc.DenseVectorSpace(
        (M.shape[1],),
        ctx,

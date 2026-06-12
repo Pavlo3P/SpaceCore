@@ -2,7 +2,7 @@
 
 from ._version import __version__
 
-from .backend import Context, BackendOps, NumpyOps, jax_pytree_class
+from .backend import CHECK_LEVELS, CheckLevel, Context, BackendOps, NumpyOps, jax_pytree_class
 
 try:
     from .backend import JaxOps as JaxOps
@@ -105,6 +105,8 @@ from ._contextual import (
 __all__ = [
     "__version__",
     "Context",
+    "CheckLevel",
+    "CHECK_LEVELS",
     "BackendOps",
     "jax_pytree_class",
     "NumpyOps",

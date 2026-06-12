@@ -22,7 +22,7 @@ A ``LinOp`` is a typed map between spaces. The dense matrix below represents
    import numpy as np
    import spacecore as sc
 
-   ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, enable_checks=True)
+   ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="standard")
    X = sc.DenseCoordinateSpace((2,), ctx)
    Y = sc.DenseCoordinateSpace((3,), ctx)
    matrix = ctx.asarray([[1.0, 2.0], [0.0, -1.0], [3.0, 1.0]])

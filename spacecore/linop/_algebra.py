@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from math import prod
 from numbers import Number
 from typing import Any, Callable, Sequence
 
@@ -9,7 +10,7 @@ from .._checks import checked_method
 from .._contextual import resolve_context_priority
 from .._contextual._bound import _same_math_context
 from ..backend import Context, jax_pytree_class
-from ..space import DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace
+from ..space import DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace, Space
 
 
 def is_scalar_like(value: Any) -> bool:
@@ -849,6 +850,41 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
         self.rapply_fn = rapply
         self.vapply_fn = vapply
         self.rvapply_fn = rvapply
+        if self._checks_at_least("strict"):
+            self._check_adjoint_consistency()
+
+    def _check_adjoint_consistency(self) -> None:
+        """Probe the declared adjoint identity on deterministic space elements."""
+        if not all(hasattr(space, "inner") for space in (self.domain, self.codomain)):
+            return
+
+        def probe(space: Space) -> Any:
+            if hasattr(space, "ones"):
+                return space.ones()
+            if hasattr(space, "unflatten") and hasattr(space, "shape"):
+                flat = self.ops.ones((prod(space.shape),), dtype=self.dtype)
+                return space.unflatten(flat)
+            raise TypeError(f"{type(space).__name__} cannot build a strict probe element.")
+
+        try:
+            x = probe(self.domain)
+            y = probe(self.codomain)
+            ax = self.apply_fn(x)
+            ahy = self.rapply_fn(y)
+            self.codomain._check_member(ax)
+            self.domain._check_member(ahy)
+            lhs = self.codomain.inner(ax, y)
+            rhs = self.domain.inner(x, ahy)
+            consistent = bool(self.ops.allclose(lhs, rhs))
+        except Exception as exc:
+            raise ValueError(
+                "Strict matrix-free adjoint consistency check could not be completed."
+            ) from exc
+        if not consistent:
+            raise ValueError(
+                "Strict matrix-free adjoint consistency check failed: "
+                "<A x, y> != <x, A* y> for the deterministic probe."
+            )
 
     @classmethod
     def from_coordinate_adjoint(

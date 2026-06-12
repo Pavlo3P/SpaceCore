@@ -21,7 +21,6 @@ class Space(ContextBound):
 
     def __init__(self, ctx: Context | str | None = None) -> None:
         super().__init__(ctx)
-        self._enable_checks = self.ctx.enable_checks
 
     def __eq__(self, other: Any) -> bool:
         if type(self) is type(other):
@@ -42,7 +41,7 @@ class Space(ContextBound):
         _run_checks(self, x, allow_leading=False)
 
     def check_member(self, x: Any) -> None:
-        if self._enable_checks:
+        if self.check_level != "none":
             self._check_member(x)
 
     def _convert(self, new_ctx: Context) -> Space:

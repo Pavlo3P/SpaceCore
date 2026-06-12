@@ -20,17 +20,17 @@ A context packages backend operations, dtype, and validation policy.
    import numpy as np
    import spacecore as sc
 
-   ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, enable_checks=True)
+   ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="standard")
    print(ctx.ops.family)
    print(ctx.dtype == np.dtype("float64"))
-   print(ctx.enable_checks)
+   print(ctx.check_level)
 
 Expected output:
 
 .. code-block:: text
 
    numpy
-   True
+   standard
    True
 
 Checkpoint: ``ctx.asarray([1]).dtype`` should be ``float64``.
@@ -61,8 +61,8 @@ Checkpoint: ``X.check_member(x)`` should not raise.
 3. See what checks catch
 ------------------------
 
-SpaceCore does not silently convert operation inputs. With checks enabled, a
-wrong shape is rejected before numerical work begins.
+SpaceCore does not silently convert operation inputs. At ``cheap`` and higher,
+a wrong shape is rejected before numerical work begins.
 
 .. code-block:: python
 

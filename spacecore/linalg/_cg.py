@@ -5,7 +5,13 @@ from typing import Any, NamedTuple
 from ..linop import LinOp
 from ._utils import DEFAULT_CONVERGENCE_CHECK_INTERVAL, check_interval, check_maxiter
 from ._utils import is_converged, real_inner, require_linop, require_square
-from ._utils import result_repr, safe_inverse_nonneg, should_check_iteration, threshold
+from ._utils import (
+    require_strict_cg_preconditions,
+    result_repr,
+    safe_inverse_nonneg,
+    should_check_iteration,
+    threshold,
+)
 
 
 class CGResult(NamedTuple):
@@ -158,6 +164,7 @@ def cg(
     """
     A = require_linop(A)
     require_square(A, "cg")
+    require_strict_cg_preconditions(A)
     A.codomain.check_member(b)
     maxiter = check_maxiter(maxiter, A)
     check_every = check_interval(check_every)

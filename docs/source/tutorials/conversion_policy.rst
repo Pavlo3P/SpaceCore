@@ -21,7 +21,7 @@ The source context uses NumPy float32.
    import numpy as np
    import spacecore as sc
 
-   src = sc.Context(sc.NumpyOps(), dtype=np.float32, enable_checks=True)
+   src = sc.Context(sc.NumpyOps(), dtype=np.float32, check_level="standard")
    X = sc.DenseCoordinateSpace((2,), src)
    A = sc.DiagonalLinOp(src.asarray([2.0, 3.0]), X, src)
 
@@ -38,15 +38,15 @@ Checkpoint: ``A.domain.dtype`` is also ``float32``.
 2. Convert to a target context
 ------------------------------
 
-Explicit conversion is target-context driven. The target dtype and checks win.
+Explicit conversion is target-context driven. The target dtype and check level win.
 
 .. code-block:: python
 
-   dst = sc.Context(sc.NumpyOps(), dtype=np.float64, enable_checks=False)
+   dst = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="none")
    B = A.convert(dst)
 
    print(B.ctx.dtype == np.dtype("float64"))
-   print(B.ctx.enable_checks)
+   print(B.ctx.check_level)
    print(B.apply(dst.asarray([1.0, 2.0])))
 
 Expected output:
@@ -54,7 +54,7 @@ Expected output:
 .. code-block:: text
 
    True
-   False
+   none
    [2. 6.]
 
 Checkpoint: ``B is A`` should be false because the context changed.

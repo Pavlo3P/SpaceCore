@@ -21,6 +21,23 @@ def require_square(A: LinOp, name: str) -> None:
         raise ValueError(f"{name} requires a square LinOp; got {A.domain!r} -> {A.codomain!r}.")
 
 
+def require_strict_cg_preconditions(A: LinOp) -> None:
+    """Run expensive development-time Hermitian and positive-curvature probes."""
+    if not A._checks_at_least("strict"):
+        return
+    if A.is_hermitian() is False:
+        raise ValueError("cg strict checks require A to be Hermitian/self-adjoint.")
+
+    x = default_initial_vector(A)
+    curvature = real_inner(A.domain, x, A.apply(x))
+    try:
+        positive = bool(curvature > 0)
+    except Exception as exc:
+        raise ValueError("cg strict positive-definiteness probe could not be evaluated.") from exc
+    if not positive:
+        raise ValueError("cg strict checks require positive curvature on the probe vector.")
+
+
 def default_maxiter(A: LinOp) -> int:
     """Return the default Krylov iteration count for ``A``."""
     return max(1, prod(A.domain.shape))

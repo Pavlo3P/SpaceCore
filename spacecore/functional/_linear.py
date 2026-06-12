@@ -103,7 +103,7 @@ class InnerProductFunctional(LinearFunctional[Domain]):
     ) -> None:
         super().__init__(dom, ctx)
         self._c = _convert_space_element(self.domain, c)
-        if self._enable_checks:
+        if self._checks_at_least("standard"):
             self.domain._check_member(self._c)
 
     @property
@@ -129,7 +129,7 @@ class InnerProductFunctional(LinearFunctional[Domain]):
             c_flat = ops.conj(dom.flatten(c_dual))
             xs_flat = dom.flatten_batch(xs)
         values = xs_flat @ c_flat
-        if self._enable_checks:
+        if self._checks_at_least("standard"):
             _check_scalar_shape(values, (xs_flat.shape[0],))
         return values
 
@@ -259,7 +259,7 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
             Scalar-like backend value returned by ``value_fn``.
         """
         y = self.value_fn(x)
-        if self._enable_checks:
+        if self._checks_at_least("standard"):
             _check_scalar_shape(y, ())
         return y
 
@@ -282,7 +282,7 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
         if self.vvalue_fn is None:
             return super().vvalue(xs)
         values = self.vvalue_fn(xs)
-        if self._enable_checks:
+        if self._checks_at_least("standard"):
             shape = tuple(getattr(xs, "shape", ()))
             base = tuple(self.domain.shape)
             leading = shape if not base else shape[: len(shape) - len(base)]

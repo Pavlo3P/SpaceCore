@@ -4,6 +4,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any, ClassVar
 
+from ..._check_policy import CheckLevel, check_level_at_least, normalize_check_level
+
 
 class SpaceValidationError(ValueError, TypeError):
     """Raised when an object is not a member of a space."""
@@ -40,6 +42,7 @@ class SpaceCheck(ABC):
     name: str
     core_rank: ClassVar[int] = 0
     enforce_core_shape: ClassVar[bool] = False
+    minimum_level: ClassVar[CheckLevel] = "standard"
 
     def __call__(self, space: Any, x: Any) -> None:
         """Raise :class:`SpaceValidationError` when ``x`` is invalid."""
@@ -108,6 +111,7 @@ class BackendCheck(SpaceCheck):
 
     name: str = "backend"
     core_rank: ClassVar[int] = 0
+    minimum_level: ClassVar[CheckLevel] = "cheap"
 
     def is_valid(self, space: Any, x: Any) -> bool:
         return bool(space.ops.is_dense(x))
@@ -129,6 +133,7 @@ class ShapeCheck(SpaceCheck):
 
     name: str = "shape"
     enforce_core_shape: ClassVar[bool] = True
+    minimum_level: ClassVar[CheckLevel] = "cheap"
 
     def core_shape(self, space: Any) -> tuple[int, ...]:
         """Return the whole canonical shape as the trailing element shape."""
@@ -170,6 +175,7 @@ class DTypeCheck(SpaceCheck):
 
     name: str = "dtype"
     core_rank: ClassVar[int] = 0
+    minimum_level: ClassVar[CheckLevel] = "cheap"
 
     def is_valid(self, space: Any, x: Any) -> bool:
         return _dtype_of(space, x) == space.dtype
@@ -192,6 +198,7 @@ class SquareMatrixCheck(SpaceCheck):
     name: str = "square_matrix"
     core_rank: ClassVar[int] = 2
     enforce_core_shape: ClassVar[bool] = True
+    minimum_level: ClassVar[CheckLevel] = "cheap"
 
     def is_valid(self, space: Any, x: Any) -> bool:
         shape = _shape_of(space, x)
@@ -221,6 +228,7 @@ class HermitianCheck(SpaceCheck):
     name: str = "hermitian"
     core_rank: ClassVar[int] = 2
     enforce_core_shape: ClassVar[bool] = True
+    minimum_level: ClassVar[CheckLevel] = "standard"
     atol: float = 1e-8
     rtol: float = 1e-8
     enforce: bool = True
@@ -256,6 +264,7 @@ class ProductStructureCheck(SpaceCheck):
 
     name: str = "product_structure"
     core_rank: ClassVar[int] = 0
+    minimum_level: ClassVar[CheckLevel] = "cheap"
 
     def is_valid(self, space: Any, x: Any) -> bool:
         try:
@@ -290,6 +299,7 @@ class ProductComponentCheck(SpaceCheck):
 
     name: str = "product_components"
     core_rank: ClassVar[int] = 0
+    minimum_level: ClassVar[CheckLevel] = "cheap"
 
     def is_valid(self, space: Any, x: Any) -> bool:
         return self.validate(space, x, allow_leading=True)
@@ -326,7 +336,10 @@ class ProductComponentCheck(SpaceCheck):
 
 def _run_checks(space: Any, x: Any, *, allow_leading: bool) -> None:
     """Run all membership checks with a shared member/batched shape policy."""
+    level = normalize_check_level(getattr(space, "check_level", "standard"))
     for check in space.member_checks():
+        if not check_level_at_least(level, check.minimum_level):
+            continue
         if not check.validate(space, x, allow_leading=allow_leading):
             raise SpaceValidationError(
                 check.validation_message(space, x, allow_leading=allow_leading)

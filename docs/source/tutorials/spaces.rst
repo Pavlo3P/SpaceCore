@@ -22,7 +22,7 @@ by the objects you create.
    import numpy as np
    import spacecore as sc
 
-   ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, enable_checks=True)
+   ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="standard")
    print(ctx.ops.family)
    print(ctx.dtype == np.dtype("float64"))
 

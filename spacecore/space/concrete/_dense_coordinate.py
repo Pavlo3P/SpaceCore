@@ -84,17 +84,17 @@ class DenseCoordinateSpace(CoordinateSpace, InnerProductSpace):
 
     def unflatten(self, v: DenseArray) -> DenseArray:
         """Reshape a flat coordinate vector into this space's canonical shape."""
-        V = self.ctx.assert_dense(v) if self._enable_checks else v
+        V = self.ctx.assert_dense(v) if self._checks_at_least("cheap") else v
         return V if self._is_flat_shape else V.reshape(self.shape)
 
     def flatten_batch(self, xs: DenseArray) -> DenseArray:
         """Flatten a leading-axis batch of dense elements to ``(N, size)``."""
-        xs = self.ctx.assert_dense(xs) if self._enable_checks else xs
+        xs = self.ctx.assert_dense(xs) if self._checks_at_least("cheap") else xs
         return xs if self._is_flat_shape else xs.reshape((xs.shape[0], -1))
 
     def unflatten_batch(self, vs: DenseArray) -> DenseArray:
         """Unflatten rows of shape ``(N, size)`` into dense space elements."""
-        vs = self.ctx.assert_dense(vs) if self._enable_checks else vs
+        vs = self.ctx.assert_dense(vs) if self._checks_at_least("cheap") else vs
         return vs if self._is_flat_shape else vs.reshape((vs.shape[0],) + self.shape)
 
     def _convert(self, new_ctx: Context) -> DenseCoordinateSpace:

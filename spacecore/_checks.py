@@ -3,6 +3,8 @@ from __future__ import annotations
 from functools import wraps
 from typing import Any, Callable
 
+from ._check_policy import CheckLevel, normalize_check_level
+
 
 def _as_positions(
     arg_pos: int | None,
@@ -21,6 +23,14 @@ def _as_positions(
 def _space_target(self: Any, space_name: str) -> Any:
     """Return the space object named by ``space_name``."""
     return self if space_name == "self" else getattr(self, space_name)
+
+
+def _object_check_level(obj: Any) -> CheckLevel:
+    """Read the new policy while supporting legacy decorator users."""
+    level = getattr(obj, "check_level", None)
+    if level is not None:
+        return normalize_check_level(level)
+    return "standard" if getattr(obj, "_enable_checks", True) else "none"
 
 
 def checked_method(
@@ -58,16 +68,17 @@ def checked_method(
     Returns
     -------
     Callable[[Callable[..., Any]], Callable[..., Any]]
-        Decorator that wraps a method, performs Python-level checks when
-        ``self._enable_checks`` is true, and otherwise forwards directly to the
-        wrapped method.
+        Decorator that wraps a method and performs checks selected by
+        ``self.check_level``. Legacy objects exposing only ``_enable_checks``
+        continue to map ``True`` to ``"standard"`` and ``False`` to ``"none"``.
     """
     positions = _as_positions(arg_pos, arg_positions)
 
     def decorate(method: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(method)
         def wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
-            if self._enable_checks and in_space is not None:
+            check_level = _object_check_level(self)
+            if check_level != "none" and in_space is not None:
                 check_target = _space_target(self, in_space)
                 for pos in positions:
                     if in_batched:
@@ -79,7 +90,7 @@ def checked_method(
 
             y = method(self, *args, **kwargs)
 
-            if self._enable_checks and out_space is not None:
+            if check_level != "none" and out_space is not None:
                 check_target = _space_target(self, out_space)
                 if out_batched:
                     from ._batching import _check_batched

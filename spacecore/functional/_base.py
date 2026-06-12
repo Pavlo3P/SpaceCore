@@ -61,7 +61,7 @@ class Functional(ContextBound, Generic[Domain]):
 
     ``Functional`` represents a map ``F : X -> K`` without assuming any storage
     model. It mirrors the minimal ``LinOp`` contract: the domain is converted
-    into the resolved context, value checks follow ``ctx.enable_checks``, and
+    into the resolved context, value checks follow ``ctx.check_level``, and
     batched evaluation is implemented by a backend ``vmap`` fallback.
 
     Parameters
@@ -83,7 +83,6 @@ class Functional(ContextBound, Generic[Domain]):
         ctx = resolve_context_priority(ctx, dom)
         super().__init__(ctx)
         self.dom = dom.convert(self.ctx)
-        self._enable_checks = self.ctx.enable_checks
 
     @property
     def domain(self) -> Domain:

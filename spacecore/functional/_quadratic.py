@@ -163,7 +163,7 @@ class LinOpQuadraticForm(QuadraticForm[Domain]):
         if self.linear is not None:
             values = values + self.linear.vvalue(xs)
         values = values + self.a
-        if self._enable_checks:
+        if self._checks_at_least("standard"):
             _check_scalar_shape(values, (_leading_batch_size(self.domain, xs),))
         return values
 

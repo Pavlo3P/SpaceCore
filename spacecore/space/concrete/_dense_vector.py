@@ -147,7 +147,7 @@ class ElementwiseJordanSpace(JordanAlgebraSpace, DenseCoordinateSpace, StarSpace
 
     def _check_unbatched_member(self, x: DenseArray) -> None:
         """Run member checks for one element, while allowing leading batches."""
-        if self._enable_checks and tuple(getattr(x, "shape", ())) == self.shape:
+        if self.check_level != "none" and tuple(getattr(x, "shape", ())) == self.shape:
             self._check_member(x)
 
     def spectrum(self, x: DenseArray) -> DenseArray:
@@ -173,7 +173,7 @@ class ElementwiseJordanSpace(JordanAlgebraSpace, DenseCoordinateSpace, StarSpace
             y = f(x)
         except Exception:
             y = self.ops.vectorize(f)(x)
-        if self._enable_checks and y.shape != x.shape:
+        if self._checks_at_least("cheap") and y.shape != x.shape:
             raise ValueError("Function application changed shape.")
         return y
 

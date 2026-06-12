@@ -116,7 +116,7 @@ class HermitianSpace(DenseCoordinateSpace, StarSpace, EuclideanJordanAlgebraSpac
 
     def _check_unbatched_member(self, x: DenseArray) -> None:
         """Run member checks for a single element, while allowing batched spectra."""
-        if self._enable_checks and tuple(getattr(x, "shape", ())) == self.shape:
+        if self.check_level != "none" and tuple(getattr(x, "shape", ())) == self.shape:
             self._check_member(x)
 
     def spectrum(self, x: DenseArray) -> DenseArray:
@@ -135,7 +135,7 @@ class HermitianSpace(DenseCoordinateSpace, StarSpace, EuclideanJordanAlgebraSpac
 
     def unflatten(self, v: DenseArray) -> DenseArray:
         """Reshape dense coordinates and symmetrize the result."""
-        vv = self.ctx.assert_dense(v) if self._enable_checks else v
+        vv = self.ctx.assert_dense(v) if self._checks_at_least("cheap") else v
         X = vv.reshape(self.shape)
         return self.symmetrize(X)
 
@@ -164,7 +164,7 @@ class HermitianSpace(DenseCoordinateSpace, StarSpace, EuclideanJordanAlgebraSpac
             y = f(x)
         except Exception:
             y = self.ops.vectorize(f)(x)
-        if self._enable_checks and y.shape != x.shape:
+        if self._checks_at_least("cheap") and y.shape != x.shape:
             raise ValueError("Function application changed shape.")
         return y
 

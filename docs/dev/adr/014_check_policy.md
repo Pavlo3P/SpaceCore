@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted and implemented for 0.4.0 Phase B.
 
 ## Context
 
@@ -14,6 +14,12 @@ Spaces attach `SpaceCheck` objects such as backend, shape, dtype, square-matrix,
 
 ## Decision
 
+The public API is ``Context.check_level`` with the exported
+``CheckLevel = Literal["none", "cheap", "standard", "strict"]`` type. This
+keeps the existing context-first constructor architecture intact: spaces,
+LinOps, and functionals continue to receive a context rather than duplicating
+policy keywords on every constructor.
+
 The intended policy levels are:
 
 - `none`: no SpaceCore validation except unavoidable constructor normalization; backend errors may surface later.
@@ -21,7 +27,9 @@ The intended policy levels are:
 - `standard`: current contributor-facing safety level; include component membership, constructor storage checks, scalar output shape, Hermitian structure when explicitly configured, and conversion consistency.
 - `strict`: allow expensive or numerical checks such as full adjoint identities, basis-based Hermiticity, positive-definiteness probes, batched/single consistency, and cross-backend conformance checks.
 
-Boolean `enable_checks` should be treated as a compatibility shim: `False` maps to `none`; `True` maps to `standard` unless an API explicitly chooses another level.
+Boolean `enable_checks` is a deprecated compatibility shim: `False` maps to
+`none`; `True` maps to `standard`; passing it together with `check_level` raises
+`TypeError`.
 
 ## Rationale
 

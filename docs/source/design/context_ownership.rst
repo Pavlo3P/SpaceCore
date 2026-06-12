@@ -5,7 +5,7 @@ A ``Context`` owns three pieces of execution policy:
 
 * ``ops`` - a ``BackendOps`` instance such as ``NumpyOps``;
 * ``dtype`` - the backend-normalized default dtype;
-* ``enable_checks`` - whether spaces and operators run membership checks.
+* ``check_level`` - the ordered runtime-validation policy.
 
 It does not own array memory, devices, gradient state, or sparse storage. Those
 belong to the backend arrays themselves.
@@ -27,9 +27,9 @@ Accepted as-is versus converted
 -------------------------------
 
 User arrays passed to operations such as ``space.add`` or ``A.apply`` are not
-silently converted. When checks are enabled, they are validated against the
-space's backend, shape, and dtype. When checks are disabled, they are forwarded
-to backend operations and backend errors may surface later.
+silently converted. The context's check level selects backend, shape, dtype,
+recursive membership, and strict numerical validation. Under ``"none"``, user
+values are forwarded and backend errors may surface later.
 
 Constructors and explicit conversion are the places where SpaceCore converts:
 ``ctx.asarray(...)`` creates dense arrays, ``ctx.assparse(...)`` creates sparse
@@ -41,8 +41,9 @@ Guarantees
 
 A constructed space or operator guarantees that it stores one normalized
 ``Context`` and uses that context for its own helper methods. It does not
-guarantee that every future user-supplied array has that context unless checks
-are enabled or the user created the array through the same context.
+guarantee that every future user-supplied array has that context unless the
+selected check level validates it or the user created it through the same
+context.
 
 Example
 -------
@@ -52,7 +53,7 @@ Example
    import numpy as np
    import spacecore as sc
 
-   ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, enable_checks=True)
+   ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="standard")
    X = sc.DenseCoordinateSpace((2,), ctx)
    x = ctx.asarray([1.0, 2.0])
    X.check_member(x)

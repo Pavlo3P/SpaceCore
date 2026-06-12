@@ -368,7 +368,7 @@ class ProductSpace(CoordinateSpace):
         parts = []
         for s, xi in zip(self.spaces, x_parts):
             vi = s.flatten(xi)
-            if self._enable_checks:
+            if self._checks_at_least("cheap"):
                 vi = self.ctx.assert_dense(vi)
             parts.append(vi)
 
@@ -381,7 +381,7 @@ class ProductSpace(CoordinateSpace):
 
     def unflatten(self, v: DenseArray) -> ProductElement:
         """Split dense coordinates into component-space elements."""
-        if self._enable_checks:
+        if self._checks_at_least("cheap"):
             v = self.ctx.assert_dense(v)
             v1 = v if tuple(getattr(v, "shape", ())) == self.shape else v.reshape((-1,))
         else:
@@ -426,7 +426,7 @@ class ProductSpace(CoordinateSpace):
 
     def unflatten_batch(self, vs: DenseArray) -> ProductElement:
         """Split rows of shape ``(N, size)`` into batched component elements."""
-        if self._enable_checks:
+        if self._checks_at_least("cheap"):
             vs = self.ctx.assert_dense(vs)
         parts = tuple(s.unflatten_batch(vs[:, slc]) for s, slc in zip(self.spaces, self._slices))
         return self._from_components(parts)
