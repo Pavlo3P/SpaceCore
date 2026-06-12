@@ -18,6 +18,7 @@ except ImportError:
     pass
 from .linop import (
     BlockDiagonalLinOp,
+    BlockMatrixLinOp,
     ComposedLinOp,
     DiagonalLinOp,
     DenseLinOp,
@@ -122,6 +123,7 @@ __all__ = [
     "make_sum",
     "TreeLinOp",
     "BlockDiagonalLinOp",
+    "BlockMatrixLinOp",
     "SumToSingleLinOp",
     "StackedLinOp",
     "ComposedFunctional",

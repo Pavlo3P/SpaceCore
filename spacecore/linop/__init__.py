@@ -15,7 +15,7 @@ from ._algebra import (
 from ._dense import DenseLinOp
 from ._diagonal import DiagonalLinOp
 from ._sparse import SparseLinOp
-from .tree import TreeLinOp, StackedLinOp, SumToSingleLinOp, BlockDiagonalLinOp
+from .tree import BlockDiagonalLinOp, BlockMatrixLinOp, StackedLinOp, SumToSingleLinOp, TreeLinOp
 
 __all__ = [
     "LinOp",
@@ -34,5 +34,6 @@ __all__ = [
     "TreeLinOp",
     "SumToSingleLinOp",
     "BlockDiagonalLinOp",
+    "BlockMatrixLinOp",
     "StackedLinOp",
 ]
