@@ -32,6 +32,17 @@ are the normal element representation. `TreeSpace` is the only structured
 finite direct-product abstraction. Tuple products use
 `TreeSpace.from_leaf_spaces(...)`.
 
+The `0.4.0` Phase I functional and iterative-linalg reference suite is in place.
+Functional generators cover analytic values, Riesz gradients, pull-backs,
+conversion, weighted geometry, and supported TreeSpace domains. CG, LSQR,
+Lanczos, and power iteration have small direct-reference cases, including
+metric-adjoint and current workspace-dtype behavior.
+
+The `0.4.0` Phase H LinOp reference suite is in place. It covers every concrete
+public LinOp family, Euclidean and weighted metric adjoints, algebraic laws,
+conversion, all four check levels for batching, TreeSpace block operators, and
+supported NumPy/JAX/Torch/CuPy contexts with explicit sparse-backend skips.
+
 Milestone tracking: [0.3.2 milestone placeholder](https://github.com/Pavlo3P/SpaceCore/milestones).
 
 ## Open questions
@@ -43,10 +54,17 @@ Milestone tracking: [0.3.2 milestone placeholder](https://github.com/Pavlo3P/Spa
 - Backend promotion: which NumPy, JAX, Torch, and CuPy promotion differences are contractual?
 - Cross-backend dtype compatibility: which dtype pairs represent the same portable precision?
 - Batching limitations and batch-conformance boundaries.
+- Batched CG, LSQR, Lanczos, and power-iteration entry points are not currently
+  supported. A follow-up must choose between explicit batched solver APIs and a
+  documented user-level loop; this phase only guarantees a clear shape error.
 - Strict runtime checking intentionally uses bounded probes. Exhaustive
   basis-based adjoint, metric-positive-definiteness, spectral, batched/single,
   and cross-backend checks remain follow-up conformance work in Phases H-J,
   rather than implicit checks in numerical hot loops.
+- Phase G generated space coverage therefore treats `strict` as the current
+  superset of `standard` space membership. There is no space-local strict-only
+  spectral or metric membership check yet; generated tests exercise explicit
+  spectral and SPD reference checks without adding them to hot-path validation.
 
 Do not open unsolicited PRs for these unsettled questions unless an issue
 already defines the desired work or a maintainer has agreed on the design.

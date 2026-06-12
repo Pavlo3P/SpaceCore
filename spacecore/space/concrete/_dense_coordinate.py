@@ -57,7 +57,8 @@ class DenseCoordinateSpace(CoordinateSpace, InnerProductSpace):
     @checked_method(in_space="self", arg_positions=(0, 1))
     def add(self, x: Any, y: Any) -> DenseArray:
         """Return the vector-space sum ``x + y``."""
-        return x + y
+        result = x + y
+        return self.ctx.asarray(result) if self.shape == () else result
 
     def add_batch(self, x: Any, y: Any) -> DenseArray:
         """Return the leading-axis batch sum ``x + y``."""
@@ -66,7 +67,8 @@ class DenseCoordinateSpace(CoordinateSpace, InnerProductSpace):
     @checked_method(in_space="self", arg_positions=(1,))
     def scale(self, a: Any, x: Any) -> DenseArray:
         """Return the scalar product ``a * x``."""
-        return a * x
+        result = a * x
+        return self.ctx.asarray(result) if self.shape == () else result
 
     def scale_batch(self, a: Any, x: Any) -> DenseArray:
         """Return the leading-axis batch scalar product ``a * x``."""
