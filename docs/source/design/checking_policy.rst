@@ -27,14 +27,14 @@ Levels
 
 ``cheap``
    Adds deterministic local checks: backend representation, shape/rank, scalar
-   field, exact dtype, product structure and arity, product leaf interface checks, and
+   field, exact dtype, tree structure and arity, tree leaf interface checks, and
    domain/codomain membership at that same level. These checks are suitable for
    performance-sensitive trusted code that still needs interface validation.
 
 ``standard``
    Adds linear or near-linear mathematical validation: stored representer
    membership, configured Hermitian membership, and scalar functional output
-   shape. ProductSpace traversal also applies these standard checks to each
+   shape. TreeSpace traversal also applies these standard checks to each
    leaf. This is the normal choice for user-facing libraries and is the
    compatibility target for the old enabled Boolean policy.
 
@@ -63,7 +63,7 @@ Where checks run
 Spaces dispatch their ``SpaceCheck`` objects by minimum level. The same
 dispatch is used by ``check_member``, ``checked_method``, and batched trailing
 shape validation, so spaces, LinOps, functionals, and solver inputs share one
-policy. Product component checks recurse under the converted component
+policy. Tree leaf checks recurse under the converted leaf
 contexts. Linear-operator square/layout invariants that prevent incoherent
 internal state remain unconditional.
 

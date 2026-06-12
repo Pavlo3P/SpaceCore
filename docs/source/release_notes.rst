@@ -1,6 +1,25 @@
 Release notes
 =============
 
+Version 0.4.0
+-------------
+
+Unreleased.
+
+Breaking changes
+~~~~~~~~~~~~~~~~
+
+* ``ProductSpace`` was removed. ``TreeSpace`` is now the single structured
+  finite direct-product abstraction.
+* Tuple-style products now use ``TreeSpace.from_leaf_spaces((X1, X2, ...))``.
+  Nested tuple, list, dictionary, named-tuple, and registered optree structures
+  use ``TreeSpace(template, leaf_spaces)`` or ``TreeSpace.from_template``.
+* ``ProductLinOp`` was renamed to ``TreeLinOp``. ``BlockDiagonalLinOp``,
+  ``StackedLinOp``, and ``SumToSingleLinOp`` now validate ``TreeSpace`` domains
+  and codomains directly.
+* Product structure adapters and product-specific checks were removed. Tree
+  structure and leaf validation are owned by ``TreeSpace``.
+
 Version 0.3.1
 -------------
 

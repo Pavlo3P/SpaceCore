@@ -97,7 +97,7 @@ def test_product_space_resolves_common_backend():
     sc = importlib.import_module("spacecore")
     c1 = sc.Context(sc.NumpyOps(), dtype=np.float32, enable_checks=True)
     c2 = sc.Context(sc.NumpyOps(), dtype=np.float64, enable_checks=False)
-    P = sc.ProductSpace((sc.DenseCoordinateSpace((2,), c1), sc.DenseCoordinateSpace((3,), c2)))
+    P = sc.TreeSpace.from_leaf_spaces((sc.DenseCoordinateSpace((2,), c1), sc.DenseCoordinateSpace((3,), c2)))
     assert P.ctx.ops.family == c1.ops.family
 
 
@@ -110,6 +110,6 @@ def test_cross_backend_product_space_resolution_raises_if_available():
     np_ctx = sc.Context(sc.NumpyOps(), dtype=np.float32, enable_checks=True)
     jx_ctx = sc.Context(sc.JaxOps(), dtype=jax_real_dtype(), enable_checks=True)
     with pytest.raises(Exception):
-        sc.ProductSpace(
+        sc.TreeSpace.from_leaf_spaces(
             (sc.DenseCoordinateSpace((2,), np_ctx), sc.DenseCoordinateSpace((3,), jx_ctx))
         )

@@ -54,20 +54,21 @@ Algebraic operators
 * ``ScaledLinOp`` represents ``alpha * A``.
 * Helper constructors perform the same simplifications used by Python operator overloads.
 
-Product and block operators
----------------------------
+Tree and block operators
+------------------------
 
 .. autosummary::
    :nosignatures:
 
-   spacecore.linop.ProductLinOp
+   spacecore.linop.TreeLinOp
    spacecore.linop.BlockDiagonalLinOp
    spacecore.linop.StackedLinOp
    spacecore.linop.SumToSingleLinOp
 
-* ``BlockDiagonalLinOp`` maps product components independently.
-* ``StackedLinOp`` maps one domain into a product codomain by stacking outputs.
-* ``SumToSingleLinOp`` maps a product domain into one codomain by summing component outputs.
+* ``TreeLinOp`` is the base for operators with a ``TreeSpace`` domain or codomain.
+* ``BlockDiagonalLinOp`` maps corresponding tree leaves independently.
+* ``StackedLinOp`` maps one domain into a tree codomain.
+* ``SumToSingleLinOp`` maps a tree domain into one codomain by summing leaf outputs.
 
 Autodoc
 -------
@@ -116,7 +117,7 @@ Autodoc
 .. autofunction:: spacecore.linop.make_composed
 .. autofunction:: spacecore.linop.make_scaled
 
-.. autoclass:: spacecore.linop.ProductLinOp
+.. autoclass:: spacecore.linop.TreeLinOp
    :members:
    :inherited-members:
 

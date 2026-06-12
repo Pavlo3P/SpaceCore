@@ -62,20 +62,20 @@ def test_enable_checks_rejects_non_hermitian_matrix():
         space.check_member(ctx.asarray([[1.0, 2.0], [0.0, 1.0]]))
 
 
-def test_enable_checks_rejects_invalid_product_structure():
+def test_enable_checks_rejects_invalid_tree_structure():
     ctx = _checked_ctx()
-    product = sc.ProductSpace(
+    product = sc.TreeSpace.from_leaf_spaces(
         (sc.DenseCoordinateSpace((2,), ctx), sc.DenseCoordinateSpace((3,), ctx)),
         ctx,
     )
 
-    with pytest.raises(TypeError, match="ProductSpace element must be a tuple"):
+    with pytest.raises(TypeError, match="structure mismatch"):
         product.check_member([ctx.asarray([1.0, 2.0]), ctx.asarray([3.0, 4.0, 5.0])])
 
-    with pytest.raises(ValueError, match="Expected tuple of length 2, got 1"):
+    with pytest.raises(TypeError, match="structure mismatch"):
         product.check_member((ctx.asarray([1.0, 2.0]),))
 
-    with pytest.raises(TypeError, match=r"Invalid component 1.*Expected shape \(3,\)"):
+    with pytest.raises(TypeError, match=r"\$\[1\].*Expected shape \(3,\)"):
         product.check_member((ctx.asarray([1.0, 2.0]), ctx.asarray([3.0, 4.0])))
 
 
@@ -95,7 +95,7 @@ def test_enable_checks_rejects_dense_linop_matrix_and_vector_dimensions():
         op.rapply(ctx.asarray([1.0, 2.0]))
 
 
-def test_enable_checks_rejects_product_linop_domain_codomain_mismatch():
+def test_enable_checks_rejects_tree_linop_domain_codomain_mismatch():
     ctx = _checked_ctx()
     dom2 = sc.DenseCoordinateSpace((2,), ctx)
     dom3 = sc.DenseCoordinateSpace((3,), ctx)
@@ -103,7 +103,9 @@ def test_enable_checks_rejects_product_linop_domain_codomain_mismatch():
     first = sc.DenseLinOp(ctx.asarray([[1.0, 2.0]]), dom2, cod1, ctx)
     second = sc.DenseLinOp(ctx.asarray([[1.0, 2.0, 3.0]]), dom3, cod1, ctx)
 
-    with pytest.raises(TypeError, match=r"Component op 1 must map dom -> cod\.spaces\[1\]"):
+    with pytest.raises(
+        TypeError, match=r"Component op 1 must map dom -> cod\.leaf_spaces\[1\]"
+    ):
         sc.StackedLinOp.from_operators((first, second))
 
 
@@ -119,7 +121,7 @@ def test_disabled_checks_skip_space_membership_validations():
     ctx = _unchecked_ctx()
     vector = sc.DenseCoordinateSpace((2,), ctx)
     hermitian = sc.HermitianSpace(2, ctx=ctx)
-    product = sc.ProductSpace((vector, vector), ctx)
+    product = sc.TreeSpace.from_leaf_spaces((vector, vector), ctx)
 
     vector.check_member(np.asarray([1.0, 2.0, 3.0], dtype=np.float32))
     hermitian.check_member(ctx.asarray([[1.0, 2.0], [0.0, 1.0]]))

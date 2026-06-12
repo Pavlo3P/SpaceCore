@@ -16,4 +16,5 @@ as current behavior.
    geometry
    performance
    jax_integration
+   tree_spaces
    backend_ops_array_api

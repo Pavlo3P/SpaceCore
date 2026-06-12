@@ -164,13 +164,13 @@ def test_space_equality_is_symmetric_and_requires_exact_space_type():
     weighted = sc.DenseCoordinateSpace(
         (2, 2), ctx, geometry=_weighted_geometry([1.0, 2.0, 3.0, 4.0], ctx)
     )
-    product_a = sc.ProductSpace(
+    product_a = sc.TreeSpace.from_leaf_spaces(
         (sc.DenseCoordinateSpace((2,), ctx), sc.DenseCoordinateSpace((1,), ctx)), ctx
     )
-    product_b = sc.ProductSpace(
+    product_b = sc.TreeSpace.from_leaf_spaces(
         (sc.DenseCoordinateSpace((2,), ctx), sc.DenseCoordinateSpace((1,), ctx)), ctx
     )
-    product_reordered = sc.ProductSpace(
+    product_reordered = sc.TreeSpace.from_leaf_spaces(
         (sc.DenseCoordinateSpace((1,), ctx), sc.DenseCoordinateSpace((2,), ctx)), ctx
     )
 
@@ -208,11 +208,11 @@ def test_product_space_geometry_is_componentwise():
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
     euclidean = sc.DenseCoordinateSpace((2,), ctx)
     weighted = sc.DenseCoordinateSpace((2,), ctx, geometry=_weighted_geometry([2.0, 3.0], ctx))
-    product = sc.ProductSpace((euclidean, weighted), ctx)
+    product = sc.TreeSpace.from_leaf_spaces((euclidean, weighted), ctx)
     x = (ctx.asarray([1.0, 2.0]), ctx.asarray([3.0, 4.0]))
     y = (ctx.asarray([5.0, 6.0]), ctx.asarray([7.0, 8.0]))
 
-    assert sc.ProductSpace((euclidean, euclidean), ctx).is_euclidean is True
+    assert sc.TreeSpace.from_leaf_spaces((euclidean, euclidean), ctx).is_euclidean is True
     assert product.is_euclidean is False
     expected_inner = euclidean.inner(x[0], y[0]) + weighted.inner(x[1], y[1])
     assert np.allclose(product.inner(x, y), expected_inner)
@@ -232,12 +232,12 @@ def test_product_space_equality_distinguishes_component_geometry():
     weighted_a = sc.DenseCoordinateSpace((2,), ctx, geometry=_weighted_geometry([2.0, 3.0], ctx))
     weighted_b = sc.DenseCoordinateSpace((2,), ctx, geometry=_weighted_geometry([2.0, 4.0], ctx))
 
-    assert sc.ProductSpace((euclidean, weighted_a), ctx) == sc.ProductSpace(
+    assert sc.TreeSpace.from_leaf_spaces((euclidean, weighted_a), ctx) == sc.TreeSpace.from_leaf_spaces(
         (euclidean, weighted_a), ctx
     )
-    assert sc.ProductSpace((euclidean, weighted_a), ctx) != sc.ProductSpace(
+    assert sc.TreeSpace.from_leaf_spaces((euclidean, weighted_a), ctx) != sc.TreeSpace.from_leaf_spaces(
         (euclidean, weighted_b), ctx
     )
-    assert sc.ProductSpace((euclidean, weighted_a), ctx) != sc.ProductSpace(
+    assert sc.TreeSpace.from_leaf_spaces((euclidean, weighted_a), ctx) != sc.TreeSpace.from_leaf_spaces(
         (weighted_a, euclidean), ctx
     )

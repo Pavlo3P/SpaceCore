@@ -2,6 +2,8 @@ import importlib
 import tomllib
 from pathlib import Path
 
+import pytest
+
 from tests._helpers import has_cupy, has_jax, has_torch
 
 
@@ -13,6 +15,33 @@ def test___all___contains_importable_names():
     assert isinstance(sc.__all__, list)
     for name in sc.__all__:
         assert hasattr(sc, name)
+
+
+def test_removed_product_api_is_not_importable():
+    sc = importlib.import_module("spacecore")
+    removed = {
+        "ProductSpace",
+        "ProductLinOp",
+        "ProductSpectralDecomposition",
+        "ProductStructure",
+        "TupleStructure",
+        "PytreeStructure",
+        "ProductStructureCheck",
+        "ProductComponentCheck",
+    }
+
+    assert removed.isdisjoint(sc.__all__)
+    assert all(not hasattr(sc, name) for name in removed)
+    with pytest.raises(ImportError):
+        exec("from spacecore import ProductSpace", {})
+
+    for module_name in (
+        "spacecore.space.concrete._product",
+        "spacecore.space._structure",
+        "spacecore.linop.product",
+    ):
+        with pytest.raises(ModuleNotFoundError):
+            importlib.import_module(module_name)
 
 
 def test_expected_names_are_exported():
@@ -32,7 +61,7 @@ def test_expected_names_are_exported():
         "make_sum",
         "make_scaled",
         "make_composed",
-        "ProductLinOp",
+        "TreeLinOp",
         "BlockDiagonalLinOp",
         "StackedLinOp",
         "SumToSingleLinOp",
@@ -46,10 +75,8 @@ def test_expected_names_are_exported():
         "make_functional_composed",
         "DenseCoordinateSpace",
         "HermitianSpace",
-        "ProductSpace",
-        "ProductStructure",
-        "TupleStructure",
-        "PytreeStructure",
+        "TreeSpace",
+        "TreeElement",
         "StackedSpace",
         "Space",
         "InnerProduct",
@@ -96,11 +123,10 @@ def test_top_level_objects_match_source_modules():
     assert sc.EuclideanInnerProduct is space.EuclideanInnerProduct
     assert sc.WeightedInnerProduct is space.WeightedInnerProduct
     assert sc.DenseCoordinateSpace is space.DenseCoordinateSpace
-    assert sc.ProductStructure is space.ProductStructure
-    assert sc.TupleStructure is space.TupleStructure
-    assert sc.PytreeStructure is space.PytreeStructure
+    assert sc.TreeSpace is space.TreeSpace
+    assert sc.TreeElement is space.TreeElement
     assert sc.StackedSpace is space.StackedSpace
-    assert sc.ProductLinOp is linop.ProductLinOp
+    assert sc.TreeLinOp is linop.TreeLinOp
     assert sc.DenseLinOp is linop.DenseLinOp
     assert sc.Functional is functional.Functional
     assert sc.ComposedFunctional is functional.ComposedFunctional

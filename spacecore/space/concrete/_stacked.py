@@ -10,7 +10,7 @@ from ..base import (
     Space,
     StarSpace,
 )
-from ._product import ProductSpace, _space_capabilities
+from ._tree_space import TreeSpace, _space_capabilities
 from ..._checks import checked_method
 from ..._contextual import resolve_context_priority
 from ...backend import Context, jax_pytree_class
@@ -33,10 +33,10 @@ def _validate_stacked_base(base: Any, owner: str = "StackedSpace") -> Coordinate
         raise TypeError(
             f"{owner} requires base to be a CoordinateSpace; base is {type(base).__name__}."
         )
-    if isinstance(base, ProductSpace):
+    if isinstance(base, TreeSpace):
         raise TypeError(
-            "StackedSpace cannot wrap ProductSpace directly; use "
-            "ProductSpace(...).stacked(count), which stacks each component."
+            "StackedSpace cannot wrap TreeSpace directly; use "
+            "tree_space.stacked(count), which stacks each leaf."
         )
     return base
 

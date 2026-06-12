@@ -36,7 +36,7 @@ def test_inferred_context_uses_the_least_expensive_source_level():
     strict_space = sc.DenseCoordinateSpace((1,), strict_ctx)
     cheap_space = sc.DenseCoordinateSpace((1,), cheap_ctx)
 
-    product = sc.ProductSpace((strict_space, cheap_space))
+    product = sc.TreeSpace.from_leaf_spaces((strict_space, cheap_space))
 
     assert product.check_level == "cheap"
 
@@ -53,7 +53,7 @@ def test_none_skips_optional_space_linop_and_batched_checks():
     assert identity.vapply(invalid_batch) is invalid_batch
 
 
-def test_cheap_checks_shape_dtype_backend_and_product_structure_only():
+def test_cheap_checks_shape_dtype_backend_and_tree_structure_only():
     ctx = _ctx("cheap", np.float32)
     vector = sc.DenseCoordinateSpace((2,), ctx)
 
@@ -62,20 +62,20 @@ def test_cheap_checks_shape_dtype_backend_and_product_structure_only():
     with pytest.raises(sc.SpaceValidationError, match="Expected dtype"):
         vector.check_member(np.asarray([1.0, 2.0], dtype=np.float64))
 
-    product = sc.ProductSpace((vector, vector), ctx)
-    with pytest.raises(sc.SpaceValidationError, match="tuple"):
+    product = sc.TreeSpace.from_leaf_spaces((vector, vector), ctx)
+    with pytest.raises(sc.SpaceValidationError, match="structure mismatch"):
         product.check_member([ctx.asarray([1.0, 2.0]), ctx.asarray([3.0, 4.0])])
 
-    with pytest.raises(sc.SpaceValidationError, match="Invalid component 0"):
+    with pytest.raises(sc.SpaceValidationError, match=r"\$\[0\]"):
         product.check_member((ctx.asarray([1.0]), ctx.asarray([2.0, 3.0, 4.0])))
 
 
 def test_standard_adds_recursive_and_hermitian_membership():
     ctx = _ctx("standard")
     vector = sc.DenseCoordinateSpace((2,), ctx)
-    product = sc.ProductSpace((vector, vector), ctx)
+    product = sc.TreeSpace.from_leaf_spaces((vector, vector), ctx)
 
-    with pytest.raises(sc.SpaceValidationError, match="Invalid component 0"):
+    with pytest.raises(sc.SpaceValidationError, match=r"\$\[0\]"):
         product.check_member((ctx.asarray([1.0]), ctx.asarray([2.0, 3.0])))
 
     hermitian = sc.HermitianSpace(2, ctx=ctx)
@@ -84,11 +84,11 @@ def test_standard_adds_recursive_and_hermitian_membership():
 
     cheap_ctx = _ctx("cheap")
     cheap_hermitian = sc.HermitianSpace(2, ctx=cheap_ctx)
-    cheap_product = sc.ProductSpace((cheap_hermitian,), cheap_ctx)
+    cheap_product = sc.TreeSpace.from_leaf_spaces((cheap_hermitian,), cheap_ctx)
     cheap_product.check_member((cheap_ctx.asarray([[1.0, 2.0], [0.0, 1.0]]),))
 
-    standard_product = sc.ProductSpace((hermitian,), ctx)
-    with pytest.raises(sc.SpaceValidationError, match="Invalid component 0.*not Hermitian"):
+    standard_product = sc.TreeSpace.from_leaf_spaces((hermitian,), ctx)
+    with pytest.raises(sc.SpaceValidationError, match=r"\$\[0\].*not Hermitian"):
         standard_product.check_member((ctx.asarray([[1.0, 2.0], [0.0, 1.0]]),))
 
 

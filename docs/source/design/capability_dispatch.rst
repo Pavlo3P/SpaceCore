@@ -22,9 +22,9 @@ Implemented capabilities
 Concrete dispatch
 -----------------
 
-``ProductSpace`` and ``StackedSpace`` inspect component capabilities and return
+``TreeSpace`` and ``StackedSpace`` inspect leaf or base capabilities and return
 an internal implementation that preserves only capabilities shared by the
-components. Conversion reconstructs components in the target context and then
+leaves or base. Conversion reconstructs them in the target context and then
 re-runs this capability selection.
 
 Capabilities may be intentionally absent. ``DenseCoordinateSpace`` has an inner

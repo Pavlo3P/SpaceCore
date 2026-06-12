@@ -97,19 +97,19 @@ def test_stacked_space_jax_pytree_roundtrip():
     assert rebuilt == space
 
 
-def test_product_space_stacked_nests_products_outside_stacks():
+def test_tree_space_stacked_preserves_tree_outside_stacks():
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
     x = sc.DenseCoordinateSpace((2,), ctx)
     y = sc.DenseCoordinateSpace((3,), ctx)
-    product = sc.ProductSpace((x, y), ctx)
+    product = sc.TreeSpace.from_leaf_spaces((x, y), ctx)
     stacked = product.stacked(4)
 
-    assert isinstance(stacked, sc.ProductSpace)
-    assert all(isinstance(s, sc.StackedSpace) for s in stacked.spaces)
-    assert stacked.spaces[0].shape == (4, 2)
-    assert stacked.spaces[1].shape == (4, 3)
-    with pytest.raises(TypeError, match="ProductSpace"):
+    assert isinstance(stacked, sc.TreeSpace)
+    assert all(isinstance(s, sc.StackedSpace) for s in stacked.leaf_spaces)
+    assert stacked.leaf_spaces[0].shape == (4, 2)
+    assert stacked.leaf_spaces[1].shape == (4, 3)
+    with pytest.raises(TypeError, match="TreeSpace"):
         sc.StackedSpace(product, 4, ctx)
 
 

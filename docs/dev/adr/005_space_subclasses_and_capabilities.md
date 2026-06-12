@@ -10,9 +10,9 @@ Concrete spaces expose different mathematical operations. Contributors need a st
 
 ## Current design
 
-Public concrete spaces include `DenseCoordinateSpace`, `DenseVectorSpace`, `ElementwiseJordanSpace`, `EuclideanElementwiseJordanSpace`, `HermitianSpace`, `ProductSpace`, and `StackedSpace`. Capability classes include `InnerProductSpace`, `StarSpace`, `JordanAlgebraSpace`, and `EuclideanJordanAlgebraSpace`.
+Public concrete spaces include `DenseCoordinateSpace`, `DenseVectorSpace`, `ElementwiseJordanSpace`, `EuclideanElementwiseJordanSpace`, `HermitianSpace`, `TreeSpace`, and `StackedSpace`. Capability classes include `InnerProductSpace`, `StarSpace`, `JordanAlgebraSpace`, and `EuclideanJordanAlgebraSpace`.
 
-`DenseCoordinateSpace` has inner-product geometry but no star operation. `DenseVectorSpace` adds elementwise conjugation. `ElementwiseJordanSpace` adds elementwise Jordan and spectral operations; when context and geometry are real Euclidean, construction dispatches to `EuclideanElementwiseJordanSpace`. `HermitianSpace` represents dense Hermitian matrices with Frobenius geometry and spectral calculus. `ProductSpace` and `StackedSpace` dynamically choose internal subclasses that preserve only capabilities shared by their components or base.
+`DenseCoordinateSpace` has inner-product geometry but no star operation. `DenseVectorSpace` adds elementwise conjugation. `ElementwiseJordanSpace` adds elementwise Jordan and spectral operations; when context and geometry are real Euclidean, construction dispatches to `EuclideanElementwiseJordanSpace`. `HermitianSpace` represents dense Hermitian matrices with Frobenius geometry and spectral calculus. `TreeSpace` and `StackedSpace` dynamically choose internal subclasses that preserve only capabilities shared by their leaves or base.
 
 ## Decision
 

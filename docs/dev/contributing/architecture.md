@@ -71,11 +71,10 @@ This map lists public concrete class-like exports a contributor is likely to enc
 - `MatrixFreeLinOp` — linear operator defined by user-supplied forward and metric-adjoint callables.
 - `NumpyOps` — NumPy/SciPy backend operations class and the baseline backend implementation.
 - `PowerIterationResult` — result tuple returned by power iteration.
-- `ProductComponentCheck` — membership check for product-space component values.
-- `ProductSpace` — structured coordinate space made from component spaces.
-- `ProductSpectralDecomposition` — structured spectral decomposition data for product Jordan spaces.
-- `ProductStructureCheck` — membership check for product element structure.
-- `PytreeStructure` — product element structure backed by JAX pytree flattening when available.
+- `TreeElement` — optional explicit binding of ordered leaves to a tree space.
+- `TreeLinOp` — base class for operators with tree-structured domains or codomains.
+- `TreeSpace` — finite direct-product coordinate space represented by an optree.
+- `TreeSpectralDecomposition` — leafwise spectral data in deterministic tree order.
 - `ScaledLinOp` — lazy scalar multiple of a linear operator.
 - `ShapeCheck` — membership check enforcing element shape.
 - `SparseArray` — runtime-checkable protocol for sparse array-like values.
@@ -83,12 +82,11 @@ This map lists public concrete class-like exports a contributor is likely to enc
 - `Space` — context-bound mathematical space with membership validation.
 - `SpaceValidationError` — exception raised when an element fails space validation.
 - `SquareMatrixCheck` — membership check enforcing square matrix shape.
-- `StackedLinOp` — operator mapping one domain into a product codomain by stacking component outputs.
+- `StackedLinOp` — operator mapping one domain into a tree codomain.
 - `StackedSpace` — space representing a fixed leading-axis stack of one base space.
 - `SumLinOp` — lazy finite sum of operators with common domain and codomain.
-- `SumToSingleLinOp` — operator mapping a product domain into one codomain by summing component outputs.
+- `SumToSingleLinOp` — operator mapping a tree domain into one codomain by summing leaf outputs.
 - `TorchOps` — optional Torch backend operations class, exported when Torch is installed.
-- `TupleStructure` — tuple-based product element structure.
 - `WeightedInnerProduct` — diagonal weighted inner-product geometry with validated positive finite weights.
 - `ZeroLinOp` — zero linear operator between two spaces.
 - `CuPyOps` — optional CuPy backend operations class, exported when CuPy is installed.

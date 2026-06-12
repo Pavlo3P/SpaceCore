@@ -656,10 +656,10 @@ def test_weighted_batched_adjoint_uses_broadcast_riesz_without_fallback_warning(
 def test_product_space_batched_forward_uses_space_batch_helpers():
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
-    domain = sc.ProductSpace(
+    domain = sc.TreeSpace.from_leaf_spaces(
         (sc.DenseCoordinateSpace((2,), ctx), sc.DenseCoordinateSpace((1,), ctx)), ctx
     )
-    codomain = sc.ProductSpace(
+    codomain = sc.TreeSpace.from_leaf_spaces(
         (sc.DenseCoordinateSpace((1,), ctx), sc.DenseCoordinateSpace((2,), ctx)), ctx
     )
     matrix = np.array([[1.0, 2.0, -1.0], [0.5, 3.0, 2.0], [4.0, -1.0, 0.25]])
@@ -676,7 +676,7 @@ def test_product_space_batched_forward_uses_space_batch_helpers():
 def test_matrix_backed_ops_accept_euclidean_product_space():
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
-    space = sc.ProductSpace(
+    space = sc.TreeSpace.from_leaf_spaces(
         (sc.DenseCoordinateSpace((2,), ctx), sc.DenseCoordinateSpace((1,), ctx)), ctx
     )
     matrix = ctx.asarray(np.eye(3))
@@ -698,10 +698,10 @@ def test_matrix_backed_ops_accept_weighted_product_space_and_satisfy_adjoint_ide
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
     WeightedVectorSpace = _weighted_space_class()
-    domain = sc.ProductSpace(
+    domain = sc.TreeSpace.from_leaf_spaces(
         (WeightedVectorSpace([2.0, 5.0], ctx), sc.DenseCoordinateSpace((1,), ctx)), ctx
     )
-    codomain = sc.ProductSpace(
+    codomain = sc.TreeSpace.from_leaf_spaces(
         (sc.DenseCoordinateSpace((1,), ctx), WeightedVectorSpace([3.0, 7.0], ctx)), ctx
     )
     matrix = np.array([[1.0, 2.0, -1.0], [0.5, 3.0, 2.0], [4.0, -1.0, 0.25]])
@@ -715,7 +715,7 @@ def test_matrix_backed_ops_accept_weighted_product_space_and_satisfy_adjoint_ide
     _assert_adjoint_identity(dense, x, y)
     _assert_adjoint_identity(sparse, x, y)
 
-    diagonal_space = sc.ProductSpace(
+    diagonal_space = sc.TreeSpace.from_leaf_spaces(
         (WeightedVectorSpace([11.0, 13.0], ctx), sc.DenseCoordinateSpace((1,), ctx)), ctx
     )
     diagonal = sc.DiagonalLinOp(ctx.asarray([2.0, -1.0, 0.5]), diagonal_space, ctx)
@@ -802,7 +802,7 @@ def test_product_space_with_component_missing_riesz_maps_is_rejected():
 
     broken = sc.DenseCoordinateSpace((2,), ctx, geometry=BrokenInnerProduct())
     euclidean = sc.DenseCoordinateSpace((1,), ctx)
-    product = sc.ProductSpace((broken, euclidean), ctx)
+    product = sc.TreeSpace.from_leaf_spaces((broken, euclidean), ctx)
 
     with pytest.raises(TypeError, match="Riesz maps"):
         sc.DenseLinOp(ctx.asarray(np.eye(3)), product, product, ctx)

@@ -16,7 +16,7 @@ def test_smoke_numpy_workflow():
     y = op.apply(x)
 
     assert np.allclose(to_numpy(y), [23.0, 53.0, 83.0])
-    product = sc.ProductSpace((x_space, y_space), ctx)
+    product = sc.TreeSpace.from_leaf_spaces((x_space, y_space), ctx)
     roundtrip = product.unflatten(product.flatten((x, y)))
     assert np.allclose(to_numpy(roundtrip[0]), to_numpy(x))
     assert np.allclose(to_numpy(roundtrip[1]), to_numpy(y))

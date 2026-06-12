@@ -15,21 +15,21 @@ def test_vector_and_hermitian_conversion_use_target_dtype():
     assert K.shape == H.shape and K.dtype == dst.dtype
 
 
-def test_product_conversion_preserves_component_shapes():
+def test_tree_conversion_preserves_leaf_shapes():
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float32)
-    P = sc.ProductSpace(
+    P = sc.TreeSpace.from_leaf_spaces(
         (sc.DenseCoordinateSpace((2, 2), ctx), sc.DenseCoordinateSpace((3,), ctx)), ctx
     )
     Q = P.convert(sc.Context(sc.NumpyOps(), dtype=np.float64))
-    assert [sp.shape for sp in Q.spaces] == [(2, 2), (3,)]
+    assert [sp.shape for sp in Q.leaf_spaces] == [(2, 2), (3,)]
 
 
 def test_space_conversion_to_same_effective_context_returns_self():
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float32)
     X = sc.DenseCoordinateSpace((3,), ctx)
-    P = sc.ProductSpace((X, sc.DenseCoordinateSpace((2,), ctx)), ctx)
+    P = sc.TreeSpace.from_leaf_spaces((X, sc.DenseCoordinateSpace((2,), ctx)), ctx)
 
     assert X.convert(ctx) is X
     assert P.convert(ctx) is P

@@ -1,26 +1,13 @@
 import importlib
-from dataclasses import dataclass
+from typing import NamedTuple
 
 import numpy as np
 import pytest
 
 from tests._helpers import has_jax, jax_complex_dtype, jax_real_dtype, to_numpy
-from spacecore.backend import jax_pytree_class
-
-
-@jax_pytree_class
-@dataclass(frozen=True)
-class PairElement:
+class PairElement(NamedTuple):
     vector: object
     matrix: object
-
-    def tree_flatten(self):
-        return (self.vector, self.matrix), None
-
-    @classmethod
-    def tree_unflatten(cls, aux, children):
-        vector, matrix = children
-        return cls(vector, matrix)
 
 
 def _real_contexts():
@@ -149,7 +136,7 @@ def test_product_space_spectrum_concatenates_mixed_components(ctx):
     sc = importlib.import_module("spacecore")
     vector = sc.ElementwiseJordanSpace((2,), ctx)
     hermitian = sc.HermitianSpace(2, ctx=ctx)
-    product = sc.ProductSpace((vector, hermitian), ctx)
+    product = sc.TreeSpace.from_leaf_spaces((vector, hermitian), ctx)
     v = ctx.asarray([10.0 + 0.0j, 20.0 + 0.0j])
     h = ctx.asarray([[1.0 + 0.0j, 0.0 + 0.0j], [0.0 + 0.0j, -2.0 + 0.0j]])
     x = (v, h)
@@ -160,7 +147,7 @@ def test_product_space_spectrum_concatenates_mixed_components(ctx):
     rebuilt = product.from_spectrum(decompositions)
 
     assert np.allclose(to_numpy(spectrum), expected, atol=1e-6)
-    assert isinstance(decompositions, sc.ProductSpectralDecomposition)
+    assert isinstance(decompositions, sc.TreeSpectralDecomposition)
     assert len(decompositions.eigvals) == 2
     assert len(decompositions.frames) == 2
     assert np.allclose(to_numpy(decompositions.eigvals[0]), to_numpy(v), atol=1e-6)
@@ -168,9 +155,8 @@ def test_product_space_spectrum_concatenates_mixed_components(ctx):
     assert np.allclose(to_numpy(rebuilt[1]), to_numpy(h), atol=1e-6)
 
 
-@pytest.mark.skipif(not has_jax(), reason="pytree products require jax tree utilities")
 @pytest.mark.parametrize("ctx", list(_complex_contexts()))
-def test_product_space_pytree_spectral_decomposition_roundtrip(ctx):
+def test_tree_space_spectral_decomposition_roundtrip(ctx):
     sc = importlib.import_module("spacecore")
     vector = sc.ElementwiseJordanSpace((2,), ctx)
     hermitian = sc.HermitianSpace(2, ctx=ctx)
@@ -178,23 +164,23 @@ def test_product_space_pytree_spectral_decomposition_roundtrip(ctx):
         ctx.asarray([10.0 + 0.0j, 20.0 + 0.0j]),
         ctx.asarray([[1.0 + 0.0j, 0.25 + 0.0j], [0.25 + 0.0j, -2.0 + 0.0j]]),
     )
-    product = sc.ProductSpace.from_template((vector, hermitian), x, ctx)
+    product = sc.TreeSpace.from_template(x, (vector, hermitian), ctx=ctx)
 
     decomposition = product.spectral_decompose(x)
     rebuilt = product.from_spectrum(decomposition)
 
-    assert isinstance(decomposition, sc.ProductSpectralDecomposition)
+    assert isinstance(decomposition, sc.TreeSpectralDecomposition)
     assert isinstance(rebuilt, PairElement)
     assert np.allclose(to_numpy(rebuilt.vector), to_numpy(x.vector), atol=1e-6)
     assert np.allclose(to_numpy(rebuilt.matrix), to_numpy(x.matrix), atol=1e-6)
 
 
 @pytest.mark.parametrize("ctx", list(_complex_contexts()))
-def test_product_space_batched_spectrum_concatenates_last_axis(ctx):
+def test_tree_space_batched_spectrum_concatenates_last_axis(ctx):
     sc = importlib.import_module("spacecore")
     vector = sc.ElementwiseJordanSpace((2,), ctx)
     hermitian = sc.HermitianSpace(2, ctx=ctx)
-    product = sc.ProductSpace((vector, hermitian), ctx)
+    product = sc.TreeSpace.from_leaf_spaces((vector, hermitian), ctx)
     v = ctx.asarray([[10.0 + 0.0j, 20.0 + 0.0j], [30.0 + 0.0j, 40.0 + 0.0j]])
     h = ctx.asarray(
         [
@@ -215,7 +201,7 @@ def test_spectrum_of_direct_sum_is_union_of_spectra(ctx):
     sc = importlib.import_module("spacecore")
     left = sc.HermitianSpace(2, ctx=ctx)
     right = sc.HermitianSpace(1, ctx=ctx)
-    product = sc.ProductSpace((left, right), ctx)
+    product = sc.TreeSpace.from_leaf_spaces((left, right), ctx)
     x = ctx.asarray([[2.0 + 0.0j, 0.0 + 0.0j], [0.0 + 0.0j, 5.0 + 0.0j]])
     y = ctx.asarray([[7.0 + 0.0j]])
 

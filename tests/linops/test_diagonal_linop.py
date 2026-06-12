@@ -109,7 +109,7 @@ def test_product_space_diagonal_uses_flatten_unflatten_paths():
     ctx = _ctx()
     x1 = sc.DenseCoordinateSpace((2,), ctx)
     x2 = sc.DenseCoordinateSpace((1,), ctx)
-    space = sc.ProductSpace((x1, x2), ctx)
+    space = sc.TreeSpace.from_leaf_spaces((x1, x2), ctx)
     op = sc.DiagonalLinOp(ctx.asarray([2.0, -1.0, 0.5]), space, ctx)
     x = (ctx.asarray([1.0, 3.0]), ctx.asarray([-2.0]))
     xs = (ctx.asarray([[1.0, 3.0], [-1.0, 4.0]]), ctx.asarray([[-2.0], [0.5]]))

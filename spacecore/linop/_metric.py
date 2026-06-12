@@ -14,9 +14,9 @@ _METRIC_HERMITIAN_BASIS_CHECK_MAX_SIZE = 1024
 
 def space_has_riesz_maps(space) -> bool:
     """Return whether ``space`` exposes usable Riesz maps for metric adjoints."""
-    parts = getattr(space, "spaces", None)
-    if parts is not None:
-        return all(part.is_euclidean or space_has_riesz_maps(part) for part in parts)
+    leaves = getattr(space, "leaf_spaces", None)
+    if leaves is not None:
+        return all(leaf.is_euclidean or space_has_riesz_maps(leaf) for leaf in leaves)
 
     geometry = getattr(space, "geometry", None)
     if geometry is None or not isinstance(space, InnerProductSpace):

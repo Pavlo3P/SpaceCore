@@ -15,7 +15,7 @@ def test_top_level_exports_exist():
         "DenseLinOp",
         "DenseCoordinateSpace",
         "HermitianSpace",
-        "ProductSpace",
+        "TreeSpace",
         "StackedSpace",
         "set_context",
         "get_context",

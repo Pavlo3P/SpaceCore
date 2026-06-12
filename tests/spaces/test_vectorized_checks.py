@@ -107,9 +107,9 @@ def test_backend_and_dtype_checks_are_rank_agnostic_for_batches():
         _check_batched(space, np.ones((5, 2), dtype=np.float64))
 
 
-def test_product_component_checks_recurse_with_batched_mode():
+def test_tree_leaf_checks_recurse_with_batched_mode():
     ctx = _np_ctx()
-    product = sc.ProductSpace(
+    product = sc.TreeSpace.from_leaf_spaces(
         (sc.DenseCoordinateSpace((2,), ctx), sc.HermitianSpace(2, ctx=ctx)),
         ctx,
     )
@@ -119,10 +119,8 @@ def test_product_component_checks_recurse_with_batched_mode():
     )
 
     _check_batched(product, xs)
-    with pytest.raises(ValueError, match="Invalid component 0"):
+    with pytest.raises(ValueError, match=r"\$\[0\]"):
         product.check_member(xs)
-    with pytest.raises(ValueError, match="Invalid component 0"):
-        sc.ProductComponentCheck()(product, xs)
 
 
 @pytest.mark.skipif(not has_jax(), reason="jax is not installed")

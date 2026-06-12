@@ -181,24 +181,24 @@ class PairCoordinateSpace(sc.CoordinateSpace):
         return PairCoordinateSpace(new_ctx)
 
 
-def test_product_space_baseline_and_specialized_capabilities():
+def test_tree_space_baseline_and_specialized_capabilities():
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
-    base_product = sc.ProductSpace((PairCoordinateSpace(ctx), PairCoordinateSpace(ctx)), ctx)
+    base_product = sc.TreeSpace.from_leaf_spaces((PairCoordinateSpace(ctx), PairCoordinateSpace(ctx)), ctx)
 
-    assert type(base_product) is sc.ProductSpace
+    assert type(base_product) is sc.TreeSpace
     assert isinstance(base_product, sc.CoordinateSpace)
     assert not isinstance(base_product, sc.InnerProductSpace)
     assert not isinstance(base_product, sc.StarSpace)
     assert not isinstance(base_product, sc.JordanAlgebraSpace)
 
-    inner_product = sc.ProductSpace(
+    inner_product = sc.TreeSpace.from_leaf_spaces(
         (sc.DenseCoordinateSpace((2,), ctx), sc.DenseCoordinateSpace((1,), ctx)), ctx
     )
-    assert isinstance(inner_product, sc.ProductSpace)
+    assert isinstance(inner_product, sc.TreeSpace)
     assert isinstance(inner_product, sc.InnerProductSpace)
     assert not isinstance(inner_product, sc.JordanAlgebraSpace)
 
-    jordan_product = sc.ProductSpace(
+    jordan_product = sc.TreeSpace.from_leaf_spaces(
         (sc.ElementwiseJordanSpace((2,), ctx), sc.HermitianSpace(2, ctx=ctx)), ctx
     )
     assert isinstance(jordan_product, sc.StarSpace)
@@ -314,15 +314,15 @@ def test_elementwise_conversion_never_leaves_stale_euclidean_class():
     assert isinstance(restored, sc.EuclideanElementwiseJordanSpace)
 
 
-def test_product_and_stacked_dispatch_after_context_conversion_is_truthful():
+def test_tree_and_stacked_dispatch_after_context_conversion_is_truthful():
     real_ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
     complex_ctx = sc.Context(sc.NumpyOps(), dtype=np.complex128)
     base = sc.EuclideanElementwiseJordanSpace((2,), real_ctx)
 
-    product = sc.ProductSpace((base,), complex_ctx)
+    product = sc.TreeSpace.from_leaf_spaces((base,), complex_ctx)
     stacked = sc.StackedSpace(base, 2, complex_ctx)
 
-    assert type(product.spaces[0]) is sc.ElementwiseJordanSpace
+    assert type(product.leaf_spaces[0]) is sc.ElementwiseJordanSpace
     assert not isinstance(product, sc.EuclideanJordanAlgebraSpace)
     assert isinstance(product, sc.JordanAlgebraSpace)
     assert type(stacked.base) is sc.ElementwiseJordanSpace
@@ -569,7 +569,7 @@ def test_product_and_stacked_preserve_exact_capability_combinations(factory, exp
     else:
         base = factory(ctx)
 
-    product = sc.ProductSpace((base, base), ctx)
+    product = sc.TreeSpace.from_leaf_spaces((base, base), ctx)
     stacked = base.stacked(2)
 
     for result in (product, stacked):
@@ -581,7 +581,7 @@ def test_product_and_stacked_preserve_exact_capability_combinations(factory, exp
 
 def test_baseline_product_and_stacked_do_not_expose_capability_methods():
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
-    product = sc.ProductSpace((PairCoordinateSpace(ctx), PairCoordinateSpace(ctx)), ctx)
+    product = sc.TreeSpace.from_leaf_spaces((PairCoordinateSpace(ctx), PairCoordinateSpace(ctx)), ctx)
     stacked = PairCoordinateSpace(ctx).stacked(2)
 
     for space in (product, stacked):
@@ -604,7 +604,7 @@ def test_baseline_product_and_stacked_do_not_expose_capability_methods():
 
 def test_product_capability_is_component_intersection():
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
-    product = sc.ProductSpace((InnerStarCoordinateSpace(ctx), InnerCoordinateSpace(ctx)), ctx)
+    product = sc.TreeSpace.from_leaf_spaces((InnerStarCoordinateSpace(ctx), InnerCoordinateSpace(ctx)), ctx)
 
     assert isinstance(product, sc.InnerProductSpace)
     assert not isinstance(product, sc.StarSpace)
@@ -616,8 +616,8 @@ def test_product_capability_is_component_intersection():
 def test_constructor_validation_is_early_and_clear():
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
 
-    with pytest.raises(TypeError, match="component 0 is FiniteSetSpace"):
-        sc.ProductSpace((FiniteSetSpace({"a"}, ctx),), ctx)
+    with pytest.raises(TypeError, match="leaf 0 is FiniteSetSpace"):
+        sc.TreeSpace.from_leaf_spaces((FiniteSetSpace({"a"}, ctx),), ctx)
     with pytest.raises(TypeError, match="base is FiniteSetSpace"):
         sc.StackedSpace(FiniteSetSpace({"a"}, ctx), 1, ctx)
     with pytest.raises(ValueError, match="nonnegative"):

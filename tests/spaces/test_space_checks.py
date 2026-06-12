@@ -83,27 +83,29 @@ def test_hermitian_space_uses_configured_check_parameters():
     disabled.check_member(ctx.asarray([[1.0, 2.0], [0.0, 1.0]]))
 
 
-def test_product_structure_check_rejects_non_tuple_and_wrong_arity():
+def test_tree_structure_check_rejects_mismatched_nodes_and_arity():
     ctx = _ctx()
-    product = sc.ProductSpace(
+    product = sc.TreeSpace.from_leaf_spaces(
         (sc.DenseCoordinateSpace((2,), ctx), sc.DenseCoordinateSpace((3,), ctx)), ctx
     )
 
-    with pytest.raises(ValueError, match="ProductSpace element must be a tuple"):
-        sc.ProductStructureCheck()(product, [ctx.asarray([1.0, 2.0]), ctx.asarray([3.0, 4.0, 5.0])])
+    with pytest.raises(sc.SpaceValidationError, match="structure mismatch"):
+        product.check_member(
+            [ctx.asarray([1.0, 2.0]), ctx.asarray([3.0, 4.0, 5.0])]
+        )
 
-    with pytest.raises(ValueError, match="Expected tuple of length 2, got 1"):
-        sc.ProductStructureCheck()(product, (ctx.asarray([1.0, 2.0]),))
+    with pytest.raises(sc.SpaceValidationError, match="structure mismatch"):
+        product.check_member((ctx.asarray([1.0, 2.0]),))
 
 
-def test_product_component_check_rejects_invalid_component():
+def test_tree_leaf_check_rejects_invalid_leaf():
     ctx = _ctx()
-    product = sc.ProductSpace(
+    product = sc.TreeSpace.from_leaf_spaces(
         (sc.DenseCoordinateSpace((2,), ctx), sc.DenseCoordinateSpace((3,), ctx)), ctx
     )
 
-    with pytest.raises(ValueError, match=r"Invalid component 1.*Expected shape \(3,\)"):
-        sc.ProductComponentCheck()(product, (ctx.asarray([1.0, 2.0]), ctx.asarray([3.0, 4.0])))
+    with pytest.raises(sc.SpaceValidationError, match=r"\$\[1\].*Expected shape \(3,\)"):
+        product.check_member((ctx.asarray([1.0, 2.0]), ctx.asarray([3.0, 4.0])))
 
 
 @dataclass(frozen=True)

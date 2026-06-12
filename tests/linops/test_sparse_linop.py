@@ -123,7 +123,7 @@ def test_sparse_linop_accepts_coordinate_product_spaces():
     sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
     vector = sc.DenseCoordinateSpace((2,), ctx)
-    product = sc.ProductSpace(
+    product = sc.TreeSpace.from_leaf_spaces(
         (sc.DenseCoordinateSpace((1,), ctx), sc.DenseCoordinateSpace((1,), ctx)), ctx
     )
     matrix = ctx.assparse(np.eye(2))

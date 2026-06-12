@@ -25,6 +25,13 @@ ADR-015 Stage 2 is deferred to `0.5.0`. In particular, `Context.asarray` still
 uses the context dtype by default, exact dtype checking is not opt-in, and
 solver vector workspaces are not generally operand-dtype driven.
 
+The `0.4.0` Phase D tree-space contract is implemented. `TreeSpace` represents
+a finite direct product organized by an `optree` definition, `TreeElement`
+optionally binds ordered leaves to that space, and raw matching Python trees
+are the normal element representation. `TreeSpace` is the only structured
+finite direct-product abstraction. Tuple products use
+`TreeSpace.from_leaf_spaces(...)`.
+
 Milestone tracking: [0.3.2 milestone placeholder](https://github.com/Pavlo3P/SpaceCore/milestones).
 
 ## Open questions
@@ -48,5 +55,5 @@ already defines the desired work or a maintainer has agreed on the design.
 
 `0.4.0` is tentatively focused on test infrastructure: reusable generators for
 spaces, LinOps, functionals, and linalg; backend conformance; batching
-conformance; check-policy migration; dtype/field Stage 1; and block, product,
-and tree-structured testing.
+conformance; check-policy migration; dtype/field Stage 1; and block and
+tree-structured testing.

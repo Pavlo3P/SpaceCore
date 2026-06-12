@@ -6,27 +6,37 @@ from typing import Any, Callable
 from ._base import Domain, Functional, _check_scalar_shape
 from .._checks import checked_method
 from ..backend import Context, jax_pytree_class
-from ..space import Space
+from ..space import Space, TreeElement, TreeSpace
 
 
 def _convert_space_element(space: Space, value: Any) -> Any:
-    """Convert a value recursively into a possibly product-valued space."""
-    if hasattr(space, "spaces") and isinstance(value, tuple):
-        if len(value) != len(space.spaces):
-            raise ValueError(f"Expected tuple of length {len(space.spaces)}, got {len(value)}.")
-        return tuple(
-            _convert_space_element(component_space, component)
-            for component_space, component in zip(space.spaces, value)
-        )
+    """Convert a value recursively into a possibly tree-valued space."""
+    if isinstance(space, TreeSpace):
+        if isinstance(value, TreeElement):
+            source_spaces = value.space.leaf_spaces
+            leaves = value.leaves
+            converted = tuple(
+                target.unflatten(space.ctx.asarray(source.flatten(leaf)))
+                for source, target, leaf in zip(source_spaces, space.leaf_spaces, leaves)
+            )
+        else:
+            leaves = space.flatten_tree(value)
+            converted = tuple(
+                leaf_space.ctx.asarray(leaf)
+                for leaf_space, leaf in zip(space.leaf_spaces, leaves)
+            )
+        return space.unflatten_tree(converted)
     return space.ctx.asarray(value)
 
 
 def _broadcast_space_element(space: Space, value: Any, n: int) -> Any:
     """Broadcast a single space element to a leading-axis batch."""
-    parts = getattr(space, "spaces", None)
-    if parts is not None:
-        return tuple(
-            _broadcast_space_element(part, component, n) for part, component in zip(parts, value)
+    if isinstance(space, TreeSpace):
+        return space.unflatten_tree(
+            tuple(
+                _broadcast_space_element(part, component, n)
+                for part, component in zip(space.leaf_spaces, space.flatten_tree(value))
+            )
         )
     return space.ops.broadcast_to(value, (n,) + tuple(space.shape))
 
@@ -68,7 +78,8 @@ class LinearFunctional(Functional[Domain]):
     def vgrad(self, xs: Any) -> Any:
         """Return the constant Riesz gradient over a leading batch axis."""
         dom = self.dom
-        n = int(getattr(xs[0] if isinstance(xs, tuple) else xs, "shape", (0,))[0])
+        sample = dom.flatten_tree(xs)[0] if isinstance(dom, TreeSpace) else xs
+        n = int(getattr(sample, "shape", (0,))[0])
         return _broadcast_space_element(dom, self.representer, n)
 
 

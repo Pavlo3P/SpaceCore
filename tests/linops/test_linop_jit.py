@@ -151,7 +151,7 @@ def test_product_space_flatten_unflatten_jit_compile():
     ctx = _jax_ctx()
     X1 = sc.DenseCoordinateSpace((2, 2), ctx)
     X2 = sc.DenseCoordinateSpace((3,), ctx)
-    product = sc.ProductSpace((X1, X2), ctx)
+    product = sc.TreeSpace.from_leaf_spaces((X1, X2), ctx)
     x1 = ctx.asarray([[1.0, 2.0], [3.0, 4.0]])
     x2 = ctx.asarray([5.0, 6.0, 7.0])
 

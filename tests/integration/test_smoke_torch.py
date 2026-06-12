@@ -22,7 +22,7 @@ def test_torch_vector_hermitian_product_and_linop_smoke():
     evals, evecs = H.spectral_decompose(h)
     assert np.allclose(to_numpy(evecs @ ctx.ops.diag(evals) @ evecs.T.conj()), to_numpy(h))
 
-    P = sc.ProductSpace((X, sc.DenseCoordinateSpace((3,), ctx)), ctx)
+    P = sc.TreeSpace.from_leaf_spaces((X, sc.DenseCoordinateSpace((3,), ctx)), ctx)
     p = (x, ctx.asarray([3.0, 4.0, 5.0]))
     flat = P.flatten(p)
     assert flat.shape == (5,)
