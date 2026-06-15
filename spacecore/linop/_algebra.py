@@ -282,18 +282,30 @@ class ScaledLinOp(LinOp[Domain, Codomain]):
     @checked_method(in_space="domain", out_space="codomain")
     def apply(self, x: Any) -> Any:
         """Return ``scalar * op.apply(x)``."""
-        y = self.op.apply(x)
-        return self.codomain.scale(self.scalar, y)
+        return self.codomain.scale(self.scalar, self.op.apply(x))
+
+    def _apply_core(self, x: Any) -> Any:
+        y = self.op._apply_core(x)
+        scale = getattr(self.codomain, "_scale_core", self.codomain.scale)
+        return scale(self.scalar, y)
 
     @checked_method(in_space="codomain", out_space="domain")
     def rapply(self, y: Any) -> Any:
         """Return ``conj(scalar) * op.rapply(y)``."""
-        x = self.op.rapply(y)
-        return self.domain.scale(_conjugate_scalar(self.scalar), x)
+        return self.domain.scale(_conjugate_scalar(self.scalar), self.op.rapply(y))
 
+    def _rapply_core(self, y: Any) -> Any:
+        x = self.op._rapply_core(y)
+        scale = getattr(self.domain, "_scale_core", self.domain.scale)
+        return scale(_conjugate_scalar(self.scalar), x)
+
+    @checked_method(in_space="domain", out_space="codomain", in_batched=True, out_batched=True)
     def vapply(self, xs: Any) -> Any:
         """Return ``scalar * op.vapply(xs)``."""
-        ys = self.op.vapply(xs)
+        return self.codomain.scale_batch(self.scalar, self.op.vapply(xs))
+
+    def _vapply_core(self, xs: Any) -> Any:
+        ys = self.op._vapply_core(xs)
         return self.codomain.scale_batch(self.scalar, ys)
 
     def rvapply(self, ys: Any) -> Any:
@@ -377,9 +389,12 @@ class SumLinOp(LinOp[Domain, Codomain]):
     @checked_method(in_space="domain", out_space="codomain")
     def apply(self, x: Any) -> Any:
         """Return ``sum_i ops[i].apply(x)``."""
-        acc = self.ops_tuple[0].apply(x)
+        return self._apply_core(x)
+
+    def _apply_core(self, x: Any) -> Any:
+        acc = self.ops_tuple[0]._apply_core(x)
         for op in self.ops_tuple[1:]:
-            yi = op.apply(x)
+            yi = op._apply_core(x)
             acc = (
                 acc + yi
                 if type(self.codomain)
@@ -391,9 +406,12 @@ class SumLinOp(LinOp[Domain, Codomain]):
     @checked_method(in_space="codomain", out_space="domain")
     def rapply(self, y: Any) -> Any:
         """Return ``sum_i ops[i].rapply(y)``."""
-        acc = self.ops_tuple[0].rapply(y)
+        return self._rapply_core(y)
+
+    def _rapply_core(self, y: Any) -> Any:
+        acc = self.ops_tuple[0]._rapply_core(y)
         for op in self.ops_tuple[1:]:
-            xi = op.rapply(y)
+            xi = op._rapply_core(y)
             acc = (
                 acc + xi
                 if type(self.domain)
@@ -405,9 +423,12 @@ class SumLinOp(LinOp[Domain, Codomain]):
     @checked_method(in_space="domain", out_space="codomain", in_batched=True, out_batched=True)
     def vapply(self, xs: Any) -> Any:
         """Return ``sum_i ops[i].vapply(xs)``."""
-        acc = self.ops_tuple[0].vapply(xs)
+        return self._vapply_core(xs)
+
+    def _vapply_core(self, xs: Any) -> Any:
+        acc = self.ops_tuple[0]._vapply_core(xs)
         for op in self.ops_tuple[1:]:
-            yi = op.vapply(xs)
+            yi = op._vapply_core(xs)
             acc = (
                 acc + yi
                 if type(self.codomain)
@@ -497,16 +518,26 @@ class ComposedLinOp(LinOp[Domain, Codomain]):
     @checked_method(in_space="domain", out_space="codomain")
     def apply(self, x: Any) -> Any:
         """Return ``left.apply(right.apply(x))``."""
-        return self.left.apply(self.right.apply(x))
+        return self._apply_core(x)
+
+    def _apply_core(self, x: Any) -> Any:
+        return self.left._apply_core(self.right._apply_core(x))
 
     @checked_method(in_space="codomain", out_space="domain")
     def rapply(self, z: Any) -> Any:
         """Return ``right.rapply(left.rapply(z))``."""
-        return self.right.rapply(self.left.rapply(z))
+        return self._rapply_core(z)
 
+    def _rapply_core(self, z: Any) -> Any:
+        return self.right._rapply_core(self.left._rapply_core(z))
+
+    @checked_method(in_space="domain", out_space="codomain", in_batched=True, out_batched=True)
     def vapply(self, xs: Any) -> Any:
         """Return ``left.vapply(right.vapply(xs))``."""
-        return self.left.vapply(self.right.vapply(xs))
+        return self._vapply_core(xs)
+
+    def _vapply_core(self, xs: Any) -> Any:
+        return self.left._vapply_core(self.right._vapply_core(xs))
 
     def rvapply(self, zs: Any) -> Any:
         """Return ``right.rvapply(left.rvapply(zs))``."""

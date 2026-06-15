@@ -297,16 +297,17 @@ def render_text(results: list[ProbeResult], verdict: Verdict) -> str:
     lines.append("Per-case detail")
     lines.append("-" * 96)
     lines.append(
-        f"  {'name':<40s} {'n':>6s} {'status':>20s} {'bare':>10s} {'sc':>10s} "
-        f"{'spd':>8s} {'std':>8s} {'err':>10s}"
+        f"  {'name':<34s} {'backend':>8s} {'n':>6s} {'bare':>10s} {'unchecked':>10s} "
+        f"{'checked':>10s} {'validation':>10s} {'jit':>10s}"
     )
     for r in sorted(results, key=lambda r: (r.family, r.operation_name, r.size)):
-        st = verdict.statuses.get(_key(r), Status.NEUTRAL)
         lines.append(
-            f"  {r.operation_name:<40s} {r.size:>6d} {st.value:>20s} "
-            f"{_fmt_ns(r.bare_median_ns)} {_fmt_ns(r.sc_median_ns)} "
-            f"{r.speedup:>7.2f}x {r.speedup_std:>7.2f}x "
-            f"{r.error_max:>10.2e}"
+            f"  {r.operation_name:<34s} {r.backend:>8s} {r.size:>6d} "
+            f"{_fmt_ns(r.bare_median_ns)} "
+            f"{_fmt_ns(r.unchecked_median_ns) if r.unchecked_median_ns is not None else '       n/a'} "
+            f"{_fmt_ns(r.sc_median_ns)} "
+            f"{_fmt_ns(r.validation_overhead_ns) if r.validation_overhead_ns is not None else '       n/a'} "
+            f"{_fmt_ns(r.jit_median_ns) if r.jit_median_ns is not None else '       n/a'}"
         )
     lines.append("=" * 96)
     return "\n".join(lines)

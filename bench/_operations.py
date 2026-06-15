@@ -12,14 +12,9 @@ skips a backend at runtime if its library is not installed.
 JAX-specific notes
 ~~~~~~~~~~~~~~~~~~
 
-* JAX probes do not call ``jax.jit`` themselves — they exercise the
-  eager interpreter, which is the path SpaceCore actually serves. JIT
-  compile latency is measured in the runner via ``time_op_first_call``
-  for any probe marked ``jit_compatible=True`` (none in 0.4.0; reserved
-  for kernel probes once dispatch lands).
-* The runner sees the JAX first-call latency for every JAX probe and
-  records it as ``compile_ns`` even without explicit JIT — that
-  captures any one-time tracing / caching cost the backend pays.
+JAX-compatible probes report eager execution and a separate ``jax.jit``
+steady-state result. The runner warms the compiled callable before timing
+steady state and records the first compiled call separately as ``compile_ns``.
 
 Sparse paths are NumPy-only because JAX sparse support is partial and
 the SpaceCore sparse path goes through SciPy.
@@ -101,12 +96,17 @@ def _make_space_add(backend: str, seed: int, size: int) -> ProbeCase:
     ctx = _backend_ctx(backend)
     space, x, x_np = _dense_vector(ctx, size, seed)
     _, y, y_np = _dense_vector(ctx, size, seed + 100)
+    unchecked_ctx = _backend_ctx(backend, check_level="none")
+    unchecked_space = sc.DenseCoordinateSpace((size,), unchecked_ctx)
+    ux, uy = unchecked_ctx.asarray(x_np), unchecked_ctx.asarray(y_np)
     return ProbeCase(
         bare_label=f"{backend}: x + y",
         sc_label="DenseCoordinateSpace.add",
-        bare=lambda: x_np + y_np,
+        bare=lambda: x + y,
         sc=lambda: space.add(x, y),
+        unchecked=lambda: unchecked_space.add(ux, uy),
         reference=lambda: x_np + y_np,
+        bare_inputs=(x, y),
     )
 
 
@@ -114,12 +114,17 @@ def _make_space_scale(backend: str, seed: int, size: int) -> ProbeCase:
     ctx = _backend_ctx(backend)
     space, x, x_np = _dense_vector(ctx, size, seed)
     alpha = float(_rng(seed + 1).standard_normal())
+    unchecked_ctx = _backend_ctx(backend, check_level="none")
+    unchecked_space = sc.DenseCoordinateSpace((size,), unchecked_ctx)
+    ux = unchecked_ctx.asarray(x_np)
     return ProbeCase(
         bare_label=f"{backend}: alpha * x",
         sc_label="DenseCoordinateSpace.scale",
-        bare=lambda: alpha * x_np,
+        bare=lambda: alpha * x,
         sc=lambda: space.scale(alpha, x),
+        unchecked=lambda: unchecked_space.scale(alpha, ux),
         reference=lambda: alpha * x_np,
+        bare_inputs=(x,),
     )
 
 
@@ -127,24 +132,34 @@ def _make_space_inner(backend: str, seed: int, size: int) -> ProbeCase:
     ctx = _backend_ctx(backend)
     space, x, x_np = _dense_vector(ctx, size, seed)
     _, y, y_np = _dense_vector(ctx, size, seed + 100)
+    unchecked_ctx = _backend_ctx(backend, check_level="none")
+    unchecked_space = sc.DenseCoordinateSpace((size,), unchecked_ctx)
+    ux, uy = unchecked_ctx.asarray(x_np), unchecked_ctx.asarray(y_np)
     return ProbeCase(
         bare_label=f"{backend}: vdot(x, y)",
         sc_label="DenseCoordinateSpace.inner",
-        bare=lambda: np.vdot(x_np, y_np),
+        bare=lambda: ctx.ops.vdot(x, y),
         sc=lambda: space.inner(x, y),
+        unchecked=lambda: unchecked_space.inner(ux, uy),
         reference=lambda: np.vdot(x_np, y_np),
+        bare_inputs=(x, y),
     )
 
 
 def _make_space_norm(backend: str, seed: int, size: int) -> ProbeCase:
     ctx = _backend_ctx(backend)
     space, x, x_np = _dense_vector(ctx, size, seed)
+    unchecked_ctx = _backend_ctx(backend, check_level="none")
+    unchecked_space = sc.DenseCoordinateSpace((size,), unchecked_ctx)
+    ux = unchecked_ctx.asarray(x_np)
     return ProbeCase(
         bare_label=f"{backend}: linalg.norm(x)",
         sc_label="DenseCoordinateSpace.norm",
-        bare=lambda: np.linalg.norm(x_np),
+        bare=lambda: ctx.ops.sqrt(ctx.ops.real(ctx.ops.vdot(x, x))),
         sc=lambda: space.norm(x),
+        unchecked=lambda: unchecked_space.norm(ux),
         reference=lambda: np.linalg.norm(x_np),
+        bare_inputs=(x,),
     )
 
 
@@ -157,6 +172,7 @@ def _make_space_check_member(backend: str, seed: int, size: int) -> ProbeCase:
         bare=lambda: (x.shape == space.shape),
         sc=lambda: space.check_member(x),
         reference=lambda: True,
+        bare_inputs=(x,),
     )
 
 
@@ -167,7 +183,7 @@ def _make_space_zeros(backend: str, seed: int, size: int) -> ProbeCase:
     return ProbeCase(
         bare_label=f"{backend}: zeros(n)",
         sc_label="DenseCoordinateSpace.zeros",
-        bare=lambda: np.zeros(size, dtype=np_dtype),
+        bare=lambda: ctx.ops.zeros((size,), dtype=ctx.dtype),
         sc=lambda: space.zeros(),
         reference=lambda: np.zeros(size, dtype=np_dtype),
     )
@@ -188,6 +204,7 @@ for _name, _factory in [
             factory=_factory,
             sizes=(256, 4096, 65536),
             backends=("numpy", "jax", "torch"),
+            jit_compatible=_name in {"space.add", "space.scale", "space.inner", "space.norm"},
         )
     )
 
@@ -202,12 +219,18 @@ def _make_dense_apply(backend: str, seed: int, size: int) -> ProbeCase:
     a, a_np = _dense_matrix(ctx, size, seed)
     _, x, x_np = _dense_vector(ctx, size, seed + 7)
     op = sc.DenseLinOp(a, space, space, ctx)
+    unchecked_ctx = _backend_ctx(backend, check_level="none")
+    unchecked_space = sc.DenseCoordinateSpace((size,), unchecked_ctx)
+    ua, ux = unchecked_ctx.asarray(a_np), unchecked_ctx.asarray(x_np)
+    unchecked_op = sc.DenseLinOp(ua, unchecked_space, unchecked_space, unchecked_ctx)
     return ProbeCase(
         bare_label=f"{backend}: A @ x",
         sc_label="DenseLinOp.apply",
-        bare=lambda: a_np @ x_np,
+        bare=lambda: a @ x,
         sc=lambda: op.apply(x),
+        unchecked=lambda: unchecked_op.apply(ux),
         reference=lambda: a_np @ x_np,
+        bare_inputs=(a, x),
     )
 
 
@@ -217,12 +240,18 @@ def _make_dense_rapply(backend: str, seed: int, size: int) -> ProbeCase:
     a, a_np = _dense_matrix(ctx, size, seed)
     _, y, y_np = _dense_vector(ctx, size, seed + 8)
     op = sc.DenseLinOp(a, space, space, ctx)
+    unchecked_ctx = _backend_ctx(backend, check_level="none")
+    unchecked_space = sc.DenseCoordinateSpace((size,), unchecked_ctx)
+    ua, uy = unchecked_ctx.asarray(a_np), unchecked_ctx.asarray(y_np)
+    unchecked_op = sc.DenseLinOp(ua, unchecked_space, unchecked_space, unchecked_ctx)
     return ProbeCase(
         bare_label=f"{backend}: A.T.conj() @ y",
         sc_label="DenseLinOp.rapply",
-        bare=lambda: a_np.conj().T @ y_np,
+        bare=lambda: a.conj().T @ y,
         sc=lambda: op.rapply(y),
+        unchecked=lambda: unchecked_op.rapply(uy),
         reference=lambda: a_np.conj().T @ y_np,
+        bare_inputs=(a, y),
     )
 
 
@@ -234,12 +263,18 @@ def _make_dense_vapply(backend: str, seed: int, size: int) -> ProbeCase:
     xs_np = np.asarray(rng.standard_normal((8, size)), dtype=_np_dtype(ctx))
     xs = ctx.asarray(xs_np)
     op = sc.DenseLinOp(a, space, space, ctx)
+    unchecked_ctx = _backend_ctx(backend, check_level="none")
+    unchecked_space = sc.DenseCoordinateSpace((size,), unchecked_ctx)
+    ua, uxs = unchecked_ctx.asarray(a_np), unchecked_ctx.asarray(xs_np)
+    unchecked_op = sc.DenseLinOp(ua, unchecked_space, unchecked_space, unchecked_ctx)
     return ProbeCase(
         bare_label=f"{backend}: xs @ A.T",
         sc_label="DenseLinOp.vapply",
-        bare=lambda: xs_np @ a_np.T,
+        bare=lambda: xs @ a.T,
         sc=lambda: op.vapply(xs),
+        unchecked=lambda: unchecked_op.vapply(uxs),
         reference=lambda: xs_np @ a_np.T,
+        bare_inputs=(xs, a),
     )
 
 
@@ -250,12 +285,14 @@ def _make_diagonal_apply(backend: str, seed: int, size: int) -> ProbeCase:
     d_np = np.asarray(rng.standard_normal(size), dtype=_np_dtype(ctx))
     _, x, x_np = _dense_vector(ctx, size, seed + 10)
     op = sc.DiagonalLinOp(ctx.asarray(d_np), space, ctx)
+    d = op.diagonal
     return ProbeCase(
         bare_label=f"{backend}: d * x",
         sc_label="DiagonalLinOp.apply",
-        bare=lambda: d_np * x_np,
+        bare=lambda: d * x,
         sc=lambda: op.apply(x),
         reference=lambda: d_np * x_np,
+        bare_inputs=(d, x),
     )
 
 
@@ -358,7 +395,14 @@ _LINOP_PROBES = [
 ]
 for _name, _factory, _sizes, _backends in _LINOP_PROBES:
     registry.register(
-        Probe(name=_name, family="linop", factory=_factory, sizes=_sizes, backends=_backends)
+        Probe(
+            name=_name,
+            family="linop",
+            factory=_factory,
+            sizes=_sizes,
+            backends=_backends,
+            jit_compatible=_name.startswith("linop.dense."),
+        )
     )
 
 

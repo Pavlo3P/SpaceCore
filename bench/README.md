@@ -2,8 +2,14 @@
 
 Reproducible, generator-driven benchmarks for the SpaceCore public API. Every
 probe runs on the same four seeds (`0`, `1`, `2`, `3`), reports per-seed
-timings, peak memory, and correctness against a bare NumPy reference, and
+timings, peak memory, and correctness against a NumPy reference, and
 plugs into a single CLI with an interactive HTML dashboard.
+
+Each result separates backend-native bare time, SpaceCore with
+`check_level="none"`, SpaceCore with `check_level="cheap"`, and validation
+overhead (`checked - unchecked`). JAX-compatible probes additionally report
+eager and steady-state `jax.jit` time; compilation latency is recorded
+separately and excluded from steady-state timing.
 
 ## CLI
 

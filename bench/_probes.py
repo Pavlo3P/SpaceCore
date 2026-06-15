@@ -38,6 +38,8 @@ class ProbeCase:
     sc: Callable[[], Any]
     reference: Callable[[], Any] | None = None
     optimized: Callable[[], Any] | None = None
+    unchecked: Callable[[], Any] | None = None
+    bare_inputs: tuple[Any, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,6 +105,10 @@ class SeedTiming:
     bare_peak_bytes: int
     compile_ns: float | None = None
     """JAX JIT first-call latency. ``None`` for non-JIT backends."""
+    unchecked_best_ns: float | None = None
+    unchecked_median_ns: float | None = None
+    jit_best_ns: float | None = None
+    jit_median_ns: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,6 +133,9 @@ class ProbeResult:
     optimized_speedup: float | None = None
     compile_ns_median: float | None = None
     """Median JAX JIT first-call compile latency, or ``None``."""
+    unchecked_median_ns: float | None = None
+    validation_overhead_ns: float | None = None
+    jit_median_ns: float | None = None
     notes: str = ""
 
 

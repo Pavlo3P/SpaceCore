@@ -6,11 +6,11 @@ the probe declares it supports, every problem size, and every seed in
 quartet it:
 
 * builds a fresh :class:`ProbeCase` via the probe factory;
-* times the bare and SpaceCore variants;
+* times backend-native bare, unchecked SpaceCore, and checked SpaceCore variants;
 * captures peak Python memory through :mod:`tracemalloc`;
 * records the maximum absolute error against the NumPy reference;
-* for JAX, additionally times the very first SpaceCore call and reports
-  the latency as ``compile_ns`` (first call − typical-call median).
+* for JAX-compatible probes, records JIT compilation separately from
+  steady-state compiled execution.
 
 The per-seed records are aggregated to one :class:`ProbeResult` per
 ``(probe, backend, size)`` triple. The aggregate carries per-seed
@@ -103,6 +103,10 @@ def _aggregate(
 ) -> ProbeResult:
     bare_medians = [s.bare_median_ns for s in seed_records]
     sc_medians = [s.sc_median_ns for s in seed_records]
+    unchecked_medians = [
+        s.unchecked_median_ns for s in seed_records if s.unchecked_median_ns is not None
+    ]
+    unchecked_med = float(median(unchecked_medians)) if unchecked_medians else None
     bare_med = float(median(bare_medians))
     sc_med = float(median(sc_medians))
     speedups = [
@@ -133,6 +137,13 @@ def _aggregate(
         compile_ns_median=(
             float(median(compile_records)) if compile_records else None
         ),
+        unchecked_median_ns=unchecked_med,
+        validation_overhead_ns=sc_med - unchecked_med if unchecked_med is not None else None,
+        jit_median_ns=(
+            float(median(s.jit_median_ns for s in seed_records if s.jit_median_ns is not None))
+            if any(s.jit_median_ns is not None for s in seed_records)
+            else None
+        ),
         notes=probe.notes,
     )
 
@@ -151,19 +162,29 @@ def _run_one_seed(
     case = _build_case(probe, backend, device, seed, size)
     reference = case.reference() if case.reference is not None else None
 
+    unchecked = case.unchecked
     sc_result = case.sc()
     error = _error_vs_reference(sc_result, reference)
+    if unchecked is not None:
+        error = max(error, _error_vs_reference(unchecked(), reference))
     if case.optimized is not None:
         error = max(error, _error_vs_reference(case.optimized(), reference))
 
-    # For JAX, the first call also pays tracing/caching cost. Capture it
-    # before the warmup loop empties that out.
     compile_ns: float | None = None
-    if backend == "jax":
-        fresh_case = _build_case(probe, backend, device, seed, size)
-        compile_ns = time_op_first_call(fresh_case.sc)
+    jit_t = None
+    if backend == "jax" and probe.jit_compatible:
+        import jax
+
+        jitted = jax.jit(unchecked or case.sc)
+        compile_ns = time_op_first_call(jitted)
+        jit_t = time_op(jitted, repeat=repeat, number=number, warmup=warmup)
 
     bare_t = time_op(case.bare, repeat=repeat, number=number, warmup=warmup)
+    unchecked_t = (
+        time_op(unchecked, repeat=repeat, number=number, warmup=warmup)
+        if unchecked is not None
+        else None
+    )
     sc_t = time_op(case.sc, repeat=repeat, number=number, warmup=warmup)
     opt_t = (
         time_op(case.optimized, repeat=repeat, number=number, warmup=warmup)
@@ -190,6 +211,10 @@ def _run_one_seed(
         sc_peak_bytes=int(sc_mem["peak_bytes"]),
         bare_peak_bytes=int(bare_mem["peak_bytes"]),
         compile_ns=compile_ns,
+        unchecked_best_ns=unchecked_t["best_ns"] if unchecked_t else None,
+        unchecked_median_ns=unchecked_t["median_ns"] if unchecked_t else None,
+        jit_best_ns=jit_t["best_ns"] if jit_t else None,
+        jit_median_ns=jit_t["median_ns"] if jit_t else None,
     )
 
 

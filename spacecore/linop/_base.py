@@ -101,6 +101,18 @@ class LinOp(ContextBound, Generic[Domain, Codomain]):
     def rapply(self, y: Any) -> Any:
         """Apply the adjoint map to an element of ``self.codomain``."""
 
+    def _apply_core(self, x: Any) -> Any:
+        """Apply without adding validation beyond the concrete implementation."""
+        return self.apply(x)
+
+    def _rapply_core(self, y: Any) -> Any:
+        """Apply the adjoint without adding validation beyond the implementation."""
+        return self.rapply(y)
+
+    def _vapply_core(self, xs: Any) -> Any:
+        """Apply to a batch without adding validation beyond the implementation."""
+        return self.vapply(xs)
+
     def __call__(self, x: Any) -> Any:
         """Apply this linear operator to ``x``."""
         return self.apply(x)
