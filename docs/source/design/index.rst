@@ -11,6 +11,7 @@ as current behavior.
    conversion_policy
    dtype_policy
    batching
+   batching_test_policy
    capability_dispatch
    checking_policy
    geometry
@@ -18,3 +19,5 @@ as current behavior.
    jax_integration
    tree_spaces
    backend_ops_array_api
+   backend_conformance
+   backend_deviations

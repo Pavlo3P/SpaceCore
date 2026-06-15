@@ -1,1 +1,0 @@
-Implements randomized and parametrized tests of algebraic operations that serve for efficiency tests as well as QA.

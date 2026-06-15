@@ -1,3 +1,11 @@
+# Note: the cross-backend vdot conjugation pin lives alongside the rest of
+# the scalar-field consistency checks in
+# ``tests/backend/test_backend_field_consistency.py`` (Phase J8). That module
+# parametrizes over ``backend_ops`` so each installed backend is exercised
+# once, and adds matching pins for ``conj``, ``real``/``imag`` dtype, and
+# ``Space.field``. The standalone tests in this file are retained for
+# narrower regression coverage; prefer the conformance module for new pins.
+
 import importlib
 
 import numpy as np

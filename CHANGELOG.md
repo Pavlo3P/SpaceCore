@@ -7,11 +7,88 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.0] — Unreleased
+
+SpaceCore 0.4.0 stabilizes the typed linear-algebra core as a validated
+algebra of structured mathematical objects. It ships a public check-policy,
+ADR-015 Stage 1 dtype/field contract, the `TreeSpace` finite direct-product
+abstraction, block-structured LinOps on tree domains, reusable test
+generators, and a full backend conformance matrix with deviation catalog.
+
+### Added
+
+- Public `check_level` policy literal (`"none"`, `"cheap"`, `"standard"`,
+  `"strict"`) with `CHECK_LEVELS` ordering and `_checks_at_least` dispatch
+  across spaces, LinOps, functionals, and solver preconditions.
+- `Space.field` exposing a `Literal["real", "complex"]` mathematical
+  contract derived from the context dtype; capability guards now consult
+  `Space.field` instead of inspecting precision-bearing dtypes.
+- `TreeSpace` finite direct-product space organized by an `optree`
+  definition; `TreeElement` ordered-leaf binding; `TreeSpace.from_leaf_spaces`
+  flat-tuple shortcut.
+- `BlockDiagonalLinOp` and `BlockMatrixLinOp` over `TreeSpace` domains
+  including metric-adjoint behavior; `TreeLinOp` base class for tree-shaped
+  operators.
+- Reusable test generators under `tests/generators/` for spaces, LinOps,
+  functionals, and linalg references; contributor guide at
+  `docs/dev/contributing/linop_generators.md`.
+- Backend conformance matrix at `docs/source/design/backend_conformance.rst`
+  with per-op tolerance harness in `tests/backend/_conformance.py`,
+  systematic NumpyOps reference (`tests/backend/test_conformance_numpy.py`),
+  cross-backend parity (`tests/backend/test_conformance_cross_backend.py`),
+  and dedicated modules for optional args, conversion, dtype promotion,
+  field consistency, vmap, and JIT.
+- Backend deviation catalog at `docs/source/design/backend_deviations.rst`.
+- Batching test policy at `docs/source/design/batching_test_policy.rst`.
+
+### Changed
+
+- Spaces, LinOps, and functionals dispatch optional checks via
+  `_checks_at_least`; `cheap` covers shape/dtype/backend/tree-structure,
+  `standard` adds membership and Hermitian checks, `strict` adds bounded
+  expensive probes (matrix-free adjoint identity, CG positive-curvature
+  probe).
+- `Context.dtype` is documented as the representation default; `Space.field`
+  is the mathematical contract derived from it.
+
+### Removed
+
+- `ProductSpace` was removed in favor of `TreeSpace`. Tuple-style products
+  use `TreeSpace.from_leaf_spaces((X1, X2, ...))`; nested / dict /
+  namedtuple structures use `TreeSpace(template, leaf_spaces)` or
+  `TreeSpace.from_template`.
+- `ProductLinOp` was renamed to `TreeLinOp`. `ProductStructure`,
+  `TupleStructure`, `PytreeStructure`, `ProductStructureCheck`, and
+  `ProductComponentCheck` were removed; tree-structure handling and leaf
+  validation are owned by `TreeSpace`.
+- Conversion (`ctx.asarray` and construction helpers) refuses silent
+  complex-to-real narrowing per ADR-015 Stage 1.
+
+### Deprecated
+
+- `enable_checks=True/False` is deprecated in favor of `check_level`:
+  `True` maps to `"standard"`, `False` maps to `"none"`. Passing both
+  raises `TypeError`. `enable_checks` continues to work in 0.4.0 but will
+  be removed in a future release.
+
 ### Fixed
 
 - Corrected the matrix-free adjoint contract so `MatrixFreeLinOp` and its
-  adjoint view use user-supplied forward and reverse callables directly, without
-  applying matrix-backed Riesz-map adjoint corrections.
+  adjoint view use user-supplied forward and reverse callables directly,
+  without applying matrix-backed Riesz-map adjoint corrections.
+
+### Known limitations
+
+- Iterative solvers (`cg`, `lsqr`, `lanczos_smallest`, `power_iteration`,
+  `expm_multiply`) remain unbatched. Batched-input invocations raise a
+  clear shape error; explicit batched solver entry points are deferred to
+  0.5.0.
+- ADR-015 Stage 2 (operand-dtype-preserving `Context.asarray`, opt-in
+  exact dtype membership, operand-dtype solver workspaces) is deferred to
+  0.5.0.
+- Strict check level currently inherits the standard space-membership
+  semantics; additional spectral / metric probes at the space layer are
+  deferred to 0.5.0.
 
 ## [0.3.1] — 2026-06-10
 

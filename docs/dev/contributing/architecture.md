@@ -12,7 +12,7 @@ SpaceCore owns context normalization, validation hooks, conversion entry points,
 
 ## Space layer
 
-`spacecore/space/` represents mathematical structure, not merely array shapes. `VectorSpace` is the abstract linear-space contract for zero, add, scale, and axpy operations. Coordinate spaces add shape, size, flattening, unflattening, and batching hooks. Dense coordinate and dense vector spaces provide concrete dense array representations; product spaces represent structured elements composed from component spaces.
+`spacecore/space/` represents mathematical structure, not merely array shapes. `VectorSpace` is the abstract linear-space contract for zero, add, scale, and axpy operations. Coordinate spaces add shape, size, flattening, unflattening, and batching hooks. Dense coordinate and dense vector spaces provide concrete dense array representations; `TreeSpace` and `TreeElement` represent finite direct products organized by an `optree` definition, and `StackedSpace` represents a fixed leading-axis stack of one base space.
 
 Spaces define valid elements through membership checks. Checks cover backend ownership, shape, dtype, product structure, Hermitian structure, square-matrix structure, and component membership. Spaces also own scalar-field-relevant dtype expectations, zero/add/scale behavior, and batching helpers such as batch flattening and unflattening.
 
@@ -34,7 +34,7 @@ Solver assumptions are mathematical assumptions over declared spaces: Hermitian,
 
 ## Cross-cutting infrastructure
 
-`spacecore/_contextual/` owns context-bound objects, context normalization, default-context state, backend registration, and conversion dispatch. `spacecore/_batching.py` provides shared batching helpers. `spacecore/_checks.py` provides method-level validation decorators used by spaces, operators, and functionals. `spacecore/_tree.py` supports structured product/pytree handling. `spacecore/_version.py` is the package version source used by packaging and docs.
+`spacecore/_contextual/` owns context-bound objects, context normalization, default-context state, backend registration, and conversion dispatch. `spacecore/_batching.py` provides shared batching helpers. `spacecore/_checks.py` provides method-level validation decorators used by spaces, operators, and functionals; runtime check intensity is selected from `spacecore/_check_policy.py`, which defines the `CheckLevel` literal (`"none"`, `"cheap"`, `"standard"`, `"strict"`) and the `CHECK_LEVELS` ordering. Tree-structured handling lives with the space implementations in `spacecore/space/concrete/_tree_space.py` (using `optree`) rather than in a top-level helper module. `spacecore/_version.py` is the package version source used by packaging and docs.
 
 ## Public class map
 

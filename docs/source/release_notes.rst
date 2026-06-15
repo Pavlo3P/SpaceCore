@@ -6,6 +6,24 @@ Version 0.4.0
 
 Unreleased.
 
+Added
+~~~~~
+
+* Public ``check_level`` policy with literal values ``"none"``, ``"cheap"``,
+  ``"standard"``, and ``"strict"``, plus the ``CHECK_LEVELS`` ordering and the
+  ``_checks_at_least`` dispatch used by spaces, LinOps, functionals, and
+  solver preconditions. See :doc:`design/checking_policy`.
+* ``Space.field`` exposing a ``Literal["real", "complex"]`` mathematical
+  contract derived from the context dtype, distinct from
+  ``Context.dtype`` (representation default).
+* ``TreeSpace`` finite direct-product coordinate space organized by an
+  ``optree`` definition, and ``TreeElement`` optional ordered-leaf binding.
+* ``BlockDiagonalLinOp`` and block-matrix ``LinOp`` support on ``TreeSpace``
+  domains and codomains, including metric-adjoint behavior.
+* Reusable test generators for spaces, LinOps, functionals, and linalg
+  references under ``tests/generators/``; see the contributor guide at
+  ``docs/dev/contributing/linop_generators.md``.
+
 Breaking changes
 ~~~~~~~~~~~~~~~~
 
@@ -19,6 +37,34 @@ Breaking changes
   and codomains directly.
 * Product structure adapters and product-specific checks were removed. Tree
   structure and leaf validation are owned by ``TreeSpace``.
+* Conversion (``ctx.asarray`` and construction helpers) refuses silent
+  complex-to-real narrowing. Pass an explicit dtype to convert across fields.
+
+Deprecations
+~~~~~~~~~~~~
+
+* ``enable_checks`` is deprecated in favor of ``check_level``:
+
+  * ``enable_checks=True`` maps to ``check_level="standard"``;
+  * ``enable_checks=False`` maps to ``check_level="none"``;
+  * passing both keywords raises ``TypeError``.
+
+  See :doc:`design/checking_policy` "Migration from ``enable_checks``" for
+  the full mapping and examples. ``enable_checks`` continues to work in
+  ``0.4.0`` but will be removed in a future release.
+
+Stage 1 dtype and scalar-field contract
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+* ``Context.dtype`` is the array representation default; ``Space.field`` is
+  the mathematical real-or-complex contract derived from it.
+* Capability guards (Jordan-algebra eligibility, Lanczos/exponential
+  diagnostics, Hermitian guards) now consult ``Space.field`` instead of
+  inspecting the precision-bearing context dtype.
+* No constructor-level ``field`` override is available in ``0.4.0``;
+  ADR-015 did not authorize one. Stage 2 (operand-dtype-preserving
+  ``ctx.asarray``, opt-in exact dtype membership, operand-dtype solver
+  workspaces) is deferred to ``0.5.0``.
 
 Version 0.3.1
 -------------
