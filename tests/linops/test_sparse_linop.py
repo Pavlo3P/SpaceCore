@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 import scipy.sparse as sps
 from tests._helpers import to_numpy
-from test_generators.linop._sparse import (
+from tests.linops._helpers._sparse import (
     bare_sparse_linop,
     check_sparse_linop,
     make_sparse_linop_data,

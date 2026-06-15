@@ -2,7 +2,7 @@ import importlib
 import numpy as np
 import pytest
 from tests._helpers import has_jax, jax_real_dtype, to_numpy
-from test_generators.linop._dense import bare_dense_linop, check_dense_linop, make_dense_linop_data
+from tests.linops._helpers._dense import bare_dense_linop, check_dense_linop, make_dense_linop_data
 
 
 class ReshapeCountingArray(np.ndarray):

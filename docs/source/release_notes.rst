@@ -23,6 +23,21 @@ Added
 * Reusable test generators for spaces, LinOps, functionals, and linalg
   references under ``tests/generators/``; see the contributor guide at
   ``docs/dev/contributing/linop_generators.md``.
+* ``spacecore.kernels`` subpackage with the optimized-kernel
+  registration policy. Two demonstration kernels ship in ``0.4.0``:
+  ``composed-chain-apply`` (skips per-link ``@checked_method`` on a flat
+  LinOp chain) and ``block-diagonal-dense-apply`` (tight ``ops.matmul``
+  loop over dense block leaves). Each kernel has a correctness reference
+  in ``tests/kernels/`` and a bench probe in
+  ``bench/_operations.py``. No dispatch or fusion is wired; both
+  are gated on the ``0.6.0`` design decision. See
+  :doc:`design/kernels_policy`.
+* Unified benchmark framework at ``python -m bench`` with subcommands
+  ``run``, ``compare``, ``plot``, ``summary``, and ``list``. Every probe
+  runs on the canonical seeds ``(0, 1, 2, 3)``, records correctness
+  against a NumPy reference, captures peak memory via ``tracemalloc``,
+  and renders an interactive self-contained Plotly dashboard. See
+  ``bench/README.md``.
 
 Breaking changes
 ~~~~~~~~~~~~~~~~

@@ -32,6 +32,18 @@ generators, and a full backend conformance matrix with deviation catalog.
 - Reusable test generators under `tests/generators/` for spaces, LinOps,
   functionals, and linalg references; contributor guide at
   `docs/dev/contributing/linop_generators.md`.
+- `spacecore.kernels` subpackage with the optimized-kernel registration
+  policy. Two demonstration kernels ship in 0.4.0: `composed-chain-apply`
+  (skips the per-link `@checked_method` wrapper for a flat chain of LinOps)
+  and `block-diagonal-dense-apply` (tight ``ops.matmul`` loop over dense
+  block leaves). Both have correctness references and bench cases. No
+  dispatch or fusion is wired; that is gated on the 0.6.0 design decision.
+- Unified benchmark framework at `python -m bench` (subcommands `run`,
+  `compare`, `plot`, `summary`, `list`) with generator-driven probes in
+  `bench/_operations.py`, peak-memory recording in
+  `bench/harness.py:measure_peak_memory`, fixed seeds `(0, 1, 2, 3)`, and
+  a self-contained interactive Plotly dashboard at `bench/_dashboard.py`.
+- Kernel policy doc at `docs/source/design/kernels_policy.rst`.
 - Backend conformance matrix at `docs/source/design/backend_conformance.rst`
   with per-op tolerance harness in `tests/backend/_conformance.py`,
   systematic NumpyOps reference (`tests/backend/test_conformance_numpy.py`),

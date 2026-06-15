@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import gc
+import tracemalloc
 from dataclasses import asdict, dataclass
 from statistics import median
 from time import perf_counter_ns
@@ -69,6 +70,35 @@ def time_op_first_call(fn: Callable[[], Any]) -> float:
     finally:
         if was_enabled:
             gc.enable()
+
+
+def measure_peak_memory(fn: Callable[[], Any]) -> dict[str, int]:
+    """Return ``{"current_bytes": ..., "peak_bytes": ...}`` for one call.
+
+    Uses :mod:`tracemalloc`, which observes Python-level allocations.
+    Backend libraries that allocate via C extensions (NumPy, JAX, Torch)
+    show up as the C objects' Python wrappers — the absolute number is
+    not the resident set size, but it is reproducible and useful for
+    *relative* comparison of an optimized kernel against its generic
+    reference on the same backend.
+
+    The function tears down any pre-existing :mod:`tracemalloc` state
+    that the caller may have started, so it is safe to call inside
+    benchmarks that compose with other instrumentation as long as the
+    caller does not depend on a separate tracemalloc trace running.
+    """
+    was_tracing = tracemalloc.is_tracing()
+    if was_tracing:
+        tracemalloc.stop()
+    tracemalloc.start()
+    try:
+        sync_result(fn())
+        current, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+    if was_tracing:
+        tracemalloc.start()
+    return {"current_bytes": int(current), "peak_bytes": int(peak)}
 
 
 @dataclass(slots=True)

@@ -518,20 +518,6 @@ def test_matrix_free_compatibility_constructor_without_rvapply_uses_fallback():
     np.testing.assert_allclose(to_numpy(converted.rvapply(ys)), expected)
 
 
-def test_weighted_matrix_free_bench_coordinate_adjoint_assertions_pass():
-    sc = importlib.import_module("spacecore")
-    cases = importlib.import_module("bench.cases")
-    rng = np.random.default_rng(20240610)
-
-    weighted_matrix_free = cases._weighted_dense_cases(
-        sc, rng, "tiny", 8, False, matrix_free=True
-    )
-
-    for case in weighted_matrix_free:
-        if case.operation in {"rapply", "rvapply"}:
-            case.assert_equal()
-
-
 @pytest.mark.skipif(not has_jax(), reason="jax is not installed")
 def test_direct_matrix_free_pytree_preserves_callables():
     import jax
