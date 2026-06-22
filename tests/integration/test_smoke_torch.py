@@ -11,7 +11,7 @@ pytestmark = pytest.mark.skipif(not has_torch(), reason="torch is not installed"
 def test_torch_vector_hermitian_product_and_linop_smoke():
     sc = importlib.import_module("spacecore")
     dt = torch_real_dtype()
-    ctx = sc.Context(sc.TorchOps(), dtype=dt, enable_checks=True)
+    ctx = sc.Context(sc.TorchOps(), dtype=dt, check_level="standard")
 
     X = sc.DenseCoordinateSpace((2,), ctx)
     x = ctx.asarray([1.0, 2.0])

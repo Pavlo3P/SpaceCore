@@ -163,6 +163,83 @@ def _composed_case(dtype: Any, check_level: sc.CheckLevel | str) -> FunctionalCa
     )
 
 
+def _explicit_composed_case(dtype: Any, check_level: sc.CheckLevel | str) -> FunctionalCase:
+    """Build a ComposedFunctional directly, not via ``source.compose(operator)``.
+
+    Mirrors :func:`_composed_case` schema-for-schema (kind, reference fields, and
+    capabilities) so it satisfies the same generated laws. The only difference is
+    that the object is constructed with ``sc.ComposedFunctional(...)`` instead of
+    arising implicitly from ``.compose()``. The functional has no analytic Riesz
+    representer, so ``gradient`` is recorded as ``None`` and the gradient-bearing
+    laws skip it, exactly as the implicit composed case does.
+    """
+    ctx = _context(dtype, check_level)
+    domain = sc.DenseCoordinateSpace((3,), ctx)
+    x_np, c_np, _weights, _diagonal = _values(dtype)
+    matrix = np.asarray(
+        [[1.5, 0.25, -0.5], [0.0, 1.0, 0.75], [-0.25, 0.5, 1.0]],
+        dtype=dtype,
+    )
+    x = ctx.asarray(x_np)
+    c = ctx.asarray(c_np)
+    operator = sc.DenseLinOp(ctx.asarray(matrix), domain, domain, ctx)
+    source = sc.MatrixFreeLinearFunctional(lambda y: domain.inner(c, y), domain, ctx)
+    functional = sc.ComposedFunctional(source, operator)
+    return FunctionalCase(
+        obj=functional,
+        reference={
+            "kind": "composed",
+            "domain": domain,
+            "x": x,
+            "value": np.vdot(c_np, matrix @ x_np),
+            "gradient": None,
+            "source_functional": source,
+            "operator": operator,
+            "target_ctx": None,
+            "check_level": check_level,
+        },
+        capabilities=frozenset({"pullback", "euclidean", "composed"}),
+        id=f"composed-explicit-euclidean-{np.dtype(dtype).name}-checks-{check_level}",
+    )
+
+
+def _matrix_free_linear_case(dtype: Any, check_level: sc.CheckLevel | str) -> FunctionalCase:
+    """Build a MatrixFreeLinearFunctional case exercised by the value law only.
+
+    The functional stores a Python closure rather than an analytic Riesz
+    representer, so it advertises neither ``gradient`` nor ``conversion`` (its
+    ``convert`` keeps the original-dtype closure and would fail the converted
+    value law). The value-bearing law still exercises it directly. ``gradient``
+    is recorded as ``None`` to satisfy the required-field guard, matching how the
+    composed case handles a missing analytic gradient.
+    """
+    ctx = _context(dtype, check_level)
+    domain = sc.DenseCoordinateSpace((3,), ctx)
+    x_np, c_np, _weights, _diagonal = _values(dtype)
+    x = ctx.asarray(x_np)
+    c = ctx.asarray(c_np)
+    functional = sc.MatrixFreeLinearFunctional(lambda y: domain.inner(c, y), domain, ctx)
+    capabilities = {"linear", "euclidean"}
+    if np.issubdtype(np.dtype(dtype), np.complexfloating):
+        capabilities.add("complex")
+    else:
+        capabilities.add("real")
+    return FunctionalCase(
+        obj=functional,
+        reference={
+            "kind": "matrix-free-linear",
+            "domain": domain,
+            "x": x,
+            "value": np.vdot(c_np, x_np),
+            "gradient": None,
+            "target_ctx": None,
+            "check_level": check_level,
+        },
+        capabilities=frozenset(capabilities),
+        id=f"matrix-free-linear-euclidean-{np.dtype(dtype).name}-checks-{check_level}",
+    )
+
+
 def _tree_case(dtype: Any, check_level: sc.CheckLevel | str) -> FunctionalCase:
     ctx = _context(dtype, check_level)
     left = sc.DenseCoordinateSpace((2,), ctx)
@@ -214,5 +291,7 @@ def functional_cases(
                         _dense_case(dtype, check_level, kind=kind, weighted=weighted)
                     )
             cases.append(_composed_case(dtype, check_level))
+            cases.append(_explicit_composed_case(dtype, check_level))
+            cases.append(_matrix_free_linear_case(dtype, check_level))
             cases.append(_tree_case(dtype, check_level))
     return tuple(cases)

@@ -498,6 +498,26 @@ def jordan_space_cases(
         )
 
     real_ctx = _context(np.float64, check_level)
+    euclidean_elementwise = sc.EuclideanElementwiseJordanSpace((3,), real_ctx)
+    cases.append(
+        GeneratedCase(
+            obj=euclidean_elementwise,
+            reference=_jordan_dense_reference(euclidean_elementwise, rng=rng),
+            capabilities=frozenset(
+                {
+                    "vector",
+                    "inner_product",
+                    "star",
+                    "jordan",
+                    "spectral",
+                    "euclidean",
+                    euclidean_elementwise.field,
+                }
+            ),
+            id="jordan-euclidean-elementwise-float64",
+        )
+    )
+
     base = sc.ElementwiseJordanSpace((3,), real_ctx)
     stacked = base.stacked(2)
     stacked_ref = _jordan_dense_reference(stacked, rng=rng)

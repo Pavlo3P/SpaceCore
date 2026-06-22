@@ -1,22 +1,21 @@
-import importlib
 import warnings
 
 import numpy as np
 import pytest
 
+import spacecore as sc
+from spacecore.functional import _base as _functional_base
 from tests._helpers import has_jax, jax_real_dtype, to_numpy
 
 
 def _numpy_context():
-    sc = importlib.import_module("spacecore")
 
     return sc.Context(sc.NumpyOps(), dtype=np.float64)
 
 
 def _jax_context():
-    sc = importlib.import_module("spacecore")
 
-    return sc.Context(sc.JaxOps(), dtype=jax_real_dtype(), enable_checks=False)
+    return sc.Context(sc.JaxOps(), dtype=jax_real_dtype(), check_level="none")
 
 
 def _contexts():
@@ -31,18 +30,15 @@ def _contexts():
 
 
 def _weighted_geometry(weights):
-    sc = importlib.import_module("spacecore")
     return sc.WeightedInnerProduct(weights)
 
 
 def _weighted_space(ctx):
     weights = ctx.asarray([2.0, 5.0, 11.0])
-    sc = importlib.import_module("spacecore")
     return sc.DenseCoordinateSpace((3,), ctx, geometry=_weighted_geometry(weights))
 
 
 def _weighted_vector_space(ctx, weights):
-    sc = importlib.import_module("spacecore")
     weights = ctx.asarray(weights)
     return sc.DenseCoordinateSpace(
         tuple(to_numpy(weights).shape), ctx, geometry=_weighted_geometry(weights)
@@ -76,7 +72,6 @@ def _assert_gradient_identity(functional, x, v, eps, atol):
 
 @pytest.mark.parametrize("ctx_factory,eps,atol", list(_contexts()))
 def test_linop_quadratic_gradient_identity_on_weighted_space(ctx_factory, eps, atol):
-    sc = importlib.import_module("spacecore")
     ctx = ctx_factory()
     space = _weighted_space(ctx)
     Q = sc.DenseLinOp(_self_adjoint_metric_matrix(ctx), space, space, ctx)
@@ -90,7 +85,6 @@ def test_linop_quadratic_gradient_identity_on_weighted_space(ctx_factory, eps, a
 
 @pytest.mark.parametrize("ctx_factory,eps,atol", list(_contexts()))
 def test_inner_product_functional_gradient_identity_on_weighted_space(ctx_factory, eps, atol):
-    sc = importlib.import_module("spacecore")
     ctx = ctx_factory()
     space = _weighted_space(ctx)
     c = ctx.asarray([0.25, -1.5, 2.0])
@@ -103,7 +97,6 @@ def test_inner_product_functional_gradient_identity_on_weighted_space(ctx_factor
 
 
 def test_euclidean_quadratic_gradient_behavior_is_unchanged():
-    sc = importlib.import_module("spacecore")
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
     space = sc.DenseCoordinateSpace((2,), ctx)
     Q = sc.DenseLinOp(ctx.asarray([[2.0, 1.0], [1.0, 4.0]]), space, space, ctx)
@@ -117,7 +110,6 @@ def test_euclidean_quadratic_gradient_behavior_is_unchanged():
 
 @pytest.mark.parametrize("ctx_factory,eps,atol", list(_contexts()))
 def test_inner_product_functional_compose_uses_metric_adjoint_pullback(ctx_factory, eps, atol):
-    sc = importlib.import_module("spacecore")
     ctx = ctx_factory()
     domain = _weighted_vector_space(ctx, [2.0, 5.0])
     codomain = _weighted_vector_space(ctx, [3.0, 7.0, 11.0])
@@ -149,7 +141,6 @@ def test_inner_product_functional_compose_uses_metric_adjoint_pullback(ctx_facto
 def test_inner_product_functional_vectorized_batches_match_elementwise(
     ctx_factory, eps, atol, weighted
 ):
-    sc = importlib.import_module("spacecore")
     ctx = ctx_factory()
     space = _weighted_space(ctx) if weighted else sc.DenseCoordinateSpace((3,), ctx)
     c = ctx.asarray([0.25, -1.5, 2.0])
@@ -178,7 +169,6 @@ def test_inner_product_functional_vectorized_batches_match_elementwise(
 def test_linop_quadratic_form_vectorized_batches_match_elementwise(
     ctx_factory, eps, atol, weighted
 ):
-    sc = importlib.import_module("spacecore")
     ctx = ctx_factory()
     space = _weighted_space(ctx) if weighted else sc.DenseCoordinateSpace((3,), ctx)
     matrix = (
@@ -215,10 +205,8 @@ def test_linop_quadratic_form_vectorized_batches_match_elementwise(
 
 
 def test_matrix_free_functional_vvalue_python_loop_warns_once_on_numpy():
-    sc = importlib.import_module("spacecore")
-    base = importlib.import_module("spacecore.functional._base")
-    base._VMAP_FALLBACK_WARNED.clear()
-    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, enable_checks=False)
+    _functional_base._VMAP_FALLBACK_WARNED.clear()
+    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="none")
     space = sc.DenseCoordinateSpace((2,), ctx)
     c = ctx.asarray([1.0, -2.0])
     functional = sc.MatrixFreeLinearFunctional(lambda x: space.inner(c, x), space, ctx)
@@ -233,8 +221,7 @@ def test_matrix_free_functional_vvalue_python_loop_warns_once_on_numpy():
 
 
 def test_vectorized_functionals_do_not_warn_on_numpy():
-    sc = importlib.import_module("spacecore")
-    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, enable_checks=False)
+    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="none")
     space = sc.DenseCoordinateSpace((2,), ctx)
     c = ctx.asarray([1.0, -2.0])
     functional = sc.InnerProductFunctional(c, space, ctx)
@@ -249,8 +236,7 @@ def test_vectorized_functionals_do_not_warn_on_numpy():
 
 @pytest.mark.skipif(not has_jax(), reason="jax is not installed")
 def test_matrix_free_functional_vvalue_does_not_warn_on_native_vmap_backend():
-    sc = importlib.import_module("spacecore")
-    ctx = sc.Context(sc.JaxOps(), dtype=jax_real_dtype(), enable_checks=False)
+    ctx = sc.Context(sc.JaxOps(), dtype=jax_real_dtype(), check_level="none")
     space = sc.DenseCoordinateSpace((2,), ctx)
     c = ctx.asarray([1.0, -2.0])
     functional = sc.MatrixFreeLinearFunctional(lambda x: space.inner(c, x), space, ctx)
