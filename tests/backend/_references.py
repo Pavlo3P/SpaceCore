@@ -280,6 +280,26 @@ class ReferenceOps:
             return self._torch.stack(tuple(arrays), dim=axis)
         return self._xp.stack(tuple(arrays), axis=axis)
 
+    def hstack(self, arrays: Sequence[Any]) -> Any:
+        if self.family == "torch":
+            return self._torch.hstack(tuple(arrays))
+        return self._xp.hstack(tuple(arrays))
+
+    def vstack(self, arrays: Sequence[Any]) -> Any:
+        if self.family == "torch":
+            return self._torch.vstack(tuple(arrays))
+        return self._xp.vstack(tuple(arrays))
+
+    def dstack(self, arrays: Sequence[Any]) -> Any:
+        if self.family == "torch":
+            return self._torch.dstack(tuple(arrays))
+        return self._xp.dstack(tuple(arrays))
+
+    def column_stack(self, arrays: Sequence[Any]) -> Any:
+        if self.family == "torch":
+            return self._torch.column_stack(tuple(arrays))
+        return self._xp.column_stack(tuple(arrays))
+
     def concatenate(self, arrays: Sequence[Any], axis: int = 0, dtype: Any = None) -> Any:
         if self.family == "torch":
             out = self._torch.cat(tuple(arrays), dim=axis)

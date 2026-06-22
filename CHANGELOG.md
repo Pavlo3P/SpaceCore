@@ -50,6 +50,14 @@ generators, and a full backend conformance matrix with deviation catalog.
   cross-backend parity (`tests/backend/test_conformance_cross_backend.py`),
   and dedicated modules for optional args, conversion, dtype promotion,
   field consistency, vmap, and JIT.
+- `BackendOps.hstack`, `vstack`, `dstack`, and `column_stack` array-stacking
+  helpers delegating to the backend's native routines, alongside the existing
+  `stack`.
+- `BackendOps.vectorize` for elementwise vectorization of a scalar Python
+  function over array arguments. Delegates to the backend's native
+  `vectorize` (NumPy, JAX, CuPy) and uses a portable Python-loop fallback on
+  backends without one (Torch). Closes the previously unimplemented
+  `ops.vectorize` fallback used by `spectral_apply`.
 - Backend deviation catalog at `docs/source/design/backend_deviations.rst`.
 - Batching test policy at `docs/source/design/batching_test_policy.rst`.
 

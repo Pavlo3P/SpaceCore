@@ -494,6 +494,22 @@ class TestReshape:
         _matches("stack", backend_ops.stack(xs_be, axis=0),
                  ref.stack(xs_ref, axis=0), dtype=dt)
 
+    @pytest.mark.parametrize("op_name", ["hstack", "vstack", "dstack", "column_stack"])
+    @pytest.mark.parametrize("shape", [(3,), (2, 3)])
+    def test_stacking_helpers(self, backend_ops, op_name, shape):
+        """hstack/vstack/dstack/column_stack match the native reference.
+
+        Both the 1-D and 2-D input cases are exercised so the
+        ``atleast_*d`` promotion paths each backend uses are covered.
+        """
+        ref = native_reference(backend_ops)
+        dt = _default_real_dtype(backend_ops)
+        xs_be = [_make_real(backend_ops, shape, dt, seed=i) for i in range(2)]
+        xs_ref = [ref.asarray(to_numpy(x), dtype=dt) for x in xs_be]
+        be_fn = getattr(backend_ops, op_name)
+        ref_fn = getattr(ref, op_name)
+        _matches(op_name, be_fn(xs_be), ref_fn(xs_ref), dtype=dt)
+
     def test_concatenate(self, backend_ops):
         ref = native_reference(backend_ops)
         dt = _default_real_dtype(backend_ops)
@@ -1165,6 +1181,65 @@ class TestVmap:
         expected = np.stack([data[i] * 2.0 for i in range(4)], axis=1)
         assert out_np.shape == expected.shape
         np.testing.assert_allclose(out_np, expected)
+
+
+# ===========================================================================
+# vectorize — native path (NumPy/JAX) and Python-loop fallback (Torch/CuPy)
+# ===========================================================================
+class TestVectorize:
+    def test_vectorize_elementwise_preserves_shape(self, backend_ops):
+        """``vectorize(f)`` applies ``f`` to each element and keeps the shape."""
+        data = np.arange(6.0).reshape(2, 3)
+        x = backend_ops.asarray(data)
+
+        def f(v):
+            return v * v + 1.0
+
+        out = backend_ops.vectorize(f)(x)
+        assert backend_ops.shape(out) == (2, 3)
+        np.testing.assert_allclose(to_numpy(out), data * data + 1.0)
+
+    def test_vectorize_broadcasts_multiple_args(self, backend_ops):
+        """Array arguments broadcast against one another, NumPy-style."""
+        a = backend_ops.asarray(np.asarray([1.0, 2.0, 3.0]))
+        b = backend_ops.asarray(np.asarray([10.0]))
+
+        def g(x, y):
+            return x + y
+
+        out = backend_ops.vectorize(g)(a, b)
+        np.testing.assert_allclose(to_numpy(out), np.asarray([11.0, 12.0, 13.0]))
+
+    def test_vectorize_excluded_passes_arg_through(self, backend_ops):
+        """An ``excluded`` positional argument is forwarded unvectorized."""
+        a = backend_ops.asarray(np.asarray([1.0, 2.0, 3.0]))
+
+        def scale(x, factor):
+            return x * factor
+
+        out = backend_ops.vectorize(scale, excluded=[1])(a, 2.0)
+        np.testing.assert_allclose(to_numpy(out), np.asarray([2.0, 4.0, 6.0]))
+
+    def test_vectorize_loop_fallback_matches_elementwise(self, backend_ops):
+        """The Python-loop fallback reproduces elementwise semantics everywhere.
+
+        Exercised directly (not only on backends whose ``xp`` lacks a native
+        ``vectorize``) so the base-class branch is covered on every config.
+        """
+        data = np.arange(8.0).reshape(4, 2)
+        x = backend_ops.asarray(data)
+
+        def f(v):
+            return v * 3.0
+
+        out = backend_ops._vectorize_loop(f)(x)
+        assert backend_ops.shape(out) == (4, 2)
+        np.testing.assert_allclose(to_numpy(out), data * 3.0)
+
+    def test_vectorize_loop_fallback_rejects_signature(self, backend_ops):
+        """The fallback has no gufunc support and says so explicitly."""
+        with pytest.raises(NotImplementedError):
+            backend_ops._vectorize_loop(lambda v: v, signature="(n)->(n)")
 
 
 # ===========================================================================

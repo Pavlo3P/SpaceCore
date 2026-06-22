@@ -491,6 +491,38 @@ class BackendOps(ABC):
         """Stack arrays along a new axis (delegates to xp.stack)."""
         return self.xp.stack(tuple(arrays), axis=axis)
 
+    def hstack(self, arrays: Sequence[DenseArray]) -> DenseArray:
+        """Stack arrays horizontally / column-wise (delegates to xp.hstack).
+
+        Concatenates along axis 0 for 1-D inputs and along axis 1 otherwise,
+        matching NumPy ``hstack`` semantics.
+        """
+        return self.xp.hstack(tuple(arrays))
+
+    def vstack(self, arrays: Sequence[DenseArray]) -> DenseArray:
+        """Stack arrays vertically / row-wise (delegates to xp.vstack).
+
+        Inputs are promoted to at least 2-D and concatenated along axis 0,
+        matching NumPy ``vstack`` semantics.
+        """
+        return self.xp.vstack(tuple(arrays))
+
+    def dstack(self, arrays: Sequence[DenseArray]) -> DenseArray:
+        """Stack arrays depth-wise along the third axis (delegates to xp.dstack).
+
+        Inputs are promoted to at least 3-D and concatenated along axis 2,
+        matching NumPy ``dstack`` semantics.
+        """
+        return self.xp.dstack(tuple(arrays))
+
+    def column_stack(self, arrays: Sequence[DenseArray]) -> DenseArray:
+        """Stack 1-D arrays as columns into a 2-D array (delegates to xp.column_stack).
+
+        1-D inputs become columns; higher-dimensional inputs are concatenated
+        along axis 1, matching NumPy ``column_stack`` semantics.
+        """
+        return self.xp.column_stack(tuple(arrays))
+
     def vmap(
         self,
         fn: Callable,
@@ -557,6 +589,98 @@ class BackendOps(ABC):
             return tree_stack(outputs, out_axes)
 
         return mapped
+
+    def vectorize(
+        self,
+        pyfunc: Callable,
+        *,
+        excluded: Sequence[int] | None = None,
+        signature: str | None = None,
+    ) -> Callable:
+        """Vectorize a scalar Python function over its array arguments.
+
+        Returns a callable that applies ``pyfunc`` elementwise, broadcasting
+        the array arguments against one another and preserving the broadcast
+        shape. Mirrors :func:`numpy.vectorize`.
+
+        Parameters
+        ----------
+        pyfunc:
+            Function called on scalar elements of the (broadcast) inputs.
+        excluded:
+            Positional argument indices passed through to ``pyfunc`` unchanged
+            instead of being vectorized.
+        signature:
+            Generalized-ufunc signature (e.g. ``"(n),(n)->()"``). Supported only
+            on backends that provide a native ``vectorize``.
+
+        Notes
+        -----
+        Delegates to the backend's native ``vectorize`` (NumPy, JAX, CuPy) when
+        available; otherwise applies a portable Python-loop fallback. The
+        fallback does not support ``signature``.
+        """
+        if hasattr(self.xp, "vectorize"):
+            kwargs: dict[str, Any] = {}
+            if excluded is not None:
+                kwargs["excluded"] = excluded
+            if signature is not None:
+                kwargs["signature"] = signature
+            return self.xp.vectorize(pyfunc, **kwargs)
+        return self._vectorize_loop(pyfunc, excluded=excluded, signature=signature)
+
+    def _vectorize_loop(
+        self,
+        pyfunc: Callable,
+        *,
+        excluded: Sequence[int] | None = None,
+        signature: str | None = None,
+    ) -> Callable:
+        """Portable ``vectorize`` fallback for backends without a native one."""
+        if signature is not None:
+            raise NotImplementedError(
+                "The vectorize fallback does not support gufunc signatures; use a "
+                "backend that provides a native vectorize (NumPy, JAX, CuPy)."
+            )
+        excluded_set = set() if excluded is None else set(excluded)
+
+        def vectorized(*args: Any) -> Any:
+            positions = [i for i in range(len(args)) if i not in excluded_set]
+            if not positions:
+                return self.asarray(pyfunc(*args))
+            mapped = {i: self.asarray(args[i]) for i in positions}
+            out_shape = self._broadcast_shapes(*(self.shape(mapped[i]) for i in positions))
+            flat = {i: self.ravel(self.broadcast_to(mapped[i], out_shape)) for i in positions}
+            count = 1
+            for dim in out_shape:
+                count *= int(dim)
+            outputs = []
+            for k in range(count):
+                call_args = list(args)
+                for i in positions:
+                    call_args[i] = flat[i][k]
+                outputs.append(self.asarray(pyfunc(*call_args)))
+            stacked = self.stack(outputs, axis=0)
+            return self.reshape(stacked, out_shape)
+
+        return vectorized
+
+    @staticmethod
+    def _broadcast_shapes(*shapes: Tuple[int, ...]) -> Tuple[int, ...]:
+        """Return the NumPy broadcast of several shapes (pure-Python)."""
+        ndim = max((len(shape) for shape in shapes), default=0)
+        result = [1] * ndim
+        for shape in shapes:
+            offset = ndim - len(shape)
+            for axis, dim in enumerate(shape):
+                pos = offset + axis
+                if dim == 1 or dim == result[pos]:
+                    continue
+                if result[pos] == 1:
+                    result[pos] = dim
+                else:
+                    raise ValueError(f"shapes {shapes} are not broadcast-compatible")
+        return tuple(result)
 
     def conj(self, x: DenseArray) -> DenseArray:
         """Complex conjugate of x (delegates to xp.conj)."""

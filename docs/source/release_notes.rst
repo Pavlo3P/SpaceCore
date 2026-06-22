@@ -28,16 +28,9 @@ Added
   ``composed-chain-apply`` (skips per-link ``@checked_method`` on a flat
   LinOp chain) and ``block-diagonal-dense-apply`` (tight ``ops.matmul``
   loop over dense block leaves). Each kernel has a correctness reference
-  in ``tests/kernels/`` and a bench probe in
-  ``bench/_operations.py``. No dispatch or fusion is wired; both
+  in ``tests/kernels/``. No dispatch or fusion is wired; both
   are gated on the ``0.6.0`` design decision. See
   :doc:`design/kernels_policy`.
-* Unified benchmark framework at ``python -m bench`` with subcommands
-  ``run``, ``compare``, ``plot``, ``summary``, and ``list``. Every probe
-  runs on the canonical seeds ``(0, 1, 2, 3)``, records correctness
-  against a NumPy reference, captures peak memory via ``tracemalloc``,
-  and renders an interactive self-contained Plotly dashboard. See
-  ``bench/README.md``.
 
 Breaking changes
 ~~~~~~~~~~~~~~~~
