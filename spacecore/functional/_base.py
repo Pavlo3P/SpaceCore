@@ -2,10 +2,18 @@ from __future__ import annotations
 
 from abc import abstractmethod
 from typing import TYPE_CHECKING, Any, Generic, TypeVar
-import warnings
 
+from .._batching import _leading_batch_size, _warn_vmap_fallback_once
+
+# Re-exported for backward compatibility; these helpers now live in
+# :mod:`spacecore._batching` and are shared with :class:`~spacecore.linop.LinOp`.
+from .._batching import (  # noqa: F401
+    _VMAP_FALLBACK_WARN_BATCH,
+    _VMAP_FALLBACK_WARNED,
+    _check_scalar_shape,
+)
 from .._checks import checked_method
-from .._contextual import ContextBound, resolve_context_priority
+from .._contextual import ContextBound
 from ..backend import Context
 from ..space import Space
 
@@ -14,45 +22,6 @@ if TYPE_CHECKING:
 
 
 Domain = TypeVar("Domain", bound=Space)
-_VMAP_FALLBACK_WARNED: set[tuple[type, str]] = set()
-_VMAP_FALLBACK_WARN_BATCH = 32
-
-
-def _check_scalar_shape(values: Any, shape: tuple[int, ...]) -> None:
-    """Raise if scalar output does not have ``shape``."""
-    value_shape = tuple(getattr(values, "shape", ()))
-    if value_shape != shape:
-        raise ValueError(f"Expected scalar batch output with shape {shape}, got {value_shape}.")
-
-
-def _leading_batch_size(space: Space, xs: Any) -> int:
-    """Return the leading batch size for dense-array batches."""
-    if isinstance(xs, tuple) and xs:
-        return _leading_batch_size(getattr(space, "spaces", (space,))[0], xs[0])
-    shape = tuple(getattr(xs, "shape", ()))
-    base = tuple(space.shape)
-    if not shape:
-        return 0
-    if base:
-        return int(shape[0])
-    return int(shape[0])
-
-
-def _warn_vmap_fallback_once(obj: Any, method: str, batch_size: int) -> None:
-    """Warn once per class/method for NumPy-style Python-loop batched fallback."""
-    if batch_size <= _VMAP_FALLBACK_WARN_BATCH or obj.ops.has_native_vmap:
-        return
-    key = (type(obj), method)
-    if key in _VMAP_FALLBACK_WARNED:
-        return
-    _VMAP_FALLBACK_WARNED.add(key)
-    warnings.warn(
-        f"{type(obj).__name__}.{method} falls back to a Python loop on this backend "
-        "(no native vmap); this is O(batch). Provide a vectorized batched override, "
-        "or use JAX/Torch.",
-        RuntimeWarning,
-        stacklevel=3,
-    )
 
 
 class Functional(ContextBound, Generic[Domain]):
@@ -80,9 +49,7 @@ class Functional(ContextBound, Generic[Domain]):
     """
 
     def __init__(self, dom: Domain, ctx: Context | str | None = None) -> None:
-        ctx = resolve_context_priority(ctx, dom)
-        super().__init__(ctx)
-        self.dom = dom.convert(self.ctx)
+        (self.dom,) = self._bind_context(ctx, dom)
 
     @property
     def domain(self) -> Domain:

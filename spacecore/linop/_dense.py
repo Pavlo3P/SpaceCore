@@ -215,17 +215,14 @@ class DenseLinOp(LinOp[Domain, Codomain]):
 
     def tree_flatten(self):
         """Flatten this operator for pytree registration."""
-        aux = (self.dom, self.cod, self.ctx, self._mode)
+        aux = (self.dom, self.cod, self.ctx)
         children = (self.A,)
         return children, aux
 
     @classmethod
     def tree_unflatten(cls, aux, children):
         """Rebuild this operator from pytree data."""
-        if len(aux) == 4:
-            dom, cod, ctx, _mode = aux
-        else:
-            dom, cod, ctx = aux
+        dom, cod, ctx = aux
         A = children[0]
         return cls(A, dom, cod, ctx)
 

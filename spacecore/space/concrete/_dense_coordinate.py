@@ -98,18 +98,28 @@ class DenseCoordinateSpace(CoordinateSpace, InnerProductSpace):
 
     def unflatten(self, v: DenseArray) -> DenseArray:
         """Reshape a flat coordinate vector into this space's canonical shape."""
-        V = self.ctx.assert_dense(v) if self._checks_at_least("cheap") else v
+        V = self._coerce_dense(v)
         return V if self._is_flat_shape else V.reshape(self.shape)
 
     def flatten_batch(self, xs: DenseArray) -> DenseArray:
         """Flatten a leading-axis batch of dense elements to ``(N, size)``."""
-        xs = self.ctx.assert_dense(xs) if self._checks_at_least("cheap") else xs
+        xs = self._coerce_dense(xs)
         return xs if self._is_flat_shape else xs.reshape((xs.shape[0], -1))
 
     def unflatten_batch(self, vs: DenseArray) -> DenseArray:
         """Unflatten rows of shape ``(N, size)`` into dense space elements."""
-        vs = self.ctx.assert_dense(vs) if self._checks_at_least("cheap") else vs
+        vs = self._coerce_dense(vs)
         return vs if self._is_flat_shape else vs.reshape((vs.shape[0],) + self.shape)
+
+    def _check_unbatched_member(self, x: DenseArray) -> None:
+        """Run member checks for a single element while allowing batched input.
+
+        Validates ``x`` only when its shape matches a single element, so callers
+        that also accept leading batches (e.g. spectral operations) skip the
+        per-element check for batched input rather than failing it.
+        """
+        if self.check_level != "none" and tuple(getattr(x, "shape", ())) == self.shape:
+            self._check_member(x)
 
     def _convert(self, new_ctx: Context) -> DenseCoordinateSpace:
         """Convert this dense coordinate space to ``new_ctx`` without changing shape."""

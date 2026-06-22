@@ -156,16 +156,13 @@ class DiagonalLinOp(LinOp[Space, Space]):
     def tree_flatten(self):
         """Flatten this operator for pytree registration."""
         children = (self.diagonal,)
-        aux = (self.domain, self.ctx, self._mode)
+        aux = (self.domain, self.ctx)
         return children, aux
 
     @classmethod
     def tree_unflatten(cls, aux, children):
         """Rebuild this operator from pytree data."""
-        if len(aux) == 3:
-            domain, ctx, _mode = aux
-        else:
-            domain, ctx = aux
+        domain, ctx = aux
         return cls(children[0], domain, ctx)
 
     def _convert(self, new_ctx: Context) -> DiagonalLinOp:

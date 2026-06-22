@@ -253,16 +253,13 @@ class SparseLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
         return False
 
     def tree_flatten(self):
-        aux = (self.dom, self.cod, self.ctx, self._mode)
+        aux = (self.dom, self.cod, self.ctx)
         children = (self.A,)
         return children, aux
 
     @classmethod
     def tree_unflatten(cls, aux, children):
-        if len(aux) == 4:
-            dom, cod, ctx, _mode = aux
-        else:
-            dom, cod, ctx = aux
+        dom, cod, ctx = aux
         A = children[0]
         return cls(A, dom, cod, ctx)
 

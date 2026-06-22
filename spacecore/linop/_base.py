@@ -7,10 +7,11 @@ from math import prod
 from numbers import Number
 from typing import Any, Generic, TypeVar
 
+from .._batching import _leading_batch_size, _warn_vmap_fallback_once
 from .._checks import checked_method
 from ..space import Space
 from ..backend import Context
-from .._contextual import ContextBound, resolve_context_priority
+from .._contextual import ContextBound
 
 Domain = TypeVar("Domain", bound=Space)
 Codomain = TypeVar("Codomain", bound=Space)
@@ -61,11 +62,7 @@ class LinOp(ContextBound, Generic[Domain, Codomain]):
     """
 
     def __init__(self, dom: Domain, cod: Codomain, ctx: Context | str | None = None):
-        ctx = resolve_context_priority(ctx, dom, cod)
-        super(LinOp, self).__init__(ctx)
-
-        self.dom = dom.convert(self.ctx)
-        self.cod = cod.convert(self.ctx)
+        self.dom, self.cod = self._bind_context(ctx, dom, cod)
 
     @property
     def domain(self) -> Domain:
@@ -136,11 +133,13 @@ class LinOp(ContextBound, Generic[Domain, Codomain]):
     @checked_method(in_space="domain", in_batched=True)
     def vapply(self, xs: Any) -> Any:
         """Apply over a leading batch axis. Input must have shape ``(N,) + domain.shape``; use ``moveaxis`` for other layouts."""
+        _warn_vmap_fallback_once(self, "vapply", _leading_batch_size(self.domain, xs))
         return self.ops.vmap(self.apply, in_axes=0, out_axes=0)(xs)
 
     @checked_method(in_space="codomain", in_batched=True)
     def rvapply(self, ys: Any) -> Any:
         """Apply the adjoint over a leading batch axis. Input must have shape ``(N,) + codomain.shape``; use ``moveaxis`` for other layouts."""
+        _warn_vmap_fallback_once(self, "rvapply", _leading_batch_size(self.codomain, ys))
         return self.ops.vmap(self.rapply, in_axes=0, out_axes=0)(ys)
 
     @property

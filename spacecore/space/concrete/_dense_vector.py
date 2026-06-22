@@ -151,11 +151,6 @@ class ElementwiseJordanSpace(JordanAlgebraSpace, DenseCoordinateSpace, StarSpace
         """Return the elementwise Jordan product."""
         return x * y
 
-    def _check_unbatched_member(self, x: DenseArray) -> None:
-        """Run member checks for one element, while allowing leading batches."""
-        if self.check_level != "none" and tuple(getattr(x, "shape", ())) == self.shape:
-            self._check_member(x)
-
     def spectrum(self, x: DenseArray) -> DenseArray:
         """Return ``x`` as its Jordan spectrum under elementwise product."""
         self._check_unbatched_member(x)

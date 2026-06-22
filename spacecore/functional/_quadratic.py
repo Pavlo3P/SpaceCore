@@ -2,9 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from ._base import (
-    Domain,
-    Functional,
+from ._base import Domain, Functional
+from .._batching import (
     _check_scalar_shape,
     _leading_batch_size,
     _warn_vmap_fallback_once,

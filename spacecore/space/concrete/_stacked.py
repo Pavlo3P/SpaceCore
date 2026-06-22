@@ -146,17 +146,17 @@ class StackedSpace(CoordinateSpace):
 
     def unflatten(self, v: DenseArray) -> DenseArray:
         """Unflatten one coordinate vector to the stacked element shape."""
-        v = self.ctx.assert_dense(v) if self._checks_at_least("cheap") else v
+        v = self._coerce_dense(v)
         return v.reshape(self.shape)
 
     def flatten_batch(self, xs: DenseArray) -> DenseArray:
         """Flatten a batch of stacked elements to ``(N, count * base.size)``."""
-        xs = self.ctx.assert_dense(xs) if self._checks_at_least("cheap") else xs
+        xs = self._coerce_dense(xs)
         return xs.reshape((xs.shape[0], -1))
 
     def unflatten_batch(self, vs: DenseArray) -> DenseArray:
         """Unflatten rows to a batch of stacked elements."""
-        vs = self.ctx.assert_dense(vs) if self._checks_at_least("cheap") else vs
+        vs = self._coerce_dense(vs)
         return vs.reshape((vs.shape[0],) + self.shape)
 
     def _convert(self, new_ctx: Context) -> StackedSpace:

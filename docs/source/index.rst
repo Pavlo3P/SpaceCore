@@ -27,10 +27,14 @@ Core navigation
 Where do I start?
 -----------------
 
-First-time users should start with :doc:`tutorials/spaces`, then
-:doc:`tutorials/linops`. If you have an existing NumPy algorithm and want to
-make backend ownership explicit, start with :doc:`tutorials/context` and
-:doc:`tutorials/backend_ops`. If your problem uses non-Euclidean geometry, read
+First-time users should start with :doc:`tutorials/01_backend_and_context`, then
+work through :doc:`tutorials/02_linear_algebra` and :doc:`tutorials/03_functionals`.
+For structured unknowns continue with :doc:`tutorials/04_tree_spaces`. The worked
+examples — a :doc:`Tikhonov inverse problem <tutorials/05_weighted_tikhonov>`,
+:doc:`optimal transport <tutorials/06_optimal_transport>`,
+:doc:`manifold descent <tutorials/07_manifold_descent>`, and
+:doc:`conic optimisation <tutorials/08_pdhg_conic_program>` — apply these pieces to
+real problems. If your problem uses non-Euclidean geometry, read
 :doc:`design/geometry` before relying on adjoints or solver preconditions.
 
 What SpaceCore is not

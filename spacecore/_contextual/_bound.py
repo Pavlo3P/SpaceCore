@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from abc import ABC
-from typing import TYPE_CHECKING, Self
+from typing import TYPE_CHECKING, Any, Self
 
 from .._check_policy import CheckLevel, check_level_at_least, level_to_enabled
 from ..types import DType
-from ._state import enforce_convert_policy, normalize_context
+from ._state import enforce_convert_policy, normalize_context, resolve_context_priority
 
 if TYPE_CHECKING:
     from ..backend import BackendFamily, BackendOps, Context
@@ -30,6 +30,47 @@ class ContextBound(ABC):
     def __init__(self, ctx: Context | str | None = None):
         ctx = normalize_context(ctx)
         self._ctx = ctx
+
+    def _bind_context(self, ctx: Any, *children: Any, sources: tuple[Any, ...] | None = None):
+        """Resolve the priority context, store it, and re-bind children onto it.
+
+        This factors the context-binding prologue shared by every contextual
+        container: it resolves ``ctx`` (taking an explicit context first, then
+        inferring from ``sources``), assigns :attr:`_ctx`, and returns each
+        child converted onto the resolved context. Containers assign the result
+        to their named attributes, e.g.::
+
+            self.dom, self.cod = self._bind_context(ctx, dom, cod)
+
+        Parameters
+        ----------
+        ctx : Context, BackendFamily, str, or None
+            Context specification. An already-resolved :class:`Context` is used
+            as-is, which avoids re-resolving when a subclass has normalized the
+            context early (e.g. to validate stored arrays before ``__init__``).
+        *children : Any
+            Context-bound objects (spaces, operators, functionals) to convert
+            onto the resolved context and return, in order.
+        sources : tuple, optional
+            Objects used to infer the context when ``ctx`` is not explicit.
+            Defaults to ``children``. Use this when the inference sources differ
+            from the attributes being converted.
+
+        Returns
+        -------
+        tuple
+            ``children`` converted onto the resolved context, in order.
+        """
+        from ..backend import Context
+
+        if isinstance(ctx, Context):
+            resolved = ctx
+        else:
+            resolved = resolve_context_priority(
+                ctx, *(children if sources is None else sources)
+            )
+        self._ctx = resolved
+        return tuple(child.convert(resolved) for child in children)
 
     @property
     def ops(self) -> BackendOps:
@@ -59,6 +100,15 @@ class ContextBound(ABC):
     def _checks_at_least(self, level: CheckLevel) -> bool:
         """Return whether this object runs checks assigned to ``level``."""
         return check_level_at_least(self.check_level, level)
+
+    def _coerce_dense(self, x: Any) -> Any:
+        """Return ``x`` asserted as a dense array when cheap checks are enabled.
+
+        Hot-path helper for dense spaces: when ``check_level`` is at least
+        ``"cheap"`` it validates ``x`` via ``self.ctx.assert_dense`` (returning
+        the validated value); otherwise it returns ``x`` unchanged.
+        """
+        return self.ctx.assert_dense(x) if self._checks_at_least("cheap") else x
 
     def _convert(self, new_ctx: Context) -> Self:
         """Rebuild this object in ``new_ctx``."""

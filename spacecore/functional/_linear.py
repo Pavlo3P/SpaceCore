@@ -3,7 +3,8 @@ from __future__ import annotations
 from abc import abstractmethod
 from typing import Any, Callable
 
-from ._base import Domain, Functional, _check_scalar_shape, _leading_batch_size
+from ._base import Domain, Functional
+from .._batching import _check_scalar_shape, _leading_batch_size
 from .._checks import checked_method
 from ..backend import Context, jax_pytree_class
 from ..kernels import core_kernels

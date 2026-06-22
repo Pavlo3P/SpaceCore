@@ -48,9 +48,9 @@ torch = [
 cupy = [
   "cupy>=13.0",
 ]
+# Dependencies needed to execute the tutorial notebooks under ``tutorials/``.
 examples = [
   "matplotlib>=3.8",
-  "optax>=0.2",
 ]
 docs = [
   "sphinx>=8.0",

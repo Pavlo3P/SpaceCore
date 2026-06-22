@@ -114,11 +114,6 @@ class HermitianSpace(DenseCoordinateSpace, StarSpace, EuclideanJordanAlgebraSpac
         yx = self.ops.matmul(y, x)
         return self.symmetrize((xy + yx) * 0.5)
 
-    def _check_unbatched_member(self, x: DenseArray) -> None:
-        """Run member checks for a single element, while allowing batched spectra."""
-        if self.check_level != "none" and tuple(getattr(x, "shape", ())) == self.shape:
-            self._check_member(x)
-
     def spectrum(self, x: DenseArray) -> DenseArray:
         """Return the Hermitian eigenvalue spectrum of ``x``."""
         self._check_unbatched_member(x)
@@ -135,7 +130,7 @@ class HermitianSpace(DenseCoordinateSpace, StarSpace, EuclideanJordanAlgebraSpac
 
     def unflatten(self, v: DenseArray) -> DenseArray:
         """Reshape dense coordinates and symmetrize the result."""
-        vv = self.ctx.assert_dense(v) if self._checks_at_least("cheap") else v
+        vv = self._coerce_dense(v)
         X = vv.reshape(self.shape)
         return self.symmetrize(X)
 
