@@ -1,13 +1,14 @@
 from __future__ import annotations
 
-from typing import Any, Sequence, Tuple, Literal, Callable, Optional, Type
+from typing import Any, Sequence, Tuple, Literal, Type
 
 from .._family import BackendFamily
+from .._eager import EagerControlFlowMixin
 from .._ops import BackendOps
-from ...types import DenseArray, SparseArray, DType, Index, X, T, Y, R, Carry
+from ...types import DenseArray, SparseArray, DType, Index
 
 
-class NumpyOps(BackendOps):
+class NumpyOps(EagerControlFlowMixin, BackendOps):
     """
     BackendOps implementation for the NumPy/SciPy ecosystem.
 
@@ -202,29 +203,13 @@ class NumpyOps(BackendOps):
             a, axis=axis, b=b, keepdims=keepdims, return_sign=return_sign
         )
 
-    def index_set(self, x: DenseArray, index: Index, values: DenseArray, *, copy: bool = True):
-        """
-        Set indexed values using NumPy.
+    def _copy(self, x: DenseArray) -> DenseArray:
+        """Return a NumPy copy of ``x`` (mutation primitive for index ops)."""
+        return x.copy()
 
-        Input:
-            x: Dense backend array; index: Selection; values: Replacement values; copy controls mutation policy.
-
-        Output:
-            Dense backend array with indexed values set.
-
-        See:
-            https://numpy.org/doc/stable/user/basics.indexing.html
-
-        Backend-specific notes:
-            With copy=True this copies before assignment; with copy=False it mutates the input array.
-        """
-        if copy:
-            y = x.copy()
-            y[index] = values
-            return y
-        else:
-            x[index] = values
-            return x
+    def _scatter_add_inplace(self, y: DenseArray, index: Index, values: DenseArray) -> None:
+        """Accumulate ``values`` into ``y`` at ``index`` via ``numpy.add.at``."""
+        self.np.add.at(y, index, values)
 
     def ix_(self, *args: Any) -> Any:
         r"""
@@ -240,234 +225,6 @@ class NumpyOps(BackendOps):
             https://numpy.org/doc/stable/reference/generated/numpy.ix\\_.html
         """
         return self.np.ix_(*args)
-
-    def fori_loop(
-        self,
-        lower: int,
-        upper: int,
-        body_fun: Callable[[int, T], T],
-        init_val: T,
-    ) -> T:
-        """
-        Run a counted loop primitive using NumPy.
-
-        Input:
-            lower, upper: Loop bounds; body_fun: Loop body; init_val: Initial carry value.
-
-        Output:
-            Final carry value after loop execution.
-
-        See:
-            https://docs.jax.dev/en/latest/_autosummary/jax.lax.fori_loop.html
-
-        Backend-specific notes:
-            NumPy executes this eagerly as a Python for-loop, without JAX tracing semantics.
-        """
-        val = init_val
-        for i in range(int(lower), int(upper)):
-            val = body_fun(i, val)
-        return val
-
-    def while_loop(
-        self,
-        cond_fun: Callable[[T], bool],
-        body_fun: Callable[[T], T],
-        init_val: T,
-    ) -> T:
-        """
-        Run a while-loop primitive using NumPy.
-
-        Input:
-            cond_fun: Loop condition; body_fun: Loop body; init_val: Initial carry value.
-
-        Output:
-            Final carry value after loop execution.
-
-        See:
-            https://docs.jax.dev/en/latest/_autosummary/jax.lax.while_loop.html
-
-        Backend-specific notes:
-            NumPy executes this eagerly as a Python while-loop, without JAX tracing semantics.
-        """
-        val = init_val
-        while bool(cond_fun(val)):
-            val = body_fun(val)
-        return val
-
-    def _tree_map(self, f: Callable[[Any], Any], tree: Any) -> Any:
-        if isinstance(tree, dict):
-            return {k: self._tree_map(f, v) for k, v in tree.items()}
-        if isinstance(tree, tuple):
-            return tuple(self._tree_map(f, v) for v in tree)
-        if isinstance(tree, list):
-            return [self._tree_map(f, v) for v in tree]
-        return f(tree)
-
-    def _tree_multimap(self, f: Callable[..., Any], *trees: Any) -> Any:
-        # assumes matching structure
-        t0 = trees[0]
-        if isinstance(t0, dict):
-            return {k: self._tree_multimap(f, *(t[k] for t in trees)) for k in t0.keys()}
-        if isinstance(t0, tuple):
-            return tuple(self._tree_multimap(f, *(t[i] for t in trees)) for i in range(len(t0)))
-        if isinstance(t0, list):
-            return [self._tree_multimap(f, *(t[i] for t in trees)) for i in range(len(t0))]
-        return f(*trees)
-
-    def _tree_take0(self, xs: Any) -> Any:
-        """Grab a representative leaf to infer leading length."""
-        if isinstance(xs, dict):
-            return self._tree_take0(next(iter(xs.values())))
-        if isinstance(xs, (tuple, list)):
-            return self._tree_take0(xs[0])
-        return xs
-
-    def _tree_index(self, xs: Any, i: int) -> Any:
-        """Take per-step slice ``xs[i]`` along axis 0 for each leaf."""
-
-        def _idx(a: Any) -> Any:
-            # If it's an ndarray-like with leading axis, slice it; else treat as scalar leaf.
-            try:
-                return a[i]
-            except Exception:
-                return a
-
-        return self._tree_map(_idx, xs)
-
-    def _tree_stack(self, ys_list: Sequence[Any]) -> Any:
-        """Stack per-step outputs into a single pytree of arrays.
-
-        Leaves are stacked along axis 0.
-        """
-        if not ys_list:
-            # JAX would return empty stacked outputs when length == 0
-            # Here we return an empty tuple (could also raise).
-            return ()
-
-        def _stack_leaves(*leaves: Any) -> Any:
-            # Prefer self.np.stack when possible; fallback to array() if stacking fails.
-            try:
-                return self.np.stack(leaves, axis=0)
-            except Exception:
-                return self.np.array(leaves)
-
-        # Reduce by structure: stack corresponding leaves across time
-        return self._tree_multimap(_stack_leaves, *ys_list)
-
-    def scan(
-        self,
-        f: Callable[[Carry, X], Tuple[Carry, Y]],
-        init: Carry,
-        xs: X,
-        length: Optional[int] = None,
-        reverse: bool = False,
-        unroll: int = 1,
-    ) -> Tuple[Carry, Y]:
-        """
-        Run a scan primitive using NumPy.
-
-        Input:
-            f: Scan body; init: Initial carry; xs: Per-step inputs plus scan options.
-
-        Output:
-            Tuple of final carry and stacked outputs.
-
-        See:
-            https://docs.jax.dev/en/latest/_autosummary/jax.lax.scan.html
-
-        Backend-specific notes:
-            NumPy executes this eagerly and accepts unroll only for API parity.
-        """
-        carry = init
-
-        if xs is None:
-            if length is None:
-                raise ValueError("scan(xs=None) requires an explicit `length`.")
-            n = int(length)
-            indices = range(n - 1, -1, -1) if reverse else range(n)
-            ys_steps: list[Any] = []
-            for _i in indices:
-                carry, y = f(carry, None)  # type: ignore[arg-type]
-                ys_steps.append(y)
-            if reverse:
-                ys_steps.reverse()
-            return carry, self._tree_stack(ys_steps)
-
-        # infer length from xs if not provided
-        if length is None:
-            leaf0 = self._tree_take0(xs)
-            try:
-                n = int(leaf0.shape[0])  # ndarray-like
-            except Exception as e:
-                raise ValueError(
-                    "Could not infer scan length from `xs`; pass `length=` explicitly."
-                ) from e
-        else:
-            n = int(length)
-
-        indices = range(n - 1, -1, -1) if reverse else range(n)
-        ys_steps = []
-        for i in indices:
-            x_i = self._tree_index(xs, i)
-            carry, y = f(carry, x_i)
-            ys_steps.append(y)
-
-        if reverse:
-            ys_steps.reverse()
-
-        return carry, self._tree_stack(ys_steps)
-
-    def cond(
-        self,
-        pred: bool,
-        true_fun: Callable[[T], R],
-        false_fun: Callable[[T], R],
-        *operands: Any,
-    ) -> R:
-        # Eager branch selection (NumPy has no tracing semantics)
-        """
-        Run conditional branch selection using NumPy.
-
-        Input:
-            pred: Predicate; true_fun and false_fun: Branch functions; operands: Branch inputs.
-
-        Output:
-            Result returned by the selected branch.
-
-        See:
-            https://docs.jax.dev/en/latest/_autosummary/jax.lax.cond.html
-
-        Backend-specific notes:
-            NumPy chooses the branch eagerly with Python truth-value conversion.
-        """
-        return true_fun(*operands) if bool(pred) else false_fun(*operands)
-
-    def index_add(
-        self,
-        x: DenseArray,
-        index: Index,
-        values: DenseArray,
-        *,
-        copy: bool = True,
-    ) -> DenseArray:
-        """
-        Add into indexed values using NumPy.
-
-        Input:
-            x: Dense backend array; index: Selection; values: Values to add; copy controls mutation policy.
-
-        Output:
-            Dense backend array with indexed values incremented.
-
-        See:
-            https://numpy.org/doc/stable/reference/generated/numpy.ufunc.at.html
-
-        Backend-specific notes:
-            Uses numpy.add.at so repeated indices accumulate in NumPy order.
-        """
-        y = x.copy() if copy else x
-        self.np.add.at(y, index, values)
-        return y
 
     def allclose_sparse(
         self,
@@ -491,8 +248,7 @@ class NumpyOps(BackendOps):
         Backend-specific notes:
             Sparse inputs are converted to CSR and compared by logical sparse difference.
         """
-        if not self.is_sparse(a) or not self.is_sparse(b):
-            raise TypeError("allclose_sparse expects two sparse arrays.")
+        self._require_two_sparse(a, b)
 
         a = a.tocsr()
         b = b.tocsr()

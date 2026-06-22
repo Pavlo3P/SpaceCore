@@ -9,6 +9,44 @@ CHECK_LEVELS: tuple[CheckLevel, ...] = ("none", "cheap", "standard", "strict")
 _CHECK_LEVEL_ORDER = {level: index for index, level in enumerate(CHECK_LEVELS)}
 
 
+def require_mutually_exclusive(
+    name_a: str,
+    value_a: object,
+    name_b: str,
+    value_b: object,
+    *,
+    verb: str = "Use",
+) -> None:
+    """Raise ``TypeError`` when two mutually exclusive arguments are both supplied.
+
+    Parameters
+    ----------
+    name_a, name_b : str
+        Public names of the two arguments, used in the error message.
+    value_a, value_b : object
+        Supplied values. Either being ``None`` means "not provided".
+    verb : str, optional
+        Leading verb of the error message (``"Use"`` or ``"Specify"``).
+
+    Raises
+    ------
+    TypeError
+        If both ``value_a`` and ``value_b`` are not ``None``.
+    """
+    if value_a is not None and value_b is not None:
+        raise TypeError(f"{verb} either {name_a} or {name_b}, not both.")
+
+
+def level_to_enabled(level: CheckLevel) -> bool:
+    """Return the deprecated Boolean view of ``level`` (``True`` unless ``"none"``)."""
+    return level != "none"
+
+
+def enabled_to_level(flag: bool) -> CheckLevel:
+    """Map the deprecated Boolean check flag to a :data:`CheckLevel`."""
+    return "standard" if flag else "none"
+
+
 def normalize_check_level(
     check_level: CheckLevel | str | None = None,
     *,
@@ -17,8 +55,7 @@ def normalize_check_level(
     warn_legacy: bool = False,
 ) -> CheckLevel:
     """Normalize the public policy and its deprecated Boolean compatibility shim."""
-    if check_level is not None and enable_checks is not None:
-        raise TypeError("Use either check_level or enable_checks, not both.")
+    require_mutually_exclusive("check_level", check_level, "enable_checks", enable_checks)
 
     if enable_checks is not None:
         if not isinstance(enable_checks, bool):
@@ -30,7 +67,7 @@ def normalize_check_level(
                 DeprecationWarning,
                 stacklevel=3,
             )
-        return "standard" if enable_checks else "none"
+        return enabled_to_level(enable_checks)
 
     level = default if check_level is None else check_level
     if level not in _CHECK_LEVEL_ORDER:

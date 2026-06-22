@@ -18,7 +18,7 @@ from __future__ import annotations
 import pytest
 
 import spacecore.kernels as K
-from spacecore.kernels import block_diagonal, composed
+from spacecore.kernels.specs import block_diagonal, composed
 
 
 def _spec(name="unit-test-kernel", **overrides):

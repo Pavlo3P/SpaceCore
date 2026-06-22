@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Any
 
-from .._check_policy import CheckLevel, normalize_check_level
+from .._check_policy import CheckLevel, level_to_enabled, normalize_check_level
 from ._ops import BackendOps
 from ..types import DenseArray, SparseArray, DType, ArrayLike
 
@@ -102,7 +102,7 @@ class Context:
     @property
     def enable_checks(self) -> bool:
         """Deprecated Boolean view of :attr:`check_level`."""
-        return self.check_level != "none"
+        return level_to_enabled(self.check_level)
 
     def assert_dense(self, x: Any) -> DenseArray:
         """

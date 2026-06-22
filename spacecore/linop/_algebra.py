@@ -10,7 +10,14 @@ from .._checks import checked_method
 from .._contextual import resolve_context_priority
 from .._contextual._bound import _same_math_context
 from ..backend import Context, jax_pytree_class
-from ..space import DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace, Space
+from ..space import Space
+from ..kernels import core_kernels
+from ..kernels.core.algebra import (
+    batched_zeros as _batched_zeros,
+    compose_chain as _compose_chain,
+    conjugate_scalar as _conjugate_scalar,
+    leading_shape as _leading_shape,
+)
 
 
 def is_scalar_like(value: Any) -> bool:
@@ -22,33 +29,6 @@ def is_scalar_like(value: Any) -> bool:
         return tuple(shape) == ()
     ndim = getattr(value, "ndim", None)
     return ndim == 0
-
-
-def _conjugate_scalar(value: Any) -> Any:
-    """Return the scalar conjugate when the value supports conjugation."""
-    if hasattr(value, "conjugate"):
-        return value.conjugate()
-    if hasattr(value, "conj"):
-        return value.conj()
-    return value
-
-
-def _leading_shape(space: Any, value: Any) -> tuple[int, ...]:
-    """Infer leading dimensions from a batched value."""
-    parts = getattr(space, "spaces", None)
-    if parts is not None and isinstance(value, tuple) and value:
-        return _leading_shape(parts[0], value[0])
-    shape = tuple(getattr(value, "shape", ()))
-    base = tuple(space.shape)
-    return shape if not base else shape[: len(shape) - len(base)]
-
-
-def _batched_zeros(space: Any, leading_shape: tuple[int, ...]) -> Any:
-    """Return a batched zero value for ``space``."""
-    parts = getattr(space, "spaces", None)
-    if parts is not None:
-        return tuple(_batched_zeros(part, leading_shape) for part in parts)
-    return space.ops.zeros(leading_shape + tuple(space.shape), dtype=space.dtype)
 
 
 def _require_same_context(ops: Sequence[LinOp]) -> Context:
@@ -241,6 +221,7 @@ def make_composed(left: LinOp, right: LinOp) -> LinOp:
     return ComposedLinOp(left, right)
 
 
+@core_kernels("scaled")
 @jax_pytree_class
 class ScaledLinOp(LinOp[Domain, Codomain]):
     r"""
@@ -282,31 +263,17 @@ class ScaledLinOp(LinOp[Domain, Codomain]):
     @checked_method(in_space="domain", out_space="codomain")
     def apply(self, x: Any) -> Any:
         """Return ``scalar * op.apply(x)``."""
-        return self.codomain.scale(self.scalar, self.op.apply(x))
-
-    def _apply_core(self, x: Any) -> Any:
-        y = self.op._apply_core(x)
-        scale = getattr(self.codomain, "_scale_core", self.codomain.scale)
-        return scale(self.scalar, y)
+        return self._apply_core(x)
 
     @checked_method(in_space="codomain", out_space="domain")
     def rapply(self, y: Any) -> Any:
         """Return ``conj(scalar) * op.rapply(y)``."""
-        return self.domain.scale(_conjugate_scalar(self.scalar), self.op.rapply(y))
-
-    def _rapply_core(self, y: Any) -> Any:
-        x = self.op._rapply_core(y)
-        scale = getattr(self.domain, "_scale_core", self.domain.scale)
-        return scale(_conjugate_scalar(self.scalar), x)
+        return self._rapply_core(y)
 
     @checked_method(in_space="domain", out_space="codomain", in_batched=True, out_batched=True)
     def vapply(self, xs: Any) -> Any:
         """Return ``scalar * op.vapply(xs)``."""
-        return self.codomain.scale_batch(self.scalar, self.op.vapply(xs))
-
-    def _vapply_core(self, xs: Any) -> Any:
-        ys = self.op._vapply_core(xs)
-        return self.codomain.scale_batch(self.scalar, ys)
+        return self._vapply_core(xs)
 
     def rvapply(self, ys: Any) -> Any:
         """Return ``conj(scalar) * op.rvapply(ys)``."""
@@ -336,6 +303,7 @@ class ScaledLinOp(LinOp[Domain, Codomain]):
         return ScaledLinOp(self.scalar, self.op.convert(new_ctx))
 
 
+@core_kernels("sum")
 @jax_pytree_class
 class SumLinOp(LinOp[Domain, Codomain]):
     r"""
@@ -391,64 +359,23 @@ class SumLinOp(LinOp[Domain, Codomain]):
         """Return ``sum_i ops[i].apply(x)``."""
         return self._apply_core(x)
 
-    def _apply_core(self, x: Any) -> Any:
-        acc = self.ops_tuple[0]._apply_core(x)
-        for op in self.ops_tuple[1:]:
-            yi = op._apply_core(x)
-            acc = (
-                acc + yi
-                if type(self.codomain)
-                in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace)
-                else self.codomain.add(acc, yi)
-            )
-        return acc
-
     @checked_method(in_space="codomain", out_space="domain")
     def rapply(self, y: Any) -> Any:
         """Return ``sum_i ops[i].rapply(y)``."""
         return self._rapply_core(y)
-
-    def _rapply_core(self, y: Any) -> Any:
-        acc = self.ops_tuple[0]._rapply_core(y)
-        for op in self.ops_tuple[1:]:
-            xi = op._rapply_core(y)
-            acc = (
-                acc + xi
-                if type(self.domain)
-                in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace)
-                else self.domain.add(acc, xi)
-            )
-        return acc
 
     @checked_method(in_space="domain", out_space="codomain", in_batched=True, out_batched=True)
     def vapply(self, xs: Any) -> Any:
         """Return ``sum_i ops[i].vapply(xs)``."""
         return self._vapply_core(xs)
 
-    def _vapply_core(self, xs: Any) -> Any:
-        acc = self.ops_tuple[0]._vapply_core(xs)
-        for op in self.ops_tuple[1:]:
-            yi = op._vapply_core(xs)
-            acc = (
-                acc + yi
-                if type(self.codomain)
-                in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace)
-                else self.codomain.add_batch(acc, yi)
-            )
-        return acc
-
     @checked_method(in_space="codomain", out_space="domain", in_batched=True, out_batched=True)
     def rvapply(self, ys: Any) -> Any:
         """Return ``sum_i ops[i].rvapply(ys)``."""
+        add_batch = self.domain.add_batch
         acc = self.ops_tuple[0].rvapply(ys)
         for op in self.ops_tuple[1:]:
-            xi = op.rvapply(ys)
-            acc = (
-                acc + xi
-                if type(self.domain)
-                in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace)
-                else self.domain.add_batch(acc, xi)
-            )
+            acc = add_batch(acc, op.rvapply(ys))
         return acc
 
     def __eq__(self, other: Any) -> bool:
@@ -473,6 +400,7 @@ class SumLinOp(LinOp[Domain, Codomain]):
         return SumLinOp(tuple(op.convert(new_ctx) for op in self.ops_tuple))
 
 
+@core_kernels("composed")
 @jax_pytree_class
 class ComposedLinOp(LinOp[Domain, Codomain]):
     r"""
@@ -514,30 +442,26 @@ class ComposedLinOp(LinOp[Domain, Codomain]):
         super().__init__(right.domain, left.codomain, left.ctx)
         self.left = left
         self.right = right
+        # Fuse the (possibly nested) composition into one flat chain of leaf
+        # operators in application order — right applied first, then left.
+        # Cached at construction so every apply runs a single check-free loop
+        # instead of re-walking the binary ComposedLinOp tree.
+        self._apply_chain = _compose_chain(right) + _compose_chain(left)
 
     @checked_method(in_space="domain", out_space="codomain")
     def apply(self, x: Any) -> Any:
         """Return ``left.apply(right.apply(x))``."""
         return self._apply_core(x)
 
-    def _apply_core(self, x: Any) -> Any:
-        return self.left._apply_core(self.right._apply_core(x))
-
     @checked_method(in_space="codomain", out_space="domain")
     def rapply(self, z: Any) -> Any:
         """Return ``right.rapply(left.rapply(z))``."""
         return self._rapply_core(z)
 
-    def _rapply_core(self, z: Any) -> Any:
-        return self.right._rapply_core(self.left._rapply_core(z))
-
     @checked_method(in_space="domain", out_space="codomain", in_batched=True, out_batched=True)
     def vapply(self, xs: Any) -> Any:
         """Return ``left.vapply(right.vapply(xs))``."""
         return self._vapply_core(xs)
-
-    def _vapply_core(self, xs: Any) -> Any:
-        return self.left._vapply_core(self.right._vapply_core(xs))
 
     def rvapply(self, zs: Any) -> Any:
         """Return ``right.rvapply(left.rvapply(zs))``."""
@@ -566,6 +490,7 @@ class ComposedLinOp(LinOp[Domain, Codomain]):
         return ComposedLinOp(self.left.convert(new_ctx), self.right.convert(new_ctx))
 
 
+@core_kernels("zero")
 @jax_pytree_class
 class ZeroLinOp(LinOp[Domain, Codomain]):
     r"""
@@ -600,25 +525,17 @@ class ZeroLinOp(LinOp[Domain, Codomain]):
     @checked_method(in_space="domain", out_space="codomain")
     def apply(self, x: Any) -> Any:
         """Return the zero element of the codomain."""
-        return self._apply_unchecked(x)
-
-    def _apply_unchecked(self, x: Any) -> Any:
-        """Return the codomain zero without membership checks."""
-        return self.codomain.zeros()
+        return self._apply_core(x)
 
     @checked_method(in_space="codomain", out_space="domain")
     def rapply(self, y: Any) -> Any:
         """Return the zero element of the domain."""
-        return self._rapply_unchecked(y)
-
-    def _rapply_unchecked(self, y: Any) -> Any:
-        """Return the domain zero without membership checks."""
-        return self.domain.zeros()
+        return self._rapply_core(y)
 
     @checked_method(in_space="domain", in_batched=True)
     def vapply(self, xs: Any) -> Any:
         """Return the batched zero element of the codomain."""
-        return _batched_zeros(self.codomain, _leading_shape(self.domain, xs))
+        return self._vapply_core(xs)
 
     @checked_method(in_space="codomain", in_batched=True)
     def rvapply(self, ys: Any) -> Any:
@@ -669,6 +586,7 @@ class ZeroLinOp(LinOp[Domain, Codomain]):
         return ZeroLinOp(self.domain.convert(new_ctx), self.codomain.convert(new_ctx), new_ctx)
 
 
+@core_kernels("identity")
 @jax_pytree_class
 class IdentityLinOp(LinOp[Domain, Domain]):
     r"""
@@ -695,20 +613,12 @@ class IdentityLinOp(LinOp[Domain, Domain]):
     @checked_method(in_space="domain", out_space="codomain")
     def apply(self, x: Any) -> Any:
         """Return ``x`` after domain validation."""
-        return self._apply_unchecked(x)
-
-    def _apply_unchecked(self, x: Any) -> Any:
-        """Return ``x`` without membership checks."""
-        return x
+        return self._apply_core(x)
 
     @checked_method(in_space="codomain", out_space="domain")
     def rapply(self, x: Any) -> Any:
         """Return ``x`` after codomain validation."""
-        return self._rapply_unchecked(x)
-
-    def _rapply_unchecked(self, x: Any) -> Any:
-        """Return ``x`` without membership checks."""
-        return x
+        return self._rapply_core(x)
 
     @checked_method(in_space="domain", in_batched=True)
     def vapply(self, xs: Any) -> Any:
@@ -766,6 +676,7 @@ class IdentityLinOp(LinOp[Domain, Domain]):
         return IdentityLinOp(self.domain.convert(new_ctx), new_ctx)
 
 
+@core_kernels("matrixfree")
 @jax_pytree_class
 class MatrixFreeLinOp(LinOp[Domain, Codomain]):
     """
@@ -1024,23 +935,7 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
         Any
             Element of ``self.codomain`` returned by ``apply_fn``.
         """
-        return self._apply_unchecked(x)
-
-    def _apply_unchecked(self, x: Any) -> Any:
-        """
-        Apply ``apply_fn`` without membership checks.
-
-        Parameters
-        ----------
-        x:
-            Value accepted by the user-supplied forward callable.
-
-        Returns
-        -------
-        Any
-            Raw forward-callable output.
-        """
-        return self.apply_fn(x)
+        return self._apply_core(x)
 
     @checked_method(in_space="codomain", out_space="domain")
     def rapply(self, y: Any) -> Any:
@@ -1057,23 +952,7 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
         Any
             Element of ``self.domain`` returned by ``rapply_fn``.
         """
-        return self._rapply_unchecked(y)
-
-    def _rapply_unchecked(self, y: Any) -> Any:
-        """
-        Apply ``rapply_fn`` without membership checks.
-
-        Parameters
-        ----------
-        y:
-            Value accepted by the user-supplied adjoint callable.
-
-        Returns
-        -------
-        Any
-            Raw adjoint-callable output.
-        """
-        return self.rapply_fn(y)
+        return self._rapply_core(y)
 
     @checked_method(in_space="domain", out_space="codomain", in_batched=True, out_batched=True)
     def vapply(self, xs: Any) -> Any:
@@ -1179,6 +1058,7 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
         )
 
 
+@core_kernels("adjoint")
 @jax_pytree_class
 class _AdjointViewLinOp(LinOp[Codomain, Domain]):
     """
@@ -1200,12 +1080,12 @@ class _AdjointViewLinOp(LinOp[Codomain, Domain]):
     @checked_method(in_space="domain", out_space="codomain")
     def apply(self, y: Any) -> Any:
         """Return ``op.rapply(y)``."""
-        return self.op.rapply(y)
+        return self._apply_core(y)
 
     @checked_method(in_space="codomain", out_space="domain")
     def rapply(self, x: Any) -> Any:
         """Return ``op.apply(x)``."""
-        return self.op.apply(x)
+        return self._rapply_core(x)
 
     def vapply(self, ys: Any) -> Any:
         """Return ``op.rvapply(ys)`` over a batch."""

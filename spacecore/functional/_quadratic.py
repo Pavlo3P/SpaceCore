@@ -10,10 +10,10 @@ from ._base import (
     _warn_vmap_fallback_once,
 )
 from ._linear import LinearFunctional
-from .._batching import _batched_inner
 from .._checks import checked_method
 from .._contextual import resolve_context_priority
 from ..backend import Context, jax_pytree_class
+from ..kernels import core_kernels
 from ..linop import LinOp
 
 
@@ -44,6 +44,7 @@ class QuadraticForm(Functional[Domain]):
         return self.ops.vmap(self.grad, in_axes=0, out_axes=0)(xs)
 
 
+@core_kernels("linop-quadratic-form")
 @jax_pytree_class
 class LinOpQuadraticForm(QuadraticForm[Domain]):
     r"""
@@ -123,11 +124,7 @@ class LinOpQuadraticForm(QuadraticForm[Domain]):
     @checked_method(in_space="domain")
     def value(self, x: Any) -> Any:
         """Return ``1/2 * <x, Qx> + linear(x) + a``."""
-        qx = self.Q.apply(x)
-        value = 0.5 * self.domain.inner(x, qx)
-        if self.linear is not None:
-            value = value + self.linear.value(x)
-        return value + self.a
+        return self._value_core(x)
 
     @checked_method(in_space="domain", out_space="domain")
     def grad(self, x: Any) -> Any:
@@ -141,10 +138,7 @@ class LinOpQuadraticForm(QuadraticForm[Domain]):
         ``LinOpQuadraticForm`` assumes ``Q`` is Hermitian/self-adjoint, so the
         quadratic contribution is exactly ``Q.apply(x)``.
         """
-        grad = self.Q.apply(x)
-        if self.linear is not None:
-            grad = self.domain.add(grad, self.linear.representer)
-        return grad
+        return self._grad_core(x)
 
     @checked_method(in_space="domain", out_space="domain")
     def hess_apply(self, x: Any) -> Any:
@@ -154,15 +148,7 @@ class LinOpQuadraticForm(QuadraticForm[Domain]):
     @checked_method(in_space="domain", in_batched=True)
     def vvalue(self, xs: Any) -> Any:
         """Evaluate the quadratic objective over a leading batch axis."""
-        qxs = self.Q.vapply(xs)
-        if self.domain.is_euclidean and hasattr(xs, "shape"):
-            axes = tuple(range(1, len(tuple(xs.shape))))
-            values = 0.5 * self.ops.sum(self.ops.conj(xs) * qxs, axis=axes)
-        else:
-            values = 0.5 * _batched_inner(self.domain, xs, qxs)
-        if self.linear is not None:
-            values = values + self.linear.vvalue(xs)
-        values = values + self.a
+        values = self._vvalue_core(xs)
         if self._checks_at_least("standard"):
             _check_scalar_shape(values, (_leading_batch_size(self.domain, xs),))
         return values
@@ -170,10 +156,7 @@ class LinOpQuadraticForm(QuadraticForm[Domain]):
     @checked_method(in_space="domain", out_space="domain", in_batched=True, out_batched=True)
     def vgrad(self, xs: Any) -> Any:
         """Evaluate the Riesz gradient over a leading batch axis."""
-        grads = self.Q.vapply(xs)
-        if self.linear is not None:
-            grads = self.domain.add_batch(grads, self.linear.vgrad(xs))
-        return grads
+        return self._vgrad_core(xs)
 
     def __eq__(self, other: Any) -> bool:
         """Return whether another quadratic form has the same stored terms."""

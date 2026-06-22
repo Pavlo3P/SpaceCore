@@ -3,7 +3,7 @@ from __future__ import annotations
 from abc import ABC
 from typing import TYPE_CHECKING, Self
 
-from .._check_policy import CheckLevel, check_level_at_least
+from .._check_policy import CheckLevel, check_level_at_least, level_to_enabled
 from ..types import DType
 from ._state import enforce_convert_policy, normalize_context
 
@@ -54,7 +54,7 @@ class ContextBound(ABC):
     @property
     def _enable_checks(self) -> bool:
         """Deprecated internal Boolean view retained for compatibility."""
-        return self.check_level != "none"
+        return level_to_enabled(self.check_level)
 
     def _checks_at_least(self, level: CheckLevel) -> bool:
         """Return whether this object runs checks assigned to ``level``."""

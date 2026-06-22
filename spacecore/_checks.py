@@ -3,7 +3,12 @@ from __future__ import annotations
 from functools import wraps
 from typing import Any, Callable
 
-from ._check_policy import CheckLevel, normalize_check_level
+from ._check_policy import (
+    CheckLevel,
+    enabled_to_level,
+    normalize_check_level,
+    require_mutually_exclusive,
+)
 
 
 def _as_positions(
@@ -11,8 +16,7 @@ def _as_positions(
     arg_positions: int | tuple[int, ...] | None,
 ) -> tuple[int, ...]:
     """Normalize legacy and multi-position argument selectors."""
-    if arg_pos is not None and arg_positions is not None:
-        raise TypeError("Use either arg_pos or arg_positions, not both.")
+    require_mutually_exclusive("arg_pos", arg_pos, "arg_positions", arg_positions)
     if arg_positions is None:
         return (0,) if arg_pos is None else (arg_pos,)
     if isinstance(arg_positions, int):
@@ -30,7 +34,7 @@ def _object_check_level(obj: Any) -> CheckLevel:
     level = getattr(obj, "check_level", None)
     if level is not None:
         return normalize_check_level(level)
-    return "standard" if getattr(obj, "_enable_checks", True) else "none"
+    return enabled_to_level(getattr(obj, "_enable_checks", True))
 
 
 def checked_method(
@@ -93,7 +97,7 @@ def checked_method(
             # expose ``check_level`` (older user code).
             level = getattr(self, "check_level", None)
             if level is None:
-                level = "standard" if getattr(self, "_enable_checks", True) else "none"
+                level = enabled_to_level(getattr(self, "_enable_checks", True))
             if level == "none":
                 return method(self, *args, **kwargs)
 

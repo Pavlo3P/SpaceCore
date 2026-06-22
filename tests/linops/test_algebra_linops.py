@@ -668,7 +668,14 @@ class TestAlgebraClassHierarchy:
 # ===========================================================================
 class TestScaledBatchedDispatch:
     def test_scaled_paths_use_space_scale_and_scale_batch(self, numpy_ctx):
-        """``apply``/``rapply``/``vapply``/``rvapply`` route through the space scale helpers."""
+        """``apply``/``rapply``/``vapply``/``rvapply`` route through the space scale helpers.
+
+        The non-batched forward/adjoint paths run on the fused core
+        (``_scale_core``): ``ScaledLinOp.apply`` validates its input once at the
+        boundary and then scales via the check-free core helper rather than the
+        ``@checked_method``-wrapped ``scale`` (which would re-validate the same
+        element). The batched paths route through ``scale_batch``.
+        """
 
         class CountingVectorSpace(sc.DenseCoordinateSpace):
             def __init__(self, shape, ctx, counter):
@@ -679,6 +686,10 @@ class TestScaledBatchedDispatch:
                 self.counter["scale"] += 1
                 return super().scale(a, x)
 
+            def _scale_core(self, a, x):
+                self.counter["scale_core"] += 1
+                return super()._scale_core(a, x)
+
             def scale_batch(self, a, x):
                 self.counter["scale_batch"] += 1
                 return super().scale_batch(a, x)
@@ -686,19 +697,21 @@ class TestScaledBatchedDispatch:
             def _convert(self, new_ctx):
                 return CountingVectorSpace(self.shape, new_ctx, self.counter)
 
-        domain_counter = {"scale": 0, "scale_batch": 0}
-        codomain_counter = {"scale": 0, "scale_batch": 0}
+        domain_counter = {"scale": 0, "scale_core": 0, "scale_batch": 0}
+        codomain_counter = {"scale": 0, "scale_core": 0, "scale_batch": 0}
         X = CountingVectorSpace((2,), numpy_ctx, domain_counter)
         Y = CountingVectorSpace((2,), numpy_ctx, codomain_counter)
         A = sc.DenseLinOp(numpy_ctx.asarray([[1.0, 2.0], [3.0, -1.0]]), X, Y, numpy_ctx)
         op = 3.0 * A
 
         op.apply(numpy_ctx.asarray([1.0, -2.0]))
-        assert codomain_counter["scale"] == 1
-        assert domain_counter["scale"] == 0
+        # Fused core scale on the codomain; no redundant checked ``scale``.
+        assert codomain_counter["scale_core"] == 1
+        assert codomain_counter["scale"] == 0
+        assert domain_counter["scale_core"] == 0
 
         op.rapply(numpy_ctx.asarray([0.5, 4.0]))
-        assert domain_counter["scale"] == 1
+        assert domain_counter["scale_core"] == 1
 
         op.vapply(numpy_ctx.asarray([[1.0, -2.0], [0.5, 4.0]]))
         assert codomain_counter["scale_batch"] == 1

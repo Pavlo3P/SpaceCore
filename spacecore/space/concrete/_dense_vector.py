@@ -9,6 +9,7 @@ from ..base import (
     JordanAlgebraSpace,
     StarSpace,
 )
+from ..._check_policy import require_mutually_exclusive
 from ..._checks import checked_method
 from ..._contextual import normalize_context
 from ...backend import Context, jax_pytree_class
@@ -21,8 +22,9 @@ def _resolve_elementwise_geometry(
     inner_product: InnerProduct | None = None,
 ) -> InnerProduct:
     """Resolve the public geometry aliases for elementwise coordinate spaces."""
-    if geometry is not None and inner_product is not None:
-        raise TypeError("Specify either geometry or inner_product, not both.")
+    require_mutually_exclusive(
+        "geometry", geometry, "inner_product", inner_product, verb="Specify"
+    )
     return (
         EuclideanInnerProduct()
         if geometry is None and inner_product is None

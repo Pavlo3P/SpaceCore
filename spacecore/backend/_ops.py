@@ -118,7 +118,27 @@ class BackendOps(ABC):
         """Compute a stable log-sum-exp reduction."""
         ...
 
-    @abstractmethod
+    def _copy(self, x: DenseArray) -> DenseArray:
+        """Return a mutable copy of ``x``.
+
+        Mutable backends override this with their native copy (``x.copy()`` for
+        NumPy/CuPy, ``x.clone()`` for PyTorch). Immutable backends such as JAX
+        override :meth:`index_set` / :meth:`index_add` directly and never call
+        this helper.
+        """
+        raise NotImplementedError(f"{type(self).__name__} does not implement _copy.")
+
+    def _scatter_add_inplace(self, y: DenseArray, index: Index, values: ArrayLike) -> None:
+        """Accumulate ``values`` into ``y`` at ``index`` in place.
+
+        Backend mutation primitive used by the default :meth:`index_add`.
+        Repeated-index accumulation is backend-specific (NumPy/CuPy use
+        ``add.at`` and accumulate duplicate indices; PyTorch does not).
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not implement _scatter_add_inplace."
+        )
+
     def index_set(
         self,
         x: DenseArray,
@@ -127,9 +147,16 @@ class BackendOps(ABC):
         *,
         copy: bool = True,
     ) -> DenseArray:
-        """Set indexed values using backend mutation semantics."""
+        """Return ``x`` with ``x[index]`` set to ``values``.
 
-    @abstractmethod
+        With ``copy=True`` a mutable copy is updated and returned; with
+        ``copy=False`` ``x`` is mutated in place. Immutable backends override
+        this method.
+        """
+        y = self._copy(x) if copy else x
+        y[index] = values
+        return y
+
     def index_add(
         self,
         x: DenseArray,
@@ -138,8 +165,15 @@ class BackendOps(ABC):
         *,
         copy: bool = True,
     ) -> DenseArray:
-        """Add values into indexed positions using backend mutation semantics."""
-        ...
+        """Return ``x`` with ``values`` accumulated into ``x[index]``.
+
+        With ``copy=True`` a mutable copy is updated and returned; with
+        ``copy=False`` ``x`` is mutated in place. Immutable backends override
+        this method.
+        """
+        y = self._copy(x) if copy else x
+        self._scatter_add_inplace(y, index, values)
+        return y
 
     @abstractmethod
     def ix_(self, *args: Any) -> Any:
@@ -198,6 +232,15 @@ class BackendOps(ABC):
     ) -> bool:
         """Compare sparse arrays elementwise within tolerances."""
         ...
+
+    def _require_two_sparse(self, a: Any, b: Any, *, noun: str = "sparse arrays") -> None:
+        """Raise ``TypeError`` unless both ``a`` and ``b`` are sparse for this backend.
+
+        Shared guard for :meth:`allclose_sparse`. ``noun`` names the expected
+        operands in the error message (e.g. ``"sparse tensors"``).
+        """
+        if not self.is_sparse(a) or not self.is_sparse(b):
+            raise TypeError(f"allclose_sparse expects two {noun}.")
 
     def _dtype_arg(self, dtype: DType | None) -> DType | None:
         return None if dtype is None else self.sanitize_dtype(dtype)

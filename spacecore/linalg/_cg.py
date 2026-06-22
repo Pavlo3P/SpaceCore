@@ -4,7 +4,8 @@ from typing import Any, NamedTuple
 
 from ..linop import LinOp
 from ._utils import DEFAULT_CONVERGENCE_CHECK_INTERVAL, check_interval, check_maxiter
-from ._utils import is_converged, real_inner, require_linop, require_square
+from ._utils import SpaceCoreOps, is_converged, resolve_apply
+from ._utils import require_linop, require_square
 from ._utils import (
     require_strict_cg_preconditions,
     result_repr,
@@ -169,13 +170,19 @@ def cg(
     maxiter = check_maxiter(maxiter, A)
     check_every = check_interval(check_every)
 
+    # Resolve check-free cores once; the hot loop then skips per-iteration
+    # validation while honoring any custom geometry the spaces define.
+    apply = resolve_apply(A)
+    dom = SpaceCoreOps(A.domain)
+    cod = SpaceCoreOps(A.codomain)
+
     x = A.domain.zeros() if x0 is None else x0
     A.domain.check_member(x)
-    r = A.codomain.add(b, A.codomain.scale(-1.0, A.apply(x)))
+    r = cod.add(b, cod.scale(-1.0, apply(x)))
     p = r
-    rs = real_inner(A.domain, r, r)
-    residual_norm = A.domain.norm(r)
-    threshold_value = threshold(A.codomain.norm(b), tol, atol)
+    rs = dom.real_inner(r, r)
+    residual_norm = dom.norm(r)
+    threshold_value = threshold(cod.norm(b), tol, atol)
     eps = A.ops.asarray(A.ops.eps(A.dtype), dtype=A.dtype)
     eps2 = eps * eps
 
@@ -187,17 +194,17 @@ def cg(
         carry: tuple[Any, Any, Any, Any, Any, int, Any],
     ) -> tuple[Any, Any, Any, Any, Any, int, Any]:
         x, r, p, rs, _residual_norm, k, _active = carry
-        Ap = A.apply(p)
-        pAp = real_inner(A.domain, p, Ap)
+        Ap = apply(p)
+        pAp = dom.real_inner(p, Ap)
         active = (rs > eps2) & (pAp > eps * rs)
         alpha = A.ops.where(active, rs * safe_inverse_nonneg(A.ops, pAp), A.ops.zeros_like(rs))
-        x_next = A.domain.axpy(alpha, p, x)
-        r_next = A.codomain.axpy(-alpha, Ap, r)
-        rs_next = real_inner(A.domain, r_next, r_next)
+        x_next = dom.axpy(alpha, p, x)
+        r_next = cod.axpy(-alpha, Ap, r)
+        rs_next = dom.real_inner(r_next, r_next)
         beta = A.ops.where(
             active, rs_next * safe_inverse_nonneg(A.ops, rs), A.ops.zeros_like(rs_next)
         )
-        p_next = A.domain.axpy(beta, p, r_next)
+        p_next = dom.axpy(beta, p, r_next)
         k_next = k + 1
         should_refresh_residual = should_check_iteration(k_next, maxiter, check_every) | (~active)
         residual_norm_next = A.ops.cond(

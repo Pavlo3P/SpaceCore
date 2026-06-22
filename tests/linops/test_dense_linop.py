@@ -243,6 +243,7 @@ class TestWeightedFusedMode:
     def test_fused_mode_selected_and_matches_generic_metric(self, numpy_ctx):
         # Source: legacy test_adjoint_identity.py
         from spacecore.linop._metric import metric_rapply
+        from spacecore.kernels.core.dense import dense_euclidean_rapply_core
 
         domain = sc.DenseCoordinateSpace(
             (2,), numpy_ctx, geometry=sc.WeightedInnerProduct(numpy_ctx.asarray([2.0, 5.0]))
@@ -260,7 +261,9 @@ class TestWeightedFusedMode:
         np.testing.assert_allclose(to_numpy(op.rapply(y)), to_numpy(op._weighted_A2H @ y))
         np.testing.assert_allclose(
             to_numpy(op.rapply(y)),
-            to_numpy(metric_rapply(op.domain, op.codomain, op._euclidean_rapply_core, y)),
+            to_numpy(metric_rapply(
+                op.domain, op.codomain, lambda yy: dense_euclidean_rapply_core(op, yy), y
+            )),
         )
 
     def test_fused_mode_recomputed_after_convert(self, numpy_ctx):

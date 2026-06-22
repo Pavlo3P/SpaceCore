@@ -20,10 +20,8 @@ import pytest
 import spacecore as sc
 
 from spacecore.functional._composed import make_functional_composed, _require_composable
-from spacecore.functional._linear import (
-    _broadcast_space_element,
-    _convert_space_element,
-)
+from spacecore.functional._linear import _convert_space_element
+from spacecore.kernels.core.functional import _broadcast_space_element
 from tests._helpers import to_numpy
 
 

@@ -3,7 +3,12 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Dict, Any, Iterable, Tuple
 from warnings import warn
 
-from .._check_policy import CheckLevel, minimum_check_level, normalize_check_level
+from .._check_policy import (
+    CheckLevel,
+    minimum_check_level,
+    normalize_check_level,
+    require_mutually_exclusive,
+)
 from ..types import DType
 from ..backend._family import BackendFamily
 from ..backend._ops import BackendOps
@@ -73,8 +78,7 @@ class Contextual:
         check_level: CheckLevel | None = None,
     ) -> Context:
         Context = _context_type()
-        if enable_checks is not None and check_level is not None:
-            raise TypeError("Use either check_level or enable_checks, not both.")
+        require_mutually_exclusive("check_level", check_level, "enable_checks", enable_checks)
         if ctx is None:
             if dtype is not None or enable_checks is not None or check_level is not None:
                 warn(

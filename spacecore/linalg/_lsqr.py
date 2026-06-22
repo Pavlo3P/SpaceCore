@@ -3,9 +3,9 @@ from __future__ import annotations
 from typing import Any, NamedTuple
 
 from ..linop import LinOp
-from ._utils import DEFAULT_CONVERGENCE_CHECK_INTERVAL, check_interval, check_maxiter
-from ._utils import is_converged, require_linop, safe_inverse_nonneg, should_check_iteration
-from ._utils import result_repr, threshold
+from ._utils import DEFAULT_CONVERGENCE_CHECK_INTERVAL, SpaceCoreOps, check_interval
+from ._utils import check_maxiter, is_converged, require_linop, resolve_apply, resolve_rapply
+from ._utils import safe_inverse_nonneg, should_check_iteration, result_repr, threshold
 
 
 class LSQRResult(NamedTuple):
@@ -183,19 +183,26 @@ def lsqr(
     if residual_mode not in {"exact", "recurrence"}:
         raise ValueError("residual_mode must be 'exact' or 'recurrence'.")
 
+    # Resolve check-free cores once; the hot loop then skips per-iteration
+    # validation while honoring any custom geometry the spaces define.
+    apply = resolve_apply(A)
+    radj = resolve_rapply(A)
+    dom = SpaceCoreOps(A.domain)
+    cod = SpaceCoreOps(A.codomain)
+
     x = A.domain.zeros() if x0 is None else x0
     A.domain.check_member(x)
-    residual = A.codomain.add(b, A.codomain.scale(-1.0, A.apply(x)))
-    beta = A.codomain.norm(residual)
+    residual = cod.add(b, cod.scale(-1.0, apply(x)))
+    beta = cod.norm(residual)
     u = residual
-    u = A.codomain.scale(safe_inverse_nonneg(A.ops, beta), u)
-    v = A.H.apply(u)
-    alpha = A.domain.norm(v)
+    u = cod.scale(safe_inverse_nonneg(A.ops, beta), u)
+    v = radj(u)
+    alpha = dom.norm(v)
     if residual_mode == "exact":
-        normal_residual_norm = A.domain.norm(A.H.apply(residual))
+        normal_residual_norm = dom.norm(radj(residual))
     else:
         normal_residual_norm = beta * alpha
-    v = A.domain.scale(safe_inverse_nonneg(A.ops, alpha), v)
+    v = dom.scale(safe_inverse_nonneg(A.ops, alpha), v)
     w = v
     phi_bar = beta
     rho_bar = alpha
@@ -208,13 +215,13 @@ def lsqr(
 
     def body_fun(carry: tuple[Any, ...]) -> tuple[Any, ...]:
         x, u, v, w, alpha, _beta, rho_bar, phi_bar, _residual_norm, _normal_residual, k = carry
-        u_next = A.codomain.axpy(-alpha, u, A.apply(v))
-        beta_next = A.codomain.norm(u_next)
-        u_next = A.codomain.scale(safe_inverse_nonneg(A.ops, beta_next), u_next)
+        u_next = cod.axpy(-alpha, u, apply(v))
+        beta_next = cod.norm(u_next)
+        u_next = cod.scale(safe_inverse_nonneg(A.ops, beta_next), u_next)
 
-        v_next = A.domain.axpy(-beta_next, v, A.H.apply(u_next))
-        alpha_next = A.domain.norm(v_next)
-        v_next = A.domain.scale(safe_inverse_nonneg(A.ops, alpha_next), v_next)
+        v_next = dom.axpy(-beta_next, v, radj(u_next))
+        alpha_next = dom.norm(v_next)
+        v_next = dom.scale(safe_inverse_nonneg(A.ops, alpha_next), v_next)
 
         rho = A.ops.sqrt(rho_bar * rho_bar + beta_next * beta_next)
         inv_rho = safe_inverse_nonneg(A.ops, rho)
@@ -227,16 +234,16 @@ def lsqr(
         recurrence_residual_norm = A.ops.abs(phi_bar_next)
         recurrence_normal_residual_norm = alpha_next * A.ops.abs(s * phi)
 
-        x_next = A.domain.axpy(phi * inv_rho, w, x)
-        w_next = A.domain.axpy(-(theta * inv_rho), w, v_next)
+        x_next = dom.axpy(phi * inv_rho, w, x)
+        w_next = dom.axpy(-(theta * inv_rho), w, v_next)
         k_next = k + 1
 
         if residual_mode == "exact":
 
             def refresh_residuals(payload: tuple[Any, Any, Any]) -> tuple[Any, Any]:
                 x_candidate, _old_residual_norm, _old_normal_residual = payload
-                residual_next = A.codomain.add(A.apply(x_candidate), A.codomain.scale(-1.0, b))
-                return A.codomain.norm(residual_next), A.domain.norm(A.H.apply(residual_next))
+                residual_next = cod.add(apply(x_candidate), cod.scale(-1.0, b))
+                return cod.norm(residual_next), dom.norm(radj(residual_next))
         else:
 
             def refresh_residuals(payload: tuple[Any, Any, Any]) -> tuple[Any, Any]:

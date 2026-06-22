@@ -22,12 +22,12 @@ import pytest
 
 import spacecore as sc
 from tests._helpers import to_numpy
-from spacecore.kernels.block_diagonal import (
+from spacecore.kernels.specs.block_diagonal import (
     block_diagonal_dense_apply_applicable,
     block_diagonal_dense_apply_generic,
     block_diagonal_dense_apply_optimized,
 )
-from spacecore.kernels.composed import (
+from spacecore.kernels.specs.composed import (
     composed_chain_apply_applicable,
     composed_chain_apply_generic,
     composed_chain_apply_optimized,

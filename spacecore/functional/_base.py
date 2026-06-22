@@ -93,6 +93,22 @@ class Functional(ContextBound, Generic[Domain]):
     def value(self, x: Any) -> Any:
         """Evaluate this functional at an element of ``self.domain``."""
 
+    def _value_core(self, x: Any) -> Any:
+        """Check-free value core; the base falls back to the checked ``value``."""
+        return self.value(x)
+
+    def _grad_core(self, x: Any) -> Any:
+        """Check-free gradient core; the base falls back to the checked ``grad``."""
+        return self.grad(x)
+
+    def _vvalue_core(self, xs: Any) -> Any:
+        """Check-free batched-value core; the base falls back to ``vvalue``."""
+        return self.vvalue(xs)
+
+    def _vgrad_core(self, xs: Any) -> Any:
+        """Check-free batched-gradient core; the base falls back to ``vgrad``."""
+        return self.vgrad(xs)
+
     def __call__(self, x: Any) -> Any:
         """Evaluate this functional at ``x``."""
         return self.value(x)

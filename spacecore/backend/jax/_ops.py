@@ -466,8 +466,7 @@ class JaxOps(BackendOps):
         Backend-specific notes:
             SpaceCore converts JAX sparse arrays through SciPy sparse arrays for comparison.
         """
-        if not self.is_sparse(a) or not self.is_sparse(b):
-            raise TypeError("allclose_sparse expects two sparse arrays.")
+        self._require_two_sparse(a, b)
 
         np_ops = NumpyOps()
         a_sp = self._to_scipy_sparse(np_ops, a)

@@ -1,17 +1,11 @@
 from __future__ import annotations
 
-from enum import Enum, auto
 from functools import cached_property
 from math import prod
 from typing import Any
 
 from ._base import LinOp
-from ._metric import (
-    _metric_is_hermitian_by_basis,
-    _requires_euclidean_or_riesz,
-    metric_rapply,
-    metric_rvapply,
-)
+from ._metric import _metric_is_hermitian_by_basis, _requires_euclidean_or_riesz
 from .._checks import checked_method
 from ..backend import Context, jax_pytree_class
 from ..space import (
@@ -23,16 +17,11 @@ from ..space import (
 )
 from ..types import DenseArray
 from .._contextual import resolve_context_priority
+from ..kernels import core_kernels
+from ..kernels.core.diagonal import _DiagonalMode
 
 
-class _DiagonalMode(Enum):
-    """Private computation modes for diagonal coordinate operators."""
-
-    EUCLIDEAN = auto()
-    WEIGHTED_FUSED = auto()
-    GENERAL_METRIC = auto()
-
-
+@core_kernels("diagonal")
 @jax_pytree_class
 class DiagonalLinOp(LinOp[Space, Space]):
     r"""
@@ -117,92 +106,20 @@ class DiagonalLinOp(LinOp[Space, Space]):
         """Apply the diagonal operator to ``x``."""
         return self._apply_core(x)
 
-    def _apply_core(self, x: DenseArray) -> DenseArray:
-        """Apply the diagonal operator without membership checks."""
-        if self._mode is _DiagonalMode.EUCLIDEAN:
-            return self.diagonal * x
-        if self._mode is _DiagonalMode.WEIGHTED_FUSED:
-            return self.diagonal * x
-        if type(self.domain) in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace):
-            return self.diagonal * x
-        x_flat = self.domain.flatten(x)
-        y_flat = self._diag_flat * x_flat
-        return self.codomain.unflatten(y_flat)
-
     @checked_method(in_space="codomain", out_space="domain")
     def rapply(self, y: DenseArray) -> DenseArray:
         """Apply the adjoint diagonal operator to ``y``."""
         return self._rapply_core(y)
-
-    def _rapply_core(self, y: DenseArray) -> DenseArray:
-        """Apply the metric adjoint without membership checks."""
-        if self._mode is _DiagonalMode.EUCLIDEAN:
-            return self._euclidean_rapply_core(y)
-        if self._mode is _DiagonalMode.WEIGHTED_FUSED:
-            return self._diag_adjoint * y
-        return metric_rapply(self.domain, self.codomain, self._euclidean_rapply_core, y)
-
-    def _euclidean_rapply_core(self, y: DenseArray) -> DenseArray:
-        """Apply the Euclidean diagonal adjoint without membership checks."""
-        if self._mode is _DiagonalMode.EUCLIDEAN:
-            return self._diag_adjoint * y
-        if self._mode is _DiagonalMode.WEIGHTED_FUSED:
-            return self._diag_adjoint * y
-        if type(self.domain) in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace):
-            return self._diag_adjoint * y
-        y_flat = self.codomain.flatten(y)
-        x_flat = self._diag_adjoint_flat * y_flat
-        return self.domain.unflatten(x_flat)
 
     @checked_method(in_space="domain", in_batched=True)
     def vapply(self, xs: DenseArray) -> DenseArray:
         """Apply over a leading batch axis. Input must have shape ``(N,) + domain.shape``; use ``moveaxis`` for other layouts."""
         return self._vapply_core(xs)
 
-    def _vapply_core(self, xs: DenseArray) -> DenseArray:
-        """Apply over a leading batch axis without membership checks."""
-        if self._mode is _DiagonalMode.EUCLIDEAN:
-            return self.diagonal * xs
-        if self._mode is _DiagonalMode.WEIGHTED_FUSED:
-            return self.diagonal * xs
-        if type(self.domain) in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace):
-            return self.diagonal * xs
-        xs_flat = self.domain.flatten_batch(xs)
-        ys_flat = xs_flat * self._diag_flat
-        return self.codomain.unflatten_batch(ys_flat)
-
     @checked_method(in_space="codomain", out_space="domain", in_batched=True, out_batched=True)
     def rvapply(self, ys: DenseArray) -> DenseArray:
         """Apply the adjoint over a leading batch axis. Input must have shape ``(N,) + codomain.shape``; use ``moveaxis`` for other layouts."""
         return self._rvapply_core(ys)
-
-    def _rvapply_core(self, ys: DenseArray) -> DenseArray:
-        """Apply the metric adjoint over a leading batch axis without checks."""
-        if self._mode is _DiagonalMode.EUCLIDEAN:
-            return self._euclidean_rvapply_core(ys)
-        if self._mode is _DiagonalMode.WEIGHTED_FUSED:
-            return self._diag_adjoint * ys
-        return metric_rvapply(
-            self.domain,
-            self.codomain,
-            self._euclidean_rapply_core,
-            self._euclidean_rvapply_core,
-            ys,
-            opname=type(self).__name__,
-            ops=self.ops,
-        )
-
-    def _euclidean_rvapply_core(self, ys: DenseArray) -> DenseArray:
-        """Apply the Euclidean diagonal adjoint over a leading batch axis."""
-        if self._mode is _DiagonalMode.EUCLIDEAN:
-            return self._diag_adjoint * ys
-        if self._mode is _DiagonalMode.WEIGHTED_FUSED:
-            return self._diag_adjoint * ys
-        if type(self.domain) in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace):
-            return self._diag_adjoint * ys
-        ys_flat = self.codomain.flatten_batch(ys)
-        xs_flat = ys_flat * self._diag_adjoint_flat
-        return self.domain.unflatten_batch(xs_flat)
 
     def to_matrix(self) -> DenseArray:
         """Return the flattened dense diagonal matrix representation."""

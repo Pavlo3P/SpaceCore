@@ -7,6 +7,7 @@ from ._linear import InnerProductFunctional
 from ._quadratic import LinOpQuadraticForm
 from .._checks import checked_method
 from ..backend import Context, jax_pytree_class
+from ..kernels import core_kernels
 from ..linop import LinOp
 
 
@@ -50,6 +51,7 @@ def make_functional_composed(F: Functional, A: LinOp) -> Functional:
     return ComposedFunctional(F, A)
 
 
+@core_kernels("composed-functional")
 @jax_pytree_class
 class ComposedFunctional(Functional):
     """
@@ -86,7 +88,7 @@ class ComposedFunctional(Functional):
         Any
             Scalar-like value returned by the composed functional.
         """
-        return self.F.value(self.A.apply(x))
+        return self._value_core(x)
 
     def __eq__(self, other: Any) -> bool:
         """Return whether another composed functional has the same operands."""

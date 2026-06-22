@@ -3,9 +3,10 @@ from __future__ import annotations
 from abc import abstractmethod
 from typing import Any, Callable
 
-from ._base import Domain, Functional, _check_scalar_shape
+from ._base import Domain, Functional, _check_scalar_shape, _leading_batch_size
 from .._checks import checked_method
 from ..backend import Context, jax_pytree_class
+from ..kernels import core_kernels
 from ..space import Space, TreeElement, TreeSpace
 
 
@@ -29,18 +30,7 @@ def _convert_space_element(space: Space, value: Any) -> Any:
     return space.ctx.asarray(value)
 
 
-def _broadcast_space_element(space: Space, value: Any, n: int) -> Any:
-    """Broadcast a single space element to a leading-axis batch."""
-    if isinstance(space, TreeSpace):
-        return space.unflatten_tree(
-            tuple(
-                _broadcast_space_element(part, component, n)
-                for part, component in zip(space.leaf_spaces, space.flatten_tree(value))
-            )
-        )
-    return space.ops.broadcast_to(value, (n,) + tuple(space.shape))
-
-
+@core_kernels("functional-linear")
 class LinearFunctional(Functional[Domain]):
     r"""
     Represent a linear scalar-valued map.
@@ -72,17 +62,15 @@ class LinearFunctional(Functional[Domain]):
         Matrix-free functionals without a stored representer inherit the
         ``NotImplementedError`` raised by :attr:`representer`.
         """
-        return self.representer
+        return self._grad_core(x)
 
     @checked_method(in_space="domain", out_space="domain", in_batched=True, out_batched=True)
     def vgrad(self, xs: Any) -> Any:
         """Return the constant Riesz gradient over a leading batch axis."""
-        dom = self.dom
-        sample = dom.flatten_tree(xs)[0] if isinstance(dom, TreeSpace) else xs
-        n = int(getattr(sample, "shape", (0,))[0])
-        return _broadcast_space_element(dom, self.representer, n)
+        return self._vgrad_core(xs)
 
 
+@core_kernels("inner-product-functional")
 @jax_pytree_class
 class InnerProductFunctional(LinearFunctional[Domain]):
     r"""
@@ -125,23 +113,14 @@ class InnerProductFunctional(LinearFunctional[Domain]):
     @checked_method(in_space="domain")
     def value(self, x: Any) -> Any:
         """Return ``domain.inner(representer, x)``."""
-        return self.domain.inner(self._c, x)
+        return self._value_core(x)
 
     @checked_method(in_space="domain", in_batched=True)
     def vvalue(self, xs: Any) -> Any:
         """Evaluate ``domain.inner(representer, xs[i])`` without a Python loop."""
-        dom = self.dom
-        ops = self.ctx.ops
-        if dom.is_euclidean and len(tuple(dom.shape)) == 1:
-            xs_flat = xs
-            c_flat = ops.conj(self._c)
-        else:
-            c_dual = self._c if dom.is_euclidean else dom.riesz(self._c)
-            c_flat = ops.conj(dom.flatten(c_dual))
-            xs_flat = dom.flatten_batch(xs)
-        values = xs_flat @ c_flat
+        values = self._vvalue_core(xs)
         if self._checks_at_least("standard"):
-            _check_scalar_shape(values, (xs_flat.shape[0],))
+            _check_scalar_shape(values, (_leading_batch_size(self.domain, xs),))
         return values
 
     def __eq__(self, other: Any) -> bool:
@@ -171,6 +150,7 @@ class InnerProductFunctional(LinearFunctional[Domain]):
         return InnerProductFunctional(self._c, self.domain.convert(new_ctx), new_ctx)
 
 
+@core_kernels("matrixfree-linear-functional")
 @jax_pytree_class
 class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
     """
@@ -269,7 +249,7 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
         Any
             Scalar-like backend value returned by ``value_fn``.
         """
-        y = self.value_fn(x)
+        y = self._value_core(x)
         if self._checks_at_least("standard"):
             _check_scalar_shape(y, ())
         return y

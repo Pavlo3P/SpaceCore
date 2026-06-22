@@ -50,6 +50,55 @@ generators, and a full backend conformance matrix with deviation catalog.
   cross-backend parity (`tests/backend/test_conformance_cross_backend.py`),
   and dedicated modules for optional args, conversion, dtype promotion,
   field consistency, vmap, and JIT.
+- Operator apply cores are organized as a *core-kernel* layer in the
+  `spacecore.kernels` subpackage instead of inline in each operator class. The
+  check-free cores of `apply`/`rapply`/`vapply`/`rvapply` for **every** operator
+  with a fast path — the composite algebra (`ComposedLinOp`, `ScaledLinOp`,
+  `SumLinOp`, the adjoint view, `IdentityLinOp`, `ZeroLinOp`, `MatrixFreeLinOp`)
+  and the concrete leaves (`DenseLinOp`, `DiagonalLinOp`, `SparseLinOp`) — now
+  live as concrete functions in the kernels subpackage (`kernels/algebra.py`,
+  `kernels/dense.py`, `kernels/diagonal.py`, `kernels/sparse.py`). Operators
+  bind them by declaring the `@core_kernels("...")` class decorator (rules in
+  `spacecore/kernels/_core.py`); the base `LinOp` cores remain the generic
+  fallback for operators without a registered kernel. Binding is static
+  (class-definition time), so routing through the kernel registry costs nothing
+  per call — leaf-operator apply latency is unchanged. The lazy-algebra cores
+  additionally validate membership only once at the boundary instead of
+  re-validating every intermediate link, and `ComposedLinOp` caches a flattened
+  `_apply_chain` at construction so a deep `A @ B @ C @ ...` runs one loop rather
+  than re-walking the binary tree (a depth-16 composition applies ~9x faster than
+  the per-link-checked path and scales flat with depth). All results are
+  numerically identical. Public API: `core_kernels`, `CoreKernelSet`,
+  `register_core_kernels`, `get_core_kernels`, `core_kernel_names` from
+  `spacecore.kernels`.
+- Iterative linalg solvers (`cg`, `lanczos_smallest`, `lsqr`, `power_iteration`)
+  consume the check-free operator/space cores in their hot loops. They validate
+  the operator and right-hand side once, at entry, then run the iteration through
+  the resolved cores — eliminating the per-iteration membership validation that
+  dominated eager-backend runtime (CG at `check_level="standard"` is ~3.4x faster
+  on NumPy and now matches `check_level="none"`). Resolution is safe: a core is
+  used only when it is consistent with the public method (`linalg/_utils.py`
+  `resolve_core`/`SpaceCoreOps`), so a user space that overrides `inner` with a
+  custom geometry without overriding `_inner_core` keeps its override. Results are
+  numerically identical.
+- The `spacecore.kernels` subpackage is reorganized into two subpackages by kind:
+  `spacecore.kernels.core` (the check-free apply/eval cores + the `core_kernels`
+  binding rules) and `spacecore.kernels.specs` (the benchmarked `KernelSpec`
+  layer). Public names are re-exported from `spacecore.kernels`, so
+  `spacecore.kernels.core_kernels`, `spacecore.kernels.CoreKernelSet`, and
+  `spacecore.kernels.KernelSpec`/`registry` resolve unchanged.
+- The same core-kernel organization now covers the `spacecore.functional`
+  submodule. The check-free `value`/`grad`/`vvalue`/`vgrad` cores for
+  `InnerProductFunctional`, `MatrixFreeLinearFunctional`, `LinearFunctional`,
+  `LinOpQuadraticForm`, and `ComposedFunctional` live in
+  `spacecore/kernels/functional.py`; the functionals bind them via
+  `@core_kernels("...")`. `CoreKernelSet` gained `value`/`grad`/`vvalue`/`vgrad`
+  fields alongside the LinOp `apply`/`rapply`/`vapply`/`rvapply` ones, and the
+  base `Functional` carries the generic core fallbacks. Composite functionals now
+  reach their operands' cores instead of re-validating intermediates — e.g.
+  `LinOpQuadraticForm.value` validates its input once rather than once per
+  sub-term (`Q.apply` + `linear.value`), and `ComposedFunctional` evaluates
+  `F._value_core(A._apply_core(x))`. Results are numerically identical.
 - `BackendOps.hstack`, `vstack`, `dstack`, and `column_stack` array-stacking
   helpers delegating to the backend's native routines, alongside the existing
   `stack`.
