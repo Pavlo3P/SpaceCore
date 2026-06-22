@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import abstractmethod
-from typing import Tuple, Sequence, Any
+from typing import Tuple, Sequence, Any, Self
 
 from .._base import LinOp, Domain, Codomain
 from ...backend import jax_pytree_class, Context
@@ -69,14 +69,14 @@ class TreeLinOp(LinOp[Domain, Codomain]):
             )
         return False
 
-    def tree_flatten(self):
+    def tree_flatten(self) -> tuple[tuple[Any, ...], Any]:
         """Flatten this operator for pytree registration."""
-        children = self.parts
+        children = tuple(self.parts)
         aux = (self.dom, self.cod, self.ctx)
         return children, aux
 
     @classmethod
-    def tree_unflatten(cls, aux, children):
+    def tree_unflatten(cls, aux: Any, children: Any) -> Self:
         """Rebuild this operator from pytree data."""
         dom, cod, ctx = aux
         return cls(dom, cod, tuple(children), ctx)

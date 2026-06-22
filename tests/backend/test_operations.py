@@ -969,17 +969,8 @@ class TestSparse:
         ref_out = ref.sparse_matmul(A_ref_sparse, b_ref)
         _matches("sparse_matmul", be_out, ref_out, dtype=dt)
 
-    def _skip_jax_allclose_sparse(self, backend_ops) -> None:
-        if backend_ops.family == "jax":
-            pytest.skip(
-                "JaxOps.allclose_sparse calls scipy.coo_array which moved to "
-                "scipy.sparse in recent scipy. Pre-existing source-code bug "
-                "tracked outside this refactor."
-            )
-
     def test_allclose_sparse_true_on_equal(self, backend_ops):
         self._csr_skip(backend_ops)
-        self._skip_jax_allclose_sparse(backend_ops)
         dt = _default_real_dtype(backend_ops)
         dense_np = np.asarray([[1.0, 0.0], [0.0, 2.0]], dtype=dt)
         a = backend_ops.assparse(backend_ops.asarray(dense_np, dtype=dt))
@@ -988,7 +979,6 @@ class TestSparse:
 
     def test_allclose_sparse_false_on_perturbed(self, backend_ops):
         self._csr_skip(backend_ops)
-        self._skip_jax_allclose_sparse(backend_ops)
         dt = _default_real_dtype(backend_ops)
         a = backend_ops.assparse(backend_ops.asarray(
             np.asarray([[1.0, 0.0], [0.0, 2.0]], dtype=dt), dtype=dt))

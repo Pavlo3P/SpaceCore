@@ -31,7 +31,7 @@ be added or swapped without editing operator bodies.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, TypeVar
 
 CoreFn = Callable[[Any, Any], Any]
 """Signature of a core kernel: ``(operator, operand) -> result``."""
@@ -126,7 +126,10 @@ def core_kernel_names() -> tuple[str, ...]:
     return tuple(_CORE_KERNEL_SETS)
 
 
-def core_kernels(name: str) -> Callable[[type], type]:
+_C = TypeVar("_C", bound=type)
+
+
+def core_kernels(name: str) -> Callable[[_C], _C]:
     """Class decorator that binds the named core-kernel set onto an operator.
 
     Installs the set's ``apply``/``rapply``/``vapply`` functions as the class's
@@ -140,12 +143,12 @@ def core_kernels(name: str) -> Callable[[type], type]:
     """
     kernel_set = _CORE_KERNEL_SETS[name]
 
-    def decorate(cls: type) -> type:
+    def decorate(cls: _C) -> _C:
         for field, method in _FIELD_TO_METHOD.items():
             fn = getattr(kernel_set, field)
             if fn is not None:
                 setattr(cls, method, fn)
-        cls._core_kernel_set = name
+        setattr(cls, "_core_kernel_set", name)
         return cls
 
     return decorate

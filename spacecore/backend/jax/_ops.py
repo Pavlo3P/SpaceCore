@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Sequence, Literal, Tuple, Callable, Optional, Type
+from typing import Any, Sequence, Literal, Tuple, Callable, Optional, Type, cast
 from warnings import warn
 
 from .._family import BackendFamily
@@ -56,9 +56,16 @@ class JaxOps(BackendOps):
         `out_sharding` for explicit placement or sharding.
     """
 
-    import jax
-    import jax.numpy as jnp
-    import jax.experimental.sparse as jsparse
+    import jax as _jax
+    import jax.numpy as _jnp
+    import jax.experimental.sparse as _jsparse
+
+    # Concrete library handles exposed as ``Any`` so the portable protocols can
+    # flow into typed JAX calls without per-boundary casts; mirrors the base
+    # ``xp: ClassVar[Any]`` design.
+    jax: Any = _jax
+    jnp: Any = _jnp
+    jsparse: Any = _jsparse
 
     xp = jnp
 
@@ -299,7 +306,7 @@ class JaxOps(BackendOps):
         """
         if not copy:
             raise NotImplementedError("JAX arrays are immutable; copy=False is not supported.")
-        return x.at[index].set(values)
+        return cast(Any, x).at[index].set(values)
 
     def ix_(self, *args: Any) -> Any:
         r"""
@@ -442,7 +449,7 @@ class JaxOps(BackendOps):
         """
         if not copy:
             raise NotImplementedError("JAX arrays are immutable; copy=False is not supported.")
-        return x.at[index].add(values)
+        return cast(Any, x).at[index].add(values)
 
     def allclose_sparse(
         self,
@@ -475,21 +482,22 @@ class JaxOps(BackendOps):
         return np_ops.allclose_sparse(a_sp, b_sp, rtol=rtol, atol=atol)
 
     def _to_scipy_sparse(self, np_ops: NumpyOps, x: SparseArray):
+        bcoo: Any = x
         if isinstance(x, self.jsparse.BCSR):
-            x = x.to_bcoo()
+            bcoo = bcoo.to_bcoo()
 
-        if isinstance(x, self.jsparse.BCOO):
-            x = x.sum_duplicates(remove_zeros=False)
+        if isinstance(bcoo, self.jsparse.BCOO):
+            bcoo = bcoo.sum_duplicates(remove_zeros=False)
 
-            if x.n_batch != 0 or x.n_dense != 0 or x.n_sparse != 2:
+            if bcoo.n_batch != 0 or bcoo.n_dense != 0 or bcoo.n_sparse != 2:
                 raise NotImplementedError(
                     "_to_scipy_sparse supports only 2D unbatched sparse arrays."
                 )
 
-            row = x.indices[:, 0]
-            col = x.indices[:, 1]
-            data = x.data
+            row = bcoo.indices[:, 0]
+            col = bcoo.indices[:, 1]
+            data = bcoo.data
 
-            return np_ops.sp.coo_array((data, (row, col)), shape=x.shape)
+            return np_ops.sp.sparse.coo_array((data, (row, col)), shape=bcoo.shape)
 
         raise TypeError(f"Unsupported sparse type: {type(x)!r}")

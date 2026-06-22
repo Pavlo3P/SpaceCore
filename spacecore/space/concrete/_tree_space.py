@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable, Sequence
+from typing import TYPE_CHECKING, Any, Callable, Sequence, cast
 
 import optree
 
+from ..._check_policy import normalize_check_level
 from ..._checks import checked_method
 from ..._contextual import resolve_context_priority
-from ...backend import CheckLevel, Context, jax_pytree_class
+from ...backend import BackendOps, CheckLevel, Context, jax_pytree_class
 from ...types import DenseArray
 from ..base import (
     CoordinateSpace,
@@ -101,7 +102,7 @@ def _context_with_check_level(ctx: Context, check_level: CheckLevel | str | None
     """Return ``ctx`` with an explicit validation policy when requested."""
     if check_level is None or ctx.check_level == check_level:
         return ctx
-    return Context(ctx.ops, dtype=ctx.dtype, check_level=check_level)
+    return Context(ctx.ops, dtype=ctx.dtype, check_level=normalize_check_level(check_level))
 
 
 @jax_pytree_class
@@ -461,7 +462,7 @@ class TreeSpace(CoordinateSpace):
     def _from_components(self, parts: tuple[Any, ...]) -> Any:
         return self.unflatten_tree(parts)
 
-    def _ones_for_space(self, space: Space) -> Any:
+    def _ones_for_space(self, space: CoordinateSpace) -> Any:
         ones = getattr(space, "ones", None)
         if callable(ones):
             return ones()
@@ -544,17 +545,17 @@ class TreeSpace(CoordinateSpace):
             return parts[0]
         return self.ops.concatenate(parts, axis=0)
 
-    def unflatten(self, vector: DenseArray) -> Any:
+    def unflatten(self, v: DenseArray) -> Any:
         """Split dense coordinates into a tree element."""
         if self._checks_at_least("cheap"):
-            vector = self.ctx.assert_dense(vector)
-            vector = (
-                vector
-                if tuple(getattr(vector, "shape", ())) == self.shape
-                else vector.reshape((-1,))
+            v = self.ctx.assert_dense(v)
+            v = (
+                v
+                if tuple(getattr(v, "shape", ())) == self.shape
+                else v.reshape((-1,))
             )
         leaves = tuple(
-            space.unflatten(vector[leaf_slice])
+            space.unflatten(v[leaf_slice])
             for space, leaf_slice in zip(self.leaf_spaces, self._slices)
         )
         return self._from_components(leaves)
@@ -569,13 +570,13 @@ class TreeSpace(CoordinateSpace):
             return parts[0]
         return self.ops.concatenate(parts, axis=1)
 
-    def unflatten_batch(self, vectors: DenseArray) -> Any:
+    def unflatten_batch(self, vs: DenseArray) -> Any:
         """Split batched dense coordinates into batched leaves."""
         if self._checks_at_least("cheap"):
-            vectors = self.ctx.assert_dense(vectors)
+            vs = self.ctx.assert_dense(vs)
         return self._from_components(
             tuple(
-                space.unflatten_batch(vectors[:, leaf_slice])
+                space.unflatten_batch(vs[:, leaf_slice])
                 for space, leaf_slice in zip(self.leaf_spaces, self._slices)
             )
         )
@@ -616,15 +617,32 @@ class TreeSpace(CoordinateSpace):
         return cls(treedef, leaf_spaces, ctx=ctx)
 
 
-class _LeafwiseInnerProductMixin:
+class _LeafwiseHostMixin:
+    """Type-only declarations of the TreeSpace host surface used by leaf mixins."""
+
+    if TYPE_CHECKING:
+        # Provided by the TreeSpace host these mixins are combined with; leaves
+        # are narrowed to the relevant capability per method (see ``cast`` calls).
+        @property
+        def leaf_spaces(self) -> tuple[CoordinateSpace, ...]: ...
+        @property
+        def ops(self) -> BackendOps: ...
+        @property
+        def arity(self) -> int: ...
+        def _components(self, x: Any) -> tuple[Any, ...]: ...
+        def _from_components(self, parts: tuple[Any, ...]) -> Any: ...
+
+
+class _LeafwiseInnerProductMixin(_LeafwiseHostMixin):
     """Inner-product operations for trees whose leaves all support them."""
 
     @checked_method(in_space="self", arg_positions=(0, 1))
     def inner(self, x: Any, y: Any) -> Any:
         """Return the sum of leaf inner products."""
+        leaf_spaces = cast("Sequence[InnerProductSpace]", self.leaf_spaces)
         accumulator = None
         for space, xi, yi in zip(
-            self.leaf_spaces, self._components(x), self._components(y)
+            leaf_spaces, self._components(x), self._components(y)
         ):
             value = space.inner(xi, yi)
             accumulator = value if accumulator is None else accumulator + value
@@ -632,37 +650,41 @@ class _LeafwiseInnerProductMixin:
 
     def riesz(self, x: Any) -> Any:
         """Apply each leaf space's Riesz map."""
+        leaf_spaces = cast("Sequence[InnerProductSpace]", self.leaf_spaces)
         return self._from_components(
             tuple(
                 space.riesz(leaf)
-                for space, leaf in zip(self.leaf_spaces, self._components(x))
+                for space, leaf in zip(leaf_spaces, self._components(x))
             )
         )
 
     def riesz_inverse(self, x: Any) -> Any:
         """Apply each leaf space's inverse Riesz map."""
+        leaf_spaces = cast("Sequence[InnerProductSpace]", self.leaf_spaces)
         return self._from_components(
             tuple(
                 space.riesz_inverse(leaf)
-                for space, leaf in zip(self.leaf_spaces, self._components(x))
+                for space, leaf in zip(leaf_spaces, self._components(x))
             )
         )
 
     @property
     def is_euclidean(self) -> bool:
         """Return whether every leaf geometry is Euclidean."""
-        return all(space.is_euclidean for space in self.leaf_spaces)
+        leaf_spaces = cast("Sequence[InnerProductSpace]", self.leaf_spaces)
+        return all(space.is_euclidean for space in leaf_spaces)
 
 
-class _LeafwiseStarMixin:
+class _LeafwiseStarMixin(_LeafwiseHostMixin):
     """Star operation for trees whose leaves all support it."""
 
     def star(self, x: Any) -> Any:
         """Return the leafwise star operation in the same tree structure."""
+        leaf_spaces = cast("Sequence[StarSpace]", self.leaf_spaces)
         return self._from_components(
             tuple(
                 space.star(leaf)
-                for space, leaf in zip(self.leaf_spaces, self._components(x))
+                for space, leaf in zip(leaf_spaces, self._components(x))
             )
         )
 
@@ -694,26 +716,28 @@ class TreeSpectralDecomposition:
         return cls(tuple(eigvals), tuple(frames))
 
 
-class _LeafwiseJordanMixin:
+class _LeafwiseJordanMixin(_LeafwiseHostMixin):
     """Jordan operations for trees whose leaves all support them."""
 
     @checked_method(in_space="self", arg_positions=(0, 1))
     def jordan(self, x: Any, y: Any) -> Any:
         """Return the leafwise Jordan product."""
+        leaf_spaces = cast("Sequence[JordanAlgebraSpace]", self.leaf_spaces)
         return self._from_components(
             tuple(
                 space.jordan(xi, yi)
                 for space, xi, yi in zip(
-                    self.leaf_spaces, self._components(x), self._components(y)
+                    leaf_spaces, self._components(x), self._components(y)
                 )
             )
         )
 
     def spectrum(self, x: Any) -> DenseArray:
         """Concatenate leaf Jordan spectra in deterministic leaf order."""
+        leaf_spaces = cast("Sequence[JordanAlgebraSpace]", self.leaf_spaces)
         parts = tuple(
             space.spectrum(leaf)
-            for space, leaf in zip(self.leaf_spaces, self._components(x))
+            for space, leaf in zip(leaf_spaces, self._components(x))
         )
         if len(parts) == 1:
             return parts[0]
@@ -721,9 +745,10 @@ class _LeafwiseJordanMixin:
 
     def spectral_decompose(self, x: Any) -> TreeSpectralDecomposition:
         """Return leafwise spectral data independent of tree structure."""
+        leaf_spaces = cast("Sequence[JordanAlgebraSpace]", self.leaf_spaces)
         decompositions = tuple(
             space.spectral_decompose(leaf)
-            for space, leaf in zip(self.leaf_spaces, self._components(x))
+            for space, leaf in zip(leaf_spaces, self._components(x))
         )
         return TreeSpectralDecomposition(
             eigvals=tuple(eigvals for eigvals, _frame in decompositions),
@@ -732,10 +757,11 @@ class _LeafwiseJordanMixin:
 
     def from_spectrum(
         self,
-        decomposition: TreeSpectralDecomposition,
+        eigvals: TreeSpectralDecomposition,
         frame: Any = None,
     ) -> Any:
         """Reconstruct a tree element from leafwise spectral data."""
+        decomposition = eigvals
         if frame is not None:
             raise TypeError("TreeSpace.from_spectrum expects TreeSpectralDecomposition only.")
         if not isinstance(decomposition, TreeSpectralDecomposition):
@@ -745,11 +771,12 @@ class _LeafwiseJordanMixin:
             )
         if len(decomposition.eigvals) != self.arity or len(decomposition.frames) != self.arity:
             raise ValueError("TreeSpace.from_spectrum decomposition arity mismatch.")
+        leaf_spaces = cast("Sequence[JordanAlgebraSpace]", self.leaf_spaces)
         return self._from_components(
             tuple(
                 space.from_spectrum(eigvals, spectral_frame)
                 for space, eigvals, spectral_frame in zip(
-                    self.leaf_spaces,
+                    leaf_spaces,
                     decomposition.eigvals,
                     decomposition.frames,
                 )
@@ -759,10 +786,11 @@ class _LeafwiseJordanMixin:
     @checked_method(in_space="self", out_space="self")
     def spectral_apply(self, x: Any, f: Callable[[Any], Any]) -> Any:
         """Apply each leaf space's spectral calculus independently."""
+        leaf_spaces = cast("Sequence[JordanAlgebraSpace]", self.leaf_spaces)
         return self._from_components(
             tuple(
                 space.spectral_apply(leaf, f)
-                for space, leaf in zip(self.leaf_spaces, self._components(x))
+                for space, leaf in zip(leaf_spaces, self._components(x))
             )
         )
 

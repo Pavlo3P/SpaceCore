@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import abstractmethod
-from typing import TYPE_CHECKING, Any, Generic, TypeVar
+from typing import TYPE_CHECKING, Any, Generic, Self, TypeVar
 
 from .._batching import _leading_batch_size, _warn_vmap_fallback_once
 
@@ -15,13 +15,13 @@ from .._batching import (  # noqa: F401
 from .._checks import checked_method
 from .._contextual import ContextBound
 from ..backend import Context
-from ..space import Space
+from ..space import CoordinateSpace
 
 if TYPE_CHECKING:
     from ..linop import LinOp
 
 
-Domain = TypeVar("Domain", bound=Space)
+Domain = TypeVar("Domain", bound=CoordinateSpace)
 
 
 class Functional(ContextBound, Generic[Domain]):
@@ -59,6 +59,22 @@ class Functional(ContextBound, Generic[Domain]):
     @abstractmethod
     def value(self, x: Any) -> Any:
         """Evaluate this functional at an element of ``self.domain``."""
+
+    def grad(self, x: Any) -> Any:
+        """Gradient at an element of ``self.domain``.
+
+        Override in subclasses that support differentiation; the base raises
+        :class:`NotImplementedError`.
+        """
+        raise NotImplementedError(f"{type(self).__name__} does not implement grad().")
+
+    def vgrad(self, xs: Any) -> Any:
+        """Gradient over a leading batch axis.
+
+        Override in subclasses that support differentiation; the base raises
+        :class:`NotImplementedError`.
+        """
+        raise NotImplementedError(f"{type(self).__name__} does not implement vgrad().")
 
     def _value_core(self, x: Any) -> Any:
         """Check-free value core; the base falls back to the checked ``value``."""
@@ -109,12 +125,12 @@ class Functional(ContextBound, Generic[Domain]):
         self.dom.check_member(x)
 
     @abstractmethod
-    def tree_flatten(self):
+    def tree_flatten(self) -> tuple[tuple[Any, ...], Any]:
         """Flatten this functional for pytree registration."""
         ...
 
     @classmethod
     @abstractmethod
-    def tree_unflatten(cls, aux, children):
+    def tree_unflatten(cls, aux: Any, children: Any) -> Self:
         """Rebuild this functional from pytree data."""
         ...

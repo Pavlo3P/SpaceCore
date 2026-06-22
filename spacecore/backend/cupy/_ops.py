@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from typing import Any, Literal, Sequence, Tuple, Type
+from typing import Any, Literal, Sequence, Tuple, Type, cast
 
 from .._eager import EagerControlFlowMixin
 from .._family import BackendFamily
 from .._ops import BackendOps
-from ...types import DenseArray, DType, Index, SparseArray
+from ...types import ArrayLike, DenseArray, DType, Index, SparseArray
 
 
 class CuPyOps(EagerControlFlowMixin, BackendOps):
@@ -23,9 +23,15 @@ class CuPyOps(EagerControlFlowMixin, BackendOps):
         ``cupyx.scipy.sparse`` matrix types such as CSR, CSC, and COO.
     """
 
-    import cupy as cp
-    import cupyx.scipy as cpx_scipy
-    import cupyx.scipy.sparse as cpx_sparse
+    import cupy as _cp  # pyright: ignore[reportMissingImports]
+    import cupyx.scipy as _cpx_scipy  # pyright: ignore[reportMissingImports]
+    import cupyx.scipy.sparse as _cpx_sparse  # pyright: ignore[reportMissingImports]
+
+    # CuPy ships no usable type stubs; expose the handles as ``Any`` so the
+    # portable type checks do not depend on the optional GPU backend.
+    cp: Any = _cp
+    cpx_scipy: Any = _cpx_scipy
+    cpx_sparse: Any = _cpx_sparse
 
     xp = cp
 
@@ -124,9 +130,9 @@ class CuPyOps(EagerControlFlowMixin, BackendOps):
 
     def _copy(self, x: DenseArray) -> DenseArray:
         """Return a CuPy copy of ``x`` (mutation primitive for index ops)."""
-        return x.copy()
+        return cast(Any, x).copy()
 
-    def _scatter_add_inplace(self, y: DenseArray, index: Index, values: DenseArray) -> None:
+    def _scatter_add_inplace(self, y: DenseArray, index: Index, values: ArrayLike) -> None:
         """Accumulate ``values`` into ``y`` at ``index`` via ``cupy.add.at``."""
         self.cp.add.at(y, index, values)
 
@@ -144,5 +150,5 @@ class CuPyOps(EagerControlFlowMixin, BackendOps):
         """Compare two CuPy sparse matrices by dense values."""
         self._require_two_sparse(a, b, noun="CuPy sparse matrices")
         return bool(
-            self.cp.asnumpy(self.cp.allclose(a.toarray(), b.toarray(), rtol=rtol, atol=atol))
+            self.cp.asnumpy(self.cp.allclose(cast(Any, a).toarray(), cast(Any, b).toarray(), rtol=rtol, atol=atol))
         )

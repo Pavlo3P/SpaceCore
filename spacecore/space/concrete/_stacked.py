@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
 from ..base import (
     CoordinateSpace,
@@ -13,7 +13,7 @@ from ..base import (
 from ._tree_space import TreeSpace, _space_capabilities
 from ..._checks import checked_method
 from ..._contextual import resolve_context_priority
-from ...backend import Context, jax_pytree_class
+from ...backend import BackendOps, Context, jax_pytree_class
 from ...types import DenseArray
 from ..checks import BackendCheck, DTypeCheck, FieldCheck, ShapeCheck
 
@@ -181,93 +181,124 @@ class StackedSpace(CoordinateSpace):
 class _StackedInnerProductMixin:
     """Inner-product operations for stacks whose base supports them."""
 
+    if TYPE_CHECKING:
+        # Provided by the StackedSpace host this mixin is combined with; narrowed
+        # to the relevant capability per method (see ``cast`` calls below).
+        @property
+        def base(self) -> Space: ...
+        @property
+        def ops(self) -> BackendOps: ...
+
     @checked_method(in_space="self", arg_positions=(0, 1))
     def inner(self, x: Any, y: Any) -> Any:
         """Return ``sum_i base.inner(x[i], y[i])`` as a scalar."""
-        if self.base.is_euclidean:
+        base = cast(InnerProductSpace, self.base)
+        if base.is_euclidean:
             return self.ops.vdot(x, y)
         try:
-            y_dual = self.base.riesz(y)
+            y_dual = base.riesz(y)
             return self.ops.vdot(x, y_dual)
         except _STACKED_FALLBACK_ERRORS:
-            values = self.ops.vmap(self.base.inner, in_axes=(0, 0), out_axes=0)(x, y)
+            values = self.ops.vmap(base.inner, in_axes=(0, 0), out_axes=0)(x, y)
             return self.ops.sum(values)
 
     def riesz(self, x: Any) -> Any:
         """Apply the base Riesz map to every stacked copy."""
-        if self.base.is_euclidean:
+        base = cast(InnerProductSpace, self.base)
+        if base.is_euclidean:
             return x
         try:
-            return self.base.riesz(x)
+            return base.riesz(x)
         except _STACKED_FALLBACK_ERRORS:
-            return self.ops.vmap(self.base.riesz, in_axes=0, out_axes=0)(x)
+            return self.ops.vmap(base.riesz, in_axes=0, out_axes=0)(x)
 
     def riesz_inverse(self, x: Any) -> Any:
         """Apply the base inverse Riesz map to every stacked copy."""
-        if self.base.is_euclidean:
+        base = cast(InnerProductSpace, self.base)
+        if base.is_euclidean:
             return x
         try:
-            return self.base.riesz_inverse(x)
+            return base.riesz_inverse(x)
         except _STACKED_FALLBACK_ERRORS:
-            return self.ops.vmap(self.base.riesz_inverse, in_axes=0, out_axes=0)(x)
+            return self.ops.vmap(base.riesz_inverse, in_axes=0, out_axes=0)(x)
 
     @property
     def is_euclidean(self) -> bool:
         """Return whether the base geometry is Euclidean."""
-        return self.base.is_euclidean
+        return cast(InnerProductSpace, self.base).is_euclidean
 
 
 class _StackedStarMixin:
     """Star operation for stacks whose base supports it."""
 
+    if TYPE_CHECKING:
+        # Provided by the StackedSpace host this mixin is combined with.
+        @property
+        def base(self) -> Space: ...
+        @property
+        def ops(self) -> BackendOps: ...
+
     def star(self, x: Any) -> Any:
         """Return the base-space star operation for each stacked copy."""
+        base = cast(StarSpace, self.base)
         try:
-            return self.base.star(x)
+            return base.star(x)
         except _STACKED_FALLBACK_ERRORS:
-            return self.ops.vmap(self.base.star, in_axes=0, out_axes=0)(x)
+            return self.ops.vmap(base.star, in_axes=0, out_axes=0)(x)
 
 
 class _StackedJordanMixin:
     """Jordan operations for stacks whose base supports them."""
 
+    if TYPE_CHECKING:
+        # Provided by the StackedSpace host this mixin is combined with.
+        @property
+        def base(self) -> Space: ...
+        @property
+        def ops(self) -> BackendOps: ...
+
     @checked_method(in_space="self", arg_positions=(0, 1))
     def jordan(self, x: Any, y: Any) -> Any:
         """Return the base-space Jordan product for each stacked copy."""
+        base = cast(JordanAlgebraSpace, self.base)
         try:
-            return self.base.jordan(x, y)
+            return base.jordan(x, y)
         except _STACKED_FALLBACK_ERRORS:
-            return self.ops.vmap(self.base.jordan, in_axes=(0, 0), out_axes=0)(x, y)
+            return self.ops.vmap(base.jordan, in_axes=(0, 0), out_axes=0)(x, y)
 
     def spectrum(self, x: Any) -> Any:
         """Return spectra for each leading-axis copy of the base space."""
+        base = cast(JordanAlgebraSpace, self.base)
         try:
-            return self.base.spectrum(x)
+            return base.spectrum(x)
         except _STACKED_FALLBACK_ERRORS:
-            return self.ops.vmap(self.base.spectrum, in_axes=0, out_axes=0)(x)
+            return self.ops.vmap(base.spectrum, in_axes=0, out_axes=0)(x)
 
     def spectral_decompose(self, x: Any) -> Any:
         """Return spectral decompositions for each leading-axis copy."""
+        base = cast(JordanAlgebraSpace, self.base)
         try:
-            return self.base.spectral_decompose(x)
+            return base.spectral_decompose(x)
         except _STACKED_FALLBACK_ERRORS:
-            return self.ops.vmap(self.base.spectral_decompose, in_axes=0, out_axes=0)(x)
+            return self.ops.vmap(base.spectral_decompose, in_axes=0, out_axes=0)(x)
 
     def from_spectrum(self, eigvals: Any, frame: Any) -> Any:
         """Reconstruct stacked elements from base spectral data."""
+        base = cast(JordanAlgebraSpace, self.base)
         try:
-            return self.base.from_spectrum(eigvals, frame)
+            return base.from_spectrum(eigvals, frame)
         except _STACKED_FALLBACK_ERRORS:
-            return self.ops.vmap(self.base.from_spectrum, in_axes=(0, 0), out_axes=0)(
+            return self.ops.vmap(base.from_spectrum, in_axes=(0, 0), out_axes=0)(
                 eigvals, frame
             )
 
     def spectral_apply(self, x: Any, f: Any) -> Any:
         """Apply the base-space spectral calculus to each stacked copy."""
+        base = cast(JordanAlgebraSpace, self.base)
         try:
-            return self.base.spectral_apply(x, f)
+            return base.spectral_apply(x, f)
         except _STACKED_FALLBACK_ERRORS:
-            return self.ops.vmap(lambda xi: self.base.spectral_apply(xi, f), in_axes=0, out_axes=0)(
+            return self.ops.vmap(lambda xi: base.spectral_apply(xi, f), in_axes=0, out_axes=0)(
                 x
             )
 

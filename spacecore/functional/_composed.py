@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from ._base import Functional
 from ._linear import InnerProductFunctional
@@ -46,7 +46,7 @@ def make_functional_composed(F: Functional, A: LinOp) -> Functional:
         return InnerProductFunctional(A.H.apply(F.representer), A.domain, A.ctx)
     if isinstance(F, LinOpQuadraticForm):
         Q = A.H @ F.Q @ A
-        linear = None if F.linear is None else F.linear.compose(A)
+        linear = None if F.linear is None else cast(Any, F.linear.compose(A))
         return LinOpQuadraticForm(Q, linear, F.a, A.ctx)
     return ComposedFunctional(F, A)
 

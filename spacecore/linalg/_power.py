@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, cast
 
 from ..backend import Context
 from ..functional import QuadraticForm
@@ -94,7 +94,7 @@ def _action_from_quadratic_form(q: QuadraticForm) -> _SelfAdjointAction:
     if callable(hess_quad):
 
         def rayleigh(x, y):
-            return q.ops.real(hess_quad(x, Hx=y))
+            return q.ops.real(cast(Any, hess_quad)(x, Hx=y))
     else:
 
         def rayleigh(x, y):
@@ -235,10 +235,10 @@ def power_iteration(
     else:
         raise TypeError(f"A must be a LinOp or QuadraticForm, got {type(A).__name__}.")
 
-    maxiter = check_maxiter(maxiter, action)
+    maxiter = check_maxiter(maxiter, cast(Any, action))
     check_interval(check_every)
 
-    x = default_initial_vector(action) if x0 is None else x0
+    x = default_initial_vector(cast(Any, action)) if x0 is None else x0
     action.domain.check_member(x)
     return PowerIterationResult(*_power_iteration_core(action, x, tol, maxiter))
 

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Sequence, Tuple
+from typing import Any, Sequence, Tuple, cast
 
 from ._base import TreeLinOp
 from .._base import LinOp, Domain
@@ -58,7 +58,7 @@ class StackedLinOp(TreeLinOp[Domain, TreeSpace]):
                 or not hasattr(op, "_A2H")
             ):
                 return None
-            mats.append(op._A2H)
+            mats.append(cast(Any, op)._A2H)
         return tuple(mats)
 
     def _check_layout(self) -> None:

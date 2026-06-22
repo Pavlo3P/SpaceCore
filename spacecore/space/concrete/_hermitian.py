@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Tuple, Callable
+from typing import Any, Tuple, Callable, cast
 
 from ..checks import HermitianCheck, SquareMatrixCheck
 from ..base import EuclideanJordanAlgebraSpace, StarSpace
@@ -138,7 +138,7 @@ class HermitianSpace(DenseCoordinateSpace, StarSpace, EuclideanJordanAlgebraSpac
     def psd_proj(self, x: DenseArray) -> DenseArray:
         """Project a Hermitian element onto the positive semidefinite cone."""
         evals, evecs = self.spectral_decompose(x)
-        evals = self.ops.maximum(evals, 0.0)
+        evals = self.ops.maximum(evals, cast(Any, 0.0))
         return self.eig_to_dense(evals, evecs)
 
     def eig_to_dense(self, evals: DenseArray, evecs: DenseArray) -> DenseArray:

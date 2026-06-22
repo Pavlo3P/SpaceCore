@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from typing import Any, Callable, Literal, Sequence, Tuple, Type
+from typing import Any, Callable, Literal, Sequence, Tuple, Type, cast
 
 import numpy as np
 
 from .._eager import EagerControlFlowMixin
 from .._family import BackendFamily
 from .._ops import BackendOps, LazyNamespace
-from ...types import DenseArray, DType, Index, SparseArray
+from ...types import ArrayLike, DenseArray, DType, Index, SparseArray
 
 
 class TorchOps(EagerControlFlowMixin, BackendOps):
@@ -54,7 +54,12 @@ class TorchOps(EagerControlFlowMixin, BackendOps):
         according to normal PyTorch rules.
     """
 
-    import torch
+    import torch as _torch
+
+    # Concrete library handle exposed as ``Any`` so the portable protocols
+    # (DenseArray/SparseArray) can be passed to typed PyTorch calls without a
+    # cast at every boundary; mirrors the base ``xp: ClassVar[Any]`` design.
+    torch: Any = _torch
 
     xp = LazyNamespace("array_api_compat.torch")
 
@@ -232,7 +237,7 @@ class TorchOps(EagerControlFlowMixin, BackendOps):
             sps = None
 
         if sps is not None and sps.issparse(x):
-            coo = x.tocoo()
+            coo = cast(Any, x).tocoo()
             indices = self.torch.as_tensor(
                 np.vstack((coo.row, coo.col)),
                 dtype=self.torch.int64,
@@ -241,7 +246,7 @@ class TorchOps(EagerControlFlowMixin, BackendOps):
             values = self.torch.as_tensor(coo.data, dtype=dtype, device=device)
             out = self.torch.sparse_coo_tensor(indices, values, coo.shape, device=device)
         else:
-            out = self.asarray(x, dtype=dtype, device=device).to_sparse_coo()
+            out = cast(Any, self.asarray(x, dtype=dtype, device=device)).to_sparse_coo()
 
         if format == "coo":
             return out.coalesce()
@@ -259,9 +264,11 @@ class TorchOps(EagerControlFlowMixin, BackendOps):
         device: Any | None = None,
         copy: bool | None = None,
         backend_kwargs: dict[str, Any] | None = None,
+        **extra_kwargs: Any,
     ) -> DenseArray:
         self._reject_complex_to_real(x, dtype, operation="asarray")
         kwargs = {} if backend_kwargs is None else dict(backend_kwargs)
+        kwargs.update(extra_kwargs)
         if device is not None:
             kwargs["device"] = device
         dtype = self.sanitize_dtype(dtype) if dtype is not None else None
@@ -279,13 +286,15 @@ class TorchOps(EagerControlFlowMixin, BackendOps):
         non_blocking: bool = False,
         memory_format: Any | None = None,
         backend_kwargs: dict[str, Any] | None = None,
+        **extra_kwargs: Any,
     ) -> DenseArray:
         if dtype is None:
             return x
         self._reject_complex_to_real(x, dtype, operation="astype")
         kwargs = {} if backend_kwargs is None else dict(backend_kwargs)
+        kwargs.update(extra_kwargs)
         kwargs.update(self._defined_kwargs(memory_format=memory_format))
-        return x.to(
+        return cast(Any, x).to(
             dtype=self.sanitize_dtype(dtype),
             non_blocking=non_blocking,
             copy=copy,
@@ -495,7 +504,7 @@ class TorchOps(EagerControlFlowMixin, BackendOps):
         *,
         driver: str | None = None,
         out: DenseArray | tuple[DenseArray, DenseArray, DenseArray] | None = None,
-    ) -> DenseArray | tuple[DenseArray, DenseArray, DenseArray]:
+    ) -> tuple[DenseArray, DenseArray, DenseArray]:
         kwargs = {} if backend_kwargs is None else dict(backend_kwargs)
         kwargs.update(self._defined_kwargs(driver=driver, out=out))
         return self.torch.linalg.svd(A, full_matrices=full_matrices, **kwargs)
@@ -553,15 +562,15 @@ class TorchOps(EagerControlFlowMixin, BackendOps):
         if return_sign:
             return result, sign
         if out is not None:
-            out.copy_(result)
+            cast(Any, out).copy_(result)
             return out
         return result
 
     def where(
         self,
         condition: DenseArray | bool,
-        x: DenseArray,
-        y: DenseArray,
+        x: ArrayLike,
+        y: ArrayLike,
         *,
         out: DenseArray | None = None,
     ) -> DenseArray:
@@ -585,9 +594,9 @@ class TorchOps(EagerControlFlowMixin, BackendOps):
 
     def _copy(self, x: DenseArray) -> DenseArray:
         """Return a PyTorch clone of ``x`` (mutation primitive for index ops)."""
-        return x.clone()
+        return cast(Any, x).clone()
 
-    def _scatter_add_inplace(self, y: DenseArray, index: Index, values: DenseArray) -> None:
+    def _scatter_add_inplace(self, y: DenseArray, index: Index, values: ArrayLike) -> None:
         """Add ``values`` into ``y`` at ``index`` in place.
 
         Unlike NumPy's ``add.at``, plain indexed assignment does not accumulate
@@ -633,4 +642,4 @@ class TorchOps(EagerControlFlowMixin, BackendOps):
             tensors before calling ``allclose``.
         """
         self._require_two_sparse(a, b, noun="sparse tensors")
-        return self.allclose(a.to_dense(), b.to_dense(), rtol=rtol, atol=atol)
+        return self.allclose(cast(Any, a).to_dense(), cast(Any, b).to_dense(), rtol=rtol, atol=atol)

@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from typing import Any, Sequence, Tuple, Literal, Type
+from typing import Any, Sequence, Tuple, Literal, Type, cast
 
 from .._family import BackendFamily
 from .._eager import EagerControlFlowMixin
 from .._ops import BackendOps
-from ...types import DenseArray, SparseArray, DType, Index
+from ...types import ArrayLike, DenseArray, SparseArray, DType, Index
 
 
 class NumpyOps(EagerControlFlowMixin, BackendOps):
@@ -50,9 +50,15 @@ class NumpyOps(EagerControlFlowMixin, BackendOps):
         documentation for each method.
     """
 
-    import numpy as np
-    import scipy as sp
+    import numpy as _np
+    import scipy as _sp
     import array_api_compat.numpy as xp
+
+    # Concrete library handles exposed as ``Any`` so the portable protocols
+    # can flow into typed NumPy/SciPy calls without per-boundary casts; mirrors
+    # the base ``xp: ClassVar[Any]`` design.
+    np: Any = _np
+    sp: Any = _sp
 
     _family = BackendFamily.numpy.value.lower()
     _allow_sparse = True
@@ -205,9 +211,9 @@ class NumpyOps(EagerControlFlowMixin, BackendOps):
 
     def _copy(self, x: DenseArray) -> DenseArray:
         """Return a NumPy copy of ``x`` (mutation primitive for index ops)."""
-        return x.copy()
+        return cast(Any, x).copy()
 
-    def _scatter_add_inplace(self, y: DenseArray, index: Index, values: DenseArray) -> None:
+    def _scatter_add_inplace(self, y: DenseArray, index: Index, values: ArrayLike) -> None:
         """Accumulate ``values`` into ``y`` at ``index`` via ``numpy.add.at``."""
         self.np.add.at(y, index, values)
 
@@ -250,19 +256,19 @@ class NumpyOps(EagerControlFlowMixin, BackendOps):
         """
         self._require_two_sparse(a, b)
 
-        a = a.tocsr()
-        b = b.tocsr()
+        a_csr = cast(Any, a).tocsr()
+        b_csr = cast(Any, b).tocsr()
 
-        if a.shape != b.shape:
+        if a_csr.shape != b_csr.shape:
             return False
 
-        diff = (a - b).tocsr()
+        diff = (a_csr - b_csr).tocsr()
 
         if diff.nnz == 0:
             return True
 
-        a_abs = abs(a).tocsr()
-        b_abs = abs(b).tocsr()
+        a_abs = abs(a_csr).tocsr()
+        b_abs = abs(b_csr).tocsr()
         scale = self.sp.sparse.csr_matrix.maximum(a_abs, b_abs)
 
         # tolerance_ij = atol + rtol * max(|a_ij|, |b_ij|)

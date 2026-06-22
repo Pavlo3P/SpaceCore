@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Callable, Optional, Sequence, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Optional, Sequence, Tuple
 
 from ..types import Carry, R, T, X, Y
 
@@ -19,6 +19,11 @@ class EagerControlFlowMixin:
     surface (``self.stack`` / ``self.asarray``), so leaf stacking works on every
     backend without referencing a backend-specific array namespace.
     """
+
+    if TYPE_CHECKING:
+        # Provided by the BackendOps host this mixin is combined with.
+        def stack(self, *args: Any, **kwargs: Any) -> Any: ...
+        def asarray(self, *args: Any, **kwargs: Any) -> Any: ...
 
     # -- pytree helpers ----------------------------------------------------
 

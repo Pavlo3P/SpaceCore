@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 import importlib
-from typing import Any, Sequence, Tuple, Callable, Optional, Type, ClassVar
+from typing import Any, Sequence, Tuple, Callable, Optional, Type, ClassVar, cast
 
 from ..types import DenseArray, SparseArray, DType, ArrayLike, Index, T, X, Y, R, Carry
 
@@ -97,7 +97,7 @@ class BackendOps(ABC):
         return self.is_dense(x) or self.is_sparse(x)
 
     @abstractmethod
-    def assparse(self, x: Any, dtype: DType | None = None) -> SparseArray:
+    def assparse(self, x: Any, *, dtype: DType | None = None) -> SparseArray:
         """Convert input to a backend sparse array."""
         ...
 
@@ -417,8 +417,8 @@ class BackendOps(ABC):
         self._reject_complex_to_real(x, dtype, operation="astype")
         dtype = self.sanitize_dtype(dtype)
         if hasattr(x, "astype"):
-            return x.astype(dtype, **backend_kwargs)
-        return x.to(dtype=dtype, **backend_kwargs)
+            return cast(Any, x).astype(dtype, **backend_kwargs)
+        return cast(Any, x).to(dtype=dtype, **backend_kwargs)
 
     def empty(self, shape: Tuple[int, ...], dtype: DType | None = None) -> DenseArray:
         """Create an uninitialized array (delegates to xp.empty)."""
@@ -594,7 +594,7 @@ class BackendOps(ABC):
                 return None
             shape = tuple(getattr(x, "shape", ()))
             axis = normalize_axis(int(axis), len(shape))
-            return int(shape[axis])
+            return int(cast(Any, shape[axis]))
 
         def tree_take(x: Any, axis: Any, i: int) -> Any:
             if axis is None:
@@ -604,7 +604,7 @@ class BackendOps(ABC):
                 return tuple(tree_take(xi, ai, i) for xi, ai in zip(x, axes))
             shape = tuple(getattr(x, "shape", ()))
             axis = normalize_axis(int(axis), len(shape))
-            index = [slice(None)] * len(shape)
+            index: list[Any] = [slice(None)] * len(shape)
             index[axis] = i
             return x[tuple(index)]
 

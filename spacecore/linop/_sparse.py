@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from functools import cached_property
 from math import prod
-from typing import Any
+from typing import Any, cast
 
 from ._base import LinOp
 from ._metric import _metric_is_hermitian_by_basis, _requires_euclidean_or_riesz
@@ -132,8 +132,8 @@ class SparseLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
         ):
             return _SparseMode.WEIGHTED_FUSED
         if (
-            self.domain.is_euclidean
-            and self.codomain.is_euclidean
+            cast(Any, self.domain).is_euclidean
+            and cast(Any, self.codomain).is_euclidean
             and self._dom_dense_array
             and self._cod_dense_array
         ):
@@ -147,14 +147,15 @@ class SparseLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
         if hasattr(A, "conj"):
             return A.conj()
         if hasattr(A, "conjugate"):
-            return A.conjugate()
+            return cast(Any, A).conjugate()
         if hasattr(A, "data") and hasattr(A, "indices"):
+            A_any = cast(Any, A)
             kwargs = {
                 "shape": A.shape,
                 "indices_sorted": getattr(A, "indices_sorted", False),
                 "unique_indices": getattr(A, "unique_indices", False),
             }
-            return type(A)((self.ops.conj(A.data), A.indices), **kwargs)
+            return cast(Any, type(A))((self.ops.conj(A_any.data), A_any.indices), **kwargs)
         raise TypeError(f"Cannot conjugate sparse array of type {type(A).__name__}.")
 
     @cached_property
@@ -209,11 +210,11 @@ class SparseLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
         Use :meth:`to_sparse` when sparse storage should be preserved.
         """
         if hasattr(self.A, "toarray"):
-            dense = self.A.toarray()
+            dense = cast(Any, self.A).toarray()
         elif hasattr(self.A, "todense"):
-            dense = self.A.todense()
+            dense = cast(Any, self.A).todense()
         elif hasattr(self.A, "to_dense"):
-            dense = self.A.to_dense()
+            dense = cast(Any, self.A).to_dense()
         else:
             dense = super().to_matrix()
         return self.ops.reshape(self.ctx.asarray(dense), (self._cod_size, self._dom_size))
@@ -240,7 +241,10 @@ class SparseLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
         """
         if self.dom != self.cod:
             return False
-        if not (self.domain.is_euclidean and self.codomain.is_euclidean):
+        if not (
+            cast(Any, self.domain).is_euclidean
+            and cast(Any, self.codomain).is_euclidean
+        ):
             return _metric_is_hermitian_by_basis(self)
         try:
             return bool(self.ops.allclose_sparse(self.A, self._AH))
@@ -269,9 +273,9 @@ class SparseLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
         new_A = new_ctx.assparse(self.A)
         if new_ctx.ops.get_dtype(new_A) != new_ctx.dtype:
             if hasattr(new_A, "astype"):
-                new_A = new_A.astype(new_ctx.dtype)
+                new_A = cast(Any, new_A).astype(new_ctx.dtype)
             elif hasattr(new_A, "to"):
-                new_A = new_A.to(dtype=new_ctx.dtype)
+                new_A = cast(Any, new_A).to(dtype=new_ctx.dtype)
             else:
                 new_A = new_ctx.assparse(self.to_matrix())
         return SparseLinOp(new_A, new_dom, new_cod, new_ctx)

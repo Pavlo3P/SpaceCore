@@ -4,7 +4,7 @@ from math import prod
 from typing import Any, Tuple
 
 from ..base import CoordinateSpace, EuclideanInnerProduct, InnerProduct, InnerProductSpace
-from ..checks import BackendCheck, DTypeCheck, FieldCheck, ShapeCheck
+from ..checks import BackendCheck, DTypeCheck, FieldCheck, ShapeCheck, SpaceCheck
 from ..._checks import checked_method
 from ...backend import Context
 from ...types import DenseArray
@@ -46,7 +46,7 @@ class DenseCoordinateSpace(CoordinateSpace, InnerProductSpace):
             )
         return False
 
-    def _local_checks(self):
+    def _local_checks(self) -> tuple[SpaceCheck, ...]:
         """Return membership checks local to dense coordinate spaces."""
         return BackendCheck(), ShapeCheck(), FieldCheck(), DTypeCheck()
 

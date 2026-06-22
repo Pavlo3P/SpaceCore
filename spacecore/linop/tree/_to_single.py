@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Sequence, Tuple
+from typing import Any, Sequence, Tuple, cast
 
 from ._base import TreeLinOp
 from .._base import LinOp, Codomain
@@ -58,7 +58,7 @@ class SumToSingleLinOp(TreeLinOp[TreeSpace, Codomain]):
                 or not hasattr(op, "_A2")
             ):
                 return None
-            mats.append(op._A2)
+            mats.append(cast(Any, op)._A2)
         return tuple(mats)
 
     def _check_layout(self) -> None:

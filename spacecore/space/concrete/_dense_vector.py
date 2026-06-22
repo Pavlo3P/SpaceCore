@@ -25,11 +25,11 @@ def _resolve_elementwise_geometry(
     require_mutually_exclusive(
         "geometry", geometry, "inner_product", inner_product, verb="Specify"
     )
-    return (
-        EuclideanInnerProduct()
-        if geometry is None and inner_product is None
-        else (inner_product if inner_product is not None else geometry)
-    )
+    if inner_product is not None:
+        return inner_product
+    if geometry is not None:
+        return geometry
+    return EuclideanInnerProduct()
 
 
 def _euclidean_elementwise_jordan_incompatibility(

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from functools import cached_property
 from math import prod
-from typing import Any
+from typing import Any, cast
 
 from ._base import Codomain, Domain, LinOp
 from .._checks import checked_method
@@ -77,7 +77,7 @@ class DenseLinOp(LinOp[Domain, Codomain]):
 
         if cod is None:
             cod_shape_len = len(A.shape) - len(dom.shape)
-            cod = DenseCoordinateSpace(A.shape[:cod_shape_len], ctx)
+            cod = cast(Codomain, DenseCoordinateSpace(tuple(A.shape[:cod_shape_len]), ctx))
 
         _requires_euclidean_or_riesz(dom, cod, "DenseLinOp")
 
@@ -129,7 +129,12 @@ class DenseLinOp(LinOp[Domain, Codomain]):
             and type(self.cod.geometry) is WeightedInnerProduct
         ):
             return _DenseMode.WEIGHTED_FUSED
-        if vector_dom and vector_cod and self.domain.is_euclidean and self.codomain.is_euclidean:
+        if (
+            vector_dom
+            and vector_cod
+            and cast(Any, self.domain).is_euclidean
+            and cast(Any, self.codomain).is_euclidean
+        ):
             if self._dom_is_flat and self._cod_is_flat:
                 return _DenseMode.EUCLIDEAN_FLAT
             return _DenseMode.EUCLIDEAN_TENSOR
@@ -200,7 +205,10 @@ class DenseLinOp(LinOp[Domain, Codomain]):
         """
         if self.dom != self.cod:
             return False
-        if not (self.domain.is_euclidean and self.codomain.is_euclidean):
+        if not (
+            cast(Any, self.domain).is_euclidean
+            and cast(Any, self.codomain).is_euclidean
+        ):
             return _metric_is_hermitian_by_basis(self)
         try:
             return bool(self.ops.allclose(self._A2, self._A2H))

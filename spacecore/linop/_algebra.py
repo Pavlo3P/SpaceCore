@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from math import prod
 from numbers import Number
-from typing import Any, Callable, Sequence
+from typing import Any, Callable, Sequence, cast
 
 from ._base import LinOp, Domain, Codomain
 from ._metric import _requires_euclidean_or_riesz, metric_rapply, metric_rvapply
@@ -10,7 +10,6 @@ from .._checks import checked_method
 from .._contextual import resolve_context_priority
 from .._contextual._bound import _same_math_context
 from ..backend import Context, jax_pytree_class
-from ..space import Space
 from ..kernels import core_kernels
 from ..kernels.core.algebra import (
     batched_zeros as _batched_zeros,
@@ -800,7 +799,7 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
         if not all(hasattr(space, "inner") for space in (self.domain, self.codomain)):
             return
 
-        def probe(space: Space) -> Any:
+        def probe(space: Any) -> Any:
             if hasattr(space, "ones"):
                 return space.ones()
             if hasattr(space, "unflatten") and hasattr(space, "shape"):
@@ -815,8 +814,8 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
             ahy = self.rapply_fn(y)
             self.codomain._check_member(ax)
             self.domain._check_member(ahy)
-            lhs = self.codomain.inner(ax, y)
-            rhs = self.domain.inner(x, ahy)
+            lhs = cast(Any, self.codomain).inner(ax, y)
+            rhs = cast(Any, self.domain).inner(x, ahy)
             consistent = bool(self.ops.allclose(lhs, rhs))
         except Exception as exc:
             raise ValueError(
@@ -904,10 +903,10 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
         def wrapped_rapply(y: Any) -> Any:
             return metric_rapply(dom, cod, coordinate_rapply, y)
 
-        wrapped_rvapply = None
+        wrapped_rvapply: Callable[[Any], Any] | None = None
         if coordinate_rvapply is not None:
 
-            def wrapped_rvapply(ys: Any) -> Any:
+            def _wrapped_rvapply(ys: Any) -> Any:
                 return metric_rvapply(
                     dom,
                     cod,
@@ -917,6 +916,8 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
                     opname="MatrixFreeLinOp.from_coordinate_adjoint",
                     ops=resolved_ctx.ops,
                 )
+
+            wrapped_rvapply = _wrapped_rvapply
 
         return cls(apply, wrapped_rapply, dom, cod, resolved_ctx, vapply, wrapped_rvapply)
 

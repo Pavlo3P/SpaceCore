@@ -2,17 +2,17 @@ from __future__ import annotations
 
 from functools import cached_property
 from math import prod
-from typing import Any
+from typing import Any, cast
 
 from ._base import LinOp
 from ._metric import _metric_is_hermitian_by_basis, _requires_euclidean_or_riesz
 from .._checks import checked_method
 from ..backend import Context, jax_pytree_class
 from ..space import (
+    CoordinateSpace,
     DenseCoordinateSpace,
     DenseVectorSpace,
     ElementwiseJordanSpace,
-    Space,
     WeightedInnerProduct,
 )
 from ..types import DenseArray
@@ -23,7 +23,7 @@ from ..kernels.core.diagonal import _DiagonalMode
 
 @core_kernels("diagonal")
 @jax_pytree_class
-class DiagonalLinOp(LinOp[Space, Space]):
+class DiagonalLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
     r"""
     Represent a coordinatewise diagonal linear operator.
 
@@ -61,7 +61,7 @@ class DiagonalLinOp(LinOp[Space, Space]):
     def __init__(
         self,
         diagonal: DenseArray,
-        space: Space | None = None,
+        space: CoordinateSpace | None = None,
         ctx: Context | str | None = None,
     ) -> None:
         ctx = resolve_context_priority(ctx, space)
@@ -88,11 +88,11 @@ class DiagonalLinOp(LinOp[Space, Space]):
         """Select the diagonal computation mode once for this operator."""
         if (
             type(self.domain) in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace)
-        ) and self.domain.is_euclidean:
+        ) and cast(Any, self.domain).is_euclidean:
             return _DiagonalMode.EUCLIDEAN
         if (
             type(self.domain) in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace)
-        ) and type(self.domain.geometry) is WeightedInnerProduct:
+        ) and type(cast(Any, self.domain).geometry) is WeightedInnerProduct:
             return _DiagonalMode.WEIGHTED_FUSED
         return _DiagonalMode.GENERAL_METRIC
 
@@ -140,7 +140,7 @@ class DiagonalLinOp(LinOp[Space, Space]):
             ``True`` or ``False`` when the structure can be checked, otherwise
             ``None``.
         """
-        if not self.domain.is_euclidean:
+        if not cast(Any, self.domain).is_euclidean:
             return _metric_is_hermitian_by_basis(self)
         try:
             return bool(self.ops.allclose(self.diagonal, self._diag_adjoint))

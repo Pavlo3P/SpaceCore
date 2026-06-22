@@ -22,15 +22,15 @@ from ._policies import (
 try:
     from ..backend.jax import JaxOps
 except ImportError:
-    pass
+    JaxOps = None
 try:
     from ..backend.cupy import CuPyOps
 except ImportError:
-    pass
+    CuPyOps = None
 try:
     from ..backend.torch import TorchOps
 except ImportError:
-    pass
+    TorchOps = None
 
 if TYPE_CHECKING:
     from ..backend._context import Context
@@ -62,11 +62,11 @@ class Contextual:
         self._available_ops = {
             self._backend_key(NumpyOps): NumpyOps,
         }
-        if "JaxOps" in globals():
+        if JaxOps is not None:
             self._available_ops[self._backend_key(JaxOps)] = JaxOps
-        if "CuPyOps" in globals():
+        if CuPyOps is not None:
             self._available_ops[self._backend_key(CuPyOps)] = CuPyOps
-        if "TorchOps" in globals():
+        if TorchOps is not None:
             self._available_ops[self._backend_key(TorchOps)] = TorchOps
 
     def normalize_context(
