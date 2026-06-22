@@ -109,6 +109,16 @@ class StackedSpace(CoordinateSpace):
             return self.ctx == other.ctx and self.count == other.count and self.base == other.base
         return False
 
+    def _repr_class_name(self) -> str:
+        """Present the public ``StackedSpace`` label, not the private dispatch subclass."""
+        return "StackedSpace"
+
+    def _space_descriptor(self) -> str:
+        """Return ``count×<base descriptor>`` (e.g. ``8×ℝ^3``)."""
+        from ..._repr import describe_space
+
+        return f"{self.count}×{describe_space(self.base)}"
+
     def _local_checks(self):
         """Return membership checks local to stacked dense coordinate spaces."""
         return BackendCheck(), ShapeCheck(), FieldCheck(), DTypeCheck()

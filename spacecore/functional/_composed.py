@@ -96,6 +96,9 @@ class ComposedFunctional(Functional):
             return self.F == other.F and self.A == other.A
         return False
 
+    def _repr_body(self) -> str:
+        return f"{self.F._short_repr()} ∘ {self.A._short_repr()}"
+
     def tree_flatten(self):
         """Flatten this functional for pytree registration."""
         children = (self.F, self.A)

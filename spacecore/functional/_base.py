@@ -13,6 +13,7 @@ from .._batching import (  # noqa: F401
     _check_scalar_shape,
 )
 from .._checks import checked_method
+from .._repr import describe_space, field_symbol
 from .._contextual import ContextBound
 from ..backend import Context
 from ..space import CoordinateSpace
@@ -123,6 +124,21 @@ class Functional(ContextBound, Generic[Domain]):
     def assert_domain(self, x: Any) -> None:
         """Raise if ``x`` is not in the domain."""
         self.dom.check_member(x)
+
+    def _arrow(self) -> str:
+        """Return the ``domain → scalar-field`` descriptor for this functional."""
+        try:
+            codomain = field_symbol(self.dom.field)
+        except Exception:
+            codomain = "?"
+        return f"{describe_space(self.dom)} → {codomain}"
+
+    def _repr_body(self) -> str:
+        return self._arrow()
+
+    def _short_repr(self) -> str:
+        """Return a bounded ``ClassName(domain → field)`` form for nesting."""
+        return f"{type(self).__name__}({self._arrow()})"
 
     @abstractmethod
     def tree_flatten(self) -> tuple[tuple[Any, ...], Any]:

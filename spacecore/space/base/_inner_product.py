@@ -42,6 +42,9 @@ class EuclideanInnerProduct(InnerProduct):
     def __eq__(self, other):
         return type(other) is type(self)
 
+    def __repr__(self) -> str:
+        return "EuclideanInnerProduct()"
+
     def inner(self, ops, x, y):
         return ops.vdot(x, y)
 
@@ -71,6 +74,11 @@ class WeightedInnerProduct(InnerProduct):
             return bool(_np.allclose(_np.asarray(self.weights), _np.asarray(other.weights)))
         except Exception:
             return False
+
+    def __repr__(self) -> str:
+        from ..._repr import summarize_value
+
+        return f"WeightedInnerProduct(weights={summarize_value(self.weights)})"
 
     def inner(self, ops, x, y):
         return ops.vdot(x, self.weights * y)

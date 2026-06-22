@@ -256,6 +256,30 @@ class SparseLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
             return self.dom == x.dom and self.cod == x.cod and self.ops.allclose_sparse(self.A, x.A)
         return False
 
+    def _repr_body(self) -> str:
+        """Lead with the arrow; add the (cheap) stored non-zero count when known."""
+        nnz = self._stored_nnz()
+        return self._arrow() if nnz is None else f"{self._arrow()}, nnz={nnz}"
+
+    def _stored_nnz(self) -> int | None:
+        """Return the stored non-zero count across backends, or ``None``.
+
+        Tries the common spellings: ``nnz`` (scipy/cupy), ``nse`` (jax BCOO),
+        and ``_nnz()`` (torch). Returns ``None`` when none is cheaply available.
+        """
+        A = self._A
+        for attr in ("nnz", "nse"):
+            value = getattr(A, attr, None)
+            if isinstance(value, int):
+                return value
+        method = getattr(A, "_nnz", None)
+        if callable(method):
+            try:
+                return int(cast(Any, method()))
+            except Exception:
+                return None
+        return None
+
     def tree_flatten(self):
         aux = (self.dom, self.cod, self.ctx)
         children = (self.A,)

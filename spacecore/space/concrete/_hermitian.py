@@ -73,6 +73,10 @@ class HermitianSpace(DenseCoordinateSpace, StarSpace, EuclideanJordanAlgebraSpac
             )
         return False
 
+    def _space_descriptor(self) -> str:
+        """Return ``Herm(n)``; the real/complex field shows in the dtype tag."""
+        return f"Herm({self.n})"
+
     @property
     def n(self) -> int:
         """Matrix dimension of this Hermitian space."""

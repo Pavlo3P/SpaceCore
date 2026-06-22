@@ -46,6 +46,16 @@ class DenseCoordinateSpace(CoordinateSpace, InnerProductSpace):
             )
         return False
 
+    def _space_descriptor(self) -> str:
+        """Append a ``[weighted]`` marker for non-Euclidean geometry.
+
+        Folding the marker into the descriptor (rather than the repr body) keeps
+        the geometry visible even when the space is nested inside a stacked or
+        tree space's descriptor.
+        """
+        base = super()._space_descriptor()
+        return base if self.is_euclidean else f"{base}[weighted]"
+
     def _local_checks(self) -> tuple[SpaceCheck, ...]:
         """Return membership checks local to dense coordinate spaces."""
         return BackendCheck(), ShapeCheck(), FieldCheck(), DTypeCheck()

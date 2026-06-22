@@ -9,6 +9,7 @@ from ._metric import _requires_euclidean_or_riesz, metric_rapply, metric_rvapply
 from .._checks import checked_method
 from .._contextual import resolve_context_priority
 from .._contextual._bound import _same_math_context
+from .._repr import summarize_value
 from ..backend import Context, jax_pytree_class
 from ..kernels import core_kernels
 from ..kernels.core.algebra import (
@@ -285,6 +286,9 @@ class ScaledLinOp(LinOp[Domain, Codomain]):
             return self.scalar == other.scalar and self.op == other.op
         return False
 
+    def _repr_body(self) -> str:
+        return f"{summarize_value(self.scalar)} · {self.op._short_repr()}"
+
     def tree_flatten(self):
         """Flatten this operator for pytree registration."""
         children = (self.scalar, self.op)
@@ -383,6 +387,11 @@ class SumLinOp(LinOp[Domain, Codomain]):
             return self.ops_tuple == other.ops_tuple
         return False
 
+    def _repr_body(self) -> str:
+        from .._repr import truncated_join
+
+        return truncated_join((op._short_repr() for op in self.ops_tuple), " + ")
+
     def tree_flatten(self):
         """Flatten this operator for pytree registration."""
         children = self.ops_tuple
@@ -471,6 +480,9 @@ class ComposedLinOp(LinOp[Domain, Codomain]):
         if type(other) is type(self):
             return self.left == other.left and self.right == other.right
         return False
+
+    def _repr_body(self) -> str:
+        return f"{self.left._short_repr()} ∘ {self.right._short_repr()}"
 
     def tree_flatten(self):
         """Flatten this operator for pytree registration."""
@@ -657,6 +669,11 @@ class IdentityLinOp(LinOp[Domain, Domain]):
         if type(other) is type(self):
             return self.domain == other.domain
         return False
+
+    def _repr_body(self) -> str:
+        from .._repr import describe_space
+
+        return describe_space(self.domain)
 
     def tree_flatten(self):
         """Flatten this operator for pytree registration."""
@@ -1105,6 +1122,13 @@ class _AdjointViewLinOp(LinOp[Codomain, Domain]):
         if type(other) is type(self):
             return self.op == other.op
         return False
+
+    def _repr_class_name(self) -> str:
+        """Present a clean public label for the private adjoint-view class."""
+        return "AdjointLinOp"
+
+    def _repr_body(self) -> str:
+        return f"{self.op._short_repr()}.H"
 
     def tree_flatten(self):
         children = (self.op,)

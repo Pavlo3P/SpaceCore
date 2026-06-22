@@ -172,6 +172,12 @@ class TreeElement:
         """Reconstruct the Python tree value represented by this element."""
         return self.space.unflatten_tree(self.leaves)
 
+    def __repr__(self) -> str:
+        """Summarize leaves rather than dumping their full array contents."""
+        from ..._repr import summarize_value
+
+        return f"TreeElement({self.space._short_repr()}, leaves={summarize_value(self.leaves)})"
+
     def tree_flatten(self):
         """Expose element leaves as JAX pytree children."""
         return self.leaves, self.space
@@ -426,6 +432,20 @@ class TreeSpace(CoordinateSpace):
     def arity(self) -> int:
         """Return the number of ordered leaves."""
         return len(self.leaf_spaces)
+
+    def _repr_class_name(self) -> str:
+        """Present the public ``TreeSpace`` label, not the private dispatch subclass."""
+        return "TreeSpace"
+
+    def _space_descriptor(self) -> str:
+        """Return ``Tree(<leaf descriptors>)``, abbreviating wide trees."""
+        from ..._repr import describe_space
+
+        leaves = self.leaf_spaces
+        shown = [describe_space(leaf) for leaf in leaves[:4]]
+        if len(leaves) > 4:
+            shown.append(f"…(+{len(leaves) - 4})")
+        return f"Tree({', '.join(shown)})"
 
     def _local_checks(self):
         return _TreeStructureCheck("tree_structure"), _TreeLeafCheck("tree_leaves")
@@ -704,6 +724,15 @@ class TreeSpectralDecomposition:
 
     eigvals: tuple[Any, ...]
     frames: tuple[Any, ...]
+
+    def __repr__(self) -> str:
+        """Summarize spectral arrays rather than dumping their full contents."""
+        from ..._repr import summarize_value
+
+        return (
+            f"TreeSpectralDecomposition(eigvals={summarize_value(self.eigvals)}, "
+            f"frames={summarize_value(self.frames)})"
+        )
 
     def tree_flatten(self):
         """Flatten spectral data for JAX pytree registration."""

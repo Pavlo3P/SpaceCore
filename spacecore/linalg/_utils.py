@@ -4,6 +4,7 @@ from math import prod
 from typing import Any
 
 from ..linop import LinOp
+from .._repr import summarize_value
 
 DEFAULT_CONVERGENCE_CHECK_INTERVAL = 64
 
@@ -202,30 +203,6 @@ def default_initial_vector(A: LinOp) -> Any:
     v = A.domain.unflatten(flat)
     norm = A.domain.norm(v)
     return A.domain.scale(safe_inverse_nonneg(A.ops, norm), v)
-
-
-def summarize_value(value: Any) -> str:
-    """Return a compact representation for arrays, scalars, and pytrees."""
-    shape = getattr(value, "shape", None)
-    dtype = getattr(value, "dtype", None)
-    if shape is not None:
-        shape_text = tuple(shape)
-        if shape_text == ():
-            dtype_text = str(dtype)
-            if dtype_text in {"bool", "bool_", "torch.bool"}:
-                try:
-                    return repr(bool(value))
-                except Exception:
-                    return repr(value)
-            try:
-                return f"{float(value):.6g}"
-            except Exception:
-                return repr(value)
-        dtype_text = "" if dtype is None else f", dtype={dtype}"
-        return f"<array shape={shape_text}{dtype_text}>"
-    if isinstance(value, tuple):
-        return "(" + ", ".join(summarize_value(part) for part in value) + ")"
-    return repr(value)
 
 
 def result_repr(name: str, fields: dict[str, Any]) -> str:

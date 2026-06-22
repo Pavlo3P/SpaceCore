@@ -4,6 +4,7 @@ from abc import ABC
 from typing import TYPE_CHECKING, Any, Self
 
 from .._check_policy import CheckLevel, check_level_at_least, level_to_enabled
+from .._repr import format_dtype
 from ..types import DType
 from ._state import enforce_convert_policy, normalize_context, resolve_context_priority
 
@@ -109,6 +110,41 @@ class ContextBound(ABC):
         the validated value); otherwise it returns ``x`` unchanged.
         """
         return self.ctx.assert_dense(x) if self._checks_at_least("cheap") else x
+
+    def _backend_tag(self) -> str:
+        """Return the terse backend half of a repr (``backend='numpy', dtype=float64``)."""
+        return f"backend={self.ops.family!r}, dtype={format_dtype(self.dtype)}"
+
+    def _repr_class_name(self) -> str:
+        """Return the class label shown in reprs.
+
+        Defaults to the runtime class name. Containers whose public constructor
+        dispatches to private capability subclasses (e.g. ``StackedSpace`` ->
+        ``_StackedInnerProductStarSpace``) override this to present the importable
+        public name instead of the internal one.
+        """
+        return type(self).__name__
+
+    def _repr_body(self) -> str:
+        """Return the algebraic half of a repr. Override per class.
+
+        The base returns an empty string, so a plain context-bound object shows
+        only its backend tag. Subclasses return a compact math descriptor (a
+        space shape, a domain/codomain arrow, an operand expression).
+        """
+        return ""
+
+    def _short_repr(self) -> str:
+        """Return a compact, backend-free repr for nesting inside other reprs."""
+        body = self._repr_body()
+        name = self._repr_class_name()
+        return f"{name}({body})" if body else name
+
+    def __repr__(self) -> str:
+        body = self._repr_body()
+        tag = self._backend_tag()
+        inner = f"{body}, {tag}" if body else tag
+        return f"{self._repr_class_name()}({inner})"
 
     def _convert(self, new_ctx: Context) -> Self:
         """Rebuild this object in ``new_ctx``."""

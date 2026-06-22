@@ -4,6 +4,7 @@ from typing import Any, ClassVar, Literal
 
 from ..._check_policy import CheckLevel, check_level_at_least, normalize_check_level
 from ..._contextual import ContextBound
+from ..._repr import field_symbol
 from ...backend import Context
 from ..checks import SpaceCheck, SpaceValidationError, _run_checks
 
@@ -43,6 +44,24 @@ class Space(ContextBound):
         if type(self) is type(other):
             return self.ctx == other.ctx
         return False
+
+    def _field_symbol(self) -> str:
+        """Return the scalar-field glyph (``ℝ``/``ℂ``) for this space."""
+        try:
+            return field_symbol(self.field)
+        except Exception:
+            return "?"
+
+    def _space_descriptor(self) -> str:
+        """Return a compact math descriptor used in reprs and operator arrows.
+
+        The base descriptor is just the scalar-field glyph; coordinate,
+        Hermitian, stacked, and tree spaces refine it with shape/structure.
+        """
+        return self._field_symbol()
+
+    def _repr_body(self) -> str:
+        return self._space_descriptor()
 
     def member_checks(self) -> tuple[SpaceCheck, ...]:
         """Return every ``SpaceCheck`` this instance must satisfy.

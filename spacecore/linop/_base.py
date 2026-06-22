@@ -9,6 +9,7 @@ from typing import Any, Generic, Self, TypeVar
 
 from .._batching import _leading_batch_size, _warn_vmap_fallback_once
 from .._checks import checked_method
+from .._repr import describe_space
 from ..space import CoordinateSpace
 from ..backend import Context
 from .._contextual import ContextBound
@@ -304,6 +305,21 @@ class LinOp(ContextBound, Generic[Domain, Codomain]):
     def __eq__(self, other: Any) -> bool:
         """Return structural equality when implemented by a subclass."""
         return NotImplemented
+
+    def _arrow(self) -> str:
+        """Return the ``domain → codomain`` descriptor for this operator."""
+        return f"{describe_space(self.dom)} → {describe_space(self.cod)}"
+
+    def _repr_body(self) -> str:
+        return self._arrow()
+
+    def _short_repr(self) -> str:
+        """Return a bounded ``ClassName(domain → codomain)`` form for nesting.
+
+        Algebra operators show their operands in the full :meth:`__repr__` but
+        collapse to this arrow form when nested, so deep trees never explode.
+        """
+        return f"{type(self).__name__}({self._arrow()})"
 
     @abstractmethod
     def tree_flatten(self) -> tuple[tuple[Any, ...], Any]:
