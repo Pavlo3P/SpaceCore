@@ -6,10 +6,11 @@ should treat as next work rather than current contract.
 
 ## Now
 
-SpaceCore is preparing a `0.3.2` contributor-infrastructure release. Current
-work is focused on architecture ADRs, contributor documentation, GitHub
-templates and labels, `0.4.0` issue decomposition, the matrix-free `LinOp`
-adjoint-contract fix, and documentation of the current batching model.
+SpaceCore has implemented the `0.4.0` structural work recorded in the phase
+notes below. The active focus is the post-`0.4.0` interim line described under
+**Next**: turning three recorded design decisions — optimized-kernel dispatch
+(ADR-016), external optimizer adapters (ADR-018), and the everyday toolbox
+(ADR-019) — into code before the `0.5.0` ergonomics release.
 
 The `0.4.0` Phase B check-policy implementation is complete. Public contexts
 use `check_level` with `none`, `cheap`, `standard`, and `strict`; deprecated
@@ -47,8 +48,12 @@ Milestone tracking: [0.3.2 milestone placeholder](https://github.com/Pavlo3P/Spa
 
 ## Open questions
 
-- Dispatch architecture.
-- Tensor-product spaces.
+- Dispatch architecture is now designed in ADR-016 (broader structural dispatch
+  over the benchmarked-spec layer, Proposed) and slated for the interim line.
+  Remaining open: the per-backend memory-budget source, and whether build-time
+  materialization may ever be auto-triggered or stays explicit opt-in.
+- Tensor-product spaces: the direct-vs-tensor boundary is settled in ADR-017
+  (Deferred); implementation is slated for `0.5.0`.
 - Mixed precision: which operations may combine precisions without explicit conversion?
 - Solver workspaces: when should vector workspaces follow operand dtype rather than context dtype?
 - Backend promotion: which NumPy, JAX, Torch, and CuPy promotion differences are contractual?
@@ -71,7 +76,20 @@ already defines the desired work or a maintainer has agreed on the design.
 
 ## Next
 
-`0.4.0` is tentatively focused on test infrastructure: reusable generators for
-spaces, LinOps, functionals, and linalg; backend conformance; batching
-conformance; check-policy migration; dtype/field Stage 1; and block and
-tree-structured testing.
+Between `0.4.0` and `0.5.0`, an interim line implements three recorded design
+decisions. Each ADR moves from Proposed to Accepted before its implementation
+lands:
+
+- **ADR-016 — optimized-kernel dispatch.** Implement the broader structural-
+  dispatch system over the benchmarked-spec layer: `dispatch_key`/`priority` on
+  `KernelSpec`, the registry index, the dispatcher with its `dispatch_mode`
+  (`off`/`on`/`verify`) and shape-only cost/memory gate, then rewire the approved
+  hot call sites. Each activated kernel keeps a `rtol=atol=0` correctness
+  reference and a before/after benchmark probe.
+- **ADR-018 — external optimizer adapters.** SciPy/optax adapters taking a
+  `Functional`, with the metric→coordinate gradient handoff.
+- **ADR-019 — everyday toolbox.** Battery functionals and the closed-form
+  proximal/projection primitive.
+
+ADR-017 (tensor-product spaces) and ADR-020 (sets and projection) are left for
+`0.5.0`, alongside the ergonomics, identity, and dtype Stage 2 work.

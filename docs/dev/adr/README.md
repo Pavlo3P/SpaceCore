@@ -67,5 +67,8 @@ Rules contributors must preserve when touching this area.
 | [ADR-013](013_tree_structured_spaces.md) | `013_tree_structured_spaces` | Proposed | Planned tree-structured space direction. |
 | [ADR-014](014_check_policy.md) | `014_check_policy` | Proposed | Intended check levels for 0.4.0 test generation. |
 | [ADR-015](015_dtype_default_vs_scalar_field.md) | `015_dtype_default_vs_scalar_field` | Accepted | Dtype defaults and scalar-field contract. |
-| ADR-016 | `016_dispatch_architecture` | Reserved | Reserved for dispatch/fusion architecture before implementation. |
-| ADR-017 | `017_tensor_product_spaces` | Reserved | Reserved for tensor-product spaces and tensor/Kronecker LinOp design before implementation. |
+| [ADR-016](016_kernel_layers.md) | `016_kernel_layers` | Accepted | Two-layer kernel architecture (check-free cores + benchmarked specs); broader structural-dispatch policy proposed within, pending acceptance. |
+| [ADR-017](017_tensor_product_spaces.md) | `017_tensor_product_spaces` | Deferred | Direct-product vs tensor-product boundary settled; tensor-product implementation demand-gated. |
+| [ADR-018](018_external_optimizer_adapters.md) | `018_external_optimizer_adapters` | Proposed | SciPy/optax adapters taking a `Functional`, with metric→coordinate gradient handoff. |
+| [ADR-019](019_everyday_toolbox.md) | `019_everyday_toolbox` | Proposed | Battery functionals and a closed-form proximal/projection primitive. |
+| [ADR-020](020_sets_and_projection.md) | `020_sets_and_projection` | Proposed | `Set` abstraction owning an ambient space and a metric projector; typed `C` for indicators/projection. |
