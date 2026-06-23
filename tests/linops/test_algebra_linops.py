@@ -216,6 +216,85 @@ class TestComposedLinOp:
 
 
 # ===========================================================================
+# is_hermitian structural inference (ComposedLinOp / ScaledLinOp / SumLinOp)
+# ===========================================================================
+class TestAlgebraIsHermitian:
+    @pytest.fixture
+    def dense_A(self, numpy_ctx):
+        X = sc.DenseCoordinateSpace((3,), numpy_ctx)
+        M = numpy_ctx.asarray([[4.0, 1.0, 0.0], [1.0, 3.0, 1.0], [0.0, 1.0, 2.0]])
+        return sc.DenseLinOp(M, X, X, numpy_ctx), X
+
+    def test_gram_product_left_adjoint_is_true(self, dense_A):
+        """A.H @ A is a Gram product, self-adjoint in any geometry."""
+        A, _ = dense_A
+        assert (A.H @ A).is_hermitian() is True
+
+    def test_gram_product_right_adjoint_is_true(self, dense_A):
+        """A @ A.H is also a Gram product (L @ L.H)."""
+        A, _ = dense_A
+        assert (A @ A.H).is_hermitian() is True
+
+    def test_real_scaled_identity_is_true(self, dense_A):
+        _, X = dense_A
+        ctx = X.ctx
+        assert (2.5 * sc.IdentityLinOp(X, ctx)).is_hermitian() is True
+
+    def test_normal_operator_sum_is_true(self, dense_A):
+        """A.H @ A + lam * Identity with real lam is provably Hermitian."""
+        A, X = dense_A
+        ctx = X.ctx
+        B = A.H @ A + 0.5 * sc.IdentityLinOp(X, ctx)
+        assert B.is_hermitian() is True
+
+    def test_non_gram_composition_is_none(self, dense_A):
+        """A @ B with B != A.H is not cheaply decidable; never True/False."""
+        A, X = dense_A
+        ctx = X.ctx
+        B = sc.DenseLinOp(
+            ctx.asarray([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]]), X, X, ctx
+        )
+        assert (A @ B).is_hermitian() is None
+
+    def test_complex_scaled_hermitian_is_none(self, numpy_complex_ctx):
+        """A non-real scalar breaks Hermiticity propagation, so the verdict is None."""
+        X = sc.DenseCoordinateSpace((3,), numpy_complex_ctx)
+        op = sc.ScaledLinOp(1j, sc.IdentityLinOp(X, numpy_complex_ctx))
+        assert op.is_hermitian() is None
+
+    def test_sum_with_unknown_part_is_none(self, dense_A):
+        """A SumLinOp containing a matrix-free (None) part is None."""
+        A, X = dense_A
+        ctx = X.ctx
+        M = ctx.asarray([[4.0, 1.0, 0.0], [1.0, 3.0, 1.0], [0.0, 1.0, 2.0]])
+        mf = sc.MatrixFreeLinOp(lambda x: M @ x, lambda y: M.T @ y, X, X, ctx)
+        assert mf.is_hermitian() is None
+        assert sc.SumLinOp((A.H @ A, mf)).is_hermitian() is None
+
+
+class TestWeightedSpaceIsHermitian:
+    @pytest.fixture
+    def weighted(self, numpy_ctx):
+        W = sc.DenseCoordinateSpace(
+            (3,), numpy_ctx, geometry=sc.WeightedInnerProduct(numpy_ctx.asarray([2.0, 5.0, 11.0]))
+        )
+        M = numpy_ctx.asarray([[6.0, 1.0, 0.5], [1.0, 5.0, -0.25], [0.5, -0.25, 4.0]])
+        return sc.DenseLinOp(M, W, W, numpy_ctx), W
+
+    def test_symmetric_matrix_on_weighted_space_is_false(self, weighted):
+        """A symmetric matrix is NOT self-adjoint under a weighted inner product."""
+        A, _ = weighted
+        assert A.is_hermitian() is False
+
+    def test_normal_operator_on_weighted_space_is_true(self, weighted):
+        """A.H @ A + lam * Identity is self-adjoint even in weighted geometry."""
+        A, W = weighted
+        ctx = W.ctx
+        B = A.H @ A + 0.5 * sc.IdentityLinOp(W, ctx)
+        assert B.is_hermitian() is True
+
+
+# ===========================================================================
 # MatrixFreeLinOp — supplied callables used verbatim
 # ===========================================================================
 class TestMatrixFreeLinOp:

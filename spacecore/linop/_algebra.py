@@ -280,6 +280,26 @@ class ScaledLinOp(LinOp[Domain, Codomain]):
         xs = self.op.rvapply(ys)
         return self.domain.scale_batch(_conjugate_scalar(self.scalar), xs)
 
+    def is_hermitian(self) -> bool | None:
+        """
+        Return whether this scaled operator is structurally Hermitian.
+
+        For a real scalar ``s`` the adjoint satisfies ``(s A)* = s A*``, so
+        ``s A`` is self-adjoint exactly when ``A`` is; the operand's verdict is
+        propagated faithfully. For a non-real scalar the relation becomes
+        ``(s A)* = conj(s) A* != s A`` in general, so Hermiticity cannot be
+        decided cheaply and ``None`` is returned.
+
+        Returns
+        -------
+        bool | None
+            ``self.op.is_hermitian()`` when ``self.scalar`` is real, otherwise
+            ``None`` for unknown.
+        """
+        if _conjugate_scalar(self.scalar) == self.scalar:
+            return self.op.is_hermitian()
+        return None
+
     def __eq__(self, other: Any) -> bool:
         """Return whether another scaled operator has the same scalar and operand."""
         if type(other) is type(self):
@@ -381,6 +401,25 @@ class SumLinOp(LinOp[Domain, Codomain]):
             acc = add_batch(acc, op.rvapply(ys))
         return acc
 
+    def is_hermitian(self) -> bool | None:
+        """
+        Return whether this lazy sum is structurally Hermitian.
+
+        The adjoint is additive, ``(A1 + ... + Ak)* = A1* + ... + Ak*``, so a
+        sum is self-adjoint when every term is. If all operands are provably
+        Hermitian this returns ``True``; otherwise the verdict is not cheaply
+        decidable (a sum of non-Hermitian terms may still be Hermitian) and
+        ``None`` is returned. ``False`` is never returned.
+
+        Returns
+        -------
+        bool | None
+            ``True`` when every part is provably Hermitian, otherwise ``None``.
+        """
+        if all(op.is_hermitian() is True for op in self.parts):
+            return True
+        return None
+
     def __eq__(self, other: Any) -> bool:
         """Return whether another sum has the same operands."""
         if type(other) is type(self):
@@ -474,6 +513,26 @@ class ComposedLinOp(LinOp[Domain, Codomain]):
     def rvapply(self, zs: Any) -> Any:
         """Return ``right.rvapply(left.rvapply(zs))``."""
         return self.right.rvapply(self.left.rvapply(zs))
+
+    def is_hermitian(self) -> bool | None:
+        """
+        Return whether this composition is structurally Hermitian.
+
+        A Gram product ``R* @ R`` (equivalently ``L @ L*``) is self-adjoint in
+        any geometry, since ``<R* R x, y> = <R x, R y> = <x, R* R y>``. This is
+        detected structurally when ``self.left == self.right.H`` (the adjoint
+        view compares its wrapped operand, so this also matches ``L @ L*``).
+        Any other composition is not cheaply decidable and returns ``None``;
+        non-Hermiticity is never asserted.
+
+        Returns
+        -------
+        bool | None
+            ``True`` for a Gram product, otherwise ``None``.
+        """
+        if self.left == self.right.H:
+            return True
+        return None
 
     def __eq__(self, other: Any) -> bool:
         """Return whether another composition has the same operands."""

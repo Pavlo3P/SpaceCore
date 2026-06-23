@@ -72,10 +72,14 @@ def cg(
     A : LinOp
         Linear operator that must be Hermitian positive-definite with respect
         to ``A.domain.inner``. ``A.domain`` must equal ``A.codomain``,
-        including the underlying space type and inner-product geometry.
-        Hermiticity and positive-definiteness are not validated by ``cg``;
-        indefinite or non-Hermitian operators can diverge or produce NaN
-        outputs without an explicit error.
+        including the underlying space type and inner-product geometry. An
+        operator that is *provably* non-self-adjoint in this geometry
+        (``A.is_hermitian() is False``) is rejected at entry with a
+        ``ValueError``. Operators whose Hermiticity is unknown
+        (``A.is_hermitian() is None``, e.g. matrix-free operators) are accepted
+        unchecked; positive-definiteness is likewise not validated, so
+        indefinite or otherwise unsuitable operators can still diverge or
+        produce NaN outputs without an explicit error.
     b : array-like
         Right-hand side in ``A.codomain``.
     x0 : array-like or None, optional
@@ -165,6 +169,18 @@ def cg(
     """
     A = require_linop(A)
     require_square(A, "cg")
+    if A.is_hermitian() is False:
+        raise ValueError(
+            "cg requires A to be Hermitian/self-adjoint with respect to "
+            "A.domain.inner, but A was determined to be provably "
+            "non-self-adjoint in this geometry. For example, a symmetric "
+            "matrix wrapped as a DenseLinOp on a weighted (non-Euclidean) "
+            "inner-product space is not self-adjoint under the weighted inner "
+            "product. Build a valid operator instead, e.g. a normal operator "
+            "A.H @ A + lam * Identity (which is self-adjoint in any geometry), "
+            "or use a Euclidean space where the symmetric matrix is "
+            "self-adjoint."
+        )
     require_strict_cg_preconditions(A)
     A.codomain.check_member(b)
     maxiter = check_maxiter(maxiter, A)

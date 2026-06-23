@@ -221,6 +221,49 @@ class TestRejections:
         with pytest.raises(ValueError, match="Hermitian"):
             sc.cg(A, ctx.asarray([1.0, 2.0]))
 
+    def test_rejects_provably_non_hermitian_on_weighted_space(self):
+        """A symmetric matrix on a weighted space is provably non-self-adjoint.
+
+        ``is_hermitian()`` is ``False`` here, so cg must reject it at entry even
+        at the default (non-strict) check level.
+        """
+        ctx = make_ctx()  # default check level, not strict
+        space = _weighted_space(ctx)
+        A = sc.DenseLinOp(_metric_spd_matrix(ctx), space, space, ctx)
+        # The metric SPD matrix used elsewhere is asymmetric; use a plainly
+        # symmetric matrix so that the only reason cg rejects it is the
+        # weighted geometry making it non-self-adjoint.
+        symmetric = ctx.asarray([[6.0, 1.0, 0.5], [1.0, 5.0, -0.25], [0.5, -0.25, 4.0]])
+        A = sc.DenseLinOp(symmetric, space, space, ctx)
+        assert A.is_hermitian() is False
+        with pytest.raises(ValueError, match="Hermitian"):
+            sc.cg(A, ctx.asarray([1.0, 2.0, 3.0]))
+
+    def test_normal_operator_on_weighted_space_runs_and_converges(self):
+        """B = A.H @ A + lam * Identity is provably Hermitian and cg solves it."""
+        ctx = make_ctx()
+        space = _weighted_space(ctx)
+        symmetric = ctx.asarray([[6.0, 1.0, 0.5], [1.0, 5.0, -0.25], [0.5, -0.25, 4.0]])
+        A = sc.DenseLinOp(symmetric, space, space, ctx)
+        B = A.H @ A + 0.5 * sc.IdentityLinOp(space, ctx)
+        assert B.is_hermitian() is True
+        b = ctx.asarray([1.0, 2.0, 3.0])
+        result = sc.cg(B, b, tol=1e-12, maxiter=50)
+        assert bool(result.converged)
+        residual = space.add(B.apply(result.x), space.scale(-1.0, b))
+        np.testing.assert_allclose(to_numpy(space.norm(residual)), 0.0, atol=1e-8)
+
+    def test_accepts_matrix_free_with_unknown_hermiticity(self):
+        """A matrix-free operator has is_hermitian() == None and is not rejected."""
+        ctx = make_ctx()
+        space = sc.DenseCoordinateSpace((3,), ctx)
+        matrix = ctx.asarray([[6.0, 1.0, 0.5], [1.0, 5.0, -0.25], [0.5, -0.25, 4.0]])
+        A = sc.MatrixFreeLinOp(lambda x: matrix @ x, lambda y: matrix.T @ y, space, space, ctx)
+        assert A.is_hermitian() is None
+        b = ctx.asarray([1.0, 2.0, 3.0])
+        result = sc.cg(A, b, tol=1e-12, maxiter=50)
+        assert bool(result.converged)
+
 
 # ===========================================================================
 # JAX jit

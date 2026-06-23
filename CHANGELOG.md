@@ -145,6 +145,22 @@ generators, and a full backend conformance matrix with deviation catalog.
 - Corrected the matrix-free adjoint contract so `MatrixFreeLinOp` and its
   adjoint view use user-supplied forward and reverse callables directly,
   without applying matrix-backed Riesz-map adjoint corrections.
+- `ComposedLinOp`, `ScaledLinOp`, and `SumLinOp` now implement structural
+  `is_hermitian()` inference. A Gram product `R.H @ R` (or `L @ L.H`) reports
+  `True` in any geometry, a real-scaled operator propagates its operand's
+  verdict, and a sum of provably-Hermitian terms reports `True`. The checks
+  are cheap, conservative, and never assert `False`, so the normal operator
+  `A.H @ A + lam * Identity` is now correctly recognized as self-adjoint
+  instead of reporting `None`.
+- `cg` now rejects an operator that is *provably* non-self-adjoint in its
+  geometry (`A.is_hermitian() is False`) at entry with a clear `ValueError`,
+  matching the guard already used by `power_iteration`, `lanczos_smallest`,
+  and `expm_multiply`. Previously, at the default check level, `cg` would
+  silently accept (for example) a symmetric matrix on a weighted
+  inner-product space — which is not self-adjoint under the weighted inner
+  product — and return a confusing `converged=False` result. Operators with
+  unknown Hermiticity (`is_hermitian() is None`, e.g. matrix-free) are still
+  accepted unchecked.
 
 ### Known limitations
 
