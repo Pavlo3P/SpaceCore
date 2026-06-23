@@ -149,9 +149,11 @@ class DiagonalLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
 
     def __eq__(self, other: Any) -> bool:
         """Return whether another diagonal operator has the same space and values."""
-        if type(other) is type(self):
-            return self.domain == other.domain and self.ops.allclose(self.diagonal, other.diagonal)
-        return False
+        if not self._eq_backend_compatible(other):                  # Tier 1: backend
+            return NotImplemented
+        if self.domain != other.domain:                             # Tier 2: space before allclose
+            return False
+        return bool(self.ops.allclose(self.diagonal, other.diagonal, equal_nan=True))  # Tier 3
 
     def tree_flatten(self):
         """Flatten this operator for pytree registration."""

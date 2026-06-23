@@ -267,6 +267,13 @@ class NumpyOps(EagerControlFlowMixin, BackendOps):
         if diff.nnz == 0:
             return True
 
+        # NaN differences are never "close": ``abs(NaN) > tol`` is False, which
+        # would otherwise mask a NaN-vs-finite (or NaN-vs-NaN) entry as equal and
+        # wrongly report two different operators as close. This matches the
+        # torch/cupy paths (dense ``allclose`` with ``equal_nan=False``).
+        if self.np.isnan(diff.data).any():
+            return False
+
         a_abs = abs(a_csr).tocsr()
         b_abs = abs(b_csr).tocsr()
         scale = self.sp.sparse.csr_matrix.maximum(a_abs, b_abs)

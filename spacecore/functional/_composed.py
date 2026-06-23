@@ -92,9 +92,9 @@ class ComposedFunctional(Functional):
 
     def __eq__(self, other: Any) -> bool:
         """Return whether another composed functional has the same operands."""
-        if type(other) is type(self):
-            return self.F == other.F and self.A == other.A
-        return False
+        if not self._eq_backend_compatible(other):              # Tier 1: backend
+            return NotImplemented
+        return self.F == other.F and self.A == other.A
 
     def _repr_body(self) -> str:
         return f"{self.F._short_repr()} ∘ {self.A._short_repr()}"

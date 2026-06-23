@@ -71,7 +71,16 @@ class WeightedInnerProduct(InnerProduct):
         if type(other) is not type(self):
             return False
         try:
-            return bool(_np.allclose(_np.asarray(self.weights), _np.asarray(other.weights)))
+            lhs = _np.asarray(self.weights)
+            rhs = _np.asarray(other.weights)
+        except Exception:
+            return False
+        # Structural before numerical: guard against allclose broadcasting two
+        # mismatched-shape weight vectors into a spurious True.
+        if lhs.shape != rhs.shape:
+            return False
+        try:
+            return bool(_np.allclose(lhs, rhs))
         except Exception:
             return False
 

@@ -103,11 +103,11 @@ class StackedSpace(CoordinateSpace):
         self.count = count
         super().__init__((self.count,) + tuple(self.base.shape), ctx)
 
-    def __eq__(self, other: Any) -> bool:
-        """Return whether another stacked space has the same base and count."""
-        if isinstance(other, StackedSpace):
-            return self.ctx == other.ctx and self.count == other.count and self.base == other.base
-        return False
+    def _eq_algebra(self, other: Any) -> bool:
+        # Tier 2: count + base. ``base == other.base`` is load-bearing — the
+        # __new__ capability dispatch can map different bases onto the same
+        # private subclass, so the type-identity gate alone is not sufficient.
+        return super()._eq_algebra(other) and self.count == other.count and self.base == other.base
 
     def _repr_class_name(self) -> str:
         """Present the public ``StackedSpace`` label, not the private dispatch subclass."""

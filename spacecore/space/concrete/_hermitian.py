@@ -63,15 +63,11 @@ class HermitianSpace(DenseCoordinateSpace, StarSpace, EuclideanJordanAlgebraSpac
         self.rtol = rtol
         self.enforce_herm = enforce_herm
 
-    def __eq__(self, other: Any) -> bool:
-        if isinstance(other, HermitianSpace):
-            return (
-                super(HermitianSpace, self).__eq__(other)
-                and self.atol == other.atol
-                and self.rtol == other.rtol
-                and self.enforce_herm == other.enforce_herm
-            )
-        return False
+    # Equality is inherited from DenseCoordinateSpace (backend gate + field +
+    # shape (= n) + fixed Frobenius geometry). The membership tolerances
+    # ``atol``/``rtol``/``enforce_herm`` are deliberately NOT part of identity:
+    # they are validation policy (like ``check_level``), not the mathematical
+    # space of n x n Hermitian matrices they describe.
 
     def _space_descriptor(self) -> str:
         """Return ``Herm(n)``; the real/complex field shows in the dtype tag."""

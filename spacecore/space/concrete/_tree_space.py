@@ -410,10 +410,10 @@ class TreeSpace(CoordinateSpace):
         """Build a tree space from an example Python tree value."""
         return cls(template, leaf_spaces, ctx=ctx, check_level=check_level)
 
-    def __eq__(self, other: Any) -> bool:
+    def _eq_algebra(self, other: Any) -> bool:
+        # Tier 2: tree structure (treedef) + ordered leaf spaces.
         return (
-            isinstance(other, TreeSpace)
-            and self.ctx == other.ctx
+            super()._eq_algebra(other)
             and self.treedef == other.treedef
             and self.leaf_spaces == other.leaf_spaces
         )

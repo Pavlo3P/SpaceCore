@@ -37,14 +37,14 @@ class DenseCoordinateSpace(CoordinateSpace, InnerProductSpace):
         self._size = prod(self.shape)
         self._is_flat_shape = self.shape == (self._size,)
 
-    def __eq__(self, other: Any) -> bool:
-        if type(self) is type(other):
-            return (
-                super().__eq__(other)
-                and type(self.geometry) is type(other.geometry)
-                and self.geometry == other.geometry
-            )
-        return False
+    def _eq_algebra(self, other: Any) -> bool:
+        # Tier 2: geometry kind (structural, also shields the geometry's own
+        # allclose). Tier 3: geometry value comparison (weights for weighted).
+        return (
+            super()._eq_algebra(other)
+            and type(self.geometry) is type(other.geometry)
+            and self.geometry == other.geometry
+        )
 
     def _space_descriptor(self) -> str:
         """Append a ``[weighted]`` marker for non-Euclidean geometry.

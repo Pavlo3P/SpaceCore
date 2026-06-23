@@ -251,10 +251,14 @@ class SparseLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
         except Exception:
             return None
 
-    def __eq__(self, x: Any) -> bool:
-        if type(x) is type(self):
-            return self.dom == x.dom and self.cod == x.cod and self.ops.allclose_sparse(self.A, x.A)
-        return False
+    def __eq__(self, other: Any) -> bool:
+        if not self._eq_backend_compatible(other):                  # Tier 1: backend
+            return NotImplemented
+        if self.dom != other.dom or self.cod != other.cod:          # Tier 2: spaces before allclose
+            return False
+        # Tier 3: sparse values. Note: allclose_sparse has no equal_nan, so a
+        # structural NaN compares unequal to itself (rare for sparse storage).
+        return bool(self.ops.allclose_sparse(self.A, other.A))
 
     def _repr_body(self) -> str:
         """Lead with the arrow; add the (cheap) stored non-zero count when known."""

@@ -126,12 +126,15 @@ class InnerProductFunctional(LinearFunctional[Domain]):
 
     def __eq__(self, other: Any) -> bool:
         """Return whether another inner-product functional has the same representer."""
-        if type(other) is type(self):
-            return self.domain == other.domain and self.ops.allclose(
-                self.domain.flatten(self._c),
-                other.domain.flatten(other._c),
-            )
-        return False
+        if not self._eq_backend_compatible(other):              # Tier 1: backend
+            return NotImplemented
+        if self.domain != other.domain:                         # Tier 2: domain before allclose
+            return False
+        return bool(self.ops.allclose(                          # Tier 3: representer
+            self.domain.flatten(self._c),
+            other.domain.flatten(other._c),
+            equal_nan=True,
+        ))
 
     def tree_flatten(self):
         """Flatten this functional for pytree registration."""
@@ -283,13 +286,12 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
 
     def __eq__(self, other: Any) -> bool:
         """Return whether another matrix-free functional uses the same callables."""
-        if type(other) is type(self):
-            return (
-                self.domain == other.domain
-                and self.value_fn is other.value_fn
-                and self.vvalue_fn is other.vvalue_fn
-            )
-        return False
+        if not self._eq_backend_compatible(other):              # Tier 1: backend
+            return NotImplemented
+        if self.domain != other.domain:                         # Tier 2: domain
+            return False
+        # Callable identity: extensional equality of callables is undecidable.
+        return self.value_fn is other.value_fn and self.vvalue_fn is other.vvalue_fn
 
     def tree_flatten(self):
         """Flatten this functional for pytree registration."""

@@ -215,11 +215,13 @@ class DenseLinOp(LinOp[Domain, Codomain]):
         except Exception:
             return None
 
-    def __eq__(self, x: Any) -> bool:
+    def __eq__(self, other: Any) -> bool:
         """Return whether another dense operator has the same spaces and values."""
-        if type(x) is type(self):
-            return self.dom == x.dom and self.cod == x.cod and self.ops.allclose(self.A, x.A)
-        return False
+        if not self._eq_backend_compatible(other):                  # Tier 1: backend
+            return NotImplemented
+        if self.dom != other.dom or self.cod != other.cod:          # Tier 2: spaces before allclose
+            return False
+        return bool(self.ops.allclose(self.A, other.A, equal_nan=True))  # Tier 3: values
 
     def tree_flatten(self):
         """Flatten this operator for pytree registration."""

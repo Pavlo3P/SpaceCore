@@ -31,6 +31,24 @@ def is_scalar_like(value: Any) -> bool:
     return ndim == 0
 
 
+def _scalar_eq(a: Any, b: Any) -> bool:
+    """Return whether two scalar-likes are equal, NaN-reflexive.
+
+    Mirrors the ``equal_nan=True`` used for array values: two matching NaN
+    scalars compare equal so a NaN-scaled operator equals itself. Always returns
+    a real Python ``bool`` (a 0-d backend-array ``==`` would otherwise yield
+    ``np.bool_``, which leaks through the ``and`` combinator of any container).
+    """
+    if bool(a == b):
+        return True
+    try:
+        # ``x != x`` is True only for NaN (including a complex value with a NaN
+        # component), so this branch matches NaN against NaN.
+        return bool(a != a) and bool(b != b)
+    except Exception:
+        return False
+
+
 def _require_same_context(ops: Sequence[LinOp]) -> Context:
     """Return the common context for algebra operands or raise."""
     ctx = ops[0].ctx
@@ -302,9 +320,12 @@ class ScaledLinOp(LinOp[Domain, Codomain]):
 
     def __eq__(self, other: Any) -> bool:
         """Return whether another scaled operator has the same scalar and operand."""
-        if type(other) is type(self):
-            return self.scalar == other.scalar and self.op == other.op
-        return False
+        if not self._eq_backend_compatible(other):          # Tier 1: backend
+            return NotImplemented
+        # NaN-reflexive, returns a real Python bool (no np.bool_ leak).
+        if not _scalar_eq(self.scalar, other.scalar):       # Tier 3: scalar value
+            return False
+        return self.op == other.op                          # operand (own gate)
 
     def _repr_body(self) -> str:
         return f"{summarize_value(self.scalar)} · {self.op._short_repr()}"
@@ -421,10 +442,14 @@ class SumLinOp(LinOp[Domain, Codomain]):
         return None
 
     def __eq__(self, other: Any) -> bool:
-        """Return whether another sum has the same operands."""
-        if type(other) is type(self):
-            return self.ops_tuple == other.ops_tuple
-        return False
+        """Return whether another sum has the same operands, in order."""
+        if not self._eq_backend_compatible(other):              # Tier 1: backend
+            return NotImplemented
+        if len(self.ops_tuple) != len(other.ops_tuple):         # Tier 2: operand count before zip
+            return False
+        # Ordered, structural: A + B != B + A. Commutative equivalence is a
+        # separate concern (a future equiv()), not __eq__.
+        return all(a == b for a, b in zip(self.ops_tuple, other.ops_tuple))
 
     def _repr_body(self) -> str:
         from .._repr import truncated_join
@@ -535,10 +560,10 @@ class ComposedLinOp(LinOp[Domain, Codomain]):
         return None
 
     def __eq__(self, other: Any) -> bool:
-        """Return whether another composition has the same operands."""
-        if type(other) is type(self):
-            return self.left == other.left and self.right == other.right
-        return False
+        """Return whether another composition has the same operands, in order."""
+        if not self._eq_backend_compatible(other):              # Tier 1: backend
+            return NotImplemented
+        return self.left == other.left and self.right == other.right
 
     def _repr_body(self) -> str:
         return f"{self.left._short_repr()} ∘ {self.right._short_repr()}"
@@ -635,9 +660,9 @@ class ZeroLinOp(LinOp[Domain, Codomain]):
 
     def __eq__(self, other: Any) -> bool:
         """Return whether another zero map has the same spaces."""
-        if type(other) is type(self):
-            return self.domain == other.domain and self.codomain == other.codomain
-        return False
+        if not self._eq_backend_compatible(other):              # Tier 1: backend
+            return NotImplemented
+        return self.domain == other.domain and self.codomain == other.codomain  # Tier 2
 
     def tree_flatten(self):
         """Flatten this operator for pytree registration."""
@@ -725,9 +750,9 @@ class IdentityLinOp(LinOp[Domain, Domain]):
 
     def __eq__(self, other: Any) -> bool:
         """Return whether another identity map has the same space."""
-        if type(other) is type(self):
-            return self.domain == other.domain
-        return False
+        if not self._eq_backend_compatible(other):              # Tier 1: backend
+            return NotImplemented
+        return self.domain == other.domain                      # Tier 2 (square: cod == dom)
 
     def _repr_body(self) -> str:
         from .._repr import describe_space
@@ -1072,16 +1097,18 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
         return self.rvapply_fn(ys)
 
     def __eq__(self, other: Any) -> bool:
-        if type(other) is type(self):
-            return (
-                self.domain == other.domain
-                and self.codomain == other.codomain
-                and self.apply_fn is other.apply_fn
-                and self.vapply_fn is other.vapply_fn
-                and self.rapply_fn is other.rapply_fn
-                and self.rvapply_fn is other.rvapply_fn
-            )
-        return False
+        if not self._eq_backend_compatible(other):              # Tier 1: backend
+            return NotImplemented
+        # Tier 2: spaces + callable identity. Extensional equality of callables
+        # is undecidable, so 'is' is the only sound comparison.
+        if self.domain != other.domain or self.codomain != other.codomain:
+            return False
+        return (
+            self.apply_fn is other.apply_fn
+            and self.vapply_fn is other.vapply_fn
+            and self.rapply_fn is other.rapply_fn
+            and self.rvapply_fn is other.rvapply_fn
+        )
 
     def tree_flatten(self):
         children = ()
@@ -1178,9 +1205,9 @@ class _AdjointViewLinOp(LinOp[Codomain, Domain]):
         return self.op
 
     def __eq__(self, other: Any) -> bool:
-        if type(other) is type(self):
-            return self.op == other.op
-        return False
+        if not self._eq_backend_compatible(other):              # Tier 1: backend
+            return NotImplemented
+        return self.op == other.op
 
     def _repr_class_name(self) -> str:
         """Present a clean public label for the private adjoint-view class."""

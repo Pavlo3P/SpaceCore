@@ -125,6 +125,15 @@ class Functional(ContextBound, Generic[Domain]):
         """Raise if ``x`` is not in the domain."""
         self.dom.check_member(x)
 
+    def __eq__(self, other: Any) -> bool:
+        """Return structural equality when implemented by a subclass.
+
+        Mirrors :class:`~spacecore.linop.LinOp`: the base provides no algebraic
+        equality and returns ``NotImplemented`` so Python tries the reflected
+        comparison and falls back to identity symmetrically.
+        """
+        return NotImplemented
+
     def _arrow(self) -> str:
         """Return the ``domain → scalar-field`` descriptor for this functional."""
         try:

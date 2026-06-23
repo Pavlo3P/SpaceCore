@@ -58,16 +58,25 @@ class TreeLinOp(LinOp[Domain, Codomain]):
         """Build a tree-structured operator from component operators."""
         ...
 
-    def __eq__(self, x: Any) -> bool:
+    def _endpoint_treedefs(self) -> tuple[Any, Any]:
+        """Return the tree definitions of the domain/codomain endpoints.
+
+        A single (non-tree) endpoint contributes ``None``. Used as an explicit
+        tree-structure guard in :meth:`__eq__`.
+        """
+        return (getattr(self.dom, "treedef", None), getattr(self.cod, "treedef", None))
+
+    def __eq__(self, other: Any) -> bool:
         """Return whether another tree operator has the same layout."""
-        if type(x) is type(self):
-            return (
-                self.dom == x.dom
-                and self.cod == x.cod
-                and len(self.parts) == len(x.parts)
-                and all([op1 == op2 for op1, op2 in zip(self.parts, x.parts)])
-            )
-        return False
+        if not self._eq_backend_compatible(other):                  # Tier 1: backend
+            return NotImplemented
+        if self.dom != other.dom or self.cod != other.cod:          # Tier 2a: endpoint spaces
+            return False
+        if self._endpoint_treedefs() != other._endpoint_treedefs(): # Tier 2b: tree structure
+            return False
+        if len(self.parts) != len(other.parts):                     # Tier 2c: count before zip
+            return False
+        return all(op1 == op2 for op1, op2 in zip(self.parts, other.parts))  # Tier 3: per-part
 
     def tree_flatten(self) -> tuple[tuple[Any, ...], Any]:
         """Flatten this operator for pytree registration."""

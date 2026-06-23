@@ -41,9 +41,20 @@ class Space(ContextBound):
         return "complex" if self.ops.is_complex_dtype(self.dtype) else "real"
 
     def __eq__(self, other: Any) -> bool:
-        if type(self) is type(other):
-            return self.ctx == other.ctx
-        return False
+        # Tier 1: backend compatibility (type + ops family + dtype, ignoring
+        # check_level). Tier 2/3: per-subclass algebraic comparison.
+        if not self._eq_backend_compatible(other):
+            return NotImplemented
+        return self._eq_algebra(other)
+
+    def _eq_algebra(self, other: Any) -> bool:
+        """Algebraic-equality comparison, run only after the backend gate passes.
+
+        Subclasses extend this via ``super()._eq_algebra(other) and ...`` so each
+        adds its own structural/numerical checks. The base contributes the scalar
+        field (real vs complex): two spaces over different fields are never equal.
+        """
+        return self.field == other.field
 
     def _field_symbol(self) -> str:
         """Return the scalar-field glyph (``ℝ``/``ℂ``) for this space."""

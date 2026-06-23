@@ -159,13 +159,13 @@ class LinOpQuadraticForm(QuadraticForm[Domain]):
 
     def __eq__(self, other: Any) -> bool:
         """Return whether another quadratic form has the same stored terms."""
-        if type(other) is type(self):
-            return (
-                self.Q == other.Q
-                and self.linear == other.linear
-                and self.ops.allclose(self.a, other.a)
-            )
-        return False
+        if not self._eq_backend_compatible(other):              # Tier 1: backend
+            return NotImplemented
+        if self.Q != other.Q:                                   # Tier 2/3: operator (own gate)
+            return False
+        if self.linear != other.linear:                         # Tier 2/3: linear term (None-safe)
+            return False
+        return bool(self.ops.allclose(self.a, other.a, equal_nan=True))  # Tier 3: scalar offset
 
     def tree_flatten(self):
         """Flatten this quadratic form for pytree registration."""

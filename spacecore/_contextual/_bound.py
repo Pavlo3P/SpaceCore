@@ -32,6 +32,21 @@ class ContextBound(ABC):
         ctx = normalize_context(ctx)
         self._ctx = ctx
 
+    def _eq_backend_compatible(self, other: Any) -> bool:
+        """Tier-1 equality gate: same concrete type and same backend.
+
+        "Backend compatibility" means the same backend ops family and the same
+        representation dtype (via :func:`_same_math_context`), deliberately
+        ignoring ``check_level`` (a validation policy, not a mathematical or
+        backend property). This is the mandatory first check in every ``__eq__``:
+        it guarantees any later ``ops.allclose`` runs only on same-backend,
+        same-dtype arrays, and makes cross-backend objects compare unequal.
+
+        Callers that fail this gate should return ``NotImplemented`` so Python
+        can try the reflected comparison and fall back to identity symmetrically.
+        """
+        return type(self) is type(other) and _same_math_context(self._ctx, other._ctx)
+
     def _bind_context(self, ctx: Any, *children: Any, sources: tuple[Any, ...] | None = None):
         """Resolve the priority context, store it, and re-bind children onto it.
 

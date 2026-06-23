@@ -28,10 +28,9 @@ class CoordinateSpace(VectorSpace):
         super().__init__(ctx)
         self.shape = tuple(shape)
 
-    def __eq__(self, other: Any) -> bool:
-        if type(self) is type(other):
-            return super().__eq__(other) and self.shape == other.shape
-        return False
+    def _eq_algebra(self, other: Any) -> bool:
+        # Tier 2: exact shape (after field, before any numerical compare).
+        return super()._eq_algebra(other) and self.shape == other.shape
 
     def _space_descriptor(self) -> str:
         """Return a shape-aware descriptor like ``ℝ^5`` or ``ℝ^(2, 3)``."""
