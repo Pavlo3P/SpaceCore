@@ -129,7 +129,7 @@ def minimize_scipy(
     See Also
     --------
     line_search_scipy : Wolfe line search along a direction with the same handoff.
-    spacecore.optimize.minimize_optax : optax loop with pytree pass-through.
+    spacecore.optimize.minimize_optax : Optax loop with pytree pass-through.
 
     Notes
     -----

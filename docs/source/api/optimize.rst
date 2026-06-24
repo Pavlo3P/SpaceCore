@@ -7,7 +7,8 @@ through ``F.value`` and convert the metric (Riesz) gradient ``F.grad`` to the
 *coordinate* gradient an external optimizer expects with ``X.riesz`` -- the
 identity on a Euclidean space and mandatory on a weighted one. The external
 optimizer owns the loop, line search, and convergence; the adapter only
-translates the objective and its geometry. See :doc:`/dev/adr/018_external_optimizer_adapters`.
+translates the objective and its geometry. This adapter surface is specified by
+ADR-018.
 
 SciPy
 -----

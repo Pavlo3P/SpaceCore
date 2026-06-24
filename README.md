@@ -175,6 +175,17 @@ Expected output:
 `MatrixFreeLinearFunctional`, `QuadraticForm`, and `LinOpQuadraticForm` model
 scalar-valued maps on spaces. Gradients are represented in the domain geometry.
 
+**Everyday toolbox.** `spacecore.functional.tools` (re-exported at the top
+level) adds named constructors over that machinery, with no new core types:
+`least_squares` for `½‖Ax−b‖²`, coordinate norms (`SquaredL2NormFunctional`,
+`LpNormFunctional`, `L1NormFunctional`), `NegativeEntropyFunctional`,
+`KLDivergenceFunctional`, `HuberFunctional`, the spectral
+`SpectralLpNormFunctional`/`NuclearNormFunctional`, and the metric-aware
+proximal primitive `generalized_shrinkage` with the wrappers `prox_l1`,
+`prox_l2sq`, and `project_nonneg`. Each objective's gradient is the metric
+(Riesz) gradient under the domain geometry, and the proximal step is taken in
+the space metric.
+
 **Linear algebra.** `cg`, `lsqr`, `lanczos_smallest`, `power_iteration`, and
 `expm_multiply` operate on SpaceCore operators and spaces. They document their
 mathematical preconditions and reject provably invalid inputs at entry; for
@@ -259,7 +270,8 @@ every iteration. A unified benchmark framework is available via `python -m bench
 SpaceCore is experimental `0.4.x` software. The `0.4.0` release stabilizes the
 typed linear-algebra core as a validated algebra of structured mathematical
 objects — a public check-policy, the dtype/scalar-field contract, the
-`TreeSpace` direct-product abstraction with block-structured operators, reusable
+`TreeSpace` direct-product abstraction with block-structured operators, an
+everyday functional and proximal toolbox, external optimizer adapters, reusable
 test generators, and a backend conformance matrix. Core abstractions are usable
 for research and prototyping, but API details may still change before a stable
 release.

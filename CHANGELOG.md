@@ -9,6 +9,49 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- ADR-016 optimized-kernel **dispatch** is accepted and implemented (off by
+  default). `KernelSpec` gains `dispatch_key`, `priority`, and an optional
+  shape-only `cost` estimator (`KernelCost`); a spec that names a `dispatch_key`
+  with `rtol == atol == 0` is *dispatch-eligible*. `KernelRegistry` indexes the
+  eligible specs by key (descending `priority`) and rejects two eligible specs
+  that share a key at equal priority (`DispatchAmbiguityError`). A single
+  `spacecore.kernels.dispatch(key, *args, generic=…, ctx=…)` entry point selects
+  the first applicable, affordable spec or runs the inline `generic` fallback.
+  `dispatch_mode` (`off`/`on`/`verify`) is settable process-globally
+  (`set_dispatch_mode`) and per-scope (`dispatch_mode(...)` context manager);
+  `check_level="strict"` implies `verify`. A materializing fast path is gated by
+  a memory budget computed from `BackendOps.free_memory_bytes()` and
+  `set_memory_budget_fraction` — no estimate or no budget means no fuse. The
+  composed apply chain (`linop.composed.apply`) and block-diagonal apply
+  (`linop.block_diagonal.apply`) call sites are wired through `dispatch`; with
+  dispatch off they are result-identical to the prior inline paths. The two
+  `0.4.0` catalog specs stay explicit-entry (no `dispatch_key`); activating a
+  routed spec under either key is a benchmark-gated follow-up.
+- Three dispatch-eligible algebraic-optimization kernels (exact, `rtol=atol=0`):
+  `composed-zero-annihilation` (a chain containing a zero map collapses to
+  `codomain.zeros()`) and `composed-identity-elision` (skip identity leaves)
+  under `linop.composed.apply`, and `block-diagonal-uniform-dense-batched`
+  (uniform flat-dense blocks fold into one batched `matmul`) under
+  `linop.block_diagonal.apply`. The block kernel is *materializing*: it carries a
+  shape-only `KernelCost` and the dispatcher gates it on the memory budget. All
+  three route only under `dispatch_mode("on"/"verify")`; dispatch stays off by
+  default. Each has a correctness reference and a `python -m bench` probe.
+- `NumpyOps.free_memory_bytes()` reports available system RAM via the optional
+  `psutil` dependency (returns `None` — "no fuse" — when `psutil` is absent), so
+  the dispatcher's memory gate can size materializing fast paths on the CPU
+  backend.
+
+## [0.4.0] — 2026-06-24
+
+SpaceCore 0.4.0 stabilizes the typed linear-algebra core as a validated
+algebra of structured mathematical objects. It ships a public check-policy,
+ADR-015 Stage 1 dtype/field contract, the `TreeSpace` finite direct-product
+abstraction, block-structured LinOps on tree domains, an everyday functional
+and proximal toolbox, external optimizer adapters, reusable test generators,
+and a full backend conformance matrix with deviation catalog.
+
+### Added
+
 - ADR-018 **external optimizer adapters** in the new `spacecore.optimize`
   subpackage: `minimize_scipy(F, x0, *, method="L-BFGS-B", jac=True, **kw)` and
   `line_search_scipy(F, x, d, **kw)` drive `scipy.optimize`, and
@@ -51,48 +94,6 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   `spectral_apply`) now symmetrizes the `U diag(·) U^*` reconstruction before the
   membership check, so a zero-tolerance Hermitian space no longer rejects its own
   spectral reconstruction over a few-ULP floating-point skew.
-- ADR-016 optimized-kernel **dispatch** is accepted and implemented (off by
-  default). `KernelSpec` gains `dispatch_key`, `priority`, and an optional
-  shape-only `cost` estimator (`KernelCost`); a spec that names a `dispatch_key`
-  with `rtol == atol == 0` is *dispatch-eligible*. `KernelRegistry` indexes the
-  eligible specs by key (descending `priority`) and rejects two eligible specs
-  that share a key at equal priority (`DispatchAmbiguityError`). A single
-  `spacecore.kernels.dispatch(key, *args, generic=…, ctx=…)` entry point selects
-  the first applicable, affordable spec or runs the inline `generic` fallback.
-  `dispatch_mode` (`off`/`on`/`verify`) is settable process-globally
-  (`set_dispatch_mode`) and per-scope (`dispatch_mode(...)` context manager);
-  `check_level="strict"` implies `verify`. A materializing fast path is gated by
-  a memory budget computed from `BackendOps.free_memory_bytes()` and
-  `set_memory_budget_fraction` — no estimate or no budget means no fuse. The
-  composed apply chain (`linop.composed.apply`) and block-diagonal apply
-  (`linop.block_diagonal.apply`) call sites are wired through `dispatch`; with
-  dispatch off they are result-identical to the prior inline paths. The two
-  `0.4.0` catalog specs stay explicit-entry (no `dispatch_key`); activating a
-  routed spec under either key is a benchmark-gated follow-up.
-- Three dispatch-eligible algebraic-optimization kernels (exact, `rtol=atol=0`):
-  `composed-zero-annihilation` (a chain containing a zero map collapses to
-  `codomain.zeros()`) and `composed-identity-elision` (skip identity leaves)
-  under `linop.composed.apply`, and `block-diagonal-uniform-dense-batched`
-  (uniform flat-dense blocks fold into one batched `matmul`) under
-  `linop.block_diagonal.apply`. The block kernel is *materializing*: it carries a
-  shape-only `KernelCost` and the dispatcher gates it on the memory budget. All
-  three route only under `dispatch_mode("on"/"verify")`; dispatch stays off by
-  default. Each has a correctness reference and a `python -m bench` probe.
-- `NumpyOps.free_memory_bytes()` reports available system RAM via the optional
-  `psutil` dependency (returns `None` — "no fuse" — when `psutil` is absent), so
-  the dispatcher's memory gate can size materializing fast paths on the CPU
-  backend.
-
-## [0.4.0] — Unreleased
-
-SpaceCore 0.4.0 stabilizes the typed linear-algebra core as a validated
-algebra of structured mathematical objects. It ships a public check-policy,
-ADR-015 Stage 1 dtype/field contract, the `TreeSpace` finite direct-product
-abstraction, block-structured LinOps on tree domains, reusable test
-generators, and a full backend conformance matrix with deviation catalog.
-
-### Added
-
 - Public `check_level` policy literal (`"none"`, `"cheap"`, `"standard"`,
   `"strict"`) with `CHECK_LEVELS` ordering and `_checks_at_least` dispatch
   across spaces, LinOps, functionals, and solver preconditions.
@@ -113,8 +114,9 @@ generators, and a full backend conformance matrix with deviation catalog.
   (skips the per-link `@checked_method` wrapper for a flat chain of LinOps)
   and `block-diagonal-dense-apply` (tight ``ops.matmul`` loop over dense
   block leaves). Both have correctness references and bench cases. No
-  dispatch or fusion is wired in 0.4.0; the dispatch mechanism lands later
-  once ADR-016 is accepted (see Unreleased).
+  dispatch or fusion is wired in 0.4.0: the ADR-016 dispatch mechanism is
+  implemented but ships **off by default** and dormant, with no production
+  routing (see Unreleased).
 - Unified benchmark framework at `python -m bench` (subcommands `run`,
   `compare`, `plot`, `summary`, `list`) with generator-driven probes in
   `bench/_operations.py`, peak-memory recording in

@@ -4,7 +4,12 @@ Release notes
 Version 0.4.0
 -------------
 
-Unreleased.
+Released 2026-06-24. SpaceCore 0.4.0 stabilizes the typed linear-algebra core as
+a validated algebra of structured mathematical objects: a public check-policy,
+the ADR-015 Stage 1 dtype/scalar-field contract, the ``TreeSpace`` direct-product
+abstraction with block-structured operators, an everyday functional and proximal
+toolbox, external optimizer adapters, reusable test generators, and a backend
+conformance matrix with deviation catalog.
 
 Added
 ~~~~~
@@ -51,9 +56,9 @@ Added
   ``composed-chain-apply`` (skips per-link ``@checked_method`` on a flat
   LinOp chain) and ``block-diagonal-dense-apply`` (tight ``ops.matmul``
   loop over dense block leaves). Each kernel has a correctness reference
-  in ``tests/kernels/``. No dispatch or fusion is wired in ``0.4.0``; the
-  structural-dispatch mechanism (ADR-016) follows after this release. See
-  :doc:`design/kernels_policy`.
+  in ``tests/kernels/``. No dispatch or fusion is wired in ``0.4.0``: the
+  ADR-016 structural-dispatch mechanism is implemented but ships off by default
+  and dormant, with no production routing. See :doc:`design/kernels_policy`.
 
 Breaking changes
 ~~~~~~~~~~~~~~~~
