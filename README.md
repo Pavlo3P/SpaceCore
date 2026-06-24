@@ -184,6 +184,15 @@ in its geometry. These native solvers are intentionally small — a correctness
 baseline and a substrate for space-aware algorithms rather than a full solver
 suite; backend-specific fast paths and external adapters can be layered on top.
 
+**External optimizer adapters.** `minimize_scipy`, `line_search_scipy`, and
+`minimize_optax` (in `spacecore.optimize`) drive mature external optimizers from
+a `Functional`. Because SpaceCore gradients are metric (Riesz) gradients while
+NumPy/JAX optimizers expect coordinate gradients, each adapter applies the
+`X.riesz(F.grad(x))` handoff for you — the identity on a Euclidean space and
+mandatory on a weighted one. The external optimizer owns the loop; the SciPy
+adapters require a real domain and `minimize_optax` needs a JAX backend
+(`pip install spacecore[optax]`).
+
 **Backends.** `NumpyOps` is always available. `JaxOps`, `TorchOps`, and
 `CuPyOps` are exported only when their optional dependencies are installed.
 Backend portability means SpaceCore uses the same abstract operations and data

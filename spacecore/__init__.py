@@ -71,6 +71,11 @@ from .linalg import (
     lsqr,
     power_iteration,
 )
+from .optimize import (
+    line_search_scipy,
+    minimize_optax,
+    minimize_scipy,
+)
 from .space import (
     BackendCheck,
     DTypeCheck,
@@ -170,6 +175,9 @@ __all__ = [
     "lanczos_smallest",
     "lsqr",
     "power_iteration",
+    "minimize_scipy",
+    "minimize_optax",
+    "line_search_scipy",
     "BackendCheck",
     "DTypeCheck",
     "FieldCheck",

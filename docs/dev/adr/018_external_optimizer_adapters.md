@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted (implemented)
 
 ## Context
 
@@ -25,9 +25,18 @@ handoff is `X.riesz(F.grad(x))`, which no scenario discovered without difficulty
 
 ## Current design
 
-There is no optimizer-interop surface. Users hand-write `fun`/`jac` closures,
-hand-flatten elements, and must themselves know to apply `X.riesz` on weighted
-spaces. The correct rule lives only in scattered docstrings and prose.
+The `spacecore.optimize` subpackage ships the three committed adapters
+(`minimize_scipy`, `line_search_scipy`, `minimize_optax`), re-exported from the
+package root. A shared `coordinate_gradient(F, X, x)` helper performs the
+`X.riesz(F.grad(x))` conversion once, centrally; the SciPy adapters flatten and
+unflatten elements through `X.flatten`/`X.unflatten` and reject complex domains,
+while the optax adapter passes the element pytree through unchanged and requires
+a JAX-backed domain. The external optimizer owns the loop in every case.
+`optax` is an optional dependency (`spacecore[optax]`), imported lazily.
+
+Before this, there was no optimizer-interop surface: users hand-wrote `fun`/`jac`
+closures, hand-flattened elements, and had to know to apply `X.riesz` on weighted
+spaces — the silent metric-gradient trap the adapters now defuse.
 
 ## Decision
 
@@ -35,9 +44,9 @@ Ship a small set of thin adapter functions that take a SpaceCore `Functional`
 and drive an external optimizer. The committed shipped surface is:
 
 ```python
-minimize_scipy(F, x0, *, method="L-BFGS-B", **kw)   # SciPy minimize fun/jac
-minimize_optax(F, x0, optimizer, **kw)              # optax loop, pytree state
-line_search_scipy(F, x, d)                          # SciPy line_search
+minimize_scipy(F, x0, *, method="L-BFGS-B", jac=True, **kw)   # SciPy minimize fun/jac
+minimize_optax(F, x0, optimizer, *, steps, callback=None)     # optax loop, pytree state
+line_search_scipy(F, x, d, **kw)                              # SciPy line_search
 ```
 
 Each adapter:

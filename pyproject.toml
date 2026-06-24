@@ -42,6 +42,11 @@ classifiers = [
 jax = [
   "jax>=0.9.1",
 ]
+# optax adapter (``spacecore.optimize.minimize_optax``); needs a JAX backend.
+optax = [
+  "jax>=0.9.1",
+  "optax>=0.2",
+]
 torch = [
   "torch>=2.0",
 ]
