@@ -59,6 +59,19 @@ class BackendOps(ABC):
         """Whether ``vmap`` is implemented by the backend rather than a Python loop."""
         return False
 
+    def free_memory_bytes(self) -> int | None:
+        """Return currently free device memory in bytes, or ``None`` if unknown.
+
+        The kernel dispatcher (ADR-016) uses this to gate *materializing* fast
+        paths — those that allocate more than ``O(1)`` extra memory — against a
+        memory budget before selecting them. The base implementation returns
+        ``None`` (unknown): a backend that can cheaply query free memory (e.g.
+        a GPU runtime) overrides this. When the budget is unknown the dispatcher
+        treats any cost-carrying spec as unaffordable, so reporting ``None`` is
+        always safe and never routes to a materializing kernel.
+        """
+        return None
+
     def __eq__(self, other: Any) -> bool:
         if isinstance(other, BackendOps):
             return self.family == other.family

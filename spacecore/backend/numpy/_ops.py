@@ -66,6 +66,24 @@ class NumpyOps(EagerControlFlowMixin, BackendOps):
     def __init__(self) -> None:
         super().__init__()
 
+    def free_memory_bytes(self) -> int | None:
+        """Return available system RAM in bytes, or ``None`` if unknown.
+
+        For a CPU backend the "device" is host memory, so this reports the
+        available physical RAM via :mod:`psutil` when it is installed. ``psutil``
+        is an optional dependency; without it this returns ``None`` and the
+        kernel dispatcher (ADR-016) treats every materializing fast path as
+        unaffordable ("no budget, no fuse"), which is always safe.
+        """
+        try:
+            import psutil
+        except ImportError:
+            return None
+        try:
+            return int(psutil.virtual_memory().available)
+        except Exception:
+            return None
+
     @property
     def dense_array(self) -> Type[Any]:
         """

@@ -11,7 +11,22 @@ from .._base import LinOp
 from ..._checks import checked_method
 from ..._contextual._bound import _same_math_context
 from ...backend import Context, jax_pytree_class
+from ...kernels import dispatch, should_consult_dispatch
 from ...space import TreeSpace
+
+# ADR-016 approves the block-diagonal apply as a dispatch call site. The
+# per-part loop is the ``generic`` fallback; the ``block-diagonal-uniform-dense-
+# batched`` spec routes here when dispatch is on and the blocks are uniform
+# flat-dense. The block operators (not just their bound cores) are passed so a
+# spec can inspect block structure; ``parts[i]._apply_core`` is exactly the
+# bound core in ``self._apply_parts[i]``, so the generic stays byte-identical.
+# The ``should_consult_dispatch`` guard keeps the default path untouched.
+_BLOCK_DIAGONAL_APPLY_KEY = "linop.block_diagonal.apply"
+
+
+def _block_diagonal_apply(parts: Any, x_parts: Any) -> tuple[Any, ...]:
+    """Generic block-diagonal apply: each block core on its own component."""
+    return tuple(p._apply_core(xi) for p, xi in zip(parts, x_parts))
 
 
 def _validate_blocks(blocks: Sequence[Any], owner: str) -> tuple[LinOp, ...]:
@@ -121,7 +136,16 @@ class BlockDiagonalLinOp(TreeLinOp[TreeSpace, TreeSpace]):
 
     def _apply_unchecked(self, x: Any) -> Any:
         x_parts = self.dom._components(x)
-        y_parts = tuple(apply(xi) for apply, xi in zip(self._apply_parts, x_parts))
+        if should_consult_dispatch(self.ctx):
+            y_parts = dispatch(
+                _BLOCK_DIAGONAL_APPLY_KEY,
+                self.parts,
+                x_parts,
+                generic=_block_diagonal_apply,
+                ctx=self.ctx,
+            )
+        else:
+            y_parts = _block_diagonal_apply(self.parts, x_parts)
         return self.cod._from_components(y_parts)
 
     @checked_method(in_space="codomain", out_space="domain")

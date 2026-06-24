@@ -20,6 +20,7 @@ from __future__ import annotations
 from typing import Any
 
 from ._rules import CoreKernelSet, register_core_kernels
+from ..specs._dispatch import dispatch, should_consult_dispatch
 
 # ---------------------------------------------------------------------------
 # Shared rules / helpers
@@ -68,10 +69,30 @@ def batched_zeros(space: Any, leading: tuple[int, ...]) -> Any:
 # ---------------------------------------------------------------------------
 # Composition — fused flat chain of leaf cores
 # ---------------------------------------------------------------------------
-def composed_apply_core(op: Any, x: Any) -> Any:
-    for leaf in op._apply_chain:
+#
+# ADR-016 approves the composed apply chain as a dispatch call site. The flat
+# fused loop below is the ``generic`` fallback; a dispatch-eligible spec
+# registered under ``"linop.composed.apply"`` (none ships on by default) would
+# be selected for it when dispatch is on. The ``should_consult_dispatch`` guard
+# keeps the default (dispatch ``off``, non-strict) path a single bound-method
+# call away from today's loop — the core layer's zero-cost guarantee holds.
+_COMPOSED_APPLY_KEY = "linop.composed.apply"
+
+
+def _composed_chain_apply(chain: Any, x: Any) -> Any:
+    """Generic composed apply: run each leaf core in application order."""
+    for leaf in chain:
         x = leaf._apply_core(x)
     return x
+
+
+def composed_apply_core(op: Any, x: Any) -> Any:
+    chain = op._apply_chain
+    if should_consult_dispatch(op.ctx):
+        return dispatch(
+            _COMPOSED_APPLY_KEY, chain, x, generic=_composed_chain_apply, ctx=op.ctx
+        )
+    return _composed_chain_apply(chain, x)
 
 
 def composed_rapply_core(op: Any, z: Any) -> Any:

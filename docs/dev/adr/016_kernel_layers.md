@@ -2,10 +2,13 @@
 
 ## Status
 
-Accepted for the kernel-layer architecture. The optimized-kernel **dispatch
-policy** (see "Decision — optimized-kernel dispatch" below) is **Proposed**: a
-broader structural-dispatch design is recorded for acceptance. No dispatch code
-ships until this section is marked Accepted.
+Accepted for the kernel-layer architecture and for the optimized-kernel
+**dispatch policy** (see "Decision — optimized-kernel dispatch" below). The
+broader structural-dispatch design is implemented in `spacecore.kernels.specs`:
+specs carry a `dispatch_key`/`priority`/`cost`, the registry indexes the
+dispatch-eligible specs, and a single `dispatch()` entry point routes the two
+approved hot call sites. Dispatch is **off by default**, so a wired call site is
+result-identical to its pre-dispatch inline path until a key is turned on.
 
 ## Context
 
@@ -16,9 +19,12 @@ compromising the matrix-free, geometry-aware contracts ([ADR-007](007_linop_cont
 [ADR-011](011_linalg_contract.md)). The `0.4.0`
 hot-path acceleration report (`docs/dev/0.4.0-hotpath-acceleration-report.md`)
 catalogued the shipped mechanism and found that the heavier optimized-kernel
-catalog, while correctness-verified, is not yet routed to by anything. This ADR
-records the implemented kernel architecture and reserves the open decision about
-automatic dispatch, which previously held the ADR-016 slot on its own.
+catalog, while correctness-verified, was not yet routed to by anything. This ADR
+records the implemented kernel architecture together with the now-accepted
+automatic-dispatch decision (which previously held the ADR-016 slot on its own as
+a reserved, open question). The dispatcher ships off by default, so the two
+`0.4.0` catalog specs remain explicit-entry (unrouted by design) until a key is
+proven and turned on.
 
 ## Current design
 
@@ -41,10 +47,18 @@ implementation, an `optimized` implementation, an `applicable` predicate, a
 `correctness_ref` (the pytest node id pinning `optimized` against `generic` over
 the generated case set), a `benchmark_id`, and `rtol`/`atol`. Registration
 enforces the rails: a spec without a `correctness_ref` or `benchmark_id` raises
-`MissingReferenceError` / `MissingBenchmarkError`. The registry only *catalogs*
-specs (`all()`, `get()`, `names()`) — **there is no selection or dispatch logic;
-nothing auto-dispatches.** Two specs ship: `composed-chain-apply` and
-`block-diagonal-dense-apply`. The contract is documented in
+`MissingReferenceError` / `MissingBenchmarkError`. The registry *catalogs* every
+spec (`all()`, `get()`, `names()`) and additionally *indexes* the
+dispatch-eligible specs by `dispatch_key` (`dispatch_candidates()`,
+`dispatch_keys()`). Selection logic lives in one place — the `dispatch()` entry
+point (see the dispatch decision below) — and is **off by default**, so a wired
+call site is result-identical to its inline path until a key is turned on. Five
+specs ship: two explicit-entry (no `dispatch_key`) — `composed-chain-apply` and
+`block-diagonal-dense-apply` — and three dispatch-eligible algebraic
+optimizations: `composed-zero-annihilation` and `composed-identity-elision`
+(under `linop.composed.apply`) and `block-diagonal-uniform-dense-batched` (a
+materializing fold under `linop.block_diagonal.apply`, gated by its shape-only
+`cost`). The contract is documented in
 `docs/source/design/kernels_policy.rst`.
 
 ## Decision
@@ -58,7 +72,7 @@ nothing auto-dispatches.** Two specs ship: `composed-chain-apply` and
    correctness test, and a benchmark before it may register; tolerances are tight
    by default and loosened only when an underlying backend op already disagrees.
 
-## Decision — optimized-kernel dispatch (Proposed)
+## Decision — optimized-kernel dispatch (Accepted)
 
 SpaceCore adopts a **broader structural-dispatch** system over a narrow
 fixed-fusion system: the benchmarked-spec layer becomes routable through a single
@@ -85,12 +99,32 @@ silent pick. The dispatcher holds *all* structural-selection logic; operator and
 functional bodies still contain none.
 
 **Call-site integration.** The hot internal sites approved here — the composed
-apply chain and the block-diagonal dense apply identified in the `0.4.0`
-hot-path acceleration report — change from their inline path to
-`dispatch(key, …, generic=<the inline path>)`. The inline path *becomes* the
-`generic` fallback, so dispatch-off is byte-identical to today. This is the line
-between this decision and the prior opt-in policy: the call site delegates
-*selection*, it does not name a spec.
+apply chain (`spacecore.kernels.core.algebra.composed_apply_core`, dispatch key
+`"linop.composed.apply"`) and the block-diagonal apply
+(`BlockDiagonalLinOp._apply_unchecked`, dispatch key
+`"linop.block_diagonal.apply"`) identified in the `0.4.0` hot-path acceleration
+report — change from their inline path to `dispatch(key, …, generic=<the inline
+path>)`. The inline path *becomes* the `generic` fallback, so dispatch-off is
+result-identical to today. This is the line between this decision and the prior
+opt-in policy: the call site delegates *selection*, it does not name a spec. A
+cheap `should_consult_dispatch(ctx)` guard precedes each `dispatch()` call so the
+default (`off`, non-strict) path stays one boolean check away from the original
+loop and the core layer's zero-cost guarantee holds.
+
+The two `0.4.0` catalog specs (`composed-chain-apply`,
+`block-diagonal-dense-apply`) ship with no `dispatch_key`: they remain
+explicit-entry kernels because their `generic`/`optimized` signatures predate
+these call-site contracts. Three dispatch-eligible specs are routed at these
+keys: `composed-zero-annihilation` (a composition with a zero map collapses to
+the codomain zero) and `composed-identity-elision` (skip identity leaves) under
+`"linop.composed.apply"`, and `block-diagonal-uniform-dense-batched` (uniform
+flat-dense blocks fold into one batched `matmul`) under
+`"linop.block_diagonal.apply"`. Each pins its `generic` to the call site's
+inline path, claims exact equivalence (`rtol == atol == 0`), and ships a
+correctness reference and a bench probe; the block fold is materializing and so
+carries a shape-only `cost`. They route only under `dispatch_mode("on")` /
+`"verify"`; the dispatcher stays off by default. The mechanism, the rails, the
+wiring, and these first algebraic optimizations all ship now.
 
 **Mode and correctness rails.** A process- and context-level `dispatch_mode`:
 
@@ -136,25 +170,32 @@ a dense fused form regardless of budget — that abandons the matrix-free contra
 its `cost` reports prohibitive and the fusion is available only when the caller
 explicitly opts into materialization.
 
-This section is **Proposed**. It is the prerequisite the post-0.4.0 plan §5.1
-names; no dispatcher, key, or call-site rewiring is implemented until it is marked
-Accepted.
+This section is **Accepted** and implemented. It was the prerequisite the
+post-0.4.0 plan §5.1 named; the dispatcher, the `dispatch_key`/`priority`/`cost`
+metadata, the memory gate, and the two call-site rewirings now ship, with
+dispatch `off` by default.
 
 ## Rationale
 
 Keeping optimization out of class bodies leaves the operator/functional code
 math-first and readable. Static core binding delivers that separation at zero
 runtime cost. The correctness-plus-benchmark rails stop unverified fast paths from
-entering the catalog. Deferring dispatch lets the verified kernels ship now
-without committing to a fusion/dispatch architecture before a design exists.
+entering the catalog. Shipping the dispatcher off by default lets the verified
+kernels and the dispatch mechanism land now while no production spec is routed
+until it is proven and benchmarked — the architecture is committed, the
+activation is not.
 
 ## Alternatives considered
 
 Inlining optimizations into operator methods was rejected: it reintroduces the
 special-casing the kernel layer exists to remove and obscures the mathematical
-contract. Auto-dispatching the spec layer immediately was rejected: it presumes
-the reserved dispatch design and risks silently routing to a wrong fast path. A
-single flat kernel layer was rejected because the check-free cores and the
+contract. Auto-dispatching a production spec immediately — turning a key on
+before its optimized path is proven and benchmarked — is rejected for the same
+reason the dispatcher defaults to off: it risks silently routing to a wrong fast
+path. A narrow fixed-fusion system (each call site naming a spec or hard-coding a
+rewrite) was rejected in favor of the broader structural dispatch above, which
+keeps selection in one place and admits third-party specs without touching call
+sites. A single flat kernel layer was rejected because the check-free cores and the
 benchmarked specs have different costs, lifecycles, and call-time guarantees.
 
 ## Consequences
@@ -164,8 +205,11 @@ preserve the public method's validated contract and the matrix-free/geometry
 contracts. Adding a fast path is a `KernelSpec` carrying the correctness and
 benchmark rails; registration fails without a correctness reference and a
 benchmark id, and a materializing spec additionally needs a shape-only `cost`
-before it may auto-dispatch. Activating dispatch requires the dispatch decision
-above to be accepted first.
+before it may auto-dispatch. The dispatch decision above is accepted and
+implemented: a spec becomes auto-routable by naming a `dispatch_key` with
+`rtol == atol == 0`; the dispatcher selects by descending `priority` behind the
+memory gate. Two eligible specs sharing a key at equal priority is a
+registration-time error.
 
 ## Contributor invariants
 
@@ -190,6 +234,9 @@ above to be accepted first.
 - A matrix-free operand ([ADR-008](008_linop_subclasses.md)) is never silently
   materialized into a dense fused form; such a fusion is reachable only by
   explicit caller opt-in, regardless of available memory.
-- Nothing auto-dispatches to the benchmarked-spec layer until the dispatch policy
-  in this ADR is accepted; fast paths are selected explicitly by scoped call
-  sites.
+- Dispatch is **off by default**. A wired call site routes only under
+  `dispatch_mode("on")`/`"verify"` (or `check_level="strict"`, which implies
+  `verify`); with dispatch off it runs the `generic` inline path and is
+  result-identical to the pre-dispatch code. Only specs that name a
+  `dispatch_key` *and* claim exact equivalence (`rtol == atol == 0`) are ever
+  auto-routed; loosened-tolerance or unkeyed specs remain explicit-entry only.

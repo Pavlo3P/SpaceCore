@@ -7,13 +7,19 @@ from the optimized kernels that implement specific fast paths. The
 this page is the contract every contributor must satisfy when adding
 one.
 
-The policy is intentionally strict in ``0.4.0``. *Runtime* dispatch and
-fusion of the benchmarked numerical kernels — inspecting operands at call
-time and automatically choosing an optimized variant when ``applicable``
-returns ``True`` — are gated on the ``0.6.0`` design decision. Until that
-decision lands, the benchmarked kernels in this subpackage are alternative
-entry points: they are tested, but no SpaceCore code path silently routes
-through them.
+*Runtime* dispatch of the benchmarked numerical kernels — inspecting
+operands at call time and automatically choosing an optimized variant when
+``applicable`` returns ``True`` — is the structural-dispatch system accepted
+in :doc:`ADR-016 </dev/adr>` and implemented here. A spec that names a
+``dispatch_key`` and claims exact equivalence (``rtol == atol == 0``) is
+*dispatch-eligible*; the single :func:`spacecore.kernels.dispatch` entry
+point selects an applicable eligible spec by structural match. Dispatch is
+**off by default** (:func:`spacecore.kernels.dispatch_mode`), so until a key
+is turned on no SpaceCore code path silently routes through these kernels —
+a wired call site runs its inline ``generic`` path and is result-identical to
+the pre-dispatch code. The two ``0.4.0`` catalog kernels ship with no
+``dispatch_key`` and stay explicit-entry kernels; *numerical fusion* of
+adjacent operators into a precomputed product remains out of scope.
 
 Two kernel layers
 -----------------
@@ -47,9 +53,11 @@ only, so the kernels subpackage keeps no module-level dependency on
 path; their correctness is pinned by the operator conformance suite together with
 ``tests/kernels/test_core_kernel_dispatch.py``.
 
-**Benchmarked numerical kernels** are the heavier, opt-in fast paths described
-by :class:`~spacecore.kernels.KernelSpec` and governed by the contract below.
-They are not auto-selected; a clearly-scoped call site chooses them explicitly.
+**Benchmarked numerical kernels** are the heavier fast paths described by
+:class:`~spacecore.kernels.KernelSpec` and governed by the contract below. A
+dispatch-eligible spec is routed by the dispatcher on structural match; an
+unkeyed spec is chosen explicitly by a clearly-scoped call site. Either way the
+benchmark and correctness rails are identical.
 
 The rest of this page governs the *benchmarked numerical kernel* layer.
 
@@ -94,20 +102,59 @@ reference is missing. The enforcement lives in
 :mod:`tests.kernels.test_kernel_policy`, which iterates every registered
 spec and asserts that its correctness reference resolves.
 
-What is intentionally out of scope in ``0.4.0``
------------------------------------------------
+Runtime dispatch
+----------------
 
-* **Runtime dispatch.** No code path inspects operands at call time and
-  selects a benchmarked :class:`KernelSpec` ``optimized`` variant when
-  ``applicable`` returns ``True``. That requires the ``0.6.0`` design
-  decision and a clear interaction with the check-policy layer. (The
-  *core apply kernels* above are bound statically per operator class, not
-  dispatched at call time, so they are out of this gate.)
+ADR-016's structural dispatch is implemented. A
+:class:`~spacecore.kernels.KernelSpec` may carry:
+
+* ``dispatch_key`` — the operation *family* a call site requests (e.g.
+  ``"linop.composed.apply"``). Many specs may share a key; the unkeyed default
+  means "explicit-entry only."
+* ``priority`` — selection order within a key, highest first. Two eligible
+  specs sharing a key at equal priority raise at registration time.
+* ``cost`` — a shape-only :class:`~spacecore.kernels.KernelCost` estimator,
+  required for any eligible spec whose ``optimized`` path allocates more than
+  ``O(1)`` extra memory.
+
+The single :func:`spacecore.kernels.dispatch` entry point walks the eligible
+specs under a key in descending priority, returns the first whose
+``applicable`` is ``True`` and whose memory cost fits the context budget, and
+otherwise runs the call site's ``generic`` fallback.
+:func:`spacecore.kernels.dispatch_mode` selects ``off`` (default; always
+``generic``), ``on`` (route), or ``verify`` (run both, assert exact agreement,
+raise on mismatch). ``check_level="strict"`` implies ``verify``. A spec is
+*dispatch-eligible* only with ``rtol == atol == 0``; loosened-tolerance specs
+register and run explicitly but are never auto-routed.
+
+Shipped dispatch kernels
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Three exact (``rtol == atol == 0``) algebraic-optimization kernels route at the
+two wired call sites. All are off until ``dispatch_mode("on")``/``"verify"``.
+
+* ``composed-zero-annihilation`` (``linop.composed.apply``, priority 20) — a
+  composition containing a zero map *is* the zero map, so the apply collapses to
+  one ``codomain.zeros()`` instead of walking the chain.
+* ``composed-identity-elision`` (``linop.composed.apply``, priority 10) — skip
+  identity leaves (``A @ I @ B = A @ B``). Both fire on chains that bypass the
+  construction-time canonicalization in ``make_composed`` — JAX pytree
+  round-trips, ``_convert``, or a directly-built ``ComposedLinOp``.
+* ``block-diagonal-uniform-dense-batched`` (``linop.block_diagonal.apply``) — a
+  block-diagonal operator whose blocks are uniform-shaped flat-dense matrices
+  folds the per-block loop into one batched ``matmul``. This is *materializing*
+  (it stacks the blocks), so it carries a shape-only ``cost`` and the dispatcher
+  gates it on the memory budget; it is NumPy-only until cross-backend
+  bit-exactness is verified.
+
+Still out of scope:
+
 * **Numerical fusion.** No benchmarked kernel inspects adjacent operators
   to combine them into a precomputed product (``A @ B`` collapsed to one
-  dense matrix, for example). Reserved for the same future window. The
-  static ``ComposedLinOp`` chain flattening above is structural fusion of
-  the apply *loop*, not numerical fusion of the operators.
+  dense matrix, for example). The static ``ComposedLinOp`` chain flattening
+  above is structural fusion of the apply *loop*, not numerical fusion of the
+  operators. A materializing fusion spec would carry a ``cost`` and pass the
+  memory gate before the dispatcher could select it.
 * **Block-, Kronecker-, or tensor-product specialized kernels** beyond
   the diagonal demonstration kernel. The task list ties those to
   "correctness references exist", which is now true; an implementation
