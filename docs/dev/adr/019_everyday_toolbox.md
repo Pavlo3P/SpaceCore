@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted
 
 ## Context
 
@@ -25,12 +25,35 @@ unaided.
 
 ## Current design
 
-The functional surface is the abstract contract of
-[ADR-010](010_functional_contract.md): `InnerProductFunctional`,
-`LinearFunctional`, `QuadraticForm`, `LinOpQuadraticForm`, and matrix-free
-variants. There is no least-squares constructor, no norm/entropy/indicator
-functional, and no proximal-operator surface. Composite and proximal optimization
-is entirely user code.
+The toolbox ships as named constructors over the existing
+[ADR-010](010_functional_contract.md) machinery, with no new core type
+hierarchy:
+
+- `least_squares(A, b, *, weights=None, scale=0.5)` returns a
+  `LinOpQuadraticForm` (`Q = 2·scale·A.H @ A`, linear term `-2·scale·A.H(b)`,
+  offset `scale·<b, b>_Y`); with the default `scale=0.5` this is `½‖Ax−b‖²` and
+  `Q = A.H @ A`. Optional diagonal `weights` give the weighted objective
+  `scale·<Ax−b, W(Ax−b)>_Y`.
+- The battery functionals `SquaredL2NormFunctional`, `LpNormFunctional`
+  (with the `L1NormFunctional` wrapper), `NegativeEntropyFunctional`,
+  `KLDivergenceFunctional`, and `HuberFunctional` are thin coordinate
+  functionals sharing a private `_CoordinateFunctional` base that Riesz-corrects
+  the coordinate gradient once via `domain.riesz_inverse`, so every gradient is
+  the metric gradient required by ADR-010.
+- `SpectralLpNormFunctional` (with the `NuclearNormFunctional` wrapper) is the
+  spectral analogue, applying the coordinate `p`-norm to a Jordan spectrum and
+  reconstructing the spectral gradient through `from_spectrum`.
+- `generalized_shrinkage(X, *, c, x0, eps, lam=0.0, nonneg=False)` is the
+  closed-form forward–backward solver, with the named wrappers `prox_l1`,
+  `prox_l2sq`, and `project_nonneg`. It folds the metric into the threshold
+  (`τᵢ = λ/(2 ε wᵢ)` on a diagonal metric) and raises on a non-diagonal metric.
+
+These constructors live in the `spacecore.functional.tools` subpackage and are
+re-exported from `spacecore.functional` and the top-level `spacecore` namespace.
+
+`IndicatorFunctional(C)` and `project_C` are **not** part of this implementation;
+they range over the `Set` abstraction of [ADR-020](020_sets_and_projection.md)
+and land with that ADR. The Set-free `project_nonneg` prox wrapper ships here.
 
 ## Decision
 
@@ -44,11 +67,22 @@ least_squares(A, b, *, weights=None, scale=0.5) -> LinOpQuadraticForm
 SquaredL2NormFunctional(X)                       # ½‖x‖²
 LpNormFunctional(X, p)                            # ‖x‖_p, p >= 1
 L1NormFunctional(X)                               # thin wrapper = LpNormFunctional(X, 1)
+SpectralLpNormFunctional(X, p)                    # Schatten-p: ‖λ(X)‖_p over a Jordan spectrum
+NuclearNormFunctional(X)                          # thin wrapper = SpectralLpNormFunctional(X, 1)
 NegativeEntropyFunctional(X)                      # Σ xᵢ log xᵢ
 KLDivergenceFunctional(target)                    # KL(x ‖ target)
 IndicatorFunctional(C)  +  project_C              # C is a Set (ADR-020): box / simplex / nonneg / cone
 HuberFunctional(X, delta)
 ```
+
+`SpectralLpNormFunctional` is the spectral analogue of `LpNormFunctional`: the
+coordinate `p`-norm of the [ADR-012](012_jordan_spectrum.md) Jordan spectrum
+rather than of the coordinates (Schatten norms on a `HermitianSpace`; nuclear
+norm at `p = 1`). It is a spectral function `f(λ(X))`, so its gradient is the
+spectral function gradient `from_spectrum(∇f(λ), frame)` and it is built on the
+`spectrum` / `spectral_decompose` / `from_spectrum` capabilities, not on backend
+`eigh`. On an elementwise Jordan space (spectrum = coordinates) it coincides with
+`LpNormFunctional`.
 
 `least_squares` returns an existing `LinOpQuadraticForm`, not a new type. Norm
 functionals are coordinate norms; `LpNormFunctional` is the general form and

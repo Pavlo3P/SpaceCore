@@ -142,10 +142,18 @@ class HermitianSpace(DenseCoordinateSpace, StarSpace, EuclideanJordanAlgebraSpac
         return self.eig_to_dense(evals, evecs)
 
     def eig_to_dense(self, evals: DenseArray, evecs: DenseArray) -> DenseArray:
-        """Reconstruct a Hermitian matrix from eigenvalues and eigenvectors."""
+        """Reconstruct a Hermitian matrix from eigenvalues and eigenvectors.
+
+        The ``U diag(evals) U^*`` reconstruction is mathematically Hermitian but
+        accumulates floating-point skew at the level of a few ULP, which a
+        zero-tolerance Hermitian space would otherwise reject. Symmetrizing
+        projects onto the Hermitian part (a no-op up to that skew) so the
+        reconstruction is a valid member of this space.
+        """
         self.ctx.assert_dense(evals)
         self.ctx.assert_dense(evecs)
         X = self.ops.einsum("...ij,...j,...kj->...ik", evecs, evals, self.ops.conj(evecs))
+        X = self.symmetrize(X)
         self._check_unbatched_member(X)
         return X
 

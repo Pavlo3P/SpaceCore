@@ -132,6 +132,148 @@ def _dense_case(
     )
 
 
+_BATTERY_WEIGHTS = np.asarray([2.0, 5.0, 11.0])
+
+
+def _battery_case(
+    dtype: Any,
+    check_level: sc.CheckLevel | str,
+    *,
+    kind: str,
+    weighted: bool,
+    build: Any,
+    x_np: np.ndarray,
+    value: Any,
+    euclidean_gradient: np.ndarray,
+) -> FunctionalCase:
+    """Build a generated case for an ADR-019 battery functional.
+
+    ``euclidean_gradient`` is the coordinate gradient ``d phi / d x_i``; the
+    recorded Riesz gradient divides it by the weights on a weighted metric (the
+    identity exercised by the directional-derivative law).
+    """
+    ctx = _context(dtype, check_level)
+    domain = _space(ctx, weighted)
+    weights = np.asarray(_BATTERY_WEIGHTS, dtype=dtype)
+    gradient = euclidean_gradient / weights if weighted else euclidean_gradient
+    geometry = "weighted" if weighted else "euclidean"
+    functional = build(domain, ctx)
+    target_ctx = _context(_target_dtype(dtype), check_level)
+    return FunctionalCase(
+        obj=functional,
+        reference={
+            "kind": kind,
+            "domain": domain,
+            "x": ctx.asarray(x_np),
+            "value": value,
+            "gradient": ctx.asarray(gradient),
+            "target_ctx": target_ctx,
+            "check_level": check_level,
+        },
+        capabilities=frozenset({"gradient", "conversion", "real", geometry, kind}),
+        id=f"{kind}-{geometry}-{np.dtype(dtype).name}-checks-{check_level}",
+    )
+
+
+def _battery_cases(
+    dtype: Any, check_level: sc.CheckLevel | str
+) -> tuple[FunctionalCase, ...]:
+    """Generated cases for the ADR-019 battery functionals (real coordinates)."""
+    x = np.asarray([0.5, -1.0, 2.0], dtype=dtype)
+    x_pos = np.asarray([0.5, 1.0, 2.0], dtype=dtype)
+    x_huber = np.asarray([0.5, -1.5, 2.0], dtype=dtype)
+    target = np.asarray([1.0, 2.0, 0.5], dtype=dtype)
+    weights = np.asarray(_BATTERY_WEIGHTS, dtype=dtype)
+    delta = 1.0
+
+    lp_norm = float(np.sum(np.abs(x) ** 2.0) ** 0.5)
+    a = np.abs(x_huber)
+    huber_value = float(
+        np.sum(np.where(a <= delta, 0.5 * a * a, delta * (a - 0.5 * delta)))
+    )
+
+    cases: list[FunctionalCase] = []
+    for weighted in (False, True):
+        metric_diag = weights if weighted else np.ones_like(weights)
+        cases.append(
+            _battery_case(
+                dtype, check_level, kind="squared-l2-norm", weighted=weighted,
+                build=lambda dom, ctx: sc.SquaredL2NormFunctional(dom, ctx),
+                x_np=x,
+                value=float(0.5 * np.sum(metric_diag * x * x)),
+                euclidean_gradient=metric_diag * x,  # Riesz gradient is x
+            )
+        )
+        cases.append(
+            _battery_case(
+                dtype, check_level, kind="lp-norm", weighted=weighted,
+                build=lambda dom, ctx: sc.LpNormFunctional(dom, 2.0, ctx),
+                x_np=x,
+                value=lp_norm,
+                euclidean_gradient=x / lp_norm,
+            )
+        )
+        cases.append(
+            _battery_case(
+                dtype, check_level, kind="negative-entropy", weighted=weighted,
+                build=lambda dom, ctx: sc.NegativeEntropyFunctional(dom, ctx),
+                x_np=x_pos,
+                value=float(np.sum(x_pos * np.log(x_pos))),
+                euclidean_gradient=np.log(x_pos) + 1.0,
+            )
+        )
+        cases.append(
+            _battery_case(
+                dtype, check_level, kind="kl-divergence", weighted=weighted,
+                build=lambda dom, ctx: sc.KLDivergenceFunctional(ctx.asarray(target), dom, ctx),
+                x_np=x_pos,
+                value=float(np.sum(x_pos * np.log(x_pos / target))),
+                euclidean_gradient=np.log(x_pos / target) + 1.0,
+            )
+        )
+        cases.append(
+            _battery_case(
+                dtype, check_level, kind="huber", weighted=weighted,
+                build=lambda dom, ctx: sc.HuberFunctional(dom, delta, ctx),
+                x_np=x_huber,
+                value=huber_value,
+                euclidean_gradient=np.where(a <= delta, x_huber, delta * np.sign(x_huber)),
+            )
+        )
+    return tuple(cases)
+
+
+def _spectral_case(dtype: Any, check_level: sc.CheckLevel | str) -> FunctionalCase:
+    """Generated case for the spectral (Schatten) p-norm on a Hermitian space.
+
+    Uses ``p = 2`` so the value is the Frobenius norm and the gradient is
+    ``X / ||X||_F`` -- both computable without an eigendecomposition, giving an
+    independent reference. The ``"real"`` capability is intentionally omitted so
+    the directional-derivative law (which assumes a length-3 coordinate
+    direction) skips this matrix domain; that identity is covered in
+    ``tests/functional/tools/test_spectral.py``.
+    """
+    ctx = _context(dtype, check_level)
+    domain = sc.HermitianSpace(2, ctx=ctx)
+    m = np.asarray([[2.0, 0.5], [0.5, 3.0]], dtype=dtype)
+    frobenius = float(np.linalg.norm(m, "fro"))
+    target_ctx = _context(_target_dtype(dtype), check_level)
+    return FunctionalCase(
+        obj=sc.SpectralLpNormFunctional(domain, 2.0, ctx),
+        reference={
+            "kind": "spectral-lp-norm",
+            "domain": domain,
+            "x": ctx.asarray(m),
+            "value": frobenius,
+            "gradient": ctx.asarray(m / frobenius),
+            "target_ctx": target_ctx,
+            "check_level": check_level,
+        },
+        capabilities=frozenset({"gradient", "conversion", "euclidean", "spectral"}),
+        id=f"spectral-lp-norm-frobenius-{np.dtype(dtype).name}-checks-{check_level}",
+    )
+
+
 def _composed_case(dtype: Any, check_level: sc.CheckLevel | str) -> FunctionalCase:
     ctx = _context(dtype, check_level)
     domain = sc.DenseCoordinateSpace((3,), ctx)
@@ -294,4 +436,9 @@ def functional_cases(
             cases.append(_explicit_composed_case(dtype, check_level))
             cases.append(_matrix_free_linear_case(dtype, check_level))
             cases.append(_tree_case(dtype, check_level))
+        # ADR-019 battery functionals are real-coordinate objectives; generate
+        # them once per check level for float64 when that dtype is requested.
+        if any(np.dtype(d) == np.dtype(np.float64) for d in dtypes):
+            cases.extend(_battery_cases(np.float64, check_level))
+            cases.append(_spectral_case(np.float64, check_level))
     return tuple(cases)

@@ -7,6 +7,82 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- ADR-018 **external optimizer adapters** in the new `spacecore.optimize`
+  subpackage: `minimize_scipy(F, x0, *, method="L-BFGS-B", jac=True, **kw)` and
+  `line_search_scipy(F, x, d, **kw)` drive `scipy.optimize`, and
+  `minimize_optax(F, x0, optimizer, *, steps, callback=None)` runs the canonical
+  optax update loop with pytree pass-through. Each adapter evaluates the
+  objective through `F.value` and converts the metric (Riesz) gradient `F.grad`
+  to the coordinate gradient external optimizers expect with
+  `X.riesz(F.grad(x))` — the identity on a Euclidean space and mandatory on a
+  weighted one, defusing the study's silent metric-gradient trap once and
+  centrally. The external optimizer owns iteration, line search, and
+  convergence; the SciPy adapters reject complex domains and document the
+  structure/geometry/field lost at the boundary. `minimize_scipy` returns the
+  SciPy `OptimizeResult` with an added `x_element` field (the minimizer
+  unflattened into `F.domain`); `minimize_optax` requires a JAX-backed domain and
+  the optional `optax` extra (`pip install spacecore[optax]`). Per ADR-018,
+  jaxopt/BlackJAX/pymanopt seams stay as tutorials, not shipped adapters.
+- ADR-019 everyday functional and proximal toolbox in the new
+  `spacecore.functional.tools` subpackage (re-exported from
+  `spacecore.functional` and the top-level `spacecore` namespace): named
+  constructors over the existing `Functional` machinery, with no new core type
+  hierarchy. `least_squares(A, b, *, weights=None, scale=0.5)` returns a
+  `LinOpQuadraticForm` for `scale·‖Ax−b‖²` (default `½‖Ax−b‖²`, with optional
+  diagonal residual weights). New battery functionals `SquaredL2NormFunctional`,
+  `LpNormFunctional`, `L1NormFunctional`, `NegativeEntropyFunctional`,
+  `KLDivergenceFunctional`, and `HuberFunctional` are coordinate objectives whose
+  gradients are the metric (Riesz) gradient under the domain geometry.
+  `SpectralLpNormFunctional` (with the `NuclearNormFunctional` wrapper) is the
+  spectral analogue — the Schatten-`p` norm of a Jordan spectrum (`HermitianSpace`
+  eigenvalues), a spectral function whose gradient is reconstructed through the
+  ADR-012 `from_spectrum` API; on an elementwise Jordan space it coincides with
+  `LpNormFunctional`. A closed-form proximal primitive
+  `generalized_shrinkage(X, *, c, x0, eps, lam=0.0, nonneg=False)` solves the
+  separable forward–backward subproblem in the space metric (per-coordinate
+  threshold `τᵢ = λ/(2 ε wᵢ)` on a diagonal metric; it **raises** on a
+  non-diagonal metric rather than returning a wrong separable answer), with the
+  named wrappers `prox_l1`, `prox_l2sq`, and `project_nonneg`. The
+  `IndicatorFunctional`/`project_C` surface reserved by ADR-019 is deferred to
+  ADR-020 (`Set`).
+- `HermitianSpace.eig_to_dense` (and therefore `from_spectrum`, `psd_proj`, and
+  `spectral_apply`) now symmetrizes the `U diag(·) U^*` reconstruction before the
+  membership check, so a zero-tolerance Hermitian space no longer rejects its own
+  spectral reconstruction over a few-ULP floating-point skew.
+- ADR-016 optimized-kernel **dispatch** is accepted and implemented (off by
+  default). `KernelSpec` gains `dispatch_key`, `priority`, and an optional
+  shape-only `cost` estimator (`KernelCost`); a spec that names a `dispatch_key`
+  with `rtol == atol == 0` is *dispatch-eligible*. `KernelRegistry` indexes the
+  eligible specs by key (descending `priority`) and rejects two eligible specs
+  that share a key at equal priority (`DispatchAmbiguityError`). A single
+  `spacecore.kernels.dispatch(key, *args, generic=…, ctx=…)` entry point selects
+  the first applicable, affordable spec or runs the inline `generic` fallback.
+  `dispatch_mode` (`off`/`on`/`verify`) is settable process-globally
+  (`set_dispatch_mode`) and per-scope (`dispatch_mode(...)` context manager);
+  `check_level="strict"` implies `verify`. A materializing fast path is gated by
+  a memory budget computed from `BackendOps.free_memory_bytes()` and
+  `set_memory_budget_fraction` — no estimate or no budget means no fuse. The
+  composed apply chain (`linop.composed.apply`) and block-diagonal apply
+  (`linop.block_diagonal.apply`) call sites are wired through `dispatch`; with
+  dispatch off they are result-identical to the prior inline paths. The two
+  `0.4.0` catalog specs stay explicit-entry (no `dispatch_key`); activating a
+  routed spec under either key is a benchmark-gated follow-up.
+- Three dispatch-eligible algebraic-optimization kernels (exact, `rtol=atol=0`):
+  `composed-zero-annihilation` (a chain containing a zero map collapses to
+  `codomain.zeros()`) and `composed-identity-elision` (skip identity leaves)
+  under `linop.composed.apply`, and `block-diagonal-uniform-dense-batched`
+  (uniform flat-dense blocks fold into one batched `matmul`) under
+  `linop.block_diagonal.apply`. The block kernel is *materializing*: it carries a
+  shape-only `KernelCost` and the dispatcher gates it on the memory budget. All
+  three route only under `dispatch_mode("on"/"verify")`; dispatch stays off by
+  default. Each has a correctness reference and a `python -m bench` probe.
+- `NumpyOps.free_memory_bytes()` reports available system RAM via the optional
+  `psutil` dependency (returns `None` — "no fuse" — when `psutil` is absent), so
+  the dispatcher's memory gate can size materializing fast paths on the CPU
+  backend.
+
 ## [0.4.0] — Unreleased
 
 SpaceCore 0.4.0 stabilizes the typed linear-algebra core as a validated
@@ -37,7 +113,8 @@ generators, and a full backend conformance matrix with deviation catalog.
   (skips the per-link `@checked_method` wrapper for a flat chain of LinOps)
   and `block-diagonal-dense-apply` (tight ``ops.matmul`` loop over dense
   block leaves). Both have correctness references and bench cases. No
-  dispatch or fusion is wired; that is gated on the 0.6.0 design decision.
+  dispatch or fusion is wired in 0.4.0; the dispatch mechanism lands later
+  once ADR-016 is accepted (see Unreleased).
 - Unified benchmark framework at `python -m bench` (subcommands `run`,
   `compare`, `plot`, `summary`, `list`) with generator-driven probes in
   `bench/_operations.py`, peak-memory recording in

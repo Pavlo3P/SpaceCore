@@ -9,6 +9,29 @@ Unreleased.
 Added
 ~~~~~
 
+* ADR-018 external optimizer adapters in the new ``spacecore.optimize``
+  subpackage. ``minimize_scipy`` and ``line_search_scipy`` drive
+  ``scipy.optimize``; ``minimize_optax`` runs the canonical optax update loop
+  with pytree pass-through. Each adapter evaluates ``F.value`` and converts the
+  metric (Riesz) gradient ``F.grad`` to the coordinate gradient external
+  optimizers expect with ``X.riesz(F.grad(x))`` — the identity on a Euclidean
+  space and mandatory on a weighted one. The external optimizer owns iteration,
+  line search, and convergence. ``minimize_optax`` requires a JAX-backed domain
+  and the optional ``optax`` extra. See :doc:`api/optimize`.
+* ADR-019 everyday functional and proximal toolbox, in the
+  ``spacecore.functional.tools`` subpackage. ``least_squares(A, b, *,
+  weights=None, scale=0.5)`` returns a ``LinOpQuadraticForm`` for the (optionally
+  weighted) least-squares objective. New battery functionals
+  ``SquaredL2NormFunctional``, ``LpNormFunctional``, ``L1NormFunctional``,
+  ``NegativeEntropyFunctional``, ``KLDivergenceFunctional``, and
+  ``HuberFunctional`` are coordinate objectives whose gradients are the metric
+  (Riesz) gradient under the domain geometry. ``SpectralLpNormFunctional`` (with
+  the ``NuclearNormFunctional`` wrapper) is the spectral analogue -- the
+  Schatten-``p`` norm of a Jordan spectrum (e.g. ``HermitianSpace`` eigenvalues),
+  with the spectral function gradient reconstructed through ``from_spectrum``. The
+  closed-form ``generalized_shrinkage`` proximal primitive (with ``prox_l1``,
+  ``prox_l2sq``, and ``project_nonneg``) folds the metric into the threshold and
+  raises on a non-diagonal metric. See :doc:`api/functionals`.
 * Public ``check_level`` policy with literal values ``"none"``, ``"cheap"``,
   ``"standard"``, and ``"strict"``, plus the ``CHECK_LEVELS`` ordering and the
   ``_checks_at_least`` dispatch used by spaces, LinOps, functionals, and
@@ -28,8 +51,8 @@ Added
   ``composed-chain-apply`` (skips per-link ``@checked_method`` on a flat
   LinOp chain) and ``block-diagonal-dense-apply`` (tight ``ops.matmul``
   loop over dense block leaves). Each kernel has a correctness reference
-  in ``tests/kernels/``. No dispatch or fusion is wired; both
-  are gated on the ``0.6.0`` design decision. See
+  in ``tests/kernels/``. No dispatch or fusion is wired in ``0.4.0``; the
+  structural-dispatch mechanism (ADR-016) follows after this release. See
   :doc:`design/kernels_policy`.
 
 Breaking changes
