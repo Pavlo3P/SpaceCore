@@ -30,11 +30,11 @@ class Context:
         ``ops.sanitize_dtype`` during initialization. It does not independently
         define a mathematical scalar field; spaces expose that contract through
         :attr:`spacecore.space.Space.field`.
-    check_level : {"none", "cheap", "standard", "strict"}, optional
-        Runtime validation policy. The default is ``"standard"``.
     enable_checks : bool or None, optional
         Deprecated compatibility alias. ``True`` maps to ``"standard"`` and
         ``False`` maps to ``"none"``. Passing both policy arguments is an error.
+    check_level : {"none", "cheap", "standard", "strict"}, optional
+        Runtime validation policy. The default is ``"standard"``.
 
     Attributes
     ----------
@@ -42,6 +42,7 @@ class Context:
         Normalized backend operations instance.
     dtype : dtype-like
         Backend-native dtype used by array constructors.
+
     Notes
     -----
     ``Context`` is frozen and slot-based. Methods that convert values return new

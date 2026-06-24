@@ -72,30 +72,25 @@ class NegativeEntropyFunctional(_CoordinateFunctional[Domain]):
 @jax_pytree_class
 class KLDivergenceFunctional(_CoordinateFunctional[Domain]):
     r"""
-    Kullback--Leibler divergence ``F(x) = sum_i x_i log(x_i / t_i)`` to a fixed
-    positive ``target`` ``t``.
+    Kullback--Leibler divergence to a fixed positive ``target``.
 
-    The natural domain is ``x_i >= 0`` (with ``0 log 0 = 0``) against a strictly
-    positive target ``t_i > 0``. With ``target`` equal to the all-ones element
-    this reduces exactly to :class:`NegativeEntropyFunctional`, and the gradient
-    ``log(x_i / t_i) + 1`` reduces accordingly.
+    ``F(x) = sum_i x_i log(x_i / t_i)`` against a strictly positive target ``t``.
+    The natural domain is ``x_i >= 0`` (with ``0 log 0 = 0``) and ``t_i > 0``.
+    With ``target`` equal to the all-ones element this reduces exactly to
+    :class:`NegativeEntropyFunctional`, and the gradient ``log(x_i / t_i) + 1``
+    reduces accordingly.
 
     Parameters
     ----------
     target : array-like
         Reference element ``t`` in ``dom`` with strictly positive coordinates.
     dom : Space
-        Domain space ``X``. (ADR-019 writes ``KLDivergenceFunctional(target)``;
+        Domain space ``X``. ADR-019 writes ``KLDivergenceFunctional(target)``;
         the explicit space follows the ``(data, dom, ctx)`` constructor shape
         used by :class:`~spacecore.functional.InnerProductFunctional`, because a
-        bare element does not carry its space.)
+        bare element does not carry its space.
     ctx : Context, str, or None, optional
         Backend context specification. Default is resolved from ``dom``.
-
-    Attributes
-    ----------
-    target : array-like
-        Stored reference element ``t``.
 
     Examples
     --------

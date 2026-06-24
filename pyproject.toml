@@ -95,6 +95,10 @@ doctest_optionflags = ["NORMALIZE_WHITESPACE", "ELLIPSIS", "NUMBER"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+# Tutorial/example notebooks are prose-first teaching material; exempt them from
+# linting (e.g. multi-statement plotting cells) so `ruff check .` covers the
+# library and tests only.
+extend-exclude = ["*.ipynb"]
 
 [tool.ruff.lint]
 ignore = [
@@ -111,6 +115,10 @@ convention = "numpy"
 "tutorials/*.ipynb" = ["E402", "E741"]
 "tests/*.py" = ["E701"]
 "tests/*" = ["D"]
+# Internal duck-typed check-free kernel cores: registered by name and documented
+# at module level, not part of the public API, so they are exempt from the
+# per-function missing-docstring rule.
+"spacecore/kernels/core/*" = ["D103"]
 
 [tool.numpydoc_validation]
 checks = [

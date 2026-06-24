@@ -35,6 +35,14 @@ def _iter_public_targets() -> Iterable[str]:
             continue
         if inspect.ismodule(obj):
             continue
+        # Skip exported constants/instances that carry no docstring of their own;
+        # numpydoc would otherwise validate the inherited type docstring (e.g.
+        # ``tuple.__doc__`` for the ``CHECK_LEVELS`` tuple), producing spurious
+        # summary/quote issues. Missing-docstring on real API is covered by GL08.
+        if not (inspect.isclass(obj) or inspect.isroutine(obj)):
+            doc = getattr(obj, "__doc__", None)
+            if doc is None or doc == getattr(type(obj), "__doc__", None):
+                continue
         yield target
 
 

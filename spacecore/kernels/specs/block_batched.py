@@ -44,7 +44,7 @@ _MIN_BLOCKS = 2
 def block_diagonal_apply_generic(
     parts: Sequence[Any], x_parts: Sequence[Any]
 ) -> tuple[Any, ...]:
-    """Reference: each block's core on its matching component.
+    """Apply each block's core to its matching component (reference).
 
     Byte-identical to the ``"linop.block_diagonal.apply"`` call site's inline
     path; re-exposed so the correctness test can call it directly.

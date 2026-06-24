@@ -27,7 +27,7 @@ from ._registry import registry
 
 
 def composed_chain_apply_generic(linops: Sequence[Any], x: Any) -> Any:
-    """Reference implementation: full ``ComposedLinOp`` chain.
+    """Apply the full ``ComposedLinOp`` chain (reference implementation).
 
     Builds a right-folded ``ComposedLinOp`` tree and calls ``.apply(x)``.
     This is the implementation an optimized kernel must match
@@ -58,7 +58,7 @@ def composed_chain_apply_optimized(linops: Sequence[Any], x: Any) -> Any:
 
 
 def composed_chain_apply_applicable(linops: Sequence[Any], x: Any) -> bool:
-    """Always applicable: any nonempty sequence of compatible LinOps.
+    """Accept any nonempty sequence of compatible LinOps (always applicable).
 
     Compatibility (codomain matches the next operator's domain) is a
     precondition of constructing the generic ``ComposedLinOp`` chain as

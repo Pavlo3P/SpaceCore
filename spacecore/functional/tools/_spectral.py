@@ -107,8 +107,9 @@ def NuclearNormFunctional(
     dom: Domain, ctx: Context | str | None = None
 ) -> "SpectralLpNormFunctional[Domain]":
     r"""
-    Nuclear / trace norm ``sum_i |lambda_i(X)|`` -- a thin wrapper for
-    ``SpectralLpNormFunctional(X, 1)``.
+    Nuclear (trace) norm, a thin wrapper for ``SpectralLpNormFunctional(X, 1)``.
+
+    Computes ``sum_i |lambda_i(X)|``, the Schatten-1 norm of the Jordan spectrum.
 
     Parameters
     ----------

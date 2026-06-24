@@ -80,7 +80,7 @@ _COMPOSED_APPLY_KEY = "linop.composed.apply"
 
 
 def _composed_chain_apply(chain: Any, x: Any) -> Any:
-    """Generic composed apply: run each leaf core in application order."""
+    """Run each leaf core in application order (generic composed apply)."""
     for leaf in chain:
         x = leaf._apply_core(x)
     return x

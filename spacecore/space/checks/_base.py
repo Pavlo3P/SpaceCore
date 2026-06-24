@@ -186,7 +186,14 @@ class DTypeCheck(SpaceCheck):
 
 @dataclass(frozen=True)
 class FieldCheck(SpaceCheck):
-    """Check that a value is compatible with a space's mathematical field."""
+    """
+    Check that a value is compatible with a space's mathematical field.
+
+    Parameters
+    ----------
+    name : str, optional
+        Identifier for this check. Default is ``"field"``.
+    """
 
     name: str = "field"
     core_rank: ClassVar[int] = 0

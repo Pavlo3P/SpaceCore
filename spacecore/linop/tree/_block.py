@@ -25,7 +25,7 @@ _BLOCK_DIAGONAL_APPLY_KEY = "linop.block_diagonal.apply"
 
 
 def _block_diagonal_apply(parts: Any, x_parts: Any) -> tuple[Any, ...]:
-    """Generic block-diagonal apply: each block core on its own component."""
+    """Apply each block core to its own component (generic block-diagonal apply)."""
     return tuple(p._apply_core(xi) for p, xi in zip(parts, x_parts))
 
 
@@ -69,7 +69,8 @@ def _sum_values(space: Any, values: Sequence[Any], *, batched: bool) -> Any:
 
 @jax_pytree_class
 class BlockDiagonalLinOp(TreeLinOp[TreeSpace, TreeSpace]):
-    r"""Represent independent blocks over a finite direct-product tree.
+    r"""
+    Represent independent blocks over a finite direct-product tree.
 
     ``BlockDiagonalLinOp(blocks)`` infers matching domain and codomain
     :class:`TreeSpace` objects from the block domains and codomains. The Python
@@ -78,9 +79,17 @@ class BlockDiagonalLinOp(TreeLinOp[TreeSpace, TreeSpace]):
 
     Parameters
     ----------
-    blocks : tree of LinOp
-        Nonempty block tree. Each leaf ``A_i`` maps the corresponding domain
-        leaf ``X_i`` to codomain leaf ``Y_i``.
+    blocks : tree of LinOp or TreeSpace
+        Nonempty block tree (one-argument form). Each leaf ``A_i`` maps the
+        corresponding domain leaf ``X_i`` to codomain leaf ``Y_i``. In the legacy
+        four-argument form this is instead the domain :class:`TreeSpace`.
+    cod : TreeSpace or None, optional
+        Codomain tree for the legacy ``(dom, cod, parts, ctx)`` form; inferred
+        from the blocks otherwise.
+    parts : sequence of LinOp or None, optional
+        Block operators for the legacy form; inferred from ``blocks`` otherwise.
+    ctx : Context, str, or None, optional
+        Backend context specification. Default is resolved from the blocks.
 
     Notes
     -----
@@ -208,7 +217,8 @@ class BlockDiagonalLinOp(TreeLinOp[TreeSpace, TreeSpace]):
 
 @jax_pytree_class
 class BlockMatrixLinOp(TreeLinOp[TreeSpace, TreeSpace]):
-    r"""Represent a rectangular matrix of blocks over direct products.
+    r"""
+    Represent a rectangular matrix of blocks over direct products.
 
     For blocks ``A_ij : X_j -> Y_i``, the operator maps
     ``X_0 x ... x X_n`` to ``Y_0 x ... x Y_m`` and computes

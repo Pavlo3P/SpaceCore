@@ -24,7 +24,6 @@ from __future__ import annotations
 import warnings
 
 import numpy as np
-import pytest
 
 import spacecore as sc
 from spacecore._contextual._bound import _same_math_context

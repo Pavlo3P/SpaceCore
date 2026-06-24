@@ -43,7 +43,7 @@ def _leaf_kind(leaf: Any) -> str | None:
 
 
 def composed_chain_apply_generic(chain: Sequence[Any], x: Any) -> Any:
-    """Reference: apply each leaf core in application order.
+    """Apply each leaf core in application order (reference).
 
     Byte-identical to the ``"linop.composed.apply"`` call site's inline path
     (``spacecore.kernels.core.algebra._composed_chain_apply``); re-exposed here

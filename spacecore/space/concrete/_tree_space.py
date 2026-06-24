@@ -108,7 +108,8 @@ def _context_with_check_level(ctx: Context, check_level: CheckLevel | str | None
 @jax_pytree_class
 @dataclass(frozen=True, eq=False)
 class TreeElement:
-    r"""Bind ordered leaves to a :class:`TreeSpace`.
+    r"""
+    Bind ordered leaves to a :class:`TreeSpace`.
 
     ``TreeElement`` is an explicit binding helper. Ordinary tuple, list,
     dictionary, named-tuple, and registered optree values with the configured
@@ -253,7 +254,8 @@ class _TreeLeafCheck(SpaceCheck):
 
 @jax_pytree_class
 class TreeSpace(CoordinateSpace):
-    r"""Represent a finite direct product as a Python tree.
+    r"""
+    Represent a finite direct product as a Python tree.
 
     ``TreeSpace`` represents
     :math:`X = \prod_{\ell \in L} X_\ell`, where each leaf space
@@ -712,7 +714,8 @@ class _LeafwiseStarMixin(_LeafwiseHostMixin):
 @jax_pytree_class
 @dataclass(frozen=True)
 class TreeSpectralDecomposition:
-    """Store leafwise Jordan spectral data in deterministic leaf order.
+    """
+    Store leafwise Jordan spectral data in deterministic leaf order.
 
     Parameters
     ----------

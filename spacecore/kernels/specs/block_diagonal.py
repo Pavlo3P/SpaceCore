@@ -32,7 +32,7 @@ from ._registry import registry
 def block_diagonal_dense_apply_generic(
     matrices: Sequence[Any], leaves: Sequence[Any], ops: Any
 ) -> tuple[Any, ...]:
-    """Reference implementation: per-leaf ``ops.matmul``.
+    """Apply per-leaf ``ops.matmul`` (reference implementation).
 
     ``ops`` is a backend ``BackendOps`` instance and is used for
     ``matmul``. This is the contract the optimized kernel must match.
