@@ -13,6 +13,7 @@ import spacecore as sc
 from tests._helpers import has_jax
 
 
+@pytest.mark.skipif(not has_jax(), reason="jax is not installed")
 def test_jax_pytree_class_is_noop_when_import_fails(monkeypatch):
     """backend-001: force ``from jax import tree_util`` to raise, covering the
     ``except Exception: return klass`` branch of the decorator (jax/_pytree.py
