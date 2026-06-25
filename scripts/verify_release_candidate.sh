@@ -28,15 +28,14 @@ if [[ "${SPACECORE_VERIFY_NOTEBOOKS:-1}" != "0" ]]; then
   run "$PYTHON_BIN" -m nbconvert \
     --to notebook \
     --execute \
-    tutorials/1_BackendOps.ipynb \
-    tutorials/2_Context.ipynb \
-    tutorials/3_Space.ipynb \
-    tutorials/4_LinOp.ipynb \
-    tutorials/5_Conversion_Policy.ipynb \
-    tutorials/7_Quadratic_Program.ipynb \
-    tutorials/8_Linalg_MatrixFree.ipynb \
-    tutorials/9_Linalg_Comparison.ipynb \
-    tutorials/weighted_tikhonov.ipynb \
+    tutorials/01_backend_and_context.ipynb \
+    tutorials/02_linear_algebra.ipynb \
+    tutorials/03_functionals.ipynb \
+    tutorials/04_tree_spaces.ipynb \
+    tutorials/05_weighted_tikhonov.ipynb \
+    tutorials/06_optimal_transport.ipynb \
+    tutorials/07_manifold_descent.ipynb \
+    tutorials/08_pdhg_conic_program.ipynb \
     --inplace
 else
   printf '\n==> Skipping active tutorial notebooks because SPACECORE_VERIFY_NOTEBOOKS=0\n'

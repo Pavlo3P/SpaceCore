@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted
 
 ## Context
 
@@ -16,7 +16,9 @@ Some mathematical constraints are already dtype-sensitive. `EuclideanElementwise
 
 ## Decision
 
-`Context.dtype` is a representation default, not the full mathematical scalar-field contract. The planned `Space.field` concept should describe whether membership is over a real or complex scalar field. Dtype checks remain representation checks. Field-level checks should decide whether complex values are mathematically allowed, whether real-valued data in complex containers is acceptable, and how real/complex operators interact.
+`Context.dtype` is a representation default, not the full mathematical scalar-field contract. `Space.field` describes whether membership is over a real or complex scalar field. Dtype checks remain representation checks. Field-level checks decide whether complex values are mathematically allowed, while exact dtype checks continue to decide representation compatibility.
+
+For 0.4.0 Stage 1, `Space.field` is derived from `Context.dtype`; no constructor-level override is provided. `FieldCheck` makes scalar-field compatibility explicit while `DTypeCheck` continues to enforce exact representation dtype. Conversion rejects complex-to-real narrowing unless the caller explicitly extracts a real part first.
 
 Exact dtype equality and cross-precision compatibility remain strict until concrete workloads justify relaxing them. Solver workspaces should be operand-driven: real diagnostics for complex operators use `ops.real_dtype(ctx.dtype)`, while vector workspaces use the operator/context dtype.
 
@@ -35,6 +37,6 @@ Using exact dtype as the only field proxy was rejected because real-vs-complex m
 ## Contributor invariants
 
 - `Context.dtype` controls representation defaults and constructors.
-- `Space.field` is the planned mathematical contract for real vs complex membership; do not pretend it is implemented until code exists.
+- `Space.field` is the mathematical contract for real vs complex membership and is derived from the context dtype in 0.4.0.
 - Current dtype membership remains exact and strict.
 - Solver scalar diagnostics should use real workspaces when mathematically real, especially for complex operators.

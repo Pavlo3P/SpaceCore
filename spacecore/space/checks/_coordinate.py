@@ -1,3 +1,10 @@
-from ._base import BackendCheck, DTypeCheck, HermitianCheck, ShapeCheck, SquareMatrixCheck
+from ._base import BackendCheck, DTypeCheck, FieldCheck, HermitianCheck, ShapeCheck, SquareMatrixCheck
 
-__all__ = ["BackendCheck", "DTypeCheck", "ShapeCheck", "SquareMatrixCheck", "HermitianCheck"]
+__all__ = [
+    "BackendCheck",
+    "DTypeCheck",
+    "FieldCheck",
+    "ShapeCheck",
+    "SquareMatrixCheck",
+    "HermitianCheck",
+]

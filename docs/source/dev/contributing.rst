@@ -17,6 +17,12 @@ Architecture
 .. literalinclude:: ../../dev/contributing/architecture.md
    :language: markdown
 
+LinOp generators
+----------------
+
+.. literalinclude:: ../../dev/contributing/linop_generators.md
+   :language: markdown
+
 Prerequisites
 -------------
 

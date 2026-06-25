@@ -3,9 +3,8 @@
 from ._base import (
     BackendCheck,
     DTypeCheck,
+    FieldCheck,
     HermitianCheck,
-    ProductComponentCheck,
-    ProductStructureCheck,
     ShapeCheck,
     SpaceCheck,
     SpaceValidationError,
@@ -16,9 +15,8 @@ from ._base import (
 __all__ = [
     "BackendCheck",
     "DTypeCheck",
+    "FieldCheck",
     "HermitianCheck",
-    "ProductComponentCheck",
-    "ProductStructureCheck",
     "ShapeCheck",
     "SpaceCheck",
     "SpaceValidationError",

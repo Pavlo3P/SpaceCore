@@ -1,6 +1,107 @@
 Release notes
 =============
 
+Version 0.4.0
+-------------
+
+Released 2026-06-24. SpaceCore 0.4.0 stabilizes the typed linear-algebra core as
+a validated algebra of structured mathematical objects: a public check-policy,
+the ADR-015 Stage 1 dtype/scalar-field contract, the ``TreeSpace`` direct-product
+abstraction with block-structured operators, an everyday functional and proximal
+toolbox, external optimizer adapters, reusable test generators, and a backend
+conformance matrix with deviation catalog.
+
+Added
+~~~~~
+
+* ADR-018 external optimizer adapters in the new ``spacecore.optimize``
+  subpackage. ``minimize_scipy`` and ``line_search_scipy`` drive
+  ``scipy.optimize``; ``minimize_optax`` runs the canonical optax update loop
+  with pytree pass-through. Each adapter evaluates ``F.value`` and converts the
+  metric (Riesz) gradient ``F.grad`` to the coordinate gradient external
+  optimizers expect with ``X.riesz(F.grad(x))`` — the identity on a Euclidean
+  space and mandatory on a weighted one. The external optimizer owns iteration,
+  line search, and convergence. ``minimize_optax`` requires a JAX-backed domain
+  and the optional ``optax`` extra. See :doc:`api/optimize`.
+* ADR-019 everyday functional and proximal toolbox, in the
+  ``spacecore.functional.tools`` subpackage. ``least_squares(A, b, *,
+  weights=None, scale=0.5)`` returns a ``LinOpQuadraticForm`` for the (optionally
+  weighted) least-squares objective. New battery functionals
+  ``SquaredL2NormFunctional``, ``LpNormFunctional``, ``L1NormFunctional``,
+  ``NegativeEntropyFunctional``, ``KLDivergenceFunctional``, and
+  ``HuberFunctional`` are coordinate objectives whose gradients are the metric
+  (Riesz) gradient under the domain geometry. ``SpectralLpNormFunctional`` (with
+  the ``NuclearNormFunctional`` wrapper) is the spectral analogue -- the
+  Schatten-``p`` norm of a Jordan spectrum (e.g. ``HermitianSpace`` eigenvalues),
+  with the spectral function gradient reconstructed through ``from_spectrum``. The
+  closed-form ``generalized_shrinkage`` proximal primitive (with ``prox_l1``,
+  ``prox_l2sq``, and ``project_nonneg``) folds the metric into the threshold and
+  raises on a non-diagonal metric. See :doc:`api/functionals`.
+* Public ``check_level`` policy with literal values ``"none"``, ``"cheap"``,
+  ``"standard"``, and ``"strict"``, plus the ``CHECK_LEVELS`` ordering and the
+  ``_checks_at_least`` dispatch used by spaces, LinOps, functionals, and
+  solver preconditions. See :doc:`design/checking_policy`.
+* ``Space.field`` exposing a ``Literal["real", "complex"]`` mathematical
+  contract derived from the context dtype, distinct from
+  ``Context.dtype`` (representation default).
+* ``TreeSpace`` finite direct-product coordinate space organized by an
+  ``optree`` definition, and ``TreeElement`` optional ordered-leaf binding.
+* ``BlockDiagonalLinOp`` and block-matrix ``LinOp`` support on ``TreeSpace``
+  domains and codomains, including metric-adjoint behavior.
+* Reusable test generators for spaces, LinOps, functionals, and linalg
+  references under ``tests/generators/``; see the contributor guide at
+  ``docs/dev/contributing/linop_generators.md``.
+* ``spacecore.kernels`` subpackage with the optimized-kernel
+  registration policy. Two demonstration kernels ship in ``0.4.0``:
+  ``composed-chain-apply`` (skips per-link ``@checked_method`` on a flat
+  LinOp chain) and ``block-diagonal-dense-apply`` (tight ``ops.matmul``
+  loop over dense block leaves). Each kernel has a correctness reference
+  in ``tests/kernels/``. No dispatch or fusion is wired in ``0.4.0``: the
+  ADR-016 structural-dispatch mechanism is implemented but ships off by default
+  and dormant, with no production routing. See :doc:`design/kernels_policy`.
+
+Breaking changes
+~~~~~~~~~~~~~~~~
+
+* ``ProductSpace`` was removed. ``TreeSpace`` is now the single structured
+  finite direct-product abstraction.
+* Tuple-style products now use ``TreeSpace.from_leaf_spaces((X1, X2, ...))``.
+  Nested tuple, list, dictionary, named-tuple, and registered optree structures
+  use ``TreeSpace(template, leaf_spaces)`` or ``TreeSpace.from_template``.
+* ``ProductLinOp`` was renamed to ``TreeLinOp``. ``BlockDiagonalLinOp``,
+  ``StackedLinOp``, and ``SumToSingleLinOp`` now validate ``TreeSpace`` domains
+  and codomains directly.
+* Product structure adapters and product-specific checks were removed. Tree
+  structure and leaf validation are owned by ``TreeSpace``.
+* Conversion (``ctx.asarray`` and construction helpers) refuses silent
+  complex-to-real narrowing. Pass an explicit dtype to convert across fields.
+
+Deprecations
+~~~~~~~~~~~~
+
+* ``enable_checks`` is deprecated in favor of ``check_level``:
+
+  * ``enable_checks=True`` maps to ``check_level="standard"``;
+  * ``enable_checks=False`` maps to ``check_level="none"``;
+  * passing both keywords raises ``TypeError``.
+
+  See :doc:`design/checking_policy` "Migration from ``enable_checks``" for
+  the full mapping and examples. ``enable_checks`` continues to work in
+  ``0.4.0`` but will be removed in a future release.
+
+Stage 1 dtype and scalar-field contract
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+* ``Context.dtype`` is the array representation default; ``Space.field`` is
+  the mathematical real-or-complex contract derived from it.
+* Capability guards (Jordan-algebra eligibility, Lanczos/exponential
+  diagnostics, Hermitian guards) now consult ``Space.field`` instead of
+  inspecting the precision-bearing context dtype.
+* No constructor-level ``field`` override is available in ``0.4.0``;
+  ADR-015 did not authorize one. Stage 2 (operand-dtype-preserving
+  ``ctx.asarray``, opt-in exact dtype membership, operand-dtype solver
+  workspaces) is deferred to ``0.5.0``.
+
 Version 0.3.1
 -------------
 

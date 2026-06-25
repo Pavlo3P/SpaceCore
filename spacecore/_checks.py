@@ -3,14 +3,20 @@ from __future__ import annotations
 from functools import wraps
 from typing import Any, Callable
 
+from ._check_policy import (
+    CheckLevel,
+    enabled_to_level,
+    normalize_check_level,
+    require_mutually_exclusive,
+)
+
 
 def _as_positions(
     arg_pos: int | None,
     arg_positions: int | tuple[int, ...] | None,
 ) -> tuple[int, ...]:
     """Normalize legacy and multi-position argument selectors."""
-    if arg_pos is not None and arg_positions is not None:
-        raise TypeError("Use either arg_pos or arg_positions, not both.")
+    require_mutually_exclusive("arg_pos", arg_pos, "arg_positions", arg_positions)
     if arg_positions is None:
         return (0,) if arg_pos is None else (arg_pos,)
     if isinstance(arg_positions, int):
@@ -21,6 +27,14 @@ def _as_positions(
 def _space_target(self: Any, space_name: str) -> Any:
     """Return the space object named by ``space_name``."""
     return self if space_name == "self" else getattr(self, space_name)
+
+
+def _object_check_level(obj: Any) -> CheckLevel:
+    """Read the new policy while supporting legacy decorator users."""
+    level = getattr(obj, "check_level", None)
+    if level is not None:
+        return normalize_check_level(level)
+    return enabled_to_level(getattr(obj, "_enable_checks", True))
 
 
 def checked_method(
@@ -58,35 +72,63 @@ def checked_method(
     Returns
     -------
     Callable[[Callable[..., Any]], Callable[..., Any]]
-        Decorator that wraps a method, performs Python-level checks when
-        ``self._enable_checks`` is true, and otherwise forwards directly to the
-        wrapped method.
+        Decorator that wraps a method and performs checks selected by
+        ``self.check_level``. Legacy objects exposing only ``_enable_checks``
+        continue to map ``True`` to ``"standard"`` and ``False`` to ``"none"``.
+
+    Notes
+    -----
+    The fast path is the ``check_level == "none"`` case: the wrapper does
+    a single attribute read and calls the underlying method directly.
+    The validated path resolves ``in_space``/``out_space`` once per call
+    (rather than per argument position) and uses the per-instance
+    ``_check_member`` cache populated by :class:`spacecore.space.Space`.
     """
     positions = _as_positions(arg_pos, arg_positions)
+    # Resolve positions to a single-element fast path or a tuple iteration.
+    single_pos = positions[0] if len(positions) == 1 else None
 
     def decorate(method: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(method)
         def wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
-            if self._enable_checks and in_space is not None:
-                check_target = _space_target(self, in_space)
-                for pos in positions:
-                    if in_batched:
-                        from ._batching import _check_batched
+            # Fast path: ``check_level == "none"`` means no validation
+            # on either side. Read the attribute directly; the
+            # legacy-fallback path is only taken on objects that don't
+            # expose ``check_level`` (older user code).
+            level = getattr(self, "check_level", None)
+            if level is None:
+                level = enabled_to_level(getattr(self, "_enable_checks", True))
+            if level == "none":
+                return method(self, *args, **kwargs)
 
-                        _check_batched(check_target, args[pos])
+            if in_space is not None:
+                check_target = self if in_space == "self" else getattr(self, in_space)
+                if in_batched:
+                    from ._batching import _check_batched
+
+                    if single_pos is not None:
+                        _check_batched(check_target, args[single_pos])
                     else:
-                        check_target._check_member(args[pos])
+                        for pos in positions:
+                            _check_batched(check_target, args[pos])
+                else:
+                    check_member = check_target._check_member
+                    if single_pos is not None:
+                        check_member(args[single_pos])
+                    else:
+                        for pos in positions:
+                            check_member(args[pos])
 
             y = method(self, *args, **kwargs)
 
-            if self._enable_checks and out_space is not None:
-                check_target = _space_target(self, out_space)
+            if out_space is not None:
+                out_target = self if out_space == "self" else getattr(self, out_space)
                 if out_batched:
                     from ._batching import _check_batched
 
-                    _check_batched(check_target, y)
+                    _check_batched(out_target, y)
                 else:
-                    check_target._check_member(y)
+                    out_target._check_member(y)
 
             return y
 

@@ -6,9 +6,9 @@ from typing import Any, NamedTuple
 from ..linop import LinOp
 from ..space import DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace
 from ..types import DenseArray
-from ._utils import DEFAULT_CONVERGENCE_CHECK_INTERVAL, check_interval
-from ._utils import require_linop, require_square, safe_inverse_nonneg, should_check_iteration
-from ._utils import result_repr
+from ._utils import DEFAULT_CONVERGENCE_CHECK_INTERVAL, SpaceCoreOps, check_interval
+from ._utils import require_linop, require_square, resolve_apply, safe_inverse_nonneg
+from ._utils import result_repr, should_check_iteration
 
 
 class LanczosResult(NamedTuple):
@@ -117,6 +117,8 @@ def _lanczos_basis_and_tridiag(
     """Build a Lanczos basis and tridiagonal projection."""
     ops = A.ops
     ctx = A.ctx
+    apply = resolve_apply(A)
+    dom = SpaceCoreOps(A.domain)
     use_euclidean_reorth = (
         type(A.domain) in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace)
         and A.domain.is_euclidean
@@ -170,11 +172,11 @@ def _lanczos_basis_and_tridiag(
 
         v_i = V_[i]
         v_i_member = A.domain.unflatten(v_i)
-        w_member = A.apply(v_i_member)
+        w_member = apply(v_i_member)
         w = A.codomain.flatten(w_member)
         w = ctx.assert_dense(w)
 
-        alpha = ops.real(A.domain.inner(v_i_member, w_member))
+        alpha = dom.real_inner(v_i_member, w_member)
         alphas_ = ops.index_set(alphas_, (i,), alpha, copy=True)
 
         w = ops.cond(
@@ -200,7 +202,7 @@ def _lanczos_basis_and_tridiag(
 
             def fill_coeff(j: int, coeffs_in: DenseArray) -> DenseArray:
                 v_j_member = A.domain.unflatten(V_[j])
-                coeff = A.domain.inner(v_j_member, w_member)
+                coeff = dom.inner(v_j_member, w_member)
                 return ops.index_set(coeffs_in, (j,), coeff, copy=True)
 
             coeffs_full = ops.fori_loop(0, max_iter + 1, fill_coeff, coeffs_full)
@@ -209,13 +211,13 @@ def _lanczos_basis_and_tridiag(
         w = w - proj
 
         w_member = A.domain.unflatten(w)
-        beta_new = A.domain.norm(w_member)
+        beta_new = dom.norm(w_member)
         betas_ = ops.index_set(betas_, (i + 1,), beta_new, copy=True)
         breakdown = beta_new < tol_s
         m_true_next = ops.where(breakdown & (m_true == max_iter), i + 1, m_true)
 
         def set_next(V_in: DenseArray) -> DenseArray:
-            w_unit = A.domain.flatten(A.domain.scale(safe_inverse_nonneg(ops, beta_new), w_member))
+            w_unit = A.domain.flatten(dom.scale(safe_inverse_nonneg(ops, beta_new), w_member))
             return ops.index_set(V_in, (i + 1, slice(None)), w_unit, copy=True)
 
         V_ = ops.cond(beta_new >= tol_s, set_next, lambda V_in: V_in, V_)

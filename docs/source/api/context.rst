@@ -5,6 +5,9 @@ Context API
 policy. Spaces and operators store a normalized context and use it for array
 construction and checks.
 
+Use ``check_level="none"``, ``"cheap"``, ``"standard"``, or ``"strict"``.
+The exported ``spacecore.CheckLevel`` literal is available for annotations.
+
 Context
 -------
 

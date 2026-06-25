@@ -3,6 +3,12 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Dict, Any, Iterable, Tuple
 from warnings import warn
 
+from .._check_policy import (
+    CheckLevel,
+    minimum_check_level,
+    normalize_check_level,
+    require_mutually_exclusive,
+)
 from ..types import DType
 from ..backend._family import BackendFamily
 from ..backend._ops import BackendOps
@@ -16,15 +22,15 @@ from ._policies import (
 try:
     from ..backend.jax import JaxOps
 except ImportError:
-    pass
+    JaxOps = None
 try:
     from ..backend.cupy import CuPyOps
 except ImportError:
-    pass
+    CuPyOps = None
 try:
     from ..backend.torch import TorchOps
 except ImportError:
-    pass
+    TorchOps = None
 
 if TYPE_CHECKING:
     from ..backend._context import Context
@@ -42,7 +48,7 @@ class Contextual:
     _default_ctx: Context
     _available_ops: Dict[str, type[BackendOps]]
     _default_dtype: DType | None = None
-    _default_enable_checks: bool = False
+    _default_check_level: CheckLevel = "none"
 
     def __init__(self) -> None:
         Context = _context_type()
@@ -50,17 +56,17 @@ class Contextual:
         self.default_ctx = Context(
             ops=ops,
             dtype=ops.sanitize_dtype(self._default_dtype),
-            enable_checks=self._default_enable_checks,
+            check_level=self._default_check_level,
         )
 
         self._available_ops = {
             self._backend_key(NumpyOps): NumpyOps,
         }
-        if "JaxOps" in globals():
+        if JaxOps is not None:
             self._available_ops[self._backend_key(JaxOps)] = JaxOps
-        if "CuPyOps" in globals():
+        if CuPyOps is not None:
             self._available_ops[self._backend_key(CuPyOps)] = CuPyOps
-        if "TorchOps" in globals():
+        if TorchOps is not None:
             self._available_ops[self._backend_key(TorchOps)] = TorchOps
 
     def normalize_context(
@@ -68,41 +74,58 @@ class Contextual:
         ctx: Context | BackendFamily | str | None = None,
         dtype: Any = None,
         enable_checks: bool | None = None,
+        *,
+        check_level: CheckLevel | None = None,
     ) -> Context:
         Context = _context_type()
+        require_mutually_exclusive("check_level", check_level, "enable_checks", enable_checks)
         if ctx is None:
-            if dtype is not None or enable_checks is not None:
+            if dtype is not None or enable_checks is not None or check_level is not None:
                 warn(
-                    "Provided context is None, dtype and enable_checks parameters are ignored.",
+                    "Provided context is None; dtype and check policy parameters are ignored.",
                     UserWarning,
                 )
             return self.default_ctx
         if isinstance(ctx, Context):
-            if dtype is not None or enable_checks is not None:
+            if dtype is not None or enable_checks is not None or check_level is not None:
                 warn(
-                    "Provided concrete context, dtype and enable_checks parameters are ignored.",
+                    "Provided concrete context; dtype and check policy parameters are ignored.",
                     UserWarning,
                 )
             return Context(
                 ops=ctx.ops,
                 dtype=ctx.ops.sanitize_dtype(ctx.dtype),
-                enable_checks=ctx.enable_checks,
+                check_level=ctx.check_level,
             )
         if isinstance(ctx, (str, BackendFamily)):
             ctx = self._backend_key(ctx)
             ops = self.get_ops(ctx)
-            return self.ctx_from_ops(ops, dtype=dtype, enable_checks=enable_checks)
+            return self.ctx_from_ops(
+                ops,
+                dtype=dtype,
+                enable_checks=enable_checks,
+                check_level=check_level,
+            )
         else:
             raise TypeError(f"Expected Context, BackendFamily, str, or None, got {type(ctx)}.")
 
     def ctx_from_ops(
-        self, ops: BackendOps, dtype: DType | None = None, enable_checks: bool | None = None
+        self,
+        ops: BackendOps,
+        dtype: DType | None = None,
+        enable_checks: bool | None = None,
+        *,
+        check_level: CheckLevel | None = None,
     ) -> Context:
         Context = _context_type()
         dtype = ops.sanitize_dtype(dtype)
-        if enable_checks is None:
-            enable_checks = self._default_enable_checks
-        return Context(ops=ops, dtype=dtype, enable_checks=enable_checks)
+        level = normalize_check_level(
+            check_level,
+            enable_checks=enable_checks,
+            default=self._default_check_level,
+            warn_legacy=enable_checks is not None,
+        )
+        return Context(ops=ops, dtype=dtype, check_level=level)
 
     @property
     def default_ctx(self) -> Context:
@@ -136,7 +159,13 @@ class Contextual:
             self._available_ops[family] = ops
             return ops
 
-    def infer_context(self, x: Any, enable_checks: bool | None = None) -> Context | None:
+    def infer_context(
+        self,
+        x: Any,
+        enable_checks: bool | None = None,
+        *,
+        check_level: CheckLevel | None = None,
+    ) -> Context | None:
         """Infer context from `.ctx` first, then registered backend arrays."""
         Context = _context_type()
         if isinstance(x, Context):
@@ -169,7 +198,12 @@ class Contextual:
         except Exception:
             dtype = getattr(x, "dtype", self.default_ctx.dtype)
 
-        return self.ctx_from_ops(ops, dtype, enable_checks)
+        return self.ctx_from_ops(
+            ops,
+            dtype,
+            enable_checks,
+            check_level=check_level,
+        )
 
     def infer_contexts(self, values: Iterable[Any]) -> Tuple[Context, ...]:
         out: list[Context] = []
@@ -241,7 +275,7 @@ class Contextual:
         return self.ctx_from_ops(
             ops=ops,
             dtype=dtype,
-            enable_checks=all(ctx.enable_checks for ctx in inferred),
+            check_level=minimum_check_level(tuple(ctx.check_level for ctx in inferred)),
         )
 
     def _join_dtypes(self, ops: BackendOps, *dtypes: DType | None) -> DType | None:
@@ -269,6 +303,8 @@ def set_context(
     ctx: Context | BackendFamily | str | None = None,
     dtype: Any = None,
     enable_checks: bool | None = None,
+    *,
+    check_level: CheckLevel | None = None,
 ) -> None:
     """
     Set the process-wide default SpaceCore context.
@@ -280,10 +316,17 @@ def set_context(
     dtype : Any, optional
         Default dtype override.
     enable_checks : bool or None, optional
-        Validation-check policy override.
+        Deprecated Boolean validation override.
+    check_level : CheckLevel or None, optional
+        Validation policy override for backend-name contexts.
     """
     state = _state()
-    state.default_ctx = state.normalize_context(ctx, dtype=dtype, enable_checks=enable_checks)
+    state.default_ctx = state.normalize_context(
+        ctx,
+        dtype=dtype,
+        enable_checks=enable_checks,
+        check_level=check_level,
+    )
 
 
 def get_context() -> Context:
@@ -341,6 +384,8 @@ def normalize_context(
     ctx: Context | BackendFamily | str | None = None,
     dtype: Any = None,
     enable_checks: bool | None = None,
+    *,
+    check_level: CheckLevel | None = None,
 ) -> Context:
     """
     Normalize a context specification through the process-wide state.
@@ -352,14 +397,21 @@ def normalize_context(
     dtype : Any, optional
         Default dtype override.
     enable_checks : bool or None, optional
-        Validation-check policy override.
+        Deprecated Boolean validation override.
+    check_level : CheckLevel or None, optional
+        Validation policy override for backend-name contexts.
 
     Returns
     -------
     Context
         Normalized context.
     """
-    return _state().normalize_context(ctx, dtype=dtype, enable_checks=enable_checks)
+    return _state().normalize_context(
+        ctx,
+        dtype=dtype,
+        enable_checks=enable_checks,
+        check_level=check_level,
+    )
 
 
 def normalize_ops(ops: str | BackendFamily | BackendOps | type[BackendOps] | Context) -> BackendOps:

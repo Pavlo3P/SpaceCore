@@ -1,15 +1,16 @@
 from __future__ import annotations
 
-from typing import Any, Callable, Literal, Optional, Sequence, Tuple, Type
+from typing import Any, Callable, Literal, Sequence, Tuple, Type, cast
 
 import numpy as np
 
+from .._eager import EagerControlFlowMixin
 from .._family import BackendFamily
 from .._ops import BackendOps, LazyNamespace
-from ...types import DenseArray, DType, Index, SparseArray, T, X, Y, R, Carry
+from ...types import ArrayLike, DenseArray, DType, Index, SparseArray
 
 
-class TorchOps(BackendOps):
+class TorchOps(EagerControlFlowMixin, BackendOps):
     """
     BackendOps implementation for PyTorch tensors.
 
@@ -53,7 +54,12 @@ class TorchOps(BackendOps):
         according to normal PyTorch rules.
     """
 
-    import torch
+    import torch as _torch
+
+    # Concrete library handle exposed as ``Any`` so the portable protocols
+    # (DenseArray/SparseArray) can be passed to typed PyTorch calls without a
+    # cast at every boundary; mirrors the base ``xp: ClassVar[Any]`` design.
+    torch: Any = _torch
 
     xp = LazyNamespace("array_api_compat.torch")
 
@@ -213,6 +219,7 @@ class TorchOps(BackendOps):
             SciPy sparse inputs are converted through COO indices and values.
             Dense inputs are converted through PyTorch's sparse COO conversion.
         """
+        self._reject_complex_to_real(x, dtype, operation="assparse")
         dtype = self.sanitize_dtype(dtype) if dtype is not None else None
         if self.is_sparse(x):
             y = x.to(dtype=dtype, device=device) if dtype is not None or device is not None else x
@@ -230,7 +237,7 @@ class TorchOps(BackendOps):
             sps = None
 
         if sps is not None and sps.issparse(x):
-            coo = x.tocoo()
+            coo = cast(Any, x).tocoo()
             indices = self.torch.as_tensor(
                 np.vstack((coo.row, coo.col)),
                 dtype=self.torch.int64,
@@ -239,7 +246,7 @@ class TorchOps(BackendOps):
             values = self.torch.as_tensor(coo.data, dtype=dtype, device=device)
             out = self.torch.sparse_coo_tensor(indices, values, coo.shape, device=device)
         else:
-            out = self.asarray(x, dtype=dtype, device=device).to_sparse_coo()
+            out = cast(Any, self.asarray(x, dtype=dtype, device=device)).to_sparse_coo()
 
         if format == "coo":
             return out.coalesce()
@@ -257,8 +264,11 @@ class TorchOps(BackendOps):
         device: Any | None = None,
         copy: bool | None = None,
         backend_kwargs: dict[str, Any] | None = None,
+        **extra_kwargs: Any,
     ) -> DenseArray:
+        self._reject_complex_to_real(x, dtype, operation="asarray")
         kwargs = {} if backend_kwargs is None else dict(backend_kwargs)
+        kwargs.update(extra_kwargs)
         if device is not None:
             kwargs["device"] = device
         dtype = self.sanitize_dtype(dtype) if dtype is not None else None
@@ -276,12 +286,15 @@ class TorchOps(BackendOps):
         non_blocking: bool = False,
         memory_format: Any | None = None,
         backend_kwargs: dict[str, Any] | None = None,
+        **extra_kwargs: Any,
     ) -> DenseArray:
         if dtype is None:
             return x
+        self._reject_complex_to_real(x, dtype, operation="astype")
         kwargs = {} if backend_kwargs is None else dict(backend_kwargs)
+        kwargs.update(extra_kwargs)
         kwargs.update(self._defined_kwargs(memory_format=memory_format))
-        return x.to(
+        return cast(Any, x).to(
             dtype=self.sanitize_dtype(dtype),
             non_blocking=non_blocking,
             copy=copy,
@@ -491,7 +504,7 @@ class TorchOps(BackendOps):
         *,
         driver: str | None = None,
         out: DenseArray | tuple[DenseArray, DenseArray, DenseArray] | None = None,
-    ) -> DenseArray | tuple[DenseArray, DenseArray, DenseArray]:
+    ) -> tuple[DenseArray, DenseArray, DenseArray]:
         kwargs = {} if backend_kwargs is None else dict(backend_kwargs)
         kwargs.update(self._defined_kwargs(driver=driver, out=out))
         return self.torch.linalg.svd(A, full_matrices=full_matrices, **kwargs)
@@ -549,15 +562,15 @@ class TorchOps(BackendOps):
         if return_sign:
             return result, sign
         if out is not None:
-            out.copy_(result)
+            cast(Any, out).copy_(result)
             return out
         return result
 
     def where(
         self,
         condition: DenseArray | bool,
-        x: DenseArray,
-        y: DenseArray,
+        x: ArrayLike,
+        y: ArrayLike,
         *,
         out: DenseArray | None = None,
     ) -> DenseArray:
@@ -579,47 +592,17 @@ class TorchOps(BackendOps):
             result = self.torch.cat(tuple(arrays), dim=axis, out=out)
         return self.astype(result, dtype) if dtype is not None else result
 
-    def index_set(self, x: DenseArray, index: Index, values: DenseArray, *, copy: bool = True):
+    def _copy(self, x: DenseArray) -> DenseArray:
+        """Return a PyTorch clone of ``x`` (mutation primitive for index ops)."""
+        return cast(Any, x).clone()
+
+    def _scatter_add_inplace(self, y: DenseArray, index: Index, values: ArrayLike) -> None:
+        """Add ``values`` into ``y`` at ``index`` in place.
+
+        Unlike NumPy's ``add.at``, plain indexed assignment does not accumulate
+        repeated indices; this matches PyTorch's prior ``index_add`` behavior.
         """
-        Set indexed tensor values using PyTorch.
-
-        Input:
-            x: Dense backend tensor; index: Index expression; values: Replacement values.
-
-        Output:
-            Tensor with indexed values replaced.
-
-        See:
-            https://docs.pytorch.org/docs/stable/tensor_view.html
-
-        Backend-specific notes:
-            When ``copy`` is true, this clones ``x`` before assignment.
-            Otherwise the assignment mutates ``x`` in place.
-        """
-        y = x.clone() if copy else x
-        y[index] = values
-        return y
-
-    def index_add(self, x: DenseArray, index: Index, values: DenseArray, *, copy: bool = True):
-        """
-        Add values at indexed tensor positions using PyTorch.
-
-        Input:
-            x: Dense backend tensor; index: Index expression; values: Values to add.
-
-        Output:
-            Tensor with indexed values incremented.
-
-        See:
-            https://docs.pytorch.org/docs/stable/tensor_view.html
-
-        Backend-specific notes:
-            When ``copy`` is true, this clones ``x`` before assignment.
-            Otherwise the assignment mutates ``x`` in place.
-        """
-        y = x.clone() if copy else x
         y[index] = y[index] + values
-        return y
 
     def ix_(self, *args: Any) -> Any:
         """
@@ -638,160 +621,6 @@ class TorchOps(BackendOps):
             arg if isinstance(arg, self.torch.Tensor) else self.asarray(arg) for arg in args
         )
         return self.torch.meshgrid(*tensors, indexing="ij")
-
-    def fori_loop(self, lower: int, upper: int, body_fun: Callable[[int, T], T], init_val: T) -> T:
-        """
-        Run a counted loop eagerly in Python for PyTorch.
-
-        Input:
-            lower, upper: Integer loop bounds; body_fun: Loop body; init_val: Initial value.
-
-        Output:
-            Final loop value.
-
-        See:
-            https://docs.python.org/3/reference/compound_stmts.html#the-for-statement
-
-        Backend-specific notes:
-            This is an eager Python loop, not a compiled PyTorch control-flow
-            primitive. Tensor operations inside ``body_fun`` follow PyTorch
-            autograd semantics.
-        """
-        val = init_val
-        for i in range(int(lower), int(upper)):
-            val = body_fun(i, val)
-        return val
-
-    def while_loop(
-        self, cond_fun: Callable[[T], bool], body_fun: Callable[[T], T], init_val: T
-    ) -> T:
-        """
-        Run a while loop eagerly in Python for PyTorch.
-
-        Input:
-            cond_fun: Loop predicate; body_fun: Loop body; init_val: Initial value.
-
-        Output:
-            Final loop value.
-
-        See:
-            https://docs.python.org/3/reference/compound_stmts.html#the-while-statement
-
-        Backend-specific notes:
-            This is an eager Python loop. The predicate is converted to a
-            Python bool each iteration.
-        """
-        val = init_val
-        while bool(cond_fun(val)):
-            val = body_fun(val)
-        return val
-
-    def _tree_map(self, f: Callable[[Any], Any], tree: Any) -> Any:
-        if isinstance(tree, dict):
-            return {k: self._tree_map(f, v) for k, v in tree.items()}
-        if isinstance(tree, tuple):
-            return tuple(self._tree_map(f, v) for v in tree)
-        if isinstance(tree, list):
-            return [self._tree_map(f, v) for v in tree]
-        return f(tree)
-
-    def _tree_multimap(self, f: Callable[..., Any], *trees: Any) -> Any:
-        t0 = trees[0]
-        if isinstance(t0, dict):
-            return {k: self._tree_multimap(f, *(t[k] for t in trees)) for k in t0.keys()}
-        if isinstance(t0, tuple):
-            return tuple(self._tree_multimap(f, *(t[i] for t in trees)) for i in range(len(t0)))
-        if isinstance(t0, list):
-            return [self._tree_multimap(f, *(t[i] for t in trees)) for i in range(len(t0))]
-        return f(*trees)
-
-    def _tree_take0(self, xs: Any) -> Any:
-        if isinstance(xs, dict):
-            return self._tree_take0(next(iter(xs.values())))
-        if isinstance(xs, (tuple, list)):
-            return self._tree_take0(xs[0])
-        return xs
-
-    def _tree_index(self, xs: Any, i: int) -> Any:
-        def _idx(a: Any) -> Any:
-            try:
-                return a[i]
-            except Exception:
-                return a
-
-        return self._tree_map(_idx, xs)
-
-    def _tree_stack(self, ys_list: Sequence[Any]) -> Any:
-        if not ys_list:
-            return ()
-        return self._tree_multimap(lambda *leaves: self.stack(leaves, axis=0), *ys_list)
-
-    def scan(
-        self,
-        f: Callable[[Carry, X], Tuple[Carry, Y]],
-        init: Carry,
-        xs: X,
-        length: Optional[int] = None,
-        reverse: bool = False,
-        unroll: int = 1,
-    ) -> Tuple[Carry, Y]:
-        """
-        Run a scan-style loop eagerly in Python for PyTorch.
-
-        Input:
-            f: Scan body; init: Initial carry; xs: Per-step inputs plus scan options.
-
-        Output:
-            Tuple of final carry and stacked outputs.
-
-        See:
-            https://docs.jax.dev/en/latest/_autosummary/jax.lax.scan.html
-
-        Backend-specific notes:
-            PyTorch has no direct eager equivalent to ``jax.lax.scan`` in this
-            backend. SpaceCore implements a Python loop and stacks tensor
-            leaves at the end.
-        """
-        carry = init
-        if xs is None:
-            if length is None:
-                raise ValueError("scan(xs=None) requires an explicit `length`.")
-            indices = range(int(length) - 1, -1, -1) if reverse else range(int(length))
-            ys_steps = []
-            for _ in indices:
-                carry, y = f(carry, None)  # type: ignore[arg-type]
-                ys_steps.append(y)
-        else:
-            n = int(length) if length is not None else int(self._tree_take0(xs).shape[0])
-            indices = range(n - 1, -1, -1) if reverse else range(n)
-            ys_steps = []
-            for i in indices:
-                carry, y = f(carry, self._tree_index(xs, i))
-                ys_steps.append(y)
-        if reverse:
-            ys_steps.reverse()
-        return carry, self._tree_stack(ys_steps)
-
-    def cond(
-        self, pred: bool, true_fun: Callable[[T], R], false_fun: Callable[[T], R], *operands: Any
-    ) -> R:
-        """
-        Run conditional branch selection eagerly in Python for PyTorch.
-
-        Input:
-            pred: Predicate; true_fun and false_fun: Branch functions; operands: Branch inputs.
-
-        Output:
-            Result returned by the selected branch.
-
-        See:
-            https://docs.python.org/3/reference/expressions.html#conditional-expressions
-
-        Backend-specific notes:
-            This uses Python eager branching, not a staged or compiled control
-            flow primitive.
-        """
-        return true_fun(*operands) if bool(pred) else false_fun(*operands)
 
     def allclose_sparse(
         self, a: SparseArray, b: SparseArray, rtol: float = 1e-5, atol: float = 1e-8
@@ -812,6 +641,5 @@ class TorchOps(BackendOps):
             Sparse tensors are compared by converting both operands to dense
             tensors before calling ``allclose``.
         """
-        if not self.is_sparse(a) or not self.is_sparse(b):
-            raise TypeError("allclose_sparse expects two sparse tensors.")
-        return self.allclose(a.to_dense(), b.to_dense(), rtol=rtol, atol=atol)
+        self._require_two_sparse(a, b, noun="sparse tensors")
+        return self.allclose(cast(Any, a).to_dense(), cast(Any, b).to_dense(), rtol=rtol, atol=atol)

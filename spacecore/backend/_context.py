@@ -1,14 +1,15 @@
 from dataclasses import dataclass
 from typing import Any
 
+from .._check_policy import CheckLevel, level_to_enabled, normalize_check_level
 from ._ops import BackendOps
 from ..types import DenseArray, SparseArray, DType, ArrayLike
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class Context:
     """
-    Select backend operations, dtype, and validation policy.
+    Select backend operations, representation dtype, and validation policy.
 
     A context collects the backend operations object, default dtype, and runtime
     validation policy used by spaces, linear operators, and context-bound
@@ -24,11 +25,16 @@ class Context:
         :class:`spacecore.backend.NumpyOps` or
         :class:`spacecore.backend.JaxOps`.
     dtype : dtype-like or None, optional
-        Default dtype used by :meth:`asarray` and :meth:`assparse`. The value is
-        normalized through ``ops.sanitize_dtype`` during initialization.
-    enable_checks : bool, optional
-        Whether spaces and linear operators using this context should perform
-        membership and compatibility checks before operations.
+        Default array representation dtype used by :meth:`asarray` and
+        :meth:`assparse`. The value is normalized through
+        ``ops.sanitize_dtype`` during initialization. It does not independently
+        define a mathematical scalar field; spaces expose that contract through
+        :attr:`spacecore.space.Space.field`.
+    enable_checks : bool or None, optional
+        Deprecated compatibility alias. ``True`` maps to ``"standard"`` and
+        ``False`` maps to ``"none"``. Passing both policy arguments is an error.
+    check_level : {"none", "cheap", "standard", "strict"}, optional
+        Runtime validation policy. The default is ``"standard"``.
 
     Attributes
     ----------
@@ -36,15 +42,13 @@ class Context:
         Normalized backend operations instance.
     dtype : dtype-like
         Backend-native dtype used by array constructors.
-    enable_checks : bool
-        Runtime validation flag propagated to spaces and operators.
 
     Notes
     -----
     ``Context`` is frozen and slot-based. Methods that convert values return new
     backend arrays or sparse objects; they do not mutate the context itself.
 
-    Equality compares backend family, dtype, and ``enable_checks``.
+    Equality compares backend family, dtype, and ``check_level``.
 
     Examples
     --------
@@ -59,10 +63,17 @@ class Context:
     """
 
     ops: BackendOps
-    dtype: DType | None = None
-    enable_checks: bool = True
+    dtype: DType | None
+    check_level: CheckLevel
 
-    def __post_init__(self):
+    def __init__(
+        self,
+        ops: BackendOps,
+        dtype: DType | None = None,
+        enable_checks: bool | None = None,
+        *,
+        check_level: CheckLevel | None = None,
+    ) -> None:
         """
         Validate and normalize the context after dataclass initialization.
 
@@ -74,13 +85,25 @@ class Context:
         from .._contextual._state import normalize_ops
 
         try:
-            ops = normalize_ops(self.ops)
+            ops = normalize_ops(ops)
         except TypeError:
             raise TypeError("Unknown ops type.")
         object.__setattr__(self, "ops", ops)
+        object.__setattr__(self, "dtype", self.ops.sanitize_dtype(dtype))
+        object.__setattr__(
+            self,
+            "check_level",
+            normalize_check_level(
+                check_level,
+                enable_checks=enable_checks,
+                warn_legacy=enable_checks is not None,
+            ),
+        )
 
-        sanitized = self.ops.sanitize_dtype(self.dtype)
-        object.__setattr__(self, "dtype", sanitized)
+    @property
+    def enable_checks(self) -> bool:
+        """Deprecated Boolean view of :attr:`check_level`."""
+        return level_to_enabled(self.check_level)
 
     def assert_dense(self, x: Any) -> DenseArray:
         """
@@ -144,6 +167,13 @@ class Context:
         -------
         DenseArray
             Backend-native dense array with dtype ``self.dtype``.
+
+        Raises
+        ------
+        TypeError
+            If conversion to ``self.dtype`` would discard a complex
+            representation. Extract the real part explicitly before conversion
+            when that loss is intentional.
         """
         return self.ops.asarray(x, dtype=self.dtype)
 
@@ -164,7 +194,9 @@ class Context:
         Raises
         ------
         TypeError
-            If the backend implementation does not support sparse conversion.
+            If the backend implementation does not support sparse conversion,
+            or conversion to ``self.dtype`` would discard a complex
+            representation.
         """
         return self.ops.assparse(x, dtype=self.dtype)
 
@@ -210,12 +242,18 @@ class Context:
         -------
         bool
             ``True`` when ``other`` is a ``Context`` with equal backend
-            operations, dtype, and ``enable_checks``.
+            operations, dtype, and ``check_level``.
         """
         if isinstance(other, Context):
             return (
                 self.ops == other.ops
                 and self.dtype == other.dtype
-                and self.enable_checks == other.enable_checks
+                and self.check_level == other.check_level
             )
         return False
+
+    def __repr__(self) -> str:
+        return (
+            f"Context(ops={self.ops!r}, dtype={self.dtype!r}, "
+            f"check_level={self.check_level!r})"
+        )

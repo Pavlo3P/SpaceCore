@@ -1,5 +1,6 @@
 """Backend contexts and operation implementations."""
 
+from .._check_policy import CHECK_LEVELS, CheckLevel
 from ._context import Context
 from ._ops import BackendOps
 from ._family import BackendFamily
@@ -24,6 +25,8 @@ except ModuleNotFoundError as exc:
 
 __all__ = [
     "Context",
+    "CheckLevel",
+    "CHECK_LEVELS",
     "BackendFamily",
     "BackendOps",
     "jax_pytree_class",

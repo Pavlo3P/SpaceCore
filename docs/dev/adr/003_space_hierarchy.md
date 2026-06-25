@@ -12,7 +12,7 @@ SpaceCore represents mathematical spaces separately from raw array containers. C
 
 `Space` owns context and membership checks. `VectorSpace` adds abstract `zeros`, `add`, `scale`, and `axpy`. `CoordinateSpace` adds finite coordinate `shape`, `size`, `flatten`, `unflatten`, batch flattening, and `stacked`. `InnerProductSpace`, `StarSpace`, `JordanAlgebraSpace`, and `EuclideanJordanAlgebraSpace` add optional mathematical capabilities.
 
-Concrete dense coordinate spaces construct zeros through their context, validate backend/shape/dtype, and flatten to a dense coordinate vector. `DenseVectorSpace` specializes one-dimensional dense coordinates. `ProductSpace` is a coordinate space whose elements are structured component containers, tuple by default or a registered pytree structure. `StackedSpace` represents a fixed leading-axis stack as one mathematical element.
+Concrete dense coordinate spaces construct zeros through their context, validate backend/shape/dtype, and flatten to a dense coordinate vector. `DenseVectorSpace` specializes one-dimensional dense coordinates. `TreeSpace` is a coordinate space whose elements are Python trees of coordinate-space leaves. `StackedSpace` represents a fixed leading-axis stack as one mathematical element.
 
 ## Decision
 
@@ -35,4 +35,4 @@ New spaces must decide which capabilities they implement and must provide coordi
 - `Space` membership is the source of truth for valid elements.
 - `VectorSpace` linear operations must preserve membership.
 - `CoordinateSpace.flatten` and `unflatten` must be inverse coordinate representations for one element.
-- Product element structure must be handled through its `ProductStructure`, not by assuming tuples everywhere.
+- Tree element structure must be handled through the `TreeSpace` optree definition, not by assuming tuples everywhere.

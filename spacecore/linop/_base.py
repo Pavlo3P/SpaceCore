@@ -5,15 +5,17 @@ from abc import abstractmethod
 from functools import cached_property
 from math import prod
 from numbers import Number
-from typing import Any, Generic, TypeVar
+from typing import Any, Generic, Self, TypeVar
 
+from .._batching import _leading_batch_size, _warn_vmap_fallback_once
 from .._checks import checked_method
-from ..space import Space
+from .._repr import describe_space
+from ..space import CoordinateSpace
 from ..backend import Context
-from .._contextual import ContextBound, resolve_context_priority
+from .._contextual import ContextBound
 
-Domain = TypeVar("Domain", bound=Space)
-Codomain = TypeVar("Codomain", bound=Space)
+Domain = TypeVar("Domain", bound=CoordinateSpace)
+Codomain = TypeVar("Codomain", bound=CoordinateSpace)
 
 
 class LinOp(ContextBound, Generic[Domain, Codomain]):
@@ -61,12 +63,7 @@ class LinOp(ContextBound, Generic[Domain, Codomain]):
     """
 
     def __init__(self, dom: Domain, cod: Codomain, ctx: Context | str | None = None):
-        ctx = resolve_context_priority(ctx, dom, cod)
-        super(LinOp, self).__init__(ctx)
-
-        self.dom = dom.convert(self.ctx)
-        self.cod = cod.convert(self.ctx)
-        self._enable_checks = self.ctx.enable_checks
+        self.dom, self.cod = self._bind_context(ctx, dom, cod)
 
     @property
     def domain(self) -> Domain:
@@ -102,6 +99,22 @@ class LinOp(ContextBound, Generic[Domain, Codomain]):
     def rapply(self, y: Any) -> Any:
         """Apply the adjoint map to an element of ``self.codomain``."""
 
+    def _apply_core(self, x: Any) -> Any:
+        """Apply without adding validation beyond the concrete implementation."""
+        return self.apply(x)
+
+    def _rapply_core(self, y: Any) -> Any:
+        """Apply the adjoint without adding validation beyond the implementation."""
+        return self.rapply(y)
+
+    def _vapply_core(self, xs: Any) -> Any:
+        """Apply to a batch without adding validation beyond the implementation."""
+        return self.vapply(xs)
+
+    def _rvapply_core(self, ys: Any) -> Any:
+        """Apply the adjoint to a batch without adding validation beyond the implementation."""
+        return self.rvapply(ys)
+
     def __call__(self, x: Any) -> Any:
         """Apply this linear operator to ``x``."""
         return self.apply(x)
@@ -125,11 +138,13 @@ class LinOp(ContextBound, Generic[Domain, Codomain]):
     @checked_method(in_space="domain", in_batched=True)
     def vapply(self, xs: Any) -> Any:
         """Apply over a leading batch axis. Input must have shape ``(N,) + domain.shape``; use ``moveaxis`` for other layouts."""
+        _warn_vmap_fallback_once(self, "vapply", _leading_batch_size(self.domain, xs))
         return self.ops.vmap(self.apply, in_axes=0, out_axes=0)(xs)
 
     @checked_method(in_space="codomain", in_batched=True)
     def rvapply(self, ys: Any) -> Any:
         """Apply the adjoint over a leading batch axis. Input must have shape ``(N,) + codomain.shape``; use ``moveaxis`` for other layouts."""
+        _warn_vmap_fallback_once(self, "rvapply", _leading_batch_size(self.codomain, ys))
         return self.ops.vmap(self.rapply, in_axes=0, out_axes=0)(ys)
 
     @property
@@ -291,13 +306,28 @@ class LinOp(ContextBound, Generic[Domain, Codomain]):
         """Return structural equality when implemented by a subclass."""
         return NotImplemented
 
+    def _arrow(self) -> str:
+        """Return the ``domain → codomain`` descriptor for this operator."""
+        return f"{describe_space(self.dom)} → {describe_space(self.cod)}"
+
+    def _repr_body(self) -> str:
+        return self._arrow()
+
+    def _short_repr(self) -> str:
+        """Return a bounded ``ClassName(domain → codomain)`` form for nesting.
+
+        Algebra operators show their operands in the full :meth:`__repr__` but
+        collapse to this arrow form when nested, so deep trees never explode.
+        """
+        return f"{type(self).__name__}({self._arrow()})"
+
     @abstractmethod
-    def tree_flatten(self):
+    def tree_flatten(self) -> tuple[tuple[Any, ...], Any]:
         """Flatten this operator for backend pytree registration."""
         ...
 
     @classmethod
     @abstractmethod
-    def tree_unflatten(cls, aux, children):
+    def tree_unflatten(cls, aux: Any, children: Any) -> Self:
         """Rebuild this operator from backend pytree data."""
         ...

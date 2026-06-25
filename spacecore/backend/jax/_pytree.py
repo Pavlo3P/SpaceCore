@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TypeVar
 
-T = TypeVar("T")
+T = TypeVar("T", bound=type)
 
 
 def jax_pytree_class(klass: T) -> T:

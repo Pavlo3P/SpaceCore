@@ -43,3 +43,9 @@ Expected output:
 
    [[ 2.  3.]
     [ 4. 12.]]
+
+See also
+--------
+
+* :doc:`batching_test_policy` records what ``0.4.0`` tests about batching and
+  what it intentionally does not.

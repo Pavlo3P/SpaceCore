@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Tuple, Callable
+from typing import Any, Tuple, Callable, cast
 
 from ..checks import HermitianCheck, SquareMatrixCheck
 from ..base import EuclideanJordanAlgebraSpace, StarSpace
@@ -63,15 +63,15 @@ class HermitianSpace(DenseCoordinateSpace, StarSpace, EuclideanJordanAlgebraSpac
         self.rtol = rtol
         self.enforce_herm = enforce_herm
 
-    def __eq__(self, other: Any) -> bool:
-        if isinstance(other, HermitianSpace):
-            return (
-                super(HermitianSpace, self).__eq__(other)
-                and self.atol == other.atol
-                and self.rtol == other.rtol
-                and self.enforce_herm == other.enforce_herm
-            )
-        return False
+    # Equality is inherited from DenseCoordinateSpace (backend gate + field +
+    # shape (= n) + fixed Frobenius geometry). The membership tolerances
+    # ``atol``/``rtol``/``enforce_herm`` are deliberately NOT part of identity:
+    # they are validation policy (like ``check_level``), not the mathematical
+    # space of n x n Hermitian matrices they describe.
+
+    def _space_descriptor(self) -> str:
+        """Return ``Herm(n)``; the real/complex field shows in the dtype tag."""
+        return f"Herm({self.n})"
 
     @property
     def n(self) -> int:
@@ -114,11 +114,6 @@ class HermitianSpace(DenseCoordinateSpace, StarSpace, EuclideanJordanAlgebraSpac
         yx = self.ops.matmul(y, x)
         return self.symmetrize((xy + yx) * 0.5)
 
-    def _check_unbatched_member(self, x: DenseArray) -> None:
-        """Run member checks for a single element, while allowing batched spectra."""
-        if self._enable_checks and tuple(getattr(x, "shape", ())) == self.shape:
-            self._check_member(x)
-
     def spectrum(self, x: DenseArray) -> DenseArray:
         """Return the Hermitian eigenvalue spectrum of ``x``."""
         self._check_unbatched_member(x)
@@ -135,7 +130,7 @@ class HermitianSpace(DenseCoordinateSpace, StarSpace, EuclideanJordanAlgebraSpac
 
     def unflatten(self, v: DenseArray) -> DenseArray:
         """Reshape dense coordinates and symmetrize the result."""
-        vv = self.ctx.assert_dense(v) if self._enable_checks else v
+        vv = self._coerce_dense(v)
         X = vv.reshape(self.shape)
         return self.symmetrize(X)
 
@@ -143,14 +138,22 @@ class HermitianSpace(DenseCoordinateSpace, StarSpace, EuclideanJordanAlgebraSpac
     def psd_proj(self, x: DenseArray) -> DenseArray:
         """Project a Hermitian element onto the positive semidefinite cone."""
         evals, evecs = self.spectral_decompose(x)
-        evals = self.ops.maximum(evals, 0.0)
+        evals = self.ops.maximum(evals, cast(Any, 0.0))
         return self.eig_to_dense(evals, evecs)
 
     def eig_to_dense(self, evals: DenseArray, evecs: DenseArray) -> DenseArray:
-        """Reconstruct a Hermitian matrix from eigenvalues and eigenvectors."""
+        """Reconstruct a Hermitian matrix from eigenvalues and eigenvectors.
+
+        The ``U diag(evals) U^*`` reconstruction is mathematically Hermitian but
+        accumulates floating-point skew at the level of a few ULP, which a
+        zero-tolerance Hermitian space would otherwise reject. Symmetrizing
+        projects onto the Hermitian part (a no-op up to that skew) so the
+        reconstruction is a valid member of this space.
+        """
         self.ctx.assert_dense(evals)
         self.ctx.assert_dense(evecs)
         X = self.ops.einsum("...ij,...j,...kj->...ik", evecs, evals, self.ops.conj(evecs))
+        X = self.symmetrize(X)
         self._check_unbatched_member(X)
         return X
 
@@ -164,7 +167,7 @@ class HermitianSpace(DenseCoordinateSpace, StarSpace, EuclideanJordanAlgebraSpac
             y = f(x)
         except Exception:
             y = self.ops.vectorize(f)(x)
-        if self._enable_checks and y.shape != x.shape:
+        if self._checks_at_least("cheap") and y.shape != x.shape:
             raise ValueError("Function application changed shape.")
         return y
 

@@ -4,6 +4,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any, ClassVar
 
+from ..._check_policy import CheckLevel, check_level_at_least, normalize_check_level
+
 
 class SpaceValidationError(ValueError, TypeError):
     """Raised when an object is not a member of a space."""
@@ -40,6 +42,7 @@ class SpaceCheck(ABC):
     name: str
     core_rank: ClassVar[int] = 0
     enforce_core_shape: ClassVar[bool] = False
+    minimum_level: ClassVar[CheckLevel] = "standard"
 
     def __call__(self, space: Any, x: Any) -> None:
         """Raise :class:`SpaceValidationError` when ``x`` is invalid."""
@@ -108,6 +111,7 @@ class BackendCheck(SpaceCheck):
 
     name: str = "backend"
     core_rank: ClassVar[int] = 0
+    minimum_level: ClassVar[CheckLevel] = "cheap"
 
     def is_valid(self, space: Any, x: Any) -> bool:
         return bool(space.ops.is_dense(x))
@@ -129,6 +133,7 @@ class ShapeCheck(SpaceCheck):
 
     name: str = "shape"
     enforce_core_shape: ClassVar[bool] = True
+    minimum_level: ClassVar[CheckLevel] = "cheap"
 
     def core_shape(self, space: Any) -> tuple[int, ...]:
         """Return the whole canonical shape as the trailing element shape."""
@@ -170,12 +175,41 @@ class DTypeCheck(SpaceCheck):
 
     name: str = "dtype"
     core_rank: ClassVar[int] = 0
+    minimum_level: ClassVar[CheckLevel] = "cheap"
 
     def is_valid(self, space: Any, x: Any) -> bool:
         return _dtype_of(space, x) == space.dtype
 
     def error_message(self, space: Any, x: Any) -> str:
         return f"Expected dtype {space.dtype}, got {_dtype_of(space, x)}"
+
+
+@dataclass(frozen=True)
+class FieldCheck(SpaceCheck):
+    """
+    Check that a value is compatible with a space's mathematical field.
+
+    Parameters
+    ----------
+    name : str, optional
+        Identifier for this check. Default is ``"field"``.
+    """
+
+    name: str = "field"
+    core_rank: ClassVar[int] = 0
+    minimum_level: ClassVar[CheckLevel] = "cheap"
+
+    def is_valid(self, space: Any, x: Any) -> bool:
+        dtype = _dtype_of(space, x)
+        if dtype is None:
+            return False
+        return space.field == "complex" or not space.ops.is_complex_dtype(dtype)
+
+    def error_message(self, space: Any, x: Any) -> str:
+        return (
+            f"Expected an element compatible with the {space.field} scalar field, "
+            f"got dtype {_dtype_of(space, x)}"
+        )
 
 
 @dataclass(frozen=True)
@@ -192,6 +226,7 @@ class SquareMatrixCheck(SpaceCheck):
     name: str = "square_matrix"
     core_rank: ClassVar[int] = 2
     enforce_core_shape: ClassVar[bool] = True
+    minimum_level: ClassVar[CheckLevel] = "cheap"
 
     def is_valid(self, space: Any, x: Any) -> bool:
         shape = _shape_of(space, x)
@@ -221,6 +256,7 @@ class HermitianCheck(SpaceCheck):
     name: str = "hermitian"
     core_rank: ClassVar[int] = 2
     enforce_core_shape: ClassVar[bool] = True
+    minimum_level: ClassVar[CheckLevel] = "standard"
     atol: float = 1e-8
     rtol: float = 1e-8
     enforce: bool = True
@@ -243,90 +279,12 @@ class HermitianCheck(SpaceCheck):
         )
 
 
-@dataclass(frozen=True)
-class ProductStructureCheck(SpaceCheck):
-    """
-    Check that a value is valid for the configured ProductSpace structure.
-
-    Parameters
-    ----------
-    name : str, optional
-        Check name. Default is ``"product_structure"``.
-    """
-
-    name: str = "product_structure"
-    core_rank: ClassVar[int] = 0
-
-    def is_valid(self, space: Any, x: Any) -> bool:
-        try:
-            space._structure.to_components(x, arity=space.arity)
-        except Exception:
-            return False
-        return True
-
-    def error_message(self, space: Any, x: Any) -> str:
-        return self.validation_message(space, x, allow_leading=False)
-
-    def validation_message(self, space: Any, x: Any, *, allow_leading: bool) -> str:
-        try:
-            space._structure.to_components(x, arity=space.arity)
-        except Exception as exc:
-            if allow_leading:
-                return f"Invalid batched product structure: {exc}"
-            return str(exc)
-        return "Invalid product-space structure."
-
-
-@dataclass(frozen=True)
-class ProductComponentCheck(SpaceCheck):
-    """
-    Check each component of a product-space value.
-
-    Parameters
-    ----------
-    name : str, optional
-        Check name. Default is ``"product_components"``.
-    """
-
-    name: str = "product_components"
-    core_rank: ClassVar[int] = 0
-
-    def is_valid(self, space: Any, x: Any) -> bool:
-        return self.validate(space, x, allow_leading=True)
-
-    def validate(self, space: Any, x: Any, *, allow_leading: bool) -> bool:
-        try:
-            parts = space._structure.to_components(x, arity=space.arity)
-        except Exception:
-            return False
-
-        for subspace, component in zip(space.spaces, parts):
-            try:
-                _run_checks(subspace, component, allow_leading=allow_leading)
-            except Exception:
-                return False
-        return True
-
-    def error_message(self, space: Any, x: Any) -> str:
-        return self.validation_message(space, x, allow_leading=False)
-
-    def validation_message(self, space: Any, x: Any, *, allow_leading: bool) -> str:
-        try:
-            parts = space._structure.to_components(x, arity=space.arity)
-        except Exception as exc:
-            return str(exc)
-
-        for i, (subspace, component) in enumerate(zip(space.spaces, parts)):
-            try:
-                _run_checks(subspace, component, allow_leading=allow_leading)
-            except Exception as exc:
-                return f"Invalid component {i} for spaces[{i}] ({type(subspace).__name__}): {exc}"
-        return "Invalid product-space component."
-
-
 def _run_checks(space: Any, x: Any, *, allow_leading: bool) -> None:
     """Run all membership checks with a shared member/batched shape policy."""
+    level = normalize_check_level(getattr(space, "check_level", "standard"))
     for check in space.member_checks():
+        if not check_level_at_least(level, check.minimum_level):
+            continue
         if not check.validate(space, x, allow_leading=allow_leading):
             raise SpaceValidationError(
                 check.validation_message(space, x, allow_leading=allow_leading)

@@ -1,9 +1,9 @@
 Conversion Policy
 =================
 
-Context-bound objects expose ``convert(new_ctx)``. In ``0.3.x`` conversion is
-explicit and target-context driven: the requested context controls backend,
-dtype, and ``enable_checks``.
+Context-bound objects expose ``convert(new_ctx)``. Conversion is explicit and
+target-context driven: the requested context controls backend, dtype, and
+``check_level``.
 
 What moves
 ----------

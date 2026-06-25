@@ -16,6 +16,7 @@ authors = [
 dependencies = [
   "array-api-compat>=1.14.0",
   "numpy>=2.0.0",
+  "optree>=0.17.0",
   "scipy>=1.17",
 ]
 
@@ -41,15 +42,20 @@ classifiers = [
 jax = [
   "jax>=0.9.1",
 ]
+# optax adapter (``spacecore.optimize.minimize_optax``); needs a JAX backend.
+optax = [
+  "jax>=0.9.1",
+  "optax>=0.2",
+]
 torch = [
   "torch>=2.0",
 ]
 cupy = [
   "cupy>=13.0",
 ]
+# Dependencies needed to execute the tutorial notebooks under ``tutorials/``.
 examples = [
   "matplotlib>=3.8",
-  "optax>=0.2",
 ]
 docs = [
   "sphinx>=8.0",
@@ -89,6 +95,10 @@ doctest_optionflags = ["NORMALIZE_WHITESPACE", "ELLIPSIS", "NUMBER"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+# Tutorial/example notebooks are prose-first teaching material; exempt them from
+# linting (e.g. multi-statement plotting cells) so `ruff check .` covers the
+# library and tests only.
+extend-exclude = ["*.ipynb"]
 
 [tool.ruff.lint]
 ignore = [
@@ -105,6 +115,10 @@ convention = "numpy"
 "tutorials/*.ipynb" = ["E402", "E741"]
 "tests/*.py" = ["E701"]
 "tests/*" = ["D"]
+# Internal duck-typed check-free kernel cores: registered by name and documented
+# at module level, not part of the public API, so they are exempt from the
+# per-function missing-docstring rule.
+"spacecore/kernels/core/*" = ["D103"]
 
 [tool.numpydoc_validation]
 checks = [

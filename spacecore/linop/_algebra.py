@@ -1,15 +1,23 @@
 from __future__ import annotations
 
+from math import prod
 from numbers import Number
-from typing import Any, Callable, Sequence
+from typing import Any, Callable, Sequence, cast
 
 from ._base import LinOp, Domain, Codomain
 from ._metric import _requires_euclidean_or_riesz, metric_rapply, metric_rvapply
 from .._checks import checked_method
 from .._contextual import resolve_context_priority
 from .._contextual._bound import _same_math_context
+from .._repr import summarize_value
 from ..backend import Context, jax_pytree_class
-from ..space import DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace
+from ..kernels import core_kernels
+from ..kernels.core.algebra import (
+    batched_zeros as _batched_zeros,
+    compose_chain as _compose_chain,
+    conjugate_scalar as _conjugate_scalar,
+    leading_shape as _leading_shape,
+)
 
 
 def is_scalar_like(value: Any) -> bool:
@@ -23,31 +31,22 @@ def is_scalar_like(value: Any) -> bool:
     return ndim == 0
 
 
-def _conjugate_scalar(value: Any) -> Any:
-    """Return the scalar conjugate when the value supports conjugation."""
-    if hasattr(value, "conjugate"):
-        return value.conjugate()
-    if hasattr(value, "conj"):
-        return value.conj()
-    return value
+def _scalar_eq(a: Any, b: Any) -> bool:
+    """Return whether two scalar-likes are equal, NaN-reflexive.
 
-
-def _leading_shape(space: Any, value: Any) -> tuple[int, ...]:
-    """Infer leading dimensions from a batched value."""
-    parts = getattr(space, "spaces", None)
-    if parts is not None and isinstance(value, tuple) and value:
-        return _leading_shape(parts[0], value[0])
-    shape = tuple(getattr(value, "shape", ()))
-    base = tuple(space.shape)
-    return shape if not base else shape[: len(shape) - len(base)]
-
-
-def _batched_zeros(space: Any, leading_shape: tuple[int, ...]) -> Any:
-    """Return a batched zero value for ``space``."""
-    parts = getattr(space, "spaces", None)
-    if parts is not None:
-        return tuple(_batched_zeros(part, leading_shape) for part in parts)
-    return space.ops.zeros(leading_shape + tuple(space.shape), dtype=space.dtype)
+    Mirrors the ``equal_nan=True`` used for array values: two matching NaN
+    scalars compare equal so a NaN-scaled operator equals itself. Always returns
+    a real Python ``bool`` (a 0-d backend-array ``==`` would otherwise yield
+    ``np.bool_``, which leaks through the ``and`` combinator of any container).
+    """
+    if bool(a == b):
+        return True
+    try:
+        # ``x != x`` is True only for NaN (including a complex value with a NaN
+        # component), so this branch matches NaN against NaN.
+        return bool(a != a) and bool(b != b)
+    except Exception:
+        return False
 
 
 def _require_same_context(ops: Sequence[LinOp]) -> Context:
@@ -240,6 +239,7 @@ def make_composed(left: LinOp, right: LinOp) -> LinOp:
     return ComposedLinOp(left, right)
 
 
+@core_kernels("scaled")
 @jax_pytree_class
 class ScaledLinOp(LinOp[Domain, Codomain]):
     r"""
@@ -281,30 +281,54 @@ class ScaledLinOp(LinOp[Domain, Codomain]):
     @checked_method(in_space="domain", out_space="codomain")
     def apply(self, x: Any) -> Any:
         """Return ``scalar * op.apply(x)``."""
-        y = self.op.apply(x)
-        return self.codomain.scale(self.scalar, y)
+        return self._apply_core(x)
 
     @checked_method(in_space="codomain", out_space="domain")
     def rapply(self, y: Any) -> Any:
         """Return ``conj(scalar) * op.rapply(y)``."""
-        x = self.op.rapply(y)
-        return self.domain.scale(_conjugate_scalar(self.scalar), x)
+        return self._rapply_core(y)
 
+    @checked_method(in_space="domain", out_space="codomain", in_batched=True, out_batched=True)
     def vapply(self, xs: Any) -> Any:
         """Return ``scalar * op.vapply(xs)``."""
-        ys = self.op.vapply(xs)
-        return self.codomain.scale_batch(self.scalar, ys)
+        return self._vapply_core(xs)
 
     def rvapply(self, ys: Any) -> Any:
         """Return ``conj(scalar) * op.rvapply(ys)``."""
         xs = self.op.rvapply(ys)
         return self.domain.scale_batch(_conjugate_scalar(self.scalar), xs)
 
+    def is_hermitian(self) -> bool | None:
+        """
+        Return whether this scaled operator is structurally Hermitian.
+
+        For a real scalar ``s`` the adjoint satisfies ``(s A)* = s A*``, so
+        ``s A`` is self-adjoint exactly when ``A`` is; the operand's verdict is
+        propagated faithfully. For a non-real scalar the relation becomes
+        ``(s A)* = conj(s) A* != s A`` in general, so Hermiticity cannot be
+        decided cheaply and ``None`` is returned.
+
+        Returns
+        -------
+        bool | None
+            ``self.op.is_hermitian()`` when ``self.scalar`` is real, otherwise
+            ``None`` for unknown.
+        """
+        if _conjugate_scalar(self.scalar) == self.scalar:
+            return self.op.is_hermitian()
+        return None
+
     def __eq__(self, other: Any) -> bool:
         """Return whether another scaled operator has the same scalar and operand."""
-        if type(other) is type(self):
-            return self.scalar == other.scalar and self.op == other.op
-        return False
+        if not self._eq_backend_compatible(other):          # Tier 1: backend
+            return NotImplemented
+        # NaN-reflexive, returns a real Python bool (no np.bool_ leak).
+        if not _scalar_eq(self.scalar, other.scalar):       # Tier 3: scalar value
+            return False
+        return self.op == other.op                          # operand (own gate)
+
+    def _repr_body(self) -> str:
+        return f"{summarize_value(self.scalar)} · {self.op._short_repr()}"
 
     def tree_flatten(self):
         """Flatten this operator for pytree registration."""
@@ -323,6 +347,7 @@ class ScaledLinOp(LinOp[Domain, Codomain]):
         return ScaledLinOp(self.scalar, self.op.convert(new_ctx))
 
 
+@core_kernels("sum")
 @jax_pytree_class
 class SumLinOp(LinOp[Domain, Codomain]):
     r"""
@@ -376,64 +401,60 @@ class SumLinOp(LinOp[Domain, Codomain]):
     @checked_method(in_space="domain", out_space="codomain")
     def apply(self, x: Any) -> Any:
         """Return ``sum_i ops[i].apply(x)``."""
-        acc = self.ops_tuple[0].apply(x)
-        for op in self.ops_tuple[1:]:
-            yi = op.apply(x)
-            acc = (
-                acc + yi
-                if type(self.codomain)
-                in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace)
-                else self.codomain.add(acc, yi)
-            )
-        return acc
+        return self._apply_core(x)
 
     @checked_method(in_space="codomain", out_space="domain")
     def rapply(self, y: Any) -> Any:
         """Return ``sum_i ops[i].rapply(y)``."""
-        acc = self.ops_tuple[0].rapply(y)
-        for op in self.ops_tuple[1:]:
-            xi = op.rapply(y)
-            acc = (
-                acc + xi
-                if type(self.domain)
-                in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace)
-                else self.domain.add(acc, xi)
-            )
-        return acc
+        return self._rapply_core(y)
 
     @checked_method(in_space="domain", out_space="codomain", in_batched=True, out_batched=True)
     def vapply(self, xs: Any) -> Any:
         """Return ``sum_i ops[i].vapply(xs)``."""
-        acc = self.ops_tuple[0].vapply(xs)
-        for op in self.ops_tuple[1:]:
-            yi = op.vapply(xs)
-            acc = (
-                acc + yi
-                if type(self.codomain)
-                in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace)
-                else self.codomain.add_batch(acc, yi)
-            )
-        return acc
+        return self._vapply_core(xs)
 
     @checked_method(in_space="codomain", out_space="domain", in_batched=True, out_batched=True)
     def rvapply(self, ys: Any) -> Any:
         """Return ``sum_i ops[i].rvapply(ys)``."""
+        add_batch = self.domain.add_batch
         acc = self.ops_tuple[0].rvapply(ys)
         for op in self.ops_tuple[1:]:
-            xi = op.rvapply(ys)
-            acc = (
-                acc + xi
-                if type(self.domain)
-                in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace)
-                else self.domain.add_batch(acc, xi)
-            )
+            acc = add_batch(acc, op.rvapply(ys))
         return acc
 
+    def is_hermitian(self) -> bool | None:
+        """
+        Return whether this lazy sum is structurally Hermitian.
+
+        The adjoint is additive, ``(A1 + ... + Ak)* = A1* + ... + Ak*``, so a
+        sum is self-adjoint when every term is. If all operands are provably
+        Hermitian this returns ``True``; otherwise the verdict is not cheaply
+        decidable (a sum of non-Hermitian terms may still be Hermitian) and
+        ``None`` is returned. ``False`` is never returned.
+
+        Returns
+        -------
+        bool | None
+            ``True`` when every part is provably Hermitian, otherwise ``None``.
+        """
+        if all(op.is_hermitian() is True for op in self.parts):
+            return True
+        return None
+
     def __eq__(self, other: Any) -> bool:
-        """Return whether another sum has the same operands."""
-        if type(other) is type(self):
-            return self.ops_tuple == other.ops_tuple
-        return False
+        """Return whether another sum has the same operands, in order."""
+        if not self._eq_backend_compatible(other):              # Tier 1: backend
+            return NotImplemented
+        if len(self.ops_tuple) != len(other.ops_tuple):         # Tier 2: operand count before zip
+            return False
+        # Ordered, structural: A + B != B + A. Commutative equivalence is a
+        # separate concern (a future equiv()), not __eq__.
+        return all(a == b for a, b in zip(self.ops_tuple, other.ops_tuple))
+
+    def _repr_body(self) -> str:
+        from .._repr import truncated_join
+
+        return truncated_join((op._short_repr() for op in self.ops_tuple), " + ")
 
     def tree_flatten(self):
         """Flatten this operator for pytree registration."""
@@ -451,6 +472,7 @@ class SumLinOp(LinOp[Domain, Codomain]):
         return SumLinOp(tuple(op.convert(new_ctx) for op in self.ops_tuple))
 
 
+@core_kernels("composed")
 @jax_pytree_class
 class ComposedLinOp(LinOp[Domain, Codomain]):
     r"""
@@ -492,30 +514,59 @@ class ComposedLinOp(LinOp[Domain, Codomain]):
         super().__init__(right.domain, left.codomain, left.ctx)
         self.left = left
         self.right = right
+        # Fuse the (possibly nested) composition into one flat chain of leaf
+        # operators in application order — right applied first, then left.
+        # Cached at construction so every apply runs a single check-free loop
+        # instead of re-walking the binary ComposedLinOp tree.
+        self._apply_chain = _compose_chain(right) + _compose_chain(left)
 
     @checked_method(in_space="domain", out_space="codomain")
     def apply(self, x: Any) -> Any:
         """Return ``left.apply(right.apply(x))``."""
-        return self.left.apply(self.right.apply(x))
+        return self._apply_core(x)
 
     @checked_method(in_space="codomain", out_space="domain")
     def rapply(self, z: Any) -> Any:
         """Return ``right.rapply(left.rapply(z))``."""
-        return self.right.rapply(self.left.rapply(z))
+        return self._rapply_core(z)
 
+    @checked_method(in_space="domain", out_space="codomain", in_batched=True, out_batched=True)
     def vapply(self, xs: Any) -> Any:
         """Return ``left.vapply(right.vapply(xs))``."""
-        return self.left.vapply(self.right.vapply(xs))
+        return self._vapply_core(xs)
 
     def rvapply(self, zs: Any) -> Any:
         """Return ``right.rvapply(left.rvapply(zs))``."""
         return self.right.rvapply(self.left.rvapply(zs))
 
+    def is_hermitian(self) -> bool | None:
+        """
+        Return whether this composition is structurally Hermitian.
+
+        A Gram product ``R* @ R`` (equivalently ``L @ L*``) is self-adjoint in
+        any geometry, since ``<R* R x, y> = <R x, R y> = <x, R* R y>``. This is
+        detected structurally when ``self.left == self.right.H`` (the adjoint
+        view compares its wrapped operand, so this also matches ``L @ L*``).
+        Any other composition is not cheaply decidable and returns ``None``;
+        non-Hermiticity is never asserted.
+
+        Returns
+        -------
+        bool | None
+            ``True`` for a Gram product, otherwise ``None``.
+        """
+        if self.left == self.right.H:
+            return True
+        return None
+
     def __eq__(self, other: Any) -> bool:
-        """Return whether another composition has the same operands."""
-        if type(other) is type(self):
-            return self.left == other.left and self.right == other.right
-        return False
+        """Return whether another composition has the same operands, in order."""
+        if not self._eq_backend_compatible(other):              # Tier 1: backend
+            return NotImplemented
+        return self.left == other.left and self.right == other.right
+
+    def _repr_body(self) -> str:
+        return f"{self.left._short_repr()} ∘ {self.right._short_repr()}"
 
     def tree_flatten(self):
         """Flatten this operator for pytree registration."""
@@ -534,6 +585,7 @@ class ComposedLinOp(LinOp[Domain, Codomain]):
         return ComposedLinOp(self.left.convert(new_ctx), self.right.convert(new_ctx))
 
 
+@core_kernels("zero")
 @jax_pytree_class
 class ZeroLinOp(LinOp[Domain, Codomain]):
     r"""
@@ -568,25 +620,17 @@ class ZeroLinOp(LinOp[Domain, Codomain]):
     @checked_method(in_space="domain", out_space="codomain")
     def apply(self, x: Any) -> Any:
         """Return the zero element of the codomain."""
-        return self._apply_unchecked(x)
-
-    def _apply_unchecked(self, x: Any) -> Any:
-        """Return the codomain zero without membership checks."""
-        return self.codomain.zeros()
+        return self._apply_core(x)
 
     @checked_method(in_space="codomain", out_space="domain")
     def rapply(self, y: Any) -> Any:
         """Return the zero element of the domain."""
-        return self._rapply_unchecked(y)
-
-    def _rapply_unchecked(self, y: Any) -> Any:
-        """Return the domain zero without membership checks."""
-        return self.domain.zeros()
+        return self._rapply_core(y)
 
     @checked_method(in_space="domain", in_batched=True)
     def vapply(self, xs: Any) -> Any:
         """Return the batched zero element of the codomain."""
-        return _batched_zeros(self.codomain, _leading_shape(self.domain, xs))
+        return self._vapply_core(xs)
 
     @checked_method(in_space="codomain", in_batched=True)
     def rvapply(self, ys: Any) -> Any:
@@ -616,9 +660,9 @@ class ZeroLinOp(LinOp[Domain, Codomain]):
 
     def __eq__(self, other: Any) -> bool:
         """Return whether another zero map has the same spaces."""
-        if type(other) is type(self):
-            return self.domain == other.domain and self.codomain == other.codomain
-        return False
+        if not self._eq_backend_compatible(other):              # Tier 1: backend
+            return NotImplemented
+        return self.domain == other.domain and self.codomain == other.codomain  # Tier 2
 
     def tree_flatten(self):
         """Flatten this operator for pytree registration."""
@@ -637,6 +681,7 @@ class ZeroLinOp(LinOp[Domain, Codomain]):
         return ZeroLinOp(self.domain.convert(new_ctx), self.codomain.convert(new_ctx), new_ctx)
 
 
+@core_kernels("identity")
 @jax_pytree_class
 class IdentityLinOp(LinOp[Domain, Domain]):
     r"""
@@ -663,20 +708,12 @@ class IdentityLinOp(LinOp[Domain, Domain]):
     @checked_method(in_space="domain", out_space="codomain")
     def apply(self, x: Any) -> Any:
         """Return ``x`` after domain validation."""
-        return self._apply_unchecked(x)
-
-    def _apply_unchecked(self, x: Any) -> Any:
-        """Return ``x`` without membership checks."""
-        return x
+        return self._apply_core(x)
 
     @checked_method(in_space="codomain", out_space="domain")
     def rapply(self, x: Any) -> Any:
         """Return ``x`` after codomain validation."""
-        return self._rapply_unchecked(x)
-
-    def _rapply_unchecked(self, x: Any) -> Any:
-        """Return ``x`` without membership checks."""
-        return x
+        return self._rapply_core(x)
 
     @checked_method(in_space="domain", in_batched=True)
     def vapply(self, xs: Any) -> Any:
@@ -713,9 +750,14 @@ class IdentityLinOp(LinOp[Domain, Domain]):
 
     def __eq__(self, other: Any) -> bool:
         """Return whether another identity map has the same space."""
-        if type(other) is type(self):
-            return self.domain == other.domain
-        return False
+        if not self._eq_backend_compatible(other):              # Tier 1: backend
+            return NotImplemented
+        return self.domain == other.domain                      # Tier 2 (square: cod == dom)
+
+    def _repr_body(self) -> str:
+        from .._repr import describe_space
+
+        return describe_space(self.domain)
 
     def tree_flatten(self):
         """Flatten this operator for pytree registration."""
@@ -734,6 +776,7 @@ class IdentityLinOp(LinOp[Domain, Domain]):
         return IdentityLinOp(self.domain.convert(new_ctx), new_ctx)
 
 
+@core_kernels("matrixfree")
 @jax_pytree_class
 class MatrixFreeLinOp(LinOp[Domain, Codomain]):
     """
@@ -849,6 +892,41 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
         self.rapply_fn = rapply
         self.vapply_fn = vapply
         self.rvapply_fn = rvapply
+        if self._checks_at_least("strict"):
+            self._check_adjoint_consistency()
+
+    def _check_adjoint_consistency(self) -> None:
+        """Probe the declared adjoint identity on deterministic space elements."""
+        if not all(hasattr(space, "inner") for space in (self.domain, self.codomain)):
+            return
+
+        def probe(space: Any) -> Any:
+            if hasattr(space, "ones"):
+                return space.ones()
+            if hasattr(space, "unflatten") and hasattr(space, "shape"):
+                flat = self.ops.ones((prod(space.shape),), dtype=self.dtype)
+                return space.unflatten(flat)
+            raise TypeError(f"{type(space).__name__} cannot build a strict probe element.")
+
+        try:
+            x = probe(self.domain)
+            y = probe(self.codomain)
+            ax = self.apply_fn(x)
+            ahy = self.rapply_fn(y)
+            self.codomain._check_member(ax)
+            self.domain._check_member(ahy)
+            lhs = cast(Any, self.codomain).inner(ax, y)
+            rhs = cast(Any, self.domain).inner(x, ahy)
+            consistent = bool(self.ops.allclose(lhs, rhs))
+        except Exception as exc:
+            raise ValueError(
+                "Strict matrix-free adjoint consistency check could not be completed."
+            ) from exc
+        if not consistent:
+            raise ValueError(
+                "Strict matrix-free adjoint consistency check failed: "
+                "<A x, y> != <x, A* y> for the deterministic probe."
+            )
 
     @classmethod
     def from_coordinate_adjoint(
@@ -926,10 +1004,10 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
         def wrapped_rapply(y: Any) -> Any:
             return metric_rapply(dom, cod, coordinate_rapply, y)
 
-        wrapped_rvapply = None
+        wrapped_rvapply: Callable[[Any], Any] | None = None
         if coordinate_rvapply is not None:
 
-            def wrapped_rvapply(ys: Any) -> Any:
+            def _wrapped_rvapply(ys: Any) -> Any:
                 return metric_rvapply(
                     dom,
                     cod,
@@ -939,6 +1017,8 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
                     opname="MatrixFreeLinOp.from_coordinate_adjoint",
                     ops=resolved_ctx.ops,
                 )
+
+            wrapped_rvapply = _wrapped_rvapply
 
         return cls(apply, wrapped_rapply, dom, cod, resolved_ctx, vapply, wrapped_rvapply)
 
@@ -957,23 +1037,7 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
         Any
             Element of ``self.codomain`` returned by ``apply_fn``.
         """
-        return self._apply_unchecked(x)
-
-    def _apply_unchecked(self, x: Any) -> Any:
-        """
-        Apply ``apply_fn`` without membership checks.
-
-        Parameters
-        ----------
-        x:
-            Value accepted by the user-supplied forward callable.
-
-        Returns
-        -------
-        Any
-            Raw forward-callable output.
-        """
-        return self.apply_fn(x)
+        return self._apply_core(x)
 
     @checked_method(in_space="codomain", out_space="domain")
     def rapply(self, y: Any) -> Any:
@@ -990,23 +1054,7 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
         Any
             Element of ``self.domain`` returned by ``rapply_fn``.
         """
-        return self._rapply_unchecked(y)
-
-    def _rapply_unchecked(self, y: Any) -> Any:
-        """
-        Apply ``rapply_fn`` without membership checks.
-
-        Parameters
-        ----------
-        y:
-            Value accepted by the user-supplied adjoint callable.
-
-        Returns
-        -------
-        Any
-            Raw adjoint-callable output.
-        """
-        return self.rapply_fn(y)
+        return self._rapply_core(y)
 
     @checked_method(in_space="domain", out_space="codomain", in_batched=True, out_batched=True)
     def vapply(self, xs: Any) -> Any:
@@ -1049,16 +1097,18 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
         return self.rvapply_fn(ys)
 
     def __eq__(self, other: Any) -> bool:
-        if type(other) is type(self):
-            return (
-                self.domain == other.domain
-                and self.codomain == other.codomain
-                and self.apply_fn is other.apply_fn
-                and self.vapply_fn is other.vapply_fn
-                and self.rapply_fn is other.rapply_fn
-                and self.rvapply_fn is other.rvapply_fn
-            )
-        return False
+        if not self._eq_backend_compatible(other):              # Tier 1: backend
+            return NotImplemented
+        # Tier 2: spaces + callable identity. Extensional equality of callables
+        # is undecidable, so 'is' is the only sound comparison.
+        if self.domain != other.domain or self.codomain != other.codomain:
+            return False
+        return (
+            self.apply_fn is other.apply_fn
+            and self.vapply_fn is other.vapply_fn
+            and self.rapply_fn is other.rapply_fn
+            and self.rvapply_fn is other.rvapply_fn
+        )
 
     def tree_flatten(self):
         children = ()
@@ -1112,6 +1162,7 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
         )
 
 
+@core_kernels("adjoint")
 @jax_pytree_class
 class _AdjointViewLinOp(LinOp[Codomain, Domain]):
     """
@@ -1133,12 +1184,12 @@ class _AdjointViewLinOp(LinOp[Codomain, Domain]):
     @checked_method(in_space="domain", out_space="codomain")
     def apply(self, y: Any) -> Any:
         """Return ``op.rapply(y)``."""
-        return self.op.rapply(y)
+        return self._apply_core(y)
 
     @checked_method(in_space="codomain", out_space="domain")
     def rapply(self, x: Any) -> Any:
         """Return ``op.apply(x)``."""
-        return self.op.apply(x)
+        return self._rapply_core(x)
 
     def vapply(self, ys: Any) -> Any:
         """Return ``op.rvapply(ys)`` over a batch."""
@@ -1154,9 +1205,16 @@ class _AdjointViewLinOp(LinOp[Codomain, Domain]):
         return self.op
 
     def __eq__(self, other: Any) -> bool:
-        if type(other) is type(self):
-            return self.op == other.op
-        return False
+        if not self._eq_backend_compatible(other):              # Tier 1: backend
+            return NotImplemented
+        return self.op == other.op
+
+    def _repr_class_name(self) -> str:
+        """Present a clean public label for the private adjoint-view class."""
+        return "AdjointLinOp"
+
+    def _repr_body(self) -> str:
+        return f"{self.op._short_repr()}.H"
 
     def tree_flatten(self):
         children = (self.op,)

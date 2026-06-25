@@ -5,6 +5,7 @@ from math import prod
 from typing import Any, Tuple
 
 from ...backend import Context
+from ..._repr import shape_descriptor
 from ...types import DenseArray
 from ._vector import VectorSpace
 
@@ -27,10 +28,17 @@ class CoordinateSpace(VectorSpace):
         super().__init__(ctx)
         self.shape = tuple(shape)
 
-    def __eq__(self, other: Any) -> bool:
-        if type(self) is type(other):
-            return super().__eq__(other) and self.shape == other.shape
-        return False
+    def _eq_algebra(self, other: Any) -> bool:
+        # Tier 2: exact shape (after field, before any numerical compare).
+        return super()._eq_algebra(other) and self.shape == other.shape
+
+    def _space_descriptor(self) -> str:
+        """Return a shape-aware descriptor like ``ℝ^5`` or ``ℝ^(2, 3)``."""
+        try:
+            field = self.field
+        except Exception:
+            field = None
+        return shape_descriptor(field, self.shape)
 
     @property
     def size(self) -> int:

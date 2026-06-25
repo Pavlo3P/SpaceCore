@@ -29,17 +29,16 @@ Structured spaces
    :nosignatures:
 
    spacecore.space.HermitianSpace
-   spacecore.space.ProductSpace
-   spacecore.space.ProductSpectralDecomposition
+   spacecore.space.TreeSpace
+   spacecore.space.TreeElement
+   spacecore.space.TreeSpectralDecomposition
    spacecore.space.StackedSpace
-   spacecore.space.ProductStructure
-   spacecore.space.TupleStructure
-   spacecore.space.PytreeStructure
 
 * ``HermitianSpace`` represents dense Hermitian or symmetric matrices with Frobenius geometry.
-* ``ProductSpace`` represents a Cartesian product ``X_1 x ... x X_k``; tuple is the default element representation.
+* ``TreeSpace`` is the single structured finite direct-product abstraction. Its
+  Python tree records representation, not a tensor product.
+* ``TreeElement`` binds ordered leaves to a ``TreeSpace`` and reconstructs the Python value.
 * ``StackedSpace`` represents a fixed number of leading-axis copies of one coordinate leaf space.
-* Product structures adapt tuple or registered pytree/dataclass representations to ordered components.
 
 Inner products and geometries
 -----------------------------
@@ -85,11 +84,10 @@ Validation
    spacecore.space.SpaceValidationError
    spacecore.space.BackendCheck
    spacecore.space.ShapeCheck
+   spacecore.space.FieldCheck
    spacecore.space.DTypeCheck
    spacecore.space.SquareMatrixCheck
    spacecore.space.HermitianCheck
-   spacecore.space.ProductStructureCheck
-   spacecore.space.ProductComponentCheck
 
 Autodoc
 -------
@@ -151,25 +149,21 @@ Autodoc
    :members:
    :inherited-members:
 
-.. autoclass:: spacecore.space.ProductSpace
+.. autoclass:: spacecore.space.TreeSpace
    :members:
    :inherited-members:
+   :exclude-members: treedef, leaf_paths, shape
 
-.. autoclass:: spacecore.space.ProductSpectralDecomposition
+.. autoclass:: spacecore.space.TreeElement
+   :members:
+   :exclude-members: space, leaves
+
+.. autoclass:: spacecore.space.TreeSpectralDecomposition
    :members:
 
 .. autoclass:: spacecore.space.StackedSpace
    :members:
    :inherited-members:
-
-.. autoclass:: spacecore.space.ProductStructure
-   :members:
-
-.. autoclass:: spacecore.space.TupleStructure
-   :members:
-
-.. autoclass:: spacecore.space.PytreeStructure
-   :members:
 
 .. autoclass:: spacecore.space.SpaceValidationError
 
@@ -182,6 +176,9 @@ Autodoc
 .. autoclass:: spacecore.space.ShapeCheck
    :members:
 
+.. autoclass:: spacecore.space.FieldCheck
+   :members:
+
 .. autoclass:: spacecore.space.DTypeCheck
    :members:
 
@@ -189,10 +186,4 @@ Autodoc
    :members:
 
 .. autoclass:: spacecore.space.HermitianCheck
-   :members:
-
-.. autoclass:: spacecore.space.ProductStructureCheck
-   :members:
-
-.. autoclass:: spacecore.space.ProductComponentCheck
    :members:

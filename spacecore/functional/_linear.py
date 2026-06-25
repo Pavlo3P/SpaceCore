@@ -3,34 +3,35 @@ from __future__ import annotations
 from abc import abstractmethod
 from typing import Any, Callable
 
-from ._base import Domain, Functional, _check_scalar_shape
+from ._base import Domain, Functional
+from .._batching import _check_scalar_shape, _leading_batch_size
 from .._checks import checked_method
 from ..backend import Context, jax_pytree_class
-from ..space import Space
+from ..kernels import core_kernels
+from ..space import Space, TreeElement, TreeSpace
 
 
 def _convert_space_element(space: Space, value: Any) -> Any:
-    """Convert a value recursively into a possibly product-valued space."""
-    if hasattr(space, "spaces") and isinstance(value, tuple):
-        if len(value) != len(space.spaces):
-            raise ValueError(f"Expected tuple of length {len(space.spaces)}, got {len(value)}.")
-        return tuple(
-            _convert_space_element(component_space, component)
-            for component_space, component in zip(space.spaces, value)
-        )
+    """Convert a value recursively into a possibly tree-valued space."""
+    if isinstance(space, TreeSpace):
+        if isinstance(value, TreeElement):
+            source_spaces = value.space.leaf_spaces
+            leaves = value.leaves
+            converted = tuple(
+                target.unflatten(space.ctx.asarray(source.flatten(leaf)))
+                for source, target, leaf in zip(source_spaces, space.leaf_spaces, leaves)
+            )
+        else:
+            leaves = space.flatten_tree(value)
+            converted = tuple(
+                leaf_space.ctx.asarray(leaf)
+                for leaf_space, leaf in zip(space.leaf_spaces, leaves)
+            )
+        return space.unflatten_tree(converted)
     return space.ctx.asarray(value)
 
 
-def _broadcast_space_element(space: Space, value: Any, n: int) -> Any:
-    """Broadcast a single space element to a leading-axis batch."""
-    parts = getattr(space, "spaces", None)
-    if parts is not None:
-        return tuple(
-            _broadcast_space_element(part, component, n) for part, component in zip(parts, value)
-        )
-    return space.ops.broadcast_to(value, (n,) + tuple(space.shape))
-
-
+@core_kernels("functional-linear")
 class LinearFunctional(Functional[Domain]):
     r"""
     Represent a linear scalar-valued map.
@@ -62,16 +63,15 @@ class LinearFunctional(Functional[Domain]):
         Matrix-free functionals without a stored representer inherit the
         ``NotImplementedError`` raised by :attr:`representer`.
         """
-        return self.representer
+        return self._grad_core(x)
 
     @checked_method(in_space="domain", out_space="domain", in_batched=True, out_batched=True)
     def vgrad(self, xs: Any) -> Any:
         """Return the constant Riesz gradient over a leading batch axis."""
-        dom = self.dom
-        n = int(getattr(xs[0] if isinstance(xs, tuple) else xs, "shape", (0,))[0])
-        return _broadcast_space_element(dom, self.representer, n)
+        return self._vgrad_core(xs)
 
 
+@core_kernels("inner-product-functional")
 @jax_pytree_class
 class InnerProductFunctional(LinearFunctional[Domain]):
     r"""
@@ -103,7 +103,7 @@ class InnerProductFunctional(LinearFunctional[Domain]):
     ) -> None:
         super().__init__(dom, ctx)
         self._c = _convert_space_element(self.domain, c)
-        if self._enable_checks:
+        if self._checks_at_least("standard"):
             self.domain._check_member(self._c)
 
     @property
@@ -114,33 +114,27 @@ class InnerProductFunctional(LinearFunctional[Domain]):
     @checked_method(in_space="domain")
     def value(self, x: Any) -> Any:
         """Return ``domain.inner(representer, x)``."""
-        return self.domain.inner(self._c, x)
+        return self._value_core(x)
 
     @checked_method(in_space="domain", in_batched=True)
     def vvalue(self, xs: Any) -> Any:
         """Evaluate ``domain.inner(representer, xs[i])`` without a Python loop."""
-        dom = self.dom
-        ops = self.ctx.ops
-        if dom.is_euclidean and len(tuple(dom.shape)) == 1:
-            xs_flat = xs
-            c_flat = ops.conj(self._c)
-        else:
-            c_dual = self._c if dom.is_euclidean else dom.riesz(self._c)
-            c_flat = ops.conj(dom.flatten(c_dual))
-            xs_flat = dom.flatten_batch(xs)
-        values = xs_flat @ c_flat
-        if self._enable_checks:
-            _check_scalar_shape(values, (xs_flat.shape[0],))
+        values = self._vvalue_core(xs)
+        if self._checks_at_least("standard"):
+            _check_scalar_shape(values, (_leading_batch_size(self.domain, xs),))
         return values
 
     def __eq__(self, other: Any) -> bool:
         """Return whether another inner-product functional has the same representer."""
-        if type(other) is type(self):
-            return self.domain == other.domain and self.ops.allclose(
-                self.domain.flatten(self._c),
-                other.domain.flatten(other._c),
-            )
-        return False
+        if not self._eq_backend_compatible(other):              # Tier 1: backend
+            return NotImplemented
+        if self.domain != other.domain:                         # Tier 2: domain before allclose
+            return False
+        return bool(self.ops.allclose(                          # Tier 3: representer
+            self.domain.flatten(self._c),
+            other.domain.flatten(other._c),
+            equal_nan=True,
+        ))
 
     def tree_flatten(self):
         """Flatten this functional for pytree registration."""
@@ -160,6 +154,7 @@ class InnerProductFunctional(LinearFunctional[Domain]):
         return InnerProductFunctional(self._c, self.domain.convert(new_ctx), new_ctx)
 
 
+@core_kernels("matrixfree-linear-functional")
 @jax_pytree_class
 class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
     """
@@ -258,8 +253,8 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
         Any
             Scalar-like backend value returned by ``value_fn``.
         """
-        y = self.value_fn(x)
-        if self._enable_checks:
+        y = self._value_core(x)
+        if self._checks_at_least("standard"):
             _check_scalar_shape(y, ())
         return y
 
@@ -282,7 +277,7 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
         if self.vvalue_fn is None:
             return super().vvalue(xs)
         values = self.vvalue_fn(xs)
-        if self._enable_checks:
+        if self._checks_at_least("standard"):
             shape = tuple(getattr(xs, "shape", ()))
             base = tuple(self.domain.shape)
             leading = shape if not base else shape[: len(shape) - len(base)]
@@ -291,13 +286,12 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
 
     def __eq__(self, other: Any) -> bool:
         """Return whether another matrix-free functional uses the same callables."""
-        if type(other) is type(self):
-            return (
-                self.domain == other.domain
-                and self.value_fn is other.value_fn
-                and self.vvalue_fn is other.vvalue_fn
-            )
-        return False
+        if not self._eq_backend_compatible(other):              # Tier 1: backend
+            return NotImplemented
+        if self.domain != other.domain:                         # Tier 2: domain
+            return False
+        # Callable identity: extensional equality of callables is undecidable.
+        return self.value_fn is other.value_fn and self.vvalue_fn is other.vvalue_fn
 
     def tree_flatten(self):
         """Flatten this functional for pytree registration."""

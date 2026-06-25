@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 import importlib
-from typing import Any, Sequence, Tuple, Callable, Optional, Type, ClassVar
+from typing import Any, Sequence, Tuple, Callable, Optional, Type, ClassVar, cast
 
 from ..types import DenseArray, SparseArray, DType, ArrayLike, Index, T, X, Y, R, Carry
 
@@ -59,6 +59,19 @@ class BackendOps(ABC):
         """Whether ``vmap`` is implemented by the backend rather than a Python loop."""
         return False
 
+    def free_memory_bytes(self) -> int | None:
+        """Return currently free device memory in bytes, or ``None`` if unknown.
+
+        The kernel dispatcher (ADR-016) uses this to gate *materializing* fast
+        paths — those that allocate more than ``O(1)`` extra memory — against a
+        memory budget before selecting them. The base implementation returns
+        ``None`` (unknown): a backend that can cheaply query free memory (e.g.
+        a GPU runtime) overrides this. When the budget is unknown the dispatcher
+        treats any cost-carrying spec as unaffordable, so reporting ``None`` is
+        always safe and never routes to a materializing kernel.
+        """
+        return None
+
     def __eq__(self, other: Any) -> bool:
         if isinstance(other, BackendOps):
             return self.family == other.family
@@ -97,7 +110,7 @@ class BackendOps(ABC):
         return self.is_dense(x) or self.is_sparse(x)
 
     @abstractmethod
-    def assparse(self, x: Any, dtype: DType | None = None) -> SparseArray:
+    def assparse(self, x: Any, *, dtype: DType | None = None) -> SparseArray:
         """Convert input to a backend sparse array."""
         ...
 
@@ -118,7 +131,27 @@ class BackendOps(ABC):
         """Compute a stable log-sum-exp reduction."""
         ...
 
-    @abstractmethod
+    def _copy(self, x: DenseArray) -> DenseArray:
+        """Return a mutable copy of ``x``.
+
+        Mutable backends override this with their native copy (``x.copy()`` for
+        NumPy/CuPy, ``x.clone()`` for PyTorch). Immutable backends such as JAX
+        override :meth:`index_set` / :meth:`index_add` directly and never call
+        this helper.
+        """
+        raise NotImplementedError(f"{type(self).__name__} does not implement _copy.")
+
+    def _scatter_add_inplace(self, y: DenseArray, index: Index, values: ArrayLike) -> None:
+        """Accumulate ``values`` into ``y`` at ``index`` in place.
+
+        Backend mutation primitive used by the default :meth:`index_add`.
+        Repeated-index accumulation is backend-specific (NumPy/CuPy use
+        ``add.at`` and accumulate duplicate indices; PyTorch does not).
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not implement _scatter_add_inplace."
+        )
+
     def index_set(
         self,
         x: DenseArray,
@@ -127,9 +160,16 @@ class BackendOps(ABC):
         *,
         copy: bool = True,
     ) -> DenseArray:
-        """Set indexed values using backend mutation semantics."""
+        """Return ``x`` with ``x[index]`` set to ``values``.
 
-    @abstractmethod
+        With ``copy=True`` a mutable copy is updated and returned; with
+        ``copy=False`` ``x`` is mutated in place. Immutable backends override
+        this method.
+        """
+        y = self._copy(x) if copy else x
+        y[index] = values
+        return y
+
     def index_add(
         self,
         x: DenseArray,
@@ -138,8 +178,15 @@ class BackendOps(ABC):
         *,
         copy: bool = True,
     ) -> DenseArray:
-        """Add values into indexed positions using backend mutation semantics."""
-        ...
+        """Return ``x`` with ``values`` accumulated into ``x[index]``.
+
+        With ``copy=True`` a mutable copy is updated and returned; with
+        ``copy=False`` ``x`` is mutated in place. Immutable backends override
+        this method.
+        """
+        y = self._copy(x) if copy else x
+        self._scatter_add_inplace(y, index, values)
+        return y
 
     @abstractmethod
     def ix_(self, *args: Any) -> Any:
@@ -199,8 +246,51 @@ class BackendOps(ABC):
         """Compare sparse arrays elementwise within tolerances."""
         ...
 
+    def _require_two_sparse(self, a: Any, b: Any, *, noun: str = "sparse arrays") -> None:
+        """Raise ``TypeError`` unless both ``a`` and ``b`` are sparse for this backend.
+
+        Shared guard for :meth:`allclose_sparse`. ``noun`` names the expected
+        operands in the error message (e.g. ``"sparse tensors"``).
+        """
+        if not self.is_sparse(a) or not self.is_sparse(b):
+            raise TypeError(f"allclose_sparse expects two {noun}.")
+
     def _dtype_arg(self, dtype: DType | None) -> DType | None:
         return None if dtype is None else self.sanitize_dtype(dtype)
+
+    def _source_is_complex(self, x: Any) -> bool:
+        """Return whether ``x`` carries a complex representation."""
+        dtype = getattr(x, "dtype", None)
+        if dtype is not None:
+            return getattr(dtype, "kind", None) == "c" or "complex" in str(dtype)
+        if isinstance(x, complex):
+            return True
+        data = getattr(x, "data", None)
+        if data is not None and data is not x:
+            data_dtype = getattr(data, "dtype", None)
+            if data_dtype is not None:
+                return getattr(data_dtype, "kind", None) == "c" or "complex" in str(data_dtype)
+        if isinstance(x, (list, tuple)):
+            return any(self._source_is_complex(value) for value in x)
+        return False
+
+    def _reject_complex_to_real(
+        self,
+        x: Any,
+        dtype: DType | None,
+        *,
+        operation: str,
+    ) -> None:
+        """Reject implicit loss of a complex representation during conversion."""
+        if dtype is None:
+            return
+        target_dtype = self.sanitize_dtype(dtype)
+        if not self.is_complex_dtype(target_dtype) and self._source_is_complex(x):
+            raise TypeError(
+                f"{operation} rejected complex-valued input for non-complex dtype "
+                f"{target_dtype}. Explicitly discard the imaginary part first, for "
+                "example with `x.real` or a backend real-part operation, then convert."
+            )
 
     def _to_axis_tuple(self, axis: int | Sequence[int] | None) -> int | tuple[int, ...] | None:
         if axis is None or isinstance(axis, int):
@@ -325,6 +415,7 @@ class BackendOps(ABC):
 
     def asarray(self, x: Any, dtype: DType | None = None, **backend_kwargs: Any) -> DenseArray:
         """Convert input to a dense backend array (delegates to xp.asarray)."""
+        self._reject_complex_to_real(x, dtype, operation="asarray")
         if self.is_sparse(x) and hasattr(x, "to_dense"):
             x = x.to_dense()
         dtype = self._dtype_arg(dtype)
@@ -336,10 +427,11 @@ class BackendOps(ABC):
         """Cast x to dtype, returning x unchanged when dtype is None."""
         if dtype is None:
             return x
+        self._reject_complex_to_real(x, dtype, operation="astype")
         dtype = self.sanitize_dtype(dtype)
         if hasattr(x, "astype"):
-            return x.astype(dtype, **backend_kwargs)
-        return x.to(dtype=dtype, **backend_kwargs)
+            return cast(Any, x).astype(dtype, **backend_kwargs)
+        return cast(Any, x).to(dtype=dtype, **backend_kwargs)
 
     def empty(self, shape: Tuple[int, ...], dtype: DType | None = None) -> DenseArray:
         """Create an uninitialized array (delegates to xp.empty)."""
@@ -455,6 +547,38 @@ class BackendOps(ABC):
         """Stack arrays along a new axis (delegates to xp.stack)."""
         return self.xp.stack(tuple(arrays), axis=axis)
 
+    def hstack(self, arrays: Sequence[DenseArray]) -> DenseArray:
+        """Stack arrays horizontally / column-wise (delegates to xp.hstack).
+
+        Concatenates along axis 0 for 1-D inputs and along axis 1 otherwise,
+        matching NumPy ``hstack`` semantics.
+        """
+        return self.xp.hstack(tuple(arrays))
+
+    def vstack(self, arrays: Sequence[DenseArray]) -> DenseArray:
+        """Stack arrays vertically / row-wise (delegates to xp.vstack).
+
+        Inputs are promoted to at least 2-D and concatenated along axis 0,
+        matching NumPy ``vstack`` semantics.
+        """
+        return self.xp.vstack(tuple(arrays))
+
+    def dstack(self, arrays: Sequence[DenseArray]) -> DenseArray:
+        """Stack arrays depth-wise along the third axis (delegates to xp.dstack).
+
+        Inputs are promoted to at least 3-D and concatenated along axis 2,
+        matching NumPy ``dstack`` semantics.
+        """
+        return self.xp.dstack(tuple(arrays))
+
+    def column_stack(self, arrays: Sequence[DenseArray]) -> DenseArray:
+        """Stack 1-D arrays as columns into a 2-D array (delegates to xp.column_stack).
+
+        1-D inputs become columns; higher-dimensional inputs are concatenated
+        along axis 1, matching NumPy ``column_stack`` semantics.
+        """
+        return self.xp.column_stack(tuple(arrays))
+
     def vmap(
         self,
         fn: Callable,
@@ -483,7 +607,7 @@ class BackendOps(ABC):
                 return None
             shape = tuple(getattr(x, "shape", ()))
             axis = normalize_axis(int(axis), len(shape))
-            return int(shape[axis])
+            return int(cast(Any, shape[axis]))
 
         def tree_take(x: Any, axis: Any, i: int) -> Any:
             if axis is None:
@@ -493,7 +617,7 @@ class BackendOps(ABC):
                 return tuple(tree_take(xi, ai, i) for xi, ai in zip(x, axes))
             shape = tuple(getattr(x, "shape", ()))
             axis = normalize_axis(int(axis), len(shape))
-            index = [slice(None)] * len(shape)
+            index: list[Any] = [slice(None)] * len(shape)
             index[axis] = i
             return x[tuple(index)]
 
@@ -521,6 +645,98 @@ class BackendOps(ABC):
             return tree_stack(outputs, out_axes)
 
         return mapped
+
+    def vectorize(
+        self,
+        pyfunc: Callable,
+        *,
+        excluded: Sequence[int] | None = None,
+        signature: str | None = None,
+    ) -> Callable:
+        """Vectorize a scalar Python function over its array arguments.
+
+        Returns a callable that applies ``pyfunc`` elementwise, broadcasting
+        the array arguments against one another and preserving the broadcast
+        shape. Mirrors :func:`numpy.vectorize`.
+
+        Parameters
+        ----------
+        pyfunc:
+            Function called on scalar elements of the (broadcast) inputs.
+        excluded:
+            Positional argument indices passed through to ``pyfunc`` unchanged
+            instead of being vectorized.
+        signature:
+            Generalized-ufunc signature (e.g. ``"(n),(n)->()"``). Supported only
+            on backends that provide a native ``vectorize``.
+
+        Notes
+        -----
+        Delegates to the backend's native ``vectorize`` (NumPy, JAX, CuPy) when
+        available; otherwise applies a portable Python-loop fallback. The
+        fallback does not support ``signature``.
+        """
+        if hasattr(self.xp, "vectorize"):
+            kwargs: dict[str, Any] = {}
+            if excluded is not None:
+                kwargs["excluded"] = excluded
+            if signature is not None:
+                kwargs["signature"] = signature
+            return self.xp.vectorize(pyfunc, **kwargs)
+        return self._vectorize_loop(pyfunc, excluded=excluded, signature=signature)
+
+    def _vectorize_loop(
+        self,
+        pyfunc: Callable,
+        *,
+        excluded: Sequence[int] | None = None,
+        signature: str | None = None,
+    ) -> Callable:
+        """Portable ``vectorize`` fallback for backends without a native one."""
+        if signature is not None:
+            raise NotImplementedError(
+                "The vectorize fallback does not support gufunc signatures; use a "
+                "backend that provides a native vectorize (NumPy, JAX, CuPy)."
+            )
+        excluded_set = set() if excluded is None else set(excluded)
+
+        def vectorized(*args: Any) -> Any:
+            positions = [i for i in range(len(args)) if i not in excluded_set]
+            if not positions:
+                return self.asarray(pyfunc(*args))
+            mapped = {i: self.asarray(args[i]) for i in positions}
+            out_shape = self._broadcast_shapes(*(self.shape(mapped[i]) for i in positions))
+            flat = {i: self.ravel(self.broadcast_to(mapped[i], out_shape)) for i in positions}
+            count = 1
+            for dim in out_shape:
+                count *= int(dim)
+            outputs = []
+            for k in range(count):
+                call_args = list(args)
+                for i in positions:
+                    call_args[i] = flat[i][k]
+                outputs.append(self.asarray(pyfunc(*call_args)))
+            stacked = self.stack(outputs, axis=0)
+            return self.reshape(stacked, out_shape)
+
+        return vectorized
+
+    @staticmethod
+    def _broadcast_shapes(*shapes: Tuple[int, ...]) -> Tuple[int, ...]:
+        """Return the NumPy broadcast of several shapes (pure-Python)."""
+        ndim = max((len(shape) for shape in shapes), default=0)
+        result = [1] * ndim
+        for shape in shapes:
+            offset = ndim - len(shape)
+            for axis, dim in enumerate(shape):
+                pos = offset + axis
+                if dim == 1 or dim == result[pos]:
+                    continue
+                if result[pos] == 1:
+                    result[pos] = dim
+                else:
+                    raise ValueError(f"shapes {shapes} are not broadcast-compatible")
+        return tuple(result)
 
     def conj(self, x: DenseArray) -> DenseArray:
         """Complex conjugate of x (delegates to xp.conj)."""

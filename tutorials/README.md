@@ -1,33 +1,43 @@
 # SpaceCore tutorials
 
-This folder contains the executable notebook set referenced by `docs/source/tutorials/index.rst`.
+An executable, visual learning path for SpaceCore. The same notebooks are rendered in the
+documentation under `docs/source/tutorials/` (see
+[the tutorials index](../docs/source/tutorials/index.rst)).
 
-## Recommended reading order
+## Reading order
 
-1. `3_Space.ipynb` - define dense coordinate spaces and check their geometry.
-2. `4_LinOp.ipynb` - build maps `A : X -> Y`, use `apply`, and use metric adjoints.
-3. `2_Context.ipynb` - make backend ownership explicit.
-4. `1_BackendOps.ipynb` - write backend-agnostic helper code.
-5. `5_Conversion_Policy.ipynb` - rebuild spaces and operators under another context.
-6. `weighted_tikhonov.ipynb` - worked inverse problem with non-Euclidean adjoints.
-7. `7_Quadratic_Program.ipynb` - optional SciPy optimization example.
-8. `8_Linalg_MatrixFree.ipynb` - matrix-free iterative-solver example.
-9. `9_Linalg_Comparison.ipynb` - compare against NumPy, SciPy, and optional JAX references.
-10. `6_Regularized_Opt_Transport.ipynb` - retained advanced OT example, outside the 0.3.1 release gate.
+The four **foundations** build on each other; the four **worked examples** can be read in any
+order once the foundations are in place.
 
-## Notebook index
+### Foundations
 
-| Notebook | Purpose | Status | Optional dependencies |
-| --- | --- | --- | --- |
-| `1_BackendOps.ipynb` | Backend operation interface and its relation to contexts. | active | JAX |
-| `2_Context.ipynb` | Context ownership, dtype policy, and runtime checks. | active | JAX optional |
-| `3_Space.ipynb` | Concrete spaces, abstract `VectorSpace` role, and product geometry. | active | None |
-| `4_LinOp.ipynb` | Dense, sparse, product, and matrix-free linear operators. | active | SciPy |
-| `5_Conversion_Policy.ipynb` | Explicit target-context conversion and dtype behavior. | active | None |
-| `6_Regularized_Opt_Transport.ipynb` | Entropy-regularized OT with reusable SpaceCore objects. | retained | JAX, Optax, Matplotlib |
-| `7_Quadratic_Program.ipynb` | Small constrained quadratic program using SpaceCore objects and SciPy. | advanced | SciPy, JAX optional |
-| `8_Linalg_MatrixFree.ipynb` | Matrix-free CG, LSQR, power iteration, Lanczos, and expm actions. | active | SciPy |
-| `9_Linalg_Comparison.ipynb` | Iterative solver comparisons against dense and external references. | advanced | SciPy, JAX optional |
-| `weighted_tikhonov.ipynb` | Official 0.3.1 SpaceCore-native worked example. | active | None |
+1. [`01_backend_and_context.ipynb`](01_backend_and_context.ipynb) — why the backend is an
+   explicit `Context`; running one routine on NumPy **and** JAX; check levels; `convert`.
+2. [`02_linear_algebra.ipynb`](02_linear_algebra.ipynb) — spaces with geometry, operators
+   `A : X -> Y`, and a conjugate-gradient solve.
+3. [`03_functionals.ipynb`](03_functionals.ipynb) — scalar objectives, metric-aware
+   gradients, and gradient descent.
+4. [`04_tree_spaces.ipynb`](04_tree_spaces.ipynb) — structured (tuple and **named**) unknowns,
+   block operators, and a block solve over a `TreeSpace`.
 
-The active 0.3.1 notebook gate executes every active and advanced notebook listed above except the retained regularized OT notebook. Regularized OT is kept as an illustrative advanced example with optional dependencies, but it is not part of the 0.3.1 release-candidate gate.
+### Worked examples
+
+5. [`05_weighted_tikhonov.ipynb`](05_weighted_tikhonov.ipynb) — a deblurring inverse problem
+   solved with **metric adjoints** and weighted (non-Euclidean) geometry.
+6. [`06_optimal_transport.ipynb`](06_optimal_transport.ipynb) — marginalisation as a
+   matrix-free operator; Sinkhorn powered by its adjoint.
+7. [`07_manifold_descent.ipynb`](07_manifold_descent.ipynb) — a custom non-Euclidean geometry
+   and Riemannian gradient descent on a manifold.
+8. [`08_pdhg_conic_program.ipynb`](08_pdhg_conic_program.ipynb) — a primal–dual (PDHG) solver
+   for a conic program using a Jordan-algebra cone projection.
+
+## Running
+
+Every notebook runs on the NumPy backend with only `numpy` and `matplotlib`; tutorial 1 also
+shows the JAX backend when `jax` is installed. To execute a notebook in place:
+
+```bash
+jupyter nbconvert --to notebook --execute --inplace tutorials/01_backend_and_context.ipynb
+```
+
+The release-candidate script `scripts/verify_release_candidate.sh` executes the full set.

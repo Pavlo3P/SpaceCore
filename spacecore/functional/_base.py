@@ -1,58 +1,28 @@
 from __future__ import annotations
 
 from abc import abstractmethod
-from typing import TYPE_CHECKING, Any, Generic, TypeVar
-import warnings
+from typing import TYPE_CHECKING, Any, Generic, Self, TypeVar
 
+from .._batching import _leading_batch_size, _warn_vmap_fallback_once
+
+# Re-exported for backward compatibility; these helpers now live in
+# :mod:`spacecore._batching` and are shared with :class:`~spacecore.linop.LinOp`.
+from .._batching import (  # noqa: F401
+    _VMAP_FALLBACK_WARN_BATCH,
+    _VMAP_FALLBACK_WARNED,
+    _check_scalar_shape,
+)
 from .._checks import checked_method
-from .._contextual import ContextBound, resolve_context_priority
+from .._repr import describe_space, field_symbol
+from .._contextual import ContextBound
 from ..backend import Context
-from ..space import Space
+from ..space import CoordinateSpace
 
 if TYPE_CHECKING:
     from ..linop import LinOp
 
 
-Domain = TypeVar("Domain", bound=Space)
-_VMAP_FALLBACK_WARNED: set[tuple[type, str]] = set()
-_VMAP_FALLBACK_WARN_BATCH = 32
-
-
-def _check_scalar_shape(values: Any, shape: tuple[int, ...]) -> None:
-    """Raise if scalar output does not have ``shape``."""
-    value_shape = tuple(getattr(values, "shape", ()))
-    if value_shape != shape:
-        raise ValueError(f"Expected scalar batch output with shape {shape}, got {value_shape}.")
-
-
-def _leading_batch_size(space: Space, xs: Any) -> int:
-    """Return the leading batch size for dense-array batches."""
-    if isinstance(xs, tuple) and xs:
-        return _leading_batch_size(getattr(space, "spaces", (space,))[0], xs[0])
-    shape = tuple(getattr(xs, "shape", ()))
-    base = tuple(space.shape)
-    if not shape:
-        return 0
-    if base:
-        return int(shape[0])
-    return int(shape[0])
-
-
-def _warn_vmap_fallback_once(obj: Any, method: str, batch_size: int) -> None:
-    """Warn once per class/method for NumPy-style Python-loop batched fallback."""
-    if batch_size <= _VMAP_FALLBACK_WARN_BATCH or obj.ops.has_native_vmap:
-        return
-    key = (type(obj), method)
-    if key in _VMAP_FALLBACK_WARNED:
-        return
-    _VMAP_FALLBACK_WARNED.add(key)
-    warnings.warn(
-        f"{type(obj).__name__}.{method} falls back to a Python loop on this backend "
-        "(no native vmap); this is O(batch). Provide a vectorized batched override, "
-        "or use JAX/Torch.",
-        RuntimeWarning,
-        stacklevel=3,
-    )
+Domain = TypeVar("Domain", bound=CoordinateSpace)
 
 
 class Functional(ContextBound, Generic[Domain]):
@@ -61,7 +31,7 @@ class Functional(ContextBound, Generic[Domain]):
 
     ``Functional`` represents a map ``F : X -> K`` without assuming any storage
     model. It mirrors the minimal ``LinOp`` contract: the domain is converted
-    into the resolved context, value checks follow ``ctx.enable_checks``, and
+    into the resolved context, value checks follow ``ctx.check_level``, and
     batched evaluation is implemented by a backend ``vmap`` fallback.
 
     Parameters
@@ -80,10 +50,7 @@ class Functional(ContextBound, Generic[Domain]):
     """
 
     def __init__(self, dom: Domain, ctx: Context | str | None = None) -> None:
-        ctx = resolve_context_priority(ctx, dom)
-        super().__init__(ctx)
-        self.dom = dom.convert(self.ctx)
-        self._enable_checks = self.ctx.enable_checks
+        (self.dom,) = self._bind_context(ctx, dom)
 
     @property
     def domain(self) -> Domain:
@@ -93,6 +60,38 @@ class Functional(ContextBound, Generic[Domain]):
     @abstractmethod
     def value(self, x: Any) -> Any:
         """Evaluate this functional at an element of ``self.domain``."""
+
+    def grad(self, x: Any) -> Any:
+        """Gradient at an element of ``self.domain``.
+
+        Override in subclasses that support differentiation; the base raises
+        :class:`NotImplementedError`.
+        """
+        raise NotImplementedError(f"{type(self).__name__} does not implement grad().")
+
+    def vgrad(self, xs: Any) -> Any:
+        """Gradient over a leading batch axis.
+
+        Override in subclasses that support differentiation; the base raises
+        :class:`NotImplementedError`.
+        """
+        raise NotImplementedError(f"{type(self).__name__} does not implement vgrad().")
+
+    def _value_core(self, x: Any) -> Any:
+        """Check-free value core; the base falls back to the checked ``value``."""
+        return self.value(x)
+
+    def _grad_core(self, x: Any) -> Any:
+        """Check-free gradient core; the base falls back to the checked ``grad``."""
+        return self.grad(x)
+
+    def _vvalue_core(self, xs: Any) -> Any:
+        """Check-free batched-value core; the base falls back to ``vvalue``."""
+        return self.vvalue(xs)
+
+    def _vgrad_core(self, xs: Any) -> Any:
+        """Check-free batched-gradient core; the base falls back to ``vgrad``."""
+        return self.vgrad(xs)
 
     def __call__(self, x: Any) -> Any:
         """Evaluate this functional at ``x``."""
@@ -126,13 +125,37 @@ class Functional(ContextBound, Generic[Domain]):
         """Raise if ``x`` is not in the domain."""
         self.dom.check_member(x)
 
+    def __eq__(self, other: Any) -> bool:
+        """Return structural equality when implemented by a subclass.
+
+        Mirrors :class:`~spacecore.linop.LinOp`: the base provides no algebraic
+        equality and returns ``NotImplemented`` so Python tries the reflected
+        comparison and falls back to identity symmetrically.
+        """
+        return NotImplemented
+
+    def _arrow(self) -> str:
+        """Return the ``domain → scalar-field`` descriptor for this functional."""
+        try:
+            codomain = field_symbol(self.dom.field)
+        except Exception:
+            codomain = "?"
+        return f"{describe_space(self.dom)} → {codomain}"
+
+    def _repr_body(self) -> str:
+        return self._arrow()
+
+    def _short_repr(self) -> str:
+        """Return a bounded ``ClassName(domain → field)`` form for nesting."""
+        return f"{type(self).__name__}({self._arrow()})"
+
     @abstractmethod
-    def tree_flatten(self):
+    def tree_flatten(self) -> tuple[tuple[Any, ...], Any]:
         """Flatten this functional for pytree registration."""
         ...
 
     @classmethod
     @abstractmethod
-    def tree_unflatten(cls, aux, children):
+    def tree_unflatten(cls, aux: Any, children: Any) -> Self:
         """Rebuild this functional from pytree data."""
         ...

@@ -13,3 +13,4 @@ directives for public objects instead of dumping entire modules.
    linops
    functionals
    linalg
+   optimize

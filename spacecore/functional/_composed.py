@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from ._base import Functional
 from ._linear import InnerProductFunctional
 from ._quadratic import LinOpQuadraticForm
 from .._checks import checked_method
 from ..backend import Context, jax_pytree_class
+from ..kernels import core_kernels
 from ..linop import LinOp
 
 
@@ -45,11 +46,12 @@ def make_functional_composed(F: Functional, A: LinOp) -> Functional:
         return InnerProductFunctional(A.H.apply(F.representer), A.domain, A.ctx)
     if isinstance(F, LinOpQuadraticForm):
         Q = A.H @ F.Q @ A
-        linear = None if F.linear is None else F.linear.compose(A)
+        linear = None if F.linear is None else cast(Any, F.linear.compose(A))
         return LinOpQuadraticForm(Q, linear, F.a, A.ctx)
     return ComposedFunctional(F, A)
 
 
+@core_kernels("composed-functional")
 @jax_pytree_class
 class ComposedFunctional(Functional):
     """
@@ -86,13 +88,16 @@ class ComposedFunctional(Functional):
         Any
             Scalar-like value returned by the composed functional.
         """
-        return self.F.value(self.A.apply(x))
+        return self._value_core(x)
 
     def __eq__(self, other: Any) -> bool:
         """Return whether another composed functional has the same operands."""
-        if type(other) is type(self):
-            return self.F == other.F and self.A == other.A
-        return False
+        if not self._eq_backend_compatible(other):              # Tier 1: backend
+            return NotImplemented
+        return self.F == other.F and self.A == other.A
+
+    def _repr_body(self) -> str:
+        return f"{self.F._short_repr()} ∘ {self.A._short_repr()}"
 
     def tree_flatten(self):
         """Flatten this functional for pytree registration."""
