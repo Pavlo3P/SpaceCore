@@ -76,7 +76,7 @@ SPEC = registry.register(
         applicable=composed_chain_apply_applicable,
         correctness_ref=(
             "tests/kernels/test_kernels_match_generic.py"
-            "::test_composed_chain_apply_matches_generic"
+            "::TestComposedChainApply::test_matches_generic"
         ),
         benchmark_id="kernels.composed_chain_apply",
         rtol=0.0,
