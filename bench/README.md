@@ -78,13 +78,9 @@ with embedded Plotly.js charts and a filterable / sortable case table:
 2. **Worst overhead decomposition** — extra SpaceCore time over bare for the
    worst runtime-ratio cases, split into cheap validation cost and remaining
    abstraction/runtime cost when paired `none` / `cheap` data exists.
-3. **Overhead persistence by size** — SpaceCore median ÷ bare median on a
-   log-log size curve; lines trending toward `1.0x` amortize with size, while
-   flat high lines indicate persistent overhead.
-4. **Per-seed jitter** — scatter of per-seed median ÷ aggregate median by size.
-5. **Median memory overhead per family** — grouped bars of SpaceCore peak ÷
+3. **Median memory overhead per family** — grouped bars of SpaceCore peak ÷
    bare peak.
-6. **Current vs baseline** (only when `--html` is used with `compare`) —
+4. **Current vs baseline** (only when `--html` is used with `compare`) —
    log-log scatter with regressing points highlighted.
 
 The table at the bottom shows every case, sortable by any column, with status

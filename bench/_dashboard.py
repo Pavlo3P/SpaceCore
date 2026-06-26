@@ -29,8 +29,6 @@ Layout of the generated HTML
    - Speedup distribution (bare / SpaceCore, log-x, per backend).
    - Worst-case overhead decomposition (extra ns over bare, split into
      validation and non-validation overhead).
-   - Overhead persistence by problem size (SpaceCore / bare runtime ratio).
-   - Per-seed jitter scatter (log-x, colored by backend).
    - Per-family median memory overhead ratio (SpaceCore peak / bare peak).
    - Optional baseline scatter (current vs baseline speedup, log-log)
      when a ``baseline`` argument is supplied.
@@ -1079,99 +1077,6 @@ _JS = r"""
     Plotly.react("plot-overhead", traces, layout, { displaylogo: false, responsive: true });
   }
 
-  function scalingCurves(rows) {
-    // One line per (operation, backend, check level).
-    const byKey = {};
-    rows.forEach(function (r) {
-      const k = r.operation_name + "||" + r.backend + "||" + r.check_level;
-      (byKey[k] = byKey[k] || []).push(r);
-    });
-    const traces = [];
-    Object.keys(byKey).sort().forEach(function (k) {
-      const pts = byKey[k].slice().sort(function (a, b) { return a.size - b.size; });
-      if (pts.length < 2) return;
-      const backend = pts[0].backend;
-      const checkLevel = pts[0].check_level;
-      const opname = pts[0].operation_name;
-      traces.push({
-        x: pts.map(function (p) { return p.size; }),
-        y: pts.map(function (p) { return p.overhead_factor; }),
-        name: opname + " [" + backend + ", SpaceCore " + checkLevel + "]",
-        mode: "lines+markers",
-        type: "scatter",
-        line: { color: backendColor(backend), width: 1.5, dash: checkDash(checkLevel) },
-        marker: { color: backendColor(backend), size: 6 },
-        text: pts.map(function (p) {
-          return p.operation_name +
-                 "<br>backend: " + p.backend +
-                 "<br>check_level: " + p.check_level +
-                 "<br>size: " + p.size +
-                 "<br>sc median: " + p.sc_median_ns.toFixed(0) + " ns" +
-                 "<br>bare median: " + p.bare_median_ns.toFixed(0) + " ns" +
-                 "<br>runtime ratio: " + p.overhead_factor.toFixed(2) + "x" +
-                 "<br>speedup: " + p.speedup.toFixed(2) + "x";
-        }),
-        hovertemplate: "%{text}<extra></extra>",
-      });
-    });
-    const layout = Object.assign({}, LAYOUT_BASE, {
-      title: "3. Overhead persistence by size (1.0x means SpaceCore matches bare)",
-      xaxis: { type: "log", title: "problem size" },
-      yaxis: { type: "log", title: "runtime ratio: SpaceCore / bare" },
-      showlegend: true,
-      legend: { orientation: "h", y: -0.2 },
-      shapes: [
-        {
-          type: "line", xref: "paper", yref: "y", x0: 0, x1: 1, y0: 1, y1: 1,
-          line: { color: "#2ca02c", dash: "dash", width: 1 },
-        },
-        {
-          type: "line", xref: "paper", yref: "y", x0: 0, x1: 1, y0: 2, y1: 2,
-          line: { color: "#ff7f0e", dash: "dot", width: 1 },
-        },
-      ],
-    });
-    Plotly.react("plot-scaling", traces, layout, { displaylogo: false, responsive: true });
-  }
-
-  function perSeedJitter(rows) {
-    const present = seriesPresent(rows);
-    const traces = present.map(function (series) {
-      const xs = [], ys = [], texts = [];
-      rows.filter(function (r) {
-        return r.backend === series.backend && r.check_level === series.check_level;
-      }).forEach(function (r) {
-        if (r.sc_median_ns <= 0) return;
-        (r.seeds || []).forEach(function (s) {
-          xs.push(r.size);
-          ys.push(s.sc_median_ns / r.sc_median_ns);
-          texts.push(r.operation_name + " [" + r.backend + "]" +
-            "<br>check_level: " + r.check_level + "<br>seed " + s.seed);
-        });
-      });
-      return {
-        x: xs, y: ys, text: texts,
-        name: seriesLabel(series.backend, series.check_level),
-        mode: "markers", type: "scatter",
-        marker: { color: backendColor(series.backend), size: 7, opacity: 0.7,
-                  symbol: series.check_level === "none" ? "circle" : "diamond" },
-        hovertemplate: "%{text}<br>size: %{x}<br>ratio: %{y:.3f}<extra></extra>",
-      };
-    }).filter(function (t) { return t.x.length > 0; });
-    const layout = Object.assign({}, LAYOUT_BASE, {
-      title: "4. Per-seed jitter, colored by backend (closer to 1.0 = lower noise)",
-      xaxis: { type: "log", title: "problem size" },
-      yaxis: { title: "per-seed median / aggregate" },
-      showlegend: true,
-      legend: { orientation: "h", y: -0.2 },
-      shapes: [{
-        type: "line", xref: "paper", yref: "y", x0: 0, x1: 1, y0: 1, y1: 1,
-        line: { color: "#999", dash: "dash", width: 1 },
-      }],
-    });
-    Plotly.react("plot-jitter", traces, layout, { displaylogo: false, responsive: true });
-  }
-
   function memoryBars(rows) {
     const byFamily = {};
     rows.forEach(function (r) {
@@ -1210,7 +1115,7 @@ _JS = r"""
       };
     });
     const layout = Object.assign({}, LAYOUT_BASE, {
-      title: "5. Median memory overhead ratio per family",
+      title: "3. Median memory overhead ratio per family",
       barmode: "group",
       yaxis: { type: "log", title: "SpaceCore peak / bare peak" },
       xaxis: { title: "family" },
@@ -1264,7 +1169,7 @@ _JS = r"""
       hoverinfo: "skip",
     };
     const layout = Object.assign({}, LAYOUT_BASE, {
-      title: "6. Current vs baseline speedup (log-log; below diagonal = regression)",
+      title: "4. Current vs baseline speedup (log-log; below diagonal = regression)",
       xaxis: { type: "log", title: "baseline speedup" },
       yaxis: { type: "log", title: "current speedup" },
       showlegend: false,
@@ -1495,8 +1400,6 @@ _JS = r"""
     const rows = filtered();
     speedupDistribution(rows);
     overheadDecomposition(rows);
-    scalingCurves(rows);
-    perSeedJitter(rows);
     memoryBars(rows);
     baselineScatter(rows);
     renderTableBody();
@@ -1615,20 +1518,6 @@ _TEMPLATE = """<!DOCTYPE html>
     <div class="plot-caption">
       Shows the worst cases by runtime ratio and splits extra time into cheap
       validation cost and other abstraction/runtime cost where paired data exists.
-    </div>
-  </div>
-  <div class="plot-card wide">
-    <div id="plot-scaling" class="plot"></div>
-    <div class="plot-caption">
-      Shows whether overhead amortizes with larger inputs. Lines trending toward
-      1.0x shrink with size; flat high lines indicate persistent overhead.
-    </div>
-  </div>
-  <div class="plot-card">
-    <div id="plot-jitter" class="plot"></div>
-    <div class="plot-caption">
-      Compares per-seed timing to the aggregate median. Wide vertical spread means
-      the measurement is noisy and should be treated cautiously.
     </div>
   </div>
   <div class="plot-card">
