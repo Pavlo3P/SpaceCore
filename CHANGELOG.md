@@ -60,6 +60,20 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   single optimal backend call — one SpMV for `apply`/`rapply` and one batched SpMV
   over the stacked right-hand side for `vapply`/`rvapply` — so the reserved
   `linop.matvec.sparse` key stays inert (a spec would add only dispatch overhead).
+- ADR-021 **lazy-operator-algebra `fuse()`** (Tier-2 explicit simplification):
+  `LinOp.fuse(*, materialize=False)` collapses each maximal subtree of dense
+  operators into a single materialized `DenseLinOp` — a composition becomes the
+  matrix product `M_A @ M_B`, a scalar folds into the matrix, a sum of dense terms
+  is added into one matrix, an adjoint fuses its operand, and block/tree operators
+  fuse each component (so a composed-dense block becomes foldable by the
+  block-diagonal dispatch spec). It is mathematically equal to the original up to
+  floating-point rounding (fusion reassociates the arithmetic) and is
+  adjoint-consistent on any geometry — the shared middle-space Riesz maps cancel,
+  so fusion is not restricted to Euclidean spaces. A matrix-free operand is
+  **never** densified by the default `fuse()`; `fuse(materialize=True)` is the
+  explicit opt-in that densifies it (via the `to_dense` basis probe) so an
+  enclosing expression can collapse. Lives in `spacecore.linop`, separate from the
+  ADR-016 dispatch layer.
 
 ### Fixed
 
