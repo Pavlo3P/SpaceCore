@@ -251,10 +251,13 @@ class BlockDiagonalLinOp(TreeLinOp[TreeSpace, TreeSpace]):
             view._adjoint_view = self
         return view
 
-    def fuse(self) -> BlockDiagonalLinOp:
+    def fuse(self, *, materialize: bool = False) -> BlockDiagonalLinOp:
         """Fuse each block (ADR-021), preserving the tree layout and context."""
         return BlockDiagonalLinOp(
-            self.dom, self.cod, tuple(op.fuse() for op in self.parts), self.ctx
+            self.dom,
+            self.cod,
+            tuple(op.fuse(materialize=materialize) for op in self.parts),
+            self.ctx,
         )
 
     @classmethod
@@ -439,10 +442,13 @@ class BlockMatrixLinOp(TreeLinOp[TreeSpace, TreeSpace]):
             view._adjoint_view = self
         return view
 
-    def fuse(self) -> BlockMatrixLinOp:
+    def fuse(self, *, materialize: bool = False) -> BlockMatrixLinOp:
         """Fuse each block (ADR-021), preserving the rectangular block layout."""
         return BlockMatrixLinOp(
-            tuple(tuple(block.fuse() for block in row) for row in self.block_rows)
+            tuple(
+                tuple(block.fuse(materialize=materialize) for block in row)
+                for row in self.block_rows
+            )
         )
 
     def tree_flatten(self):

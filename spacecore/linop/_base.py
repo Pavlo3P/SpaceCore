@@ -235,7 +235,7 @@ class LinOp(ContextBound, Generic[Domain, Codomain]):
         """Return the Hermitian-adjoint view of this linear operator."""
         return self.H
 
-    def fuse(self) -> LinOp:
+    def fuse(self, *, materialize: bool = False) -> LinOp:
         r"""
         Return an equivalent operator with fusible sub-expressions multiplied out.
 
@@ -251,9 +251,19 @@ class LinOp(ContextBound, Generic[Domain, Codomain]):
         rounding*: fusing reassociates the arithmetic (multiplying matrices then
         applying differs from applying in sequence at the ulp level), so equality
         holds up to tolerance, not bit-for-bit. The fused operator preserves the
-        domain, codomain, context, and scalar-field/dtype identity, and a
-        matrix-free operand ([ADR-008](008_linop_subclasses.md)) is **never**
-        silently densified. A leaf operator returns itself.
+        domain, codomain, context, and scalar-field/dtype identity. A leaf
+        operator returns itself.
+
+        Parameters
+        ----------
+        materialize : bool, optional
+            With the default ``False``, a matrix-free operand
+            ([ADR-008](008_linop_subclasses.md)) is **never** densified: it
+            remains a lazy leaf and only breaks a fusible run. With ``True`` the
+            caller explicitly accepts giving up the matrix-free contract: a
+            matrix-free operand is densified into a :class:`DenseLinOp` (via its
+            ``to_dense`` basis probe, which may be expensive), allowing the
+            enclosing expression to collapse to a single dense operator.
 
         Returns
         -------

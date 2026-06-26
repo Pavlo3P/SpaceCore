@@ -298,7 +298,7 @@ class ScaledLinOp(LinOp[Domain, Codomain]):
         xs = self.op.rvapply(ys)
         return self.domain.scale_batch(_conjugate_scalar(self.scalar), xs)
 
-    def fuse(self) -> LinOp:
+    def fuse(self, *, materialize: bool = False) -> LinOp:
         r"""Fuse the operand and fold the scalar into a dense matrix (ADR-021).
 
         When the fused operand is dense, replace ``c · A`` with one
@@ -309,7 +309,7 @@ class ScaledLinOp(LinOp[Domain, Codomain]):
         """
         from ._dense import DenseLinOp
 
-        op = self.op.fuse()
+        op = self.op.fuse(materialize=materialize)
         if isinstance(op, DenseLinOp):
             matrix = self.scalar * op.to_matrix()
             tensor = self.ops.reshape(
@@ -442,7 +442,7 @@ class SumLinOp(LinOp[Domain, Codomain]):
             acc = add_batch(acc, op.rvapply(ys))
         return acc
 
-    def fuse(self) -> LinOp:
+    def fuse(self, *, materialize: bool = False) -> LinOp:
         r"""Fuse each term and combine the dense terms into one ``DenseLinOp`` (ADR-021).
 
         Fuse every term, sum the matrices of the densely-fusible ones into a
@@ -453,7 +453,7 @@ class SumLinOp(LinOp[Domain, Codomain]):
         """
         from ._dense import DenseLinOp
 
-        fused = [p.fuse() for p in self.parts]
+        fused = [p.fuse(materialize=materialize) for p in self.parts]
         dense = [p for p in fused if isinstance(p, DenseLinOp)]
         if len(dense) < 2:
             return make_sum(fused)
@@ -585,7 +585,7 @@ class ComposedLinOp(LinOp[Domain, Codomain]):
         """Return ``right.rvapply(left.rvapply(zs))``."""
         return self.right.rvapply(self.left.rvapply(zs))
 
-    def fuse(self) -> LinOp:
+    def fuse(self, *, materialize: bool = False) -> LinOp:
         r"""Fuse a composition of dense operators into one ``DenseLinOp`` (ADR-021).
 
         Fuse each operand first, then — when both fused operands are dense —
@@ -599,8 +599,8 @@ class ComposedLinOp(LinOp[Domain, Codomain]):
         """
         from ._dense import DenseLinOp
 
-        left = self.left.fuse()
-        right = self.right.fuse()
+        left = self.left.fuse(materialize=materialize)
+        right = self.right.fuse(materialize=materialize)
         if isinstance(left, DenseLinOp) and isinstance(right, DenseLinOp):
             ops = self.ops
             matrix = ops.matmul(left.to_matrix(), right.to_matrix())
@@ -1167,6 +1167,21 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
             return super().rvapply(ys)
         return self.rvapply_fn(ys)
 
+    def fuse(self, *, materialize: bool = False) -> LinOp:
+        """Stay matrix-free unless ``materialize=True`` is requested (ADR-021/ADR-008).
+
+        By default a matrix-free operator is never densified, so it returns
+        itself. With ``materialize=True`` the caller explicitly opts into
+        densification: the operator is probed into a dense tensor (via
+        ``to_dense``, the basis sweep) and returned as a :class:`DenseLinOp`,
+        letting an enclosing expression collapse to a single dense operator.
+        """
+        if not materialize:
+            return self
+        from ._dense import DenseLinOp
+
+        return DenseLinOp(self.to_dense(), self.domain, self.codomain, self.ctx)
+
     def __eq__(self, other: Any) -> bool:
         if not self._eq_backend_compatible(other):              # Tier 1: backend
             return NotImplemented
@@ -1270,14 +1285,16 @@ class _AdjointViewLinOp(LinOp[Codomain, Domain]):
         """Return ``op.vapply(xs)`` over a batch."""
         return self.op.vapply(xs)
 
-    def fuse(self) -> LinOp:
+    def fuse(self, *, materialize: bool = False) -> LinOp:
         """Fuse the wrapped operand; return the adjoint of the fused operator (ADR-021).
 
         ``A.H.fuse()`` is ``A.fuse().H`` — the inner expression is fused (e.g. a
         composition collapses to one dense operator) and the adjoint view wraps
-        the result. A matrix-free operand stays matrix-free under its adjoint.
+        the result, which keeps the metric adjoint correct on any geometry. A
+        matrix-free operand stays matrix-free under its adjoint (or is densified
+        when ``materialize=True``).
         """
-        return self.op.fuse().H
+        return self.op.fuse(materialize=materialize).H
 
     @property
     def H(self) -> LinOp[Domain, Codomain]:

@@ -253,6 +253,52 @@ class TestFuseTreeOperators:
         np.testing.assert_allclose(to_numpy(fused.apply(x)), to_numpy(T.apply(x)), rtol=1e-10, atol=1e-12)
 
 
+class TestFuseMaterializeOptIn:
+    def test_default_leaves_matrix_free_intact(self, numpy_ctx):
+        """fuse() (materialize=False) never densifies a matrix-free leaf."""
+        n = 4
+        X = sc.DenseCoordinateSpace((n,), numpy_ctx)
+        M = sc.MatrixFreeLinOp(lambda x: x, lambda y: y, X, X, numpy_ctx)
+        assert M.fuse() is M
+        assert not isinstance(M.fuse(), sc.DenseLinOp)
+
+    def test_materialize_true_densifies_matrix_free(self, numpy_ctx):
+        """fuse(materialize=True) probes a matrix-free op into a DenseLinOp."""
+        rng = np.random.default_rng(71)
+        n = 5
+        X = sc.DenseCoordinateSpace((n,), numpy_ctx)
+        M_mat = rng.standard_normal((n, n))
+        M = sc.MatrixFreeLinOp(
+            lambda x: numpy_ctx.asarray(M_mat) @ x,
+            lambda y: numpy_ctx.asarray(M_mat).T @ y,
+            X, X, numpy_ctx,
+        )
+        fused = M.fuse(materialize=True)
+        assert isinstance(fused, sc.DenseLinOp)
+        np.testing.assert_allclose(to_numpy(fused.to_matrix()), M_mat, rtol=1e-10, atol=1e-12)
+
+    def test_materialize_true_collapses_whole_expression(self, numpy_ctx):
+        """With materialize=True a dense @ matrix-free chain collapses to one dense."""
+        rng = np.random.default_rng(73)
+        n = 5
+        X = sc.DenseCoordinateSpace((n,), numpy_ctx)
+        A_mat = rng.standard_normal((n, n))
+        M_mat = rng.standard_normal((n, n))
+        A = _dense(numpy_ctx, X, X, A_mat)
+        M = sc.MatrixFreeLinOp(
+            lambda x: numpy_ctx.asarray(M_mat) @ x,
+            lambda y: numpy_ctx.asarray(M_mat).T @ y,
+            X, X, numpy_ctx,
+        )
+        lazy = A @ M
+        # Safe default keeps it lazy; explicit opt-in collapses to one dense op.
+        assert not isinstance(lazy.fuse(), sc.DenseLinOp)
+        fused = lazy.fuse(materialize=True)
+        assert isinstance(fused, sc.DenseLinOp)
+        x = numpy_ctx.asarray(rng.standard_normal(n))
+        np.testing.assert_allclose(to_numpy(fused.apply(x)), to_numpy(lazy.apply(x)), rtol=1e-10, atol=1e-12)
+
+
 class TestFuseMetricAdjoint:
     def test_weighted_composition_adjoint_is_consistent(self, numpy_ctx):
         """On a non-Euclidean (weighted) space, the fused metric adjoint matches.
