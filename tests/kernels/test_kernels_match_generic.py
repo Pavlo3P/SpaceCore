@@ -43,7 +43,11 @@ from spacecore.kernels.specs.block_batched import (
     block_batched_applicable,
     block_batched_cost,
     block_batched_optimized,
+    block_batched_rapply_applicable,
+    block_batched_rapply_cost,
+    block_batched_rapply_optimized,
     block_diagonal_apply_generic,
+    block_diagonal_rapply_generic,
 )
 from spacecore.linop._algebra import IdentityLinOp, ZeroLinOp
 
@@ -270,3 +274,52 @@ class TestBlockDiagonalUniformBatched:
             np.ones(4, dtype=np.float64),
         )
         assert not block_batched_applicable(parts, x_parts)
+
+
+# ===========================================================================
+# block-diagonal-uniform-dense-batched-rapply  (ADR-016 dispatch spec)
+# ===========================================================================
+class TestBlockDiagonalUniformRapply:
+    @pytest.mark.parametrize("block_count,n", [(2, 4), (4, 16), (8, 8)])
+    def test_matches_generic(self, numpy_ctx, block_count, n):
+        """Batched adjoint matmul == per-block generic == NumPy ground truth, exactly."""
+        rng = np.random.default_rng(seed=block_count * 100 + n + 7)
+        space = sc.DenseCoordinateSpace((n,), numpy_ctx)
+        mats = [rng.standard_normal((n, n)) for _ in range(block_count)]
+        parts = tuple(_dense(numpy_ctx, space, m) for m in mats)
+        y_parts = tuple(numpy_ctx.asarray(rng.standard_normal(n)) for _ in range(block_count))
+
+        assert block_batched_rapply_applicable(parts, y_parts)
+        optimized = block_batched_rapply_optimized(parts, y_parts)
+        generic = block_diagonal_rapply_generic(parts, y_parts)
+        # Independent NumPy ground truth: per-block conjugate-transpose @ y.
+        reference = tuple(to_numpy(m).conj().T @ to_numpy(y) for m, y in zip(mats, y_parts))
+
+        assert len(optimized) == len(generic) == block_count
+        for o, g, r in zip(optimized, generic, reference):
+            np.testing.assert_array_equal(to_numpy(o), to_numpy(g))
+            np.testing.assert_array_equal(to_numpy(o), r)
+
+    def test_cost_is_shape_only_and_positive(self, numpy_ctx):
+        space = sc.DenseCoordinateSpace((8,), numpy_ctx)
+        parts = tuple(_dense(numpy_ctx, space, np.eye(8)) for _ in range(4))
+        y_parts = tuple(numpy_ctx.asarray(np.zeros(8)) for _ in range(4))
+        cost = block_batched_rapply_cost(parts, y_parts)
+        assert cost is not None
+        # 4*(8*8) + 4*8 + 4*8 = 320 elements * 8 bytes.
+        assert cost.peak_bytes == 320 * 8
+        assert cost.flops > 0
+
+    def test_not_applicable_for_single_block(self, numpy_ctx):
+        space = sc.DenseCoordinateSpace((4,), numpy_ctx)
+        parts = (_dense(numpy_ctx, space, np.eye(4)),)
+        y_parts = (numpy_ctx.asarray(np.ones(4)),)
+        assert not block_batched_rapply_applicable(parts, y_parts)
+        assert block_batched_rapply_cost(parts, y_parts) is None
+
+    def test_not_applicable_for_nonuniform_shapes(self, numpy_ctx):
+        s4 = sc.DenseCoordinateSpace((4,), numpy_ctx)
+        s8 = sc.DenseCoordinateSpace((8,), numpy_ctx)
+        parts = (_dense(numpy_ctx, s4, np.eye(4)), _dense(numpy_ctx, s8, np.eye(8)))
+        y_parts = (numpy_ctx.asarray(np.ones(4)), numpy_ctx.asarray(np.ones(8)))
+        assert not block_batched_rapply_applicable(parts, y_parts)

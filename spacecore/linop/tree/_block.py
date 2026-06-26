@@ -22,11 +22,17 @@ from ...space import TreeSpace
 # bound core in ``self._apply_parts[i]``, so the generic stays byte-identical.
 # The ``should_consult_dispatch`` guard keeps the default path untouched.
 _BLOCK_DIAGONAL_APPLY_KEY = "linop.block_diagonal.apply"
+_BLOCK_DIAGONAL_RAPPLY_KEY = "linop.block_diagonal.rapply"
 
 
 def _block_diagonal_apply(parts: Any, x_parts: Any) -> tuple[Any, ...]:
     """Apply each block core to its own component (generic block-diagonal apply)."""
     return tuple(p._apply_core(xi) for p, xi in zip(parts, x_parts))
+
+
+def _block_diagonal_rapply(parts: Any, y_parts: Any) -> tuple[Any, ...]:
+    """Apply each block adjoint core to its own component (generic block-diagonal rapply)."""
+    return tuple(p._rapply_core(yi) for p, yi in zip(parts, y_parts))
 
 
 def _validate_blocks(blocks: Sequence[Any], owner: str) -> tuple[LinOp, ...]:
@@ -164,7 +170,16 @@ class BlockDiagonalLinOp(TreeLinOp[TreeSpace, TreeSpace]):
 
     def _rapply_unchecked(self, y: Any) -> Any:
         y_parts = self.cod._components(y)
-        x_parts = tuple(rapply(yi) for rapply, yi in zip(self._rapply_parts, y_parts))
+        if should_consult_dispatch(self.ctx):
+            x_parts = dispatch(
+                _BLOCK_DIAGONAL_RAPPLY_KEY,
+                self.parts,
+                y_parts,
+                generic=_block_diagonal_rapply,
+                ctx=self.ctx,
+            )
+        else:
+            x_parts = _block_diagonal_rapply(self.parts, y_parts)
         return self.dom._from_components(x_parts)
 
     @checked_method(
