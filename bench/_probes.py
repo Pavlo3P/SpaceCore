@@ -12,9 +12,9 @@ loop. The factory returns a :class:`ProbeCase` whose ``bare`` and
 ``sc`` closures are the actual functions the harness times.
 
 The ``operation_family`` field is used by plots and the verdict to roll
-results up by kind (``space``, ``linop``, ``functional``, ``linalg``,
-``kernel``). The ``operation_name`` is the human-readable dotted name
-(``space.inner``, ``linop.dense.apply``, ``linalg.cg``).
+results up by kind (``space``, ``linop``, ``functional``). The
+``operation_name`` is the human-readable dotted name (``space.inner``,
+``linop.dense.apply``, ``functional.quadratic.value``).
 """
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ from typing import Any, Callable, Literal, Sequence
 
 from spacecore._check_policy import CheckLevel
 
-OperationFamily = Literal["space", "linop", "functional", "linalg", "kernel"]
+OperationFamily = Literal["space", "linop", "functional"]
 
 
 @dataclass(frozen=True, slots=True)

@@ -3,14 +3,14 @@
 The verdict module (:mod:`bench._verdict`) tells you *whether* a
 SpaceCore call is slower than the bare reference. This module explains
 *why*. Each :class:`ProbeResult` is examined against a battery of
-heuristics — validation-cost dominance, JAX compile latency, kernel
-specialization wins, seed jitter — and tagged with one or more
-:class:`Reason` codes plus a human-readable summary.
+heuristics — validation-cost dominance, JAX compile latency, seed
+jitter, memory overhead — and tagged with one or more :class:`Reason`
+codes plus a human-readable summary.
 
 The :func:`overall_diagnosis` rollup produces the structured payload
 the dashboard surfaces in its verdict section: dominant-reason
-histogram, top overhead cases, top wins, kernel wins, JAX compile
-summary, and a short prose narrative.
+histogram, top overhead cases, top wins, JAX compile summary, and a
+short prose narrative.
 
 The heuristics here are intentionally numeric and order-independent —
 they fire on raw thresholds against the :class:`ProbeResult` fields, so
@@ -41,10 +41,7 @@ class Reason(str, Enum):
     JAX_COMPILE_DOMINANT = "JAX_COMPILE_DOMINANT"
     JAX_TRACE_OVERHEAD = "JAX_TRACE_OVERHEAD"
     TORCH_EAGER_OVERHEAD = "TORCH_EAGER_OVERHEAD"
-    KERNEL_WIN = "KERNEL_WIN"
-    KERNEL_NEUTRAL = "KERNEL_NEUTRAL"
     HIGH_SEED_JITTER = "HIGH_SEED_JITTER"
-    SOLVER_FIXED_ITERATIONS = "SOLVER_FIXED_ITERATIONS"
     MEMORY_OVERHEAD = "MEMORY_OVERHEAD"
     CORRECTNESS_FAILURE = "CORRECTNESS_FAILURE"
     NEUTRAL = "NEUTRAL"
@@ -101,29 +98,9 @@ def _fires_torch_eager_overhead(r: ProbeResult) -> bool:
     return r.backend == "torch" and r.speedup < 0.10
 
 
-def _fires_kernel_win(r: ProbeResult) -> bool:
-    return (
-        r.family == "kernel"
-        and r.optimized_speedup is not None
-        and r.optimized_speedup > 1.2
-    )
-
-
-def _fires_kernel_neutral(r: ProbeResult) -> bool:
-    return (
-        r.family == "kernel"
-        and r.optimized_speedup is not None
-        and 0.8 <= r.optimized_speedup <= 1.2
-    )
-
-
 def _fires_high_seed_jitter(r: ProbeResult) -> bool:
     denom = max(r.speedup, 1e-9)
     return (r.speedup_std / denom) > 0.20 and r.speedup_std > 0.05
-
-
-def _fires_solver_fixed_iterations(r: ProbeResult) -> bool:
-    return r.family == "linalg" and r.speedup < 0.05
 
 
 def _fires_memory_overhead(r: ProbeResult) -> bool:
@@ -167,22 +144,11 @@ def _summary_for(reason: Reason, r: ProbeResult) -> str:
             f"Torch eager dispatch overhead: SC {sc_us:.2f} us vs "
             f"bare {bare_us:.2f} us (speedup {r.speedup:.2f}x)."
         )
-    if reason is Reason.KERNEL_WIN:
-        ratio = r.optimized_speedup or 0.0
-        return (
-            f"Optimized kernel is {ratio:.2f}x faster than generic SpaceCore "
-            "path."
-        )
-    if reason is Reason.KERNEL_NEUTRAL:
-        ratio = r.optimized_speedup or 0.0
-        return f"Optimized kernel within 20% of generic path ({ratio:.2f}x)."
     if reason is Reason.HIGH_SEED_JITTER:
         return (
             f"High seed jitter: speedup {r.speedup:.2f}x +/- "
             f"{r.speedup_std:.2f}x."
         )
-    if reason is Reason.SOLVER_FIXED_ITERATIONS:
-        return "Iterative solver: bare is closed-form, SC runs 20 iterations."
     if reason is Reason.MEMORY_OVERHEAD:
         ratio = r.sc_peak_bytes_median / max(r.bare_peak_bytes_median, 64)
         return (
@@ -201,14 +167,11 @@ def _summary_for(reason: Reason, r: ProbeResult) -> str:
 # Order matters: earliest entry that fires becomes the dominant reason.
 _HEURISTICS: tuple[tuple[Reason, Any], ...] = (
     (Reason.CORRECTNESS_FAILURE, _fires_correctness_failure),
-    (Reason.SOLVER_FIXED_ITERATIONS, _fires_solver_fixed_iterations),
     (Reason.JAX_COMPILE_DOMINANT, _fires_jax_compile_dominant),
     (Reason.JAX_TRACE_OVERHEAD, _fires_jax_trace_overhead),
     (Reason.TORCH_EAGER_OVERHEAD, _fires_torch_eager_overhead),
     (Reason.CONSTANT_VALIDATION_COST, _fires_constant_validation),
-    (Reason.KERNEL_WIN, _fires_kernel_win),
     (Reason.BARE_SATURATES_OP, _fires_bare_saturates),
-    (Reason.KERNEL_NEUTRAL, _fires_kernel_neutral),
     (Reason.BARE_TOO_SMALL_TO_COMPARE, _fires_bare_too_small),
     (Reason.HIGH_SEED_JITTER, _fires_high_seed_jitter),
     (Reason.MEMORY_OVERHEAD, _fires_memory_overhead),
@@ -247,7 +210,6 @@ def overall_diagnosis(results: list[ProbeResult]) -> dict[str, Any]:
             "dominant_reason_counts": {},
             "top_overhead_cases": [],
             "top_wins": [],
-            "kernel_wins": [],
             "jax_compile_summary": None,
             "family_overhead_ranking": [],
             "narrative": "No benchmark results to diagnose.",
@@ -286,17 +248,6 @@ def overall_diagnosis(results: list[ProbeResult]) -> dict[str, Any]:
     top_wins = [
         (r.operation_name, r.size, r.backend, r.speedup) for r in top_wins_sorted
     ]
-
-    kernel_wins: list[tuple[str, int, str, float]] = []
-    for r in results:
-        if (
-            r.family == "kernel"
-            and r.optimized_speedup is not None
-            and r.optimized_speedup > 1.2
-        ):
-            kernel_wins.append(
-                (r.operation_name, r.size, r.backend, r.optimized_speedup)
-            )
 
     jax_compiles = [
         r.compile_ns_median
@@ -340,24 +291,19 @@ def overall_diagnosis(results: list[ProbeResult]) -> dict[str, Any]:
         )
     else:
         jax_note = "No JAX compile latency recorded"
-    if kernel_wins:
-        kernel_note = f"{len(kernel_wins)} kernel case(s) benefit from specialization"
-    else:
-        kernel_note = "No kernel specialization wins"
 
     narrative = (
         f"{len(results)} cases across {n_backends} backend(s). "
         f"Median speedup {overall_median:.2f}x "
         f"({median_overhead_factor:.2f}x runtime vs bare). "
         f"Biggest overhead source is {dominant_reason}. "
-        f"{jax_note}. {kernel_note}."
+        f"{jax_note}."
     )
 
     return {
         "dominant_reason_counts": reason_counts,
         "top_overhead_cases": top_overhead_cases,
         "top_wins": top_wins,
-        "kernel_wins": kernel_wins,
         "jax_compile_summary": jax_compile_summary,
         "family_overhead_ranking": family_overhead_ranking,
         "narrative": narrative,

@@ -35,8 +35,14 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--family", action="append", default=None,
-        choices=["space", "linop", "functional", "linalg", "kernel"],
+        choices=["space", "linop", "functional"],
         help="Run only probes in this family (repeatable).",
+    )
+    parser.add_argument(
+        "--regime", action="append", default=None,
+        choices=["baseline", "dispatch", "dispatch_cache", "verify"],
+        help="Dispatch/cache regime(s) to sweep for linop probes (repeatable). "
+             "Default: baseline + dispatch_cache.",
     )
     parser.add_argument(
         "--match", default=None,

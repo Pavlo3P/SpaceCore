@@ -56,7 +56,7 @@ def test_every_probe_declares_at_least_one_size():
 
 
 def test_every_family_is_recognized():
-    allowed = {"space", "linop", "functional", "linalg", "kernel"}
+    allowed = {"space", "linop", "functional"}
     for p in registry.all():
         assert p.family in allowed, f"{p.name}: unknown family {p.family!r}"
 
@@ -257,13 +257,6 @@ def test_categorize_correctness_failure_dominates_speedup():
     assert categorize(r) == Status.CORRECTNESS_FAILURE
 
 
-def test_categorize_linalg_uses_infinite_tolerance():
-    """Iterative solvers are allowed to disagree with the bare reference."""
-    r = _mock_result("cg", "linalg", 0.05, err=1e6)
-    # Speedup-only categorization wins because linalg tolerance is inf.
-    assert categorize(r) == Status.HEAVY_LOSS
-
-
 def test_make_verdict_reports_families_and_top_lists():
     results = [
         _mock_result("a", "linop", 5.0),
@@ -336,8 +329,6 @@ def test_dashboard_writes_a_self_contained_html_file(tmp_path):
         _mock_result("a", "space", 1.0),
         _mock_result("b", "linop", 0.5, check_level="none"),
         _mock_result("c", "functional", 0.8),
-        _mock_result("d", "linalg", 0.3),
-        _mock_result("e", "kernel", 2.0),
     ]
     out = render_dashboard(results, tmp_path / "dashboard.html")
     assert out.exists()
@@ -350,7 +341,7 @@ def test_dashboard_writes_a_self_contained_html_file(tmp_path):
     for status in ("WIN", "NEUTRAL", "LOSS", "HEAVY_LOSS"):
         assert status in body
     # Family filter checkboxes must be present.
-    for family in ("space", "linop", "functional", "linalg", "kernel"):
+    for family in ("space", "linop", "functional"):
         assert family in body
     assert 'id="f-check-level"' in body
     assert 'value="all"' in body

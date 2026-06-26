@@ -33,8 +33,8 @@ def _cmd_run(args: argparse.Namespace) -> int:
         return 2
 
     backends = tuple(args.backend) if args.backend else None
-    devices = tuple(args.device) if args.device else None
-    regimes = tuple(args.regime) if args.regime else None
+    devices = tuple(args.device) if getattr(args, "device", None) else None
+    regimes = tuple(args.regime) if getattr(args, "regime", None) else None
     max_size = getattr(args, "max_size", None)
     results = run_probes(
         probes,
@@ -172,7 +172,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_run.add_argument(
         "--family", action="append", default=None,
-        choices=["space", "linop", "functional", "linalg", "kernel"],
+        choices=["space", "linop", "functional"],
         help="Run only probes in this family (repeatable).",
     )
     p_run.add_argument(
@@ -225,7 +225,7 @@ def main(argv: list[str] | None = None) -> int:
     p_list = sub.add_parser("list", help="List registered probes.")
     p_list.add_argument(
         "--family", action="append", default=None,
-        choices=["space", "linop", "functional", "linalg", "kernel"],
+        choices=["space", "linop", "functional"],
     )
     p_list.set_defaults(func=_cmd_list)
 

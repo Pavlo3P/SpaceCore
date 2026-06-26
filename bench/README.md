@@ -20,11 +20,14 @@ python -m bench run        --json out.json --html dashboard.html [--open]
 python -m bench summary    out.json
 python -m bench plot       out.json --out dashboard.html [--open]
 python -m bench compare    current.json baseline.json --html cmp.html
-python -m bench list       [--family space|linop|functional|linalg|kernel]
+python -m bench list       [--family space|linop|functional]
 ```
 
 `run` filters:
 - `--family <name>` (repeatable) restricts to one operation family.
+- `--regime <name>` (repeatable) selects dispatch/cache regimes for `linop`
+  probes (`baseline`, `dispatch`, `dispatch_cache`, `verify`); default is
+  `baseline` + `dispatch_cache`.
 - `--match <substring>` filters by probe name.
 - `--quiet` suppresses per-probe progress.
 - `--html <path>` writes a self-contained interactive dashboard.
@@ -34,17 +37,22 @@ A non-zero exit from `compare` indicates a regression vs the baseline.
 
 ## Coverage
 
-25 probes across five families, each run on every size:
+The micro surface follows the 0.4.1 benchmark-surface spec
+(`docs/dev/0.4.1-bench-surface.md`): per-call SpaceCore overhead measured
+against a hand-optimal pure-array-library bare, across three families. `linalg`,
+the synthetic `kernel`-comparison probes, `check_member`, and the tree-space
+probes are intentionally out of scope (the optimized folds are still measured on
+the real `linop` operators under the dispatch regimes).
 
 | Family | Probes | What is measured |
 |---|---|---|
-| `space` | `add`, `scale`, `inner`, `norm`, `check_member`, `zeros` | `DenseCoordinateSpace` arithmetic and validation vs `numpy` |
-| `linop` | `dense.apply / rapply / vapply`, `diagonal.apply`, `sparse.apply`, `identity.apply`, `composed.apply`, `summed.apply`, `scaled.apply` | LinOp apply / metric-adjoint / batched paths vs raw `matmul` / `*` |
-| `functional` | `inner_product.value / grad`, `quadratic.value` | Functional value + gradient vs analytic NumPy |
-| `linalg` | `cg.diagonal`, `power_iteration.diagonal` | Iterative solvers vs closed-form references |
-| `kernel` | `composed_chain.k{2,4,8}`, `block_diagonal_dense.b{4,16}` | Optimized kernel paths vs generic SpaceCore path |
+| `space` | `add`, `scale`, `inner`, `norm`, `zeros`, `flatten`/`unflatten`, `convert`, `stacked.*`, `hermitian.*`, `elementwise_jordan.*` | space arithmetic / geometry / spectra vs idiomatic `numpy` |
+| `linop` | `dense.{apply,rapply,vapply,rvapply}`, `diagonal.*`, `sparse.*`, `identity`, `zero`, `scaled`, `composed.*`, `summed`, `block_diagonal`/`stacked`/`sum_to_single` (uniform **and** ragged), `matrix_free.*` | LinOp apply / metric-adjoint / batched / structured paths vs raw `matmul` / `*`, swept across dispatch regimes |
+| `functional` | `inner_product.value`/`grad`, `quadratic.value`, `matrix_free.value`, `generated_linear.value` | Functional value + gradient vs analytic NumPy |
 
-Sizes are picked per probe to span small / medium / large regimes.
+Sizes are picked per probe to span small / medium / large regimes. Block
+operators are measured both uniform (where the ADR-016 batched fold applies) and
+ragged (where it does not).
 
 ## Verdict bands
 
@@ -110,16 +118,9 @@ registry.register(Probe(
 ```
 
 The smoke test `tests/bench/test_bench_smoke.py::test_probe_factory_builds_a_runnable_case`
-will pick up the new probe automatically.
-
-### Kernel probes specifically
-
-A kernel probe additionally sets `ProbeCase.optimized` to the optimized kernel
-callable. The bench compares the generic and optimized variants and surfaces
-the optimized speedup separately. Update the `_KERNEL_PROBE_TO_BENCHMARK_ID`
-mapping in `bench/_operations.py` so `kernel_benchmark_ids()` reports the
-matching `KernelSpec.benchmark_id`; the kernel-policy test refuses to pass
-until every registered kernel has a corresponding bench probe.
+will pick up the new probe automatically. The `bare` callable must be the
+hand-optimal pure-array-library implementation and must reproduce the
+`reference` value (enforced by `tests/bench/test_bare_baseline.py`).
 
 ## Module layout
 
@@ -127,9 +128,9 @@ until every registered kernel has a corresponding bench probe.
 bench/
   __main__.py        # CLI: python -m bench {run, compare, plot, summary, list}
   _seeds.py          # SEEDS = (0, 1, 2, 3)
+  _regimes.py        # dispatch/cache regimes (baseline/dispatch/dispatch_cache/verify)
   _probes.py         # Probe / ProbeCase / SeedTiming / ProbeResult / ProbeRegistry
   _operations.py     # Probe definitions registered at import time
-                     # + kernel_benchmark_ids / kernel_probe_cases helpers
   _run.py            # Multi-seed runner with per-size warmup/repeat
   _verdict.py        # Status enum, family rollup, render_text, compare_to_baseline
   _dashboard.py      # Self-contained interactive Plotly HTML dashboard

@@ -45,14 +45,11 @@ class Status(str, Enum):
     REGRESSION = "REGRESSION"
 
 
-# Per-family correctness tolerance. ``inf`` for linalg results because
-# iterative solvers approximate rather than reproduce the bare reference.
+# Per-family correctness tolerance against the reference value.
 _FAMILY_TOL = {
     "space": 1e-9,
     "linop": 1e-9,
     "functional": 1e-9,
-    "linalg": float("inf"),
-    "kernel": 1e-12,
 }
 
 

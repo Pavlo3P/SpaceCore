@@ -105,8 +105,6 @@ _FAMILY_COLORS: dict[str, str] = {
     "space": "#4C78A8",
     "linop": "#F58518",
     "functional": "#54A24B",
-    "linalg": "#B279A2",
-    "kernel": "#E45756",
 }
 
 
@@ -130,10 +128,7 @@ _REASON_COLORS: dict[str, str] = {
     "JAX_COMPILE_DOMINANT":       "#9467bd",
     "JAX_TRACE_OVERHEAD":         "#1f77b4",
     "TORCH_EAGER_OVERHEAD":       "#e377c2",
-    "KERNEL_WIN":                 "#2ca02c",
-    "KERNEL_NEUTRAL":             "#7f7f7f",
     "HIGH_SEED_JITTER":           "#bcbd22",
-    "SOLVER_FIXED_ITERATIONS":    "#17becf",
     "MEMORY_OVERHEAD":            "#d62728",
     "CORRECTNESS_FAILURE":        "#8c564b",
     "NEUTRAL":                    "#d3d3d3",
@@ -340,7 +335,7 @@ def _build_overall(
 
     # ----- panel 4: top wins (highest effective speedup) ---------------
     def _eff_speedup(r: ProbeResult) -> float:
-        if r.family == "kernel" and r.optimized_speedup is not None:
+        if r.optimized_speedup is not None:
             return r.optimized_speedup
         return r.speedup
 
@@ -352,7 +347,7 @@ def _build_overall(
             "backend": r.backend,
             "check_level": r.check_level,
             "speedup": _eff_speedup(r),
-            "is_optimized": (r.family == "kernel" and r.optimized_speedup is not None),
+            "is_optimized": r.optimized_speedup is not None,
             "reason": (diagnoses.get(_key(r)) or {}).get("reason", "NEUTRAL"),
         }
         for r in by_speed[:5]
