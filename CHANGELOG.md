@@ -40,6 +40,33 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   `psutil` dependency (returns `None` — "no fuse" — when `psutil` is absent), so
   the dispatcher's memory gate can size materializing fast paths on the CPU
   backend.
+- Five more dispatch-eligible batched-matmul kernels (exact, `rtol=atol=0`,
+  NumPy-only until cross-backend bit-exactness is verified) extend the catalog to
+  the adjoint and batched directions, each wired through `dispatch` at its own new
+  key with a shape-only `KernelCost` and a `Class::method` correctness reference:
+  `block-diagonal-uniform-dense-batched-rapply` / `-vapply` / `-rvapply` (under
+  `linop.block_diagonal.rapply` / `.vapply` / `.rvapply`) and the broadcast-no-sum
+  folds `stacked-uniform-dense-batched-apply` /
+  `sum-to-single-uniform-dense-batched-rapply` (under `linop.stacked.apply` /
+  `linop.sum_to_single.rapply`). The adjoint folds exploit the Euclidean-flat
+  adjoint and so guard on `EUCLIDEAN_FLAT`; the batched folds use the dense core's
+  transpose-on-right orientation. All five reuse one shared
+  `spacecore.kernels.specs._batched` helper (stack uniform flat-dense matrices into
+  a single batched `matmul`) instead of duplicating the fold. The
+  `BlockDiagonalLinOp` (`rapply`/`vapply`/`rvapply`), `StackedLinOp` (`apply`) and
+  `SumToSingleLinOp` (`rapply`) call sites are wired through `dispatch`;
+  dispatch-off is result-identical to the prior inline paths. Off by default.
+- `SparseLinOp` is confirmed to need no dispatch spec: every direction is already a
+  single optimal backend call — one SpMV for `apply`/`rapply` and one batched SpMV
+  over the stacked right-hand side for `vapply`/`rvapply` — so the reserved
+  `linop.matvec.sparse` key stays inert (a spec would add only dispatch overhead).
+
+### Fixed
+
+- Corrected stale `correctness_ref` node ids on two shipped `KernelSpec`s
+  (`composed-chain-apply`, `block-diagonal-dense-apply`) that named non-existent
+  module-level test nodes instead of the real `Class::method` ids (ADR-016
+  requires the reference pin an existing test).
 
 ## [0.4.0] — 2026-06-24
 
