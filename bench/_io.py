@@ -96,6 +96,8 @@ def load(path: str | Path) -> list[ProbeResult]:
                 backend=row.get("backend", "numpy"),
                 device=row.get("device", "cpu"),
                 check_level=row.get("check_level", "cheap"),
+                regime=row.get("regime", "baseline"),
+                regime_speedup=row.get("regime_speedup"),
                 notes=row.get("notes", ""),
             )
         )

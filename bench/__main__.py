@@ -34,11 +34,13 @@ def _cmd_run(args: argparse.Namespace) -> int:
 
     backends = tuple(args.backend) if args.backend else None
     devices = tuple(args.device) if args.device else None
+    regimes = tuple(args.regime) if args.regime else None
     max_size = getattr(args, "max_size", None)
     results = run_probes(
         probes,
         backends=backends,
         devices=devices,
+        regimes=regimes,
         max_size=max_size,
         progress=not args.quiet,
     )
@@ -184,6 +186,12 @@ def main(argv: list[str] | None = None) -> int:
         choices=["cpu", "cuda", "mps", "gpu", "tpu"],
         help="Run only on these device(s) (repeatable). "
              "Defaults to every available device per backend.",
+    )
+    p_run.add_argument(
+        "--regime", action="append", default=None,
+        choices=["baseline", "dispatch", "dispatch_cache", "verify"],
+        help="Dispatch/cache regime(s) to sweep for linop probes (repeatable). "
+             "Default: baseline + dispatch_cache. baseline is always included.",
     )
     p_run.add_argument("--match", default=None, help="Substring filter on probe name.")
     p_run.add_argument(

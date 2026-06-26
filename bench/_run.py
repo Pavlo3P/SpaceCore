@@ -29,6 +29,7 @@ import numpy as np
 
 from ._devices import devices_for
 from ._probes import Probe, ProbeCase, ProbeResult, SeedTiming, registry
+from ._regimes import BASELINE, Regime, benchmark_regime, regimes_for
 from ._seeds import SEEDS
 from .harness import measure_peak_memory, time_op, time_op_first_call
 
@@ -110,6 +111,7 @@ def _aggregate(
     device: str,
     size: int,
     check_level: str,
+    regime: str,
     seed_records: list[SeedTiming],
 ) -> ProbeResult:
     bare_medians = [s.bare_median_ns for s in seed_records]
@@ -143,6 +145,7 @@ def _aggregate(
         backend=backend,
         device=device,
         check_level=check_level,
+        regime=regime,
         optimized_speedup=(
             float(median(optimized_speedups)) if optimized_speedups else None
         ),
@@ -168,6 +171,7 @@ def _run_one_seed(
     size: int,
     seed: int,
     check_level: str,
+    regime: Regime,
     *,
     repeat: int,
     number: int,
@@ -175,34 +179,38 @@ def _run_one_seed(
 ) -> SeedTiming:
     from ._operations import benchmark_check_level
 
-    with benchmark_check_level(check_level):
-        case = _build_case(probe, backend, device, seed, size)
-    reference = case.reference() if case.reference is not None else None
+    # The regime's dispatch mode must be active for the whole timed
+    # section so every ``sc`` call routes (or not) under it. Case
+    # construction runs under it too, which is harmless.
+    with benchmark_regime(regime):
+        with benchmark_check_level(check_level):
+            case = _build_case(probe, backend, device, seed, size)
+        reference = case.reference() if case.reference is not None else None
 
-    sc_result = case.sc()
-    error = _error_vs_reference(sc_result, reference)
-    if case.optimized is not None:
-        error = max(error, _error_vs_reference(case.optimized(), reference))
+        sc_result = case.sc()
+        error = _error_vs_reference(sc_result, reference)
+        if case.optimized is not None:
+            error = max(error, _error_vs_reference(case.optimized(), reference))
 
-    compile_ns: float | None = None
-    jit_t = None
-    if backend == "jax" and probe.jit_compatible:
-        import jax
+        compile_ns: float | None = None
+        jit_t = None
+        if backend == "jax" and probe.jit_compatible:
+            import jax
 
-        jitted = jax.jit(case.sc)
-        compile_ns = time_op_first_call(jitted)
-        jit_t = time_op(jitted, repeat=repeat, number=number, warmup=warmup)
+            jitted = jax.jit(case.sc)
+            compile_ns = time_op_first_call(jitted)
+            jit_t = time_op(jitted, repeat=repeat, number=number, warmup=warmup)
 
-    bare_t = time_op(case.bare, repeat=repeat, number=number, warmup=warmup)
-    sc_t = time_op(case.sc, repeat=repeat, number=number, warmup=warmup)
-    opt_t = (
-        time_op(case.optimized, repeat=repeat, number=number, warmup=warmup)
-        if case.optimized is not None
-        else None
-    )
+        bare_t = time_op(case.bare, repeat=repeat, number=number, warmup=warmup)
+        sc_t = time_op(case.sc, repeat=repeat, number=number, warmup=warmup)
+        opt_t = (
+            time_op(case.optimized, repeat=repeat, number=number, warmup=warmup)
+            if case.optimized is not None
+            else None
+        )
 
-    sc_mem = measure_peak_memory(case.sc)
-    bare_mem = measure_peak_memory(case.bare)
+        sc_mem = measure_peak_memory(case.sc)
+        bare_mem = measure_peak_memory(case.bare)
 
     # The compile_ns we report is just the first-call total — leaving
     # the subtraction (first_call − typical_call) to the dashboard so
@@ -242,6 +250,7 @@ def run_probes(
     backends: tuple[str, ...] | None = None,
     devices: tuple[str, ...] | None = None,
     check_levels: tuple[str, ...] = ("none", "cheap"),
+    regimes: tuple[Regime, ...] | None = None,
     max_size: int | None = None,
     progress: bool = True,
 ) -> list[ProbeResult]:
@@ -258,6 +267,12 @@ def run_probes(
         target on this machine.
     check_levels
         Validation modes to benchmark. Defaults to both ``none`` and ``cheap``.
+    regimes
+        Dispatch/cache regimes to sweep for dispatch-eligible (``linop``)
+        probes. ``None`` selects :data:`bench._regimes.DEFAULT_DISPATCH_REGIMES`
+        (``baseline`` + ``dispatch_cache``); non-dispatch families always run
+        ``baseline`` only. ``baseline`` is always included so it can serve as
+        the ``regime_speedup`` reference.
     max_size
         Run each probe only at sizes ``<= max_size``. ``None`` (the
         default) keeps every configured size. Use a small value to keep
@@ -275,7 +290,7 @@ def run_probes(
     results: list[ProbeResult] = []
     # Pre-resolve the (probe, backend, device, size) plan so the
     # progress counter is meaningful.
-    plan: list[tuple[Probe, str, str, int, str]] = []
+    plan: list[tuple[Probe, str, str, int, str, Regime]] = []
     for probe in probes:
         eligible_backends = probe.backends if backends is None else tuple(
             b for b in probe.backends if b in backends
@@ -302,13 +317,17 @@ def run_probes(
                             raise ValueError(
                                 f"benchmark check_level must be 'none' or 'cheap', got {check_level!r}"
                             )
-                        plan.append((probe, backend, device, size, check_level))
+                        for regime in regimes_for(probe.family, regimes):
+                            plan.append(
+                                (probe, backend, device, size, check_level, regime)
+                            )
     total = len(plan)
-    for i, (probe, backend, device, size, check_level) in enumerate(plan, 1):
+    for i, (probe, backend, device, size, check_level, regime) in enumerate(plan, 1):
         if progress:
             tag = f"{backend}/{device}" if probe.device_aware else backend
             print(
-                f"[{i}/{total}] {probe.name} {tag} n={size} checks={check_level}",
+                f"[{i}/{total}] {probe.name} {tag} n={size} "
+                f"checks={check_level} regime={regime}",
                 flush=True,
             )
         seed_records: list[SeedTiming] = []
@@ -323,6 +342,7 @@ def run_probes(
                         size,
                         seed,
                         check_level,
+                        regime,
                         repeat=repeat,
                         number=number,
                         warmup=warmup,
@@ -337,21 +357,55 @@ def run_probes(
                 continue
         if seed_records:
             results.append(
-                _aggregate(probe, backend, device, size, check_level, seed_records)
+                _aggregate(
+                    probe, backend, device, size, check_level, regime, seed_records
+                )
             )
     by_case = {
-        (r.operation_name, r.backend, r.device, r.size, r.check_level): r
+        (r.operation_name, r.backend, r.device, r.size, r.check_level, r.regime): r
         for r in results
     }
     paired: list[ProbeResult] = []
     for result in results:
+        # Validation overhead pairs cheap-vs-none within the same regime.
         none_result = by_case.get(
-            (result.operation_name, result.backend, result.device, result.size, "none")
+            (
+                result.operation_name,
+                result.backend,
+                result.device,
+                result.size,
+                "none",
+                result.regime,
+            )
         )
         validation_overhead = (
             result.sc_median_ns - none_result.sc_median_ns
             if result.check_level == "cheap" and none_result is not None
             else 0.0 if result.check_level == "none" else None
         )
-        paired.append(replace(result, validation_overhead_ns=validation_overhead))
+        # Regime speedup pairs this regime against baseline at the same
+        # (operation, backend, device, size, check_level).
+        base_result = by_case.get(
+            (
+                result.operation_name,
+                result.backend,
+                result.device,
+                result.size,
+                result.check_level,
+                BASELINE,
+            )
+        )
+        if result.regime == BASELINE:
+            regime_speedup: float | None = 1.0
+        elif base_result is not None and result.sc_median_ns:
+            regime_speedup = base_result.sc_median_ns / result.sc_median_ns
+        else:
+            regime_speedup = None
+        paired.append(
+            replace(
+                result,
+                validation_overhead_ns=validation_overhead,
+                regime_speedup=regime_speedup,
+            )
+        )
     return paired

@@ -134,6 +134,12 @@ class ProbeResult:
     """Device label (``cpu`` / ``cuda`` / ``mps`` / ``gpu`` / ``tpu``)."""
     check_level: CheckLevel = "cheap"
     """Validation mode used for this result row."""
+    regime: str = "baseline"
+    """Dispatch/cache configuration regime (see :mod:`bench._regimes`)."""
+    regime_speedup: float | None = None
+    """Within-run speedup of this regime's ``sc`` over the ``baseline``
+    regime at the same coordinate; ``1.0`` for ``baseline`` itself,
+    ``None`` when no baseline cell is available to pair against."""
     optimized_speedup: float | None = None
     compile_ns_median: float | None = None
     """Median JAX JIT first-call compile latency, or ``None``."""
