@@ -114,6 +114,92 @@ class TestFuseMatrixFreeRail:
         np.testing.assert_allclose(to_numpy(fused.apply(x)), to_numpy(lazy.apply(x)), rtol=1e-10, atol=1e-12)
 
 
+class TestFuseScaled:
+    def test_real_scalar_folds_into_dense(self, numpy_ctx):
+        """c · A of a dense A folds the scalar into the matrix."""
+        rng = np.random.default_rng(31)
+        n = 6
+        X = sc.DenseCoordinateSpace((n,), numpy_ctx)
+        A = _dense(numpy_ctx, X, X, rng.standard_normal((n, n)))
+        lazy = 3.0 * A
+        fused = lazy.fuse()
+        assert isinstance(fused, sc.DenseLinOp)
+        x = numpy_ctx.asarray(rng.standard_normal(n))
+        y = numpy_ctx.asarray(rng.standard_normal(n))
+        np.testing.assert_allclose(to_numpy(fused.apply(x)), to_numpy(lazy.apply(x)), rtol=1e-10, atol=1e-12)
+        np.testing.assert_allclose(to_numpy(fused.rapply(y)), to_numpy(lazy.rapply(y)), rtol=1e-10, atol=1e-12)
+
+    def test_complex_scalar_adjoint_uses_conjugate(self, numpy_ctx):
+        """A complex scalar folds with a conjugated coefficient in the adjoint."""
+        rng = np.random.default_rng(33)
+        n = 5
+        ctx = sc.Context(sc.NumpyOps(), dtype=np.complex128)
+        X = sc.DenseCoordinateSpace((n,), ctx)
+        mat = rng.standard_normal((n, n)) + 1j * rng.standard_normal((n, n))
+        A = _dense(ctx, X, X, mat)
+        lazy = (2.0 + 1.0j) * A
+        fused = lazy.fuse()
+        assert isinstance(fused, sc.DenseLinOp)
+        x = ctx.asarray(rng.standard_normal(n) + 1j * rng.standard_normal(n))
+        y = ctx.asarray(rng.standard_normal(n) + 1j * rng.standard_normal(n))
+        np.testing.assert_allclose(to_numpy(fused.apply(x)), to_numpy(lazy.apply(x)), rtol=1e-10, atol=1e-12)
+        np.testing.assert_allclose(to_numpy(fused.rapply(y)), to_numpy(lazy.rapply(y)), rtol=1e-10, atol=1e-12)
+
+    def test_scaled_matrix_free_is_not_densified(self, numpy_ctx):
+        rng = np.random.default_rng(35)
+        n = 5
+        X = sc.DenseCoordinateSpace((n,), numpy_ctx)
+        M = sc.MatrixFreeLinOp(lambda x: 2.0 * x, lambda y: 2.0 * y, X, X, numpy_ctx)
+        fused = (4.0 * M).fuse()
+        assert not isinstance(fused, sc.DenseLinOp)
+        x = numpy_ctx.asarray(rng.standard_normal(n))
+        np.testing.assert_allclose(to_numpy(fused.apply(x)), 8.0 * to_numpy(x), rtol=1e-10, atol=1e-12)
+
+
+class TestFuseSum:
+    def test_sum_of_dense_combines_to_single_dense(self, numpy_ctx):
+        rng = np.random.default_rng(41)
+        n = 7
+        X = sc.DenseCoordinateSpace((n,), numpy_ctx)
+        A, B, C = (_dense(numpy_ctx, X, X, rng.standard_normal((n, n))) for _ in range(3))
+        lazy = A + B + C
+        fused = lazy.fuse()
+        assert isinstance(fused, sc.DenseLinOp)
+        x = numpy_ctx.asarray(rng.standard_normal(n))
+        y = numpy_ctx.asarray(rng.standard_normal(n))
+        np.testing.assert_allclose(to_numpy(fused.apply(x)), to_numpy(lazy.apply(x)), rtol=1e-10, atol=1e-12)
+        np.testing.assert_allclose(to_numpy(fused.rapply(y)), to_numpy(lazy.rapply(y)), rtol=1e-10, atol=1e-12)
+
+    def test_sum_combines_dense_and_keeps_matrix_free_lazy(self, numpy_ctx):
+        rng = np.random.default_rng(43)
+        n = 6
+        X = sc.DenseCoordinateSpace((n,), numpy_ctx)
+        A = _dense(numpy_ctx, X, X, rng.standard_normal((n, n)))
+        B = _dense(numpy_ctx, X, X, rng.standard_normal((n, n)))
+        M = sc.MatrixFreeLinOp(lambda x: x, lambda y: y, X, X, numpy_ctx)
+        lazy = A + M + B
+        fused = lazy.fuse()
+        # Two dense terms combine; the matrix-free term stays lazy.
+        assert not isinstance(fused, sc.DenseLinOp)
+        x = numpy_ctx.asarray(rng.standard_normal(n))
+        np.testing.assert_allclose(to_numpy(fused.apply(x)), to_numpy(lazy.apply(x)), rtol=1e-10, atol=1e-12)
+
+
+class TestFuseAdjoint:
+    def test_adjoint_of_dense_composition_fuses_inner(self, numpy_ctx):
+        rng = np.random.default_rng(51)
+        n = 5
+        X = sc.DenseCoordinateSpace((n,), numpy_ctx)
+        A = _dense(numpy_ctx, X, X, rng.standard_normal((n, n)))
+        B = _dense(numpy_ctx, X, X, rng.standard_normal((n, n)))
+        lazy = (A @ B).H
+        fused = lazy.fuse()
+        x = numpy_ctx.asarray(rng.standard_normal(n))
+        y = numpy_ctx.asarray(rng.standard_normal(n))
+        np.testing.assert_allclose(to_numpy(fused.apply(y)), to_numpy(lazy.apply(y)), rtol=1e-10, atol=1e-12)
+        np.testing.assert_allclose(to_numpy(fused.rapply(x)), to_numpy(lazy.rapply(x)), rtol=1e-10, atol=1e-12)
+
+
 class TestFuseMetricAdjoint:
     def test_weighted_composition_adjoint_is_consistent(self, numpy_ctx):
         """On a non-Euclidean (weighted) space, the fused metric adjoint matches.

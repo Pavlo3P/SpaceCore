@@ -298,6 +298,26 @@ class ScaledLinOp(LinOp[Domain, Codomain]):
         xs = self.op.rvapply(ys)
         return self.domain.scale_batch(_conjugate_scalar(self.scalar), xs)
 
+    def fuse(self) -> LinOp:
+        r"""Fuse the operand and fold the scalar into a dense matrix (ADR-021).
+
+        When the fused operand is dense, replace ``c · A`` with one
+        :class:`DenseLinOp` holding ``c · M_A``; otherwise keep the scaling lazy,
+        so a matrix-free operand is never densified. Adjoint-consistent: the
+        fused operator's adjoint is ``conj(c) · M_A^*`` (with the metric), exactly
+        the lazy ``ScaledLinOp`` adjoint.
+        """
+        from ._dense import DenseLinOp
+
+        op = self.op.fuse()
+        if isinstance(op, DenseLinOp):
+            matrix = self.scalar * op.to_matrix()
+            tensor = self.ops.reshape(
+                matrix, tuple(op.codomain.shape) + tuple(op.domain.shape)
+            )
+            return DenseLinOp(tensor, op.domain, op.codomain, self.ctx)
+        return make_scaled(self.scalar, op)
+
     def is_hermitian(self) -> bool | None:
         """
         Return whether this scaled operator is structurally Hermitian.
@@ -421,6 +441,32 @@ class SumLinOp(LinOp[Domain, Codomain]):
         for op in self.ops_tuple[1:]:
             acc = add_batch(acc, op.rvapply(ys))
         return acc
+
+    def fuse(self) -> LinOp:
+        r"""Fuse each term and combine the dense terms into one ``DenseLinOp`` (ADR-021).
+
+        Fuse every term, sum the matrices of the densely-fusible ones into a
+        single :class:`DenseLinOp`, and keep the remaining (matrix-free or
+        structured) terms as lazy summands — so a matrix-free term is never
+        densified. Adjoint-consistent and additive: ``(A + B)^* = A^* + B^*``.
+        Combining reassociates the term order, so equality holds up to rounding.
+        """
+        from ._dense import DenseLinOp
+
+        fused = [p.fuse() for p in self.parts]
+        dense = [p for p in fused if isinstance(p, DenseLinOp)]
+        if len(dense) < 2:
+            return make_sum(fused)
+        matrix = dense[0].to_matrix()
+        for d in dense[1:]:
+            matrix = matrix + d.to_matrix()
+        ref = dense[0]
+        tensor = self.ops.reshape(
+            matrix, tuple(ref.codomain.shape) + tuple(ref.domain.shape)
+        )
+        combined = DenseLinOp(tensor, ref.domain, ref.codomain, self.ctx)
+        others = [p for p in fused if not isinstance(p, DenseLinOp)]
+        return make_sum([combined, *others])
 
     def is_hermitian(self) -> bool | None:
         """
@@ -1223,6 +1269,15 @@ class _AdjointViewLinOp(LinOp[Codomain, Domain]):
     def rvapply(self, xs: Any) -> Any:
         """Return ``op.vapply(xs)`` over a batch."""
         return self.op.vapply(xs)
+
+    def fuse(self) -> LinOp:
+        """Fuse the wrapped operand; return the adjoint of the fused operator (ADR-021).
+
+        ``A.H.fuse()`` is ``A.fuse().H`` — the inner expression is fused (e.g. a
+        composition collapses to one dense operator) and the adjoint view wraps
+        the result. A matrix-free operand stays matrix-free under its adjoint.
+        """
+        return self.op.fuse().H
 
     @property
     def H(self) -> LinOp[Domain, Codomain]:
