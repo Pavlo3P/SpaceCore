@@ -1955,15 +1955,133 @@ def _make_sum_to_single_apply(backend: str, seed: int, size: int) -> ProbeCase:
     )
 
 
+# Ragged-block variants. The uniform probes above stack same-shape blocks,
+# which the ADR-016 ``block-diagonal-uniform-dense-batched`` fold collapses
+# into one batched ``matmul`` under dispatch. The ragged variants below mix
+# block shapes, so no uniform fold applies: both the bare and the SpaceCore
+# path stay a per-block loop, isolating the abstraction's own cost when there
+# is no fast path to route to. The bare is the idiomatic per-block tuple.
+
+
+def _dense_rect(ctx: sc.Context, rows: int, cols: int, seed: int) -> tuple[Any, np.ndarray]:
+    """Return ``(matrix_array, matrix_np)`` for a rectangular dense matrix."""
+    from tests.generators import dense_array_case
+
+    generated = dense_array_case(ctx, (rows, cols), seed=seed)
+    a_np = np.asarray(generated.reference["array"], dtype=_np_dtype(ctx))
+    return generated.obj, a_np
+
+
+def _make_block_diagonal_apply_ragged(backend: str, seed: int, size: int) -> ProbeCase:
+    ctx = _backend_ctx(backend)
+    h = max(2, size // 2)
+    space_a = sc.DenseCoordinateSpace((size,), ctx)
+    space_b = sc.DenseCoordinateSpace((h,), ctx)
+    a, a_np = _dense_matrix(ctx, size, seed)
+    b, b_np = _dense_matrix(ctx, h, seed + 1)
+    _, x1, x1_np = _dense_vector(ctx, size, seed + 51)
+    _, x2, x2_np = _dense_vector(ctx, h, seed + 52)
+    op_a = sc.DenseLinOp(a, space_a, space_a, ctx)
+    op_b = sc.DenseLinOp(b, space_b, space_b, ctx)
+    block = sc.BlockDiagonalLinOp((op_a, op_b), ctx=ctx)
+    x = (x1, x2)
+    ref = (a_np @ x1_np, b_np @ x2_np)
+    return ProbeCase(
+        bare_label=f"{backend}: (m1 @ x1, m2 @ x2) [ragged]",
+        sc_label="BlockDiagonalLinOp.apply [ragged]",
+        bare=lambda: (a_np @ x1_np, b_np @ x2_np),
+        sc=lambda: block.apply(x),
+        reference=lambda: ref,
+    )
+
+
+def _make_block_diagonal_rapply_ragged(backend: str, seed: int, size: int) -> ProbeCase:
+    ctx = _backend_ctx(backend)
+    h = max(2, size // 2)
+    space_a = sc.DenseCoordinateSpace((size,), ctx)
+    space_b = sc.DenseCoordinateSpace((h,), ctx)
+    a, a_np = _dense_matrix(ctx, size, seed)
+    b, b_np = _dense_matrix(ctx, h, seed + 1)
+    _, y1, y1_np = _dense_vector(ctx, size, seed + 53)
+    _, y2, y2_np = _dense_vector(ctx, h, seed + 54)
+    op_a = sc.DenseLinOp(a, space_a, space_a, ctx)
+    op_b = sc.DenseLinOp(b, space_b, space_b, ctx)
+    block = sc.BlockDiagonalLinOp((op_a, op_b), ctx=ctx)
+    y = (y1, y2)
+    ref = (a_np.conj().T @ y1_np, b_np.conj().T @ y2_np)
+    return ProbeCase(
+        bare_label=f"{backend}: (m1.conj().T @ y1, m2.conj().T @ y2) [ragged]",
+        sc_label="BlockDiagonalLinOp.rapply [ragged]",
+        bare=lambda: (a_np.conj().T @ y1_np, b_np.conj().T @ y2_np),
+        sc=lambda: block.rapply(y),
+        reference=lambda: ref,
+    )
+
+
+def _make_stacked_linop_apply_ragged(backend: str, seed: int, size: int) -> ProbeCase:
+    # Same domain, differently-shaped codomains: op_b maps R^size -> R^h.
+    ctx = _backend_ctx(backend)
+    h = max(2, size // 2)
+    space = sc.DenseCoordinateSpace((size,), ctx)
+    space_h = sc.DenseCoordinateSpace((h,), ctx)
+    a, a_np = _dense_matrix(ctx, size, seed)
+    b, b_np = _dense_rect(ctx, h, size, seed + 1)
+    _, x, x_np = _dense_vector(ctx, size, seed + 55)
+    op_a = sc.DenseLinOp(a, space, space, ctx)
+    op_b = sc.DenseLinOp(b, space, space_h, ctx)
+    cod = sc.TreeSpace.from_leaf_spaces((op_a.codomain, op_b.codomain), ctx)
+    stacked = sc.StackedLinOp(space, cod, (op_a, op_b), ctx)
+    ref = (a_np @ x_np, b_np @ x_np)
+    return ProbeCase(
+        bare_label=f"{backend}: (m1 @ x, m2 @ x) [ragged]",
+        sc_label="StackedLinOp.apply [ragged]",
+        bare=lambda: (a_np @ x_np, b_np @ x_np),
+        sc=lambda: stacked.apply(x),
+        reference=lambda: ref,
+    )
+
+
+def _make_sum_to_single_apply_ragged(backend: str, seed: int, size: int) -> ProbeCase:
+    # Differently-shaped domains, same codomain: op_b maps R^h -> R^size.
+    ctx = _backend_ctx(backend)
+    h = max(2, size // 2)
+    space = sc.DenseCoordinateSpace((size,), ctx)
+    space_h = sc.DenseCoordinateSpace((h,), ctx)
+    a, a_np = _dense_matrix(ctx, size, seed)
+    b, b_np = _dense_rect(ctx, size, h, seed + 1)
+    _, x1, x1_np = _dense_vector(ctx, size, seed + 56)
+    _, x2, x2_np = _dense_vector(ctx, h, seed + 57)
+    op_a = sc.DenseLinOp(a, space, space, ctx)
+    op_b = sc.DenseLinOp(b, space_h, space, ctx)
+    dom = sc.TreeSpace.from_leaf_spaces((op_a.domain, op_b.domain), ctx)
+    sum_op = sc.SumToSingleLinOp(dom, space, (op_a, op_b), ctx)
+    x = (x1, x2)
+    ref = a_np @ x1_np + b_np @ x2_np
+    return ProbeCase(
+        bare_label=f"{backend}: m1 @ x1 + m2 @ x2 [ragged]",
+        sc_label="SumToSingleLinOp.apply [ragged]",
+        bare=lambda: a_np @ x1_np + b_np @ x2_np,
+        sc=lambda: sum_op.apply(x),
+        reference=lambda: ref,
+    )
+
+
 _TREE_LINOP_PROBES = [
-    ("linop.block_diagonal.apply", _make_block_diagonal_apply, (32, 128, 512), ("numpy", "jax", "torch")),
-    ("linop.block_diagonal.rapply", _make_block_diagonal_rapply, (32, 128, 512), ("numpy", "jax", "torch")),
-    ("linop.stacked.apply", _make_stacked_linop_apply, (32, 128, 512), ("numpy", "jax", "torch")),
-    ("linop.sum_to_single.apply", _make_sum_to_single_apply, (32, 128, 512), ("numpy", "jax", "torch")),
+    ("linop.block_diagonal.apply", _make_block_diagonal_apply, (32, 128, 512), ("numpy", "jax", "torch"), "uniform blocks; dispatch fold target"),
+    ("linop.block_diagonal.rapply", _make_block_diagonal_rapply, (32, 128, 512), ("numpy", "jax", "torch"), "uniform blocks; dispatch fold target"),
+    ("linop.stacked.apply", _make_stacked_linop_apply, (32, 128, 512), ("numpy", "jax", "torch"), "uniform blocks; dispatch fold target"),
+    ("linop.sum_to_single.apply", _make_sum_to_single_apply, (32, 128, 512), ("numpy", "jax", "torch"), "uniform blocks; dispatch fold target"),
+    ("linop.block_diagonal.apply.ragged", _make_block_diagonal_apply_ragged, (32, 128, 512), ("numpy", "jax", "torch"), "ragged blocks; no uniform fold"),
+    ("linop.block_diagonal.rapply.ragged", _make_block_diagonal_rapply_ragged, (32, 128, 512), ("numpy", "jax", "torch"), "ragged blocks; no uniform fold"),
+    ("linop.stacked.apply.ragged", _make_stacked_linop_apply_ragged, (32, 128, 512), ("numpy", "jax", "torch"), "ragged blocks; no uniform fold"),
+    ("linop.sum_to_single.apply.ragged", _make_sum_to_single_apply_ragged, (32, 128, 512), ("numpy", "jax", "torch"), "ragged blocks; no uniform fold"),
 ]
-for _name, _factory, _sizes, _backends in _TREE_LINOP_PROBES:
+for _name, _factory, _sizes, _backends, _notes in _TREE_LINOP_PROBES:
     registry.register(
-        Probe(name=_name, family="linop", factory=_factory, sizes=_sizes, backends=_backends)
+        Probe(
+            name=_name, family="linop", factory=_factory, sizes=_sizes,
+            backends=_backends, notes=_notes,
+        )
     )
 
 
