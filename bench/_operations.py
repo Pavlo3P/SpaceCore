@@ -667,19 +667,6 @@ def _make_hermitian_spectral_decompose(backend: str, seed: int, size: int) -> Pr
     )
 
 
-def _make_hermitian_spectrum(backend: str, seed: int, size: int) -> ProbeCase:
-    ctx = _backend_ctx(backend)
-    space = sc.HermitianSpace(int(size), ctx=ctx)
-    a, a_np = _hermitian_matrix(ctx, size, seed)
-    return ProbeCase(
-        bare_label=f"{backend}: linalg.eigvalsh(A)",
-        sc_label="HermitianSpace.spectrum",
-        bare=lambda: np.linalg.eigvalsh(a_np),
-        sc=lambda: space.spectrum(a),
-        reference=lambda: np.linalg.eigvalsh(a_np),
-    )
-
-
 def _make_hermitian_from_spectrum(backend: str, seed: int, size: int) -> ProbeCase:
     ctx = _backend_ctx(backend)
     space = sc.HermitianSpace(int(size), ctx=ctx)
@@ -701,7 +688,6 @@ for _name, _factory in [
     ("space.hermitian.symmetrize", _make_hermitian_symmetrize),
     ("space.hermitian.inner", _make_hermitian_inner),
     ("space.hermitian.spectral_decompose", _make_hermitian_spectral_decompose),
-    ("space.hermitian.spectrum", _make_hermitian_spectrum),
     ("space.hermitian.from_spectrum", _make_hermitian_from_spectrum),
 ]:
     registry.register(
@@ -790,20 +776,6 @@ for _name, _factory in [
 # ElementwiseJordanSpace probes
 
 
-def _make_elementwise_jordan_spectrum(backend: str, seed: int, size: int) -> ProbeCase:
-    ctx = _backend_ctx(backend)
-    space = sc.ElementwiseJordanSpace((size,), ctx)
-    x_np = np.asarray(_rng(seed).standard_normal(size), dtype=_np_dtype(ctx))
-    x = ctx.asarray(x_np)
-    return ProbeCase(
-        bare_label=f"{backend}: x",
-        sc_label="ElementwiseJordanSpace.spectrum",
-        bare=lambda: x_np,
-        sc=lambda: space.spectrum(x),
-        reference=lambda: x_np,
-    )
-
-
 def _make_elementwise_jordan_spectral_decompose(backend: str, seed: int, size: int) -> ProbeCase:
     ctx = _backend_ctx(backend)
     space = sc.ElementwiseJordanSpace((size,), ctx)
@@ -848,7 +820,6 @@ def _make_elementwise_jordan_star(backend: str, seed: int, size: int) -> ProbeCa
 
 
 for _name, _factory in [
-    ("space.elementwise_jordan.spectrum", _make_elementwise_jordan_spectrum),
     ("space.elementwise_jordan.spectral_decompose", _make_elementwise_jordan_spectral_decompose),
     ("space.elementwise_jordan.from_spectrum", _make_elementwise_jordan_from_spectrum),
     ("space.elementwise_jordan.star", _make_elementwise_jordan_star),
