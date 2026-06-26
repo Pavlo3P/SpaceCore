@@ -14,6 +14,9 @@ Pins the contract from ``docs/dev/adr/022_caching.md``:
 """
 from __future__ import annotations
 
+import copy
+import pickle
+
 import numpy as np
 import pytest
 
@@ -99,6 +102,33 @@ def test_one_slot_per_accessor_equals_fresh_stack(numpy_ctx):
         np.testing.assert_array_equal(
             to_numpy(parts._stack_cache[accessor]), to_numpy(fresh)
         )
+
+
+def test_copy_and_pickle_rebuild_independent_empty_cache(numpy_ctx):
+    """The memo is derived: copy/deepcopy/pickle never share or carry it.
+
+    A shared cache dict (shallow copy) or a restored populated cache
+    (deepcopy/pickle) would violate the ADR-022 "derived and reconstructable"
+    contract; each reconstruction must rebuild its own empty cache.
+    """
+    _, _, blocks = _blocks(numpy_ctx, 4, 3)
+    parts = CachedStackParts(blocks)
+    stacked_block_matrices(parts, _A2)  # populate
+    assert len(parts._stack_cache) == 1
+
+    shallow = copy.copy(parts)
+    deep = copy.deepcopy(parts)
+    unpickled = pickle.loads(pickle.dumps(parts))
+
+    for clone in (shallow, deep, unpickled):
+        assert isinstance(clone, CachedStackParts)
+        assert tuple(clone) == tuple(parts)  # blocks preserved
+        assert clone._stack_cache == {}  # cache rebuilt empty, not carried
+
+    # The shallow copy must not alias the original's cache dict.
+    assert shallow._stack_cache is not parts._stack_cache
+    stacked_block_matrices(shallow, _A2)
+    assert len(parts._stack_cache) == 1  # mutating the copy left the original alone
 
 
 def test_stack_reused_across_applies_but_not_for_plain_tuple(numpy_ctx):

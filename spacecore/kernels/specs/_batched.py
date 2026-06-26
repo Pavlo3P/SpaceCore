@@ -75,6 +75,18 @@ class CachedStackParts(tuple):
         # is derived and is rebuilt lazily on first use.
         return (tuple(self),)
 
+    def __getstate__(self) -> dict[str, Any]:
+        # The memo is derived and reconstructable, so it is never carried across
+        # copy / deepcopy / pickle: drop it here so each reconstruction rebuilds
+        # an independent, empty cache (the same contract the pytree round-trip
+        # honors). Without this, ``copy.copy`` would alias one shared cache dict
+        # between original and copy, and pickle would restore a populated one.
+        return {k: v for k, v in self.__dict__.items() if k != "_stack_cache"}
+
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        self.__dict__.update(state)
+        self._stack_cache = {}
+
 
 def stacked_block_matrices(parts: Sequence[Any], matrix: Matrix) -> Any:
     """Return ``ops.stack([matrix(p) for p in parts])``, memoized when possible.

@@ -26,6 +26,9 @@ from ._dispatch import (
     set_memory_budget_fraction,
     should_consult_dispatch,
 )
+# CachedStackParts is an internal ADR-022 detail (the fold operators wrap their
+# parts in it); importable for that cross-module use but intentionally kept out
+# of ``__all__`` / the public API surface.
 from ._batched import CachedStackParts
 from ._policy import (
     KernelCost,
@@ -43,7 +46,6 @@ from . import block_batched  # noqa: F401  (side-effect: dispatch specs)
 from . import stacked_batched  # noqa: F401  (side-effect: dispatch specs)
 
 __all__ = [
-    "CachedStackParts",
     "KernelSpec",
     "KernelCost",
     "KernelRegistry",
