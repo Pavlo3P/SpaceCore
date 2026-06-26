@@ -29,7 +29,7 @@ from ._dispatch import (
 # CachedStackParts is an internal ADR-022 detail (the fold operators wrap their
 # parts in it); importable for that cross-module use but intentionally kept out
 # of ``__all__`` / the public API surface.
-from ._batched import CachedStackParts
+from ._batched import CachedStackParts as CachedStackParts  # re-export, not in __all__
 from ._policy import (
     KernelCost,
     KernelSpec,
