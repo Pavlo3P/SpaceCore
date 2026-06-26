@@ -23,6 +23,8 @@ from ...space import TreeSpace
 # The ``should_consult_dispatch`` guard keeps the default path untouched.
 _BLOCK_DIAGONAL_APPLY_KEY = "linop.block_diagonal.apply"
 _BLOCK_DIAGONAL_RAPPLY_KEY = "linop.block_diagonal.rapply"
+_BLOCK_DIAGONAL_VAPPLY_KEY = "linop.block_diagonal.vapply"
+_BLOCK_DIAGONAL_RVAPPLY_KEY = "linop.block_diagonal.rvapply"
 
 
 def _block_diagonal_apply(parts: Any, x_parts: Any) -> tuple[Any, ...]:
@@ -33,6 +35,16 @@ def _block_diagonal_apply(parts: Any, x_parts: Any) -> tuple[Any, ...]:
 def _block_diagonal_rapply(parts: Any, y_parts: Any) -> tuple[Any, ...]:
     """Apply each block adjoint core to its own component (generic block-diagonal rapply)."""
     return tuple(p._rapply_core(yi) for p, yi in zip(parts, y_parts))
+
+
+def _block_diagonal_vapply(parts: Any, x_parts: Any) -> tuple[Any, ...]:
+    """Apply each block batched core to its own component (generic block-diagonal vapply)."""
+    return tuple(p._vapply_core(xi) for p, xi in zip(parts, x_parts))
+
+
+def _block_diagonal_rvapply(parts: Any, y_parts: Any) -> tuple[Any, ...]:
+    """Apply each block batched adjoint core to its own component (generic block-diagonal rvapply)."""
+    return tuple(p._rvapply_core(yi) for p, yi in zip(parts, y_parts))
 
 
 def _validate_blocks(blocks: Sequence[Any], owner: str) -> tuple[LinOp, ...]:
@@ -187,8 +199,20 @@ class BlockDiagonalLinOp(TreeLinOp[TreeSpace, TreeSpace]):
     )
     def vapply(self, x: Any) -> Any:
         """Apply each block over a tree of leading-axis batches."""
+        return self._vapply_unchecked(x)
+
+    def _vapply_unchecked(self, x: Any) -> Any:
         x_parts = self.dom._components(x)
-        y_parts = tuple(op.vapply(xi) for op, xi in zip(self.parts, x_parts))
+        if should_consult_dispatch(self.ctx):
+            y_parts = dispatch(
+                _BLOCK_DIAGONAL_VAPPLY_KEY,
+                self.parts,
+                x_parts,
+                generic=_block_diagonal_vapply,
+                ctx=self.ctx,
+            )
+        else:
+            y_parts = _block_diagonal_vapply(self.parts, x_parts)
         return self.cod._from_components(y_parts)
 
     @checked_method(
@@ -196,8 +220,20 @@ class BlockDiagonalLinOp(TreeLinOp[TreeSpace, TreeSpace]):
     )
     def rvapply(self, y: Any) -> Any:
         """Apply each metric adjoint over a tree of leading-axis batches."""
+        return self._rvapply_unchecked(y)
+
+    def _rvapply_unchecked(self, y: Any) -> Any:
         y_parts = self.cod._components(y)
-        x_parts = tuple(op.rvapply(yi) for op, yi in zip(self.parts, y_parts))
+        if should_consult_dispatch(self.ctx):
+            x_parts = dispatch(
+                _BLOCK_DIAGONAL_RVAPPLY_KEY,
+                self.parts,
+                y_parts,
+                generic=_block_diagonal_rvapply,
+                ctx=self.ctx,
+            )
+        else:
+            x_parts = _block_diagonal_rvapply(self.parts, y_parts)
         return self.dom._from_components(x_parts)
 
     @property

@@ -46,8 +46,16 @@ from spacecore.kernels.specs.block_batched import (
     block_batched_rapply_applicable,
     block_batched_rapply_cost,
     block_batched_rapply_optimized,
+    block_batched_rvapply_applicable,
+    block_batched_rvapply_cost,
+    block_batched_rvapply_optimized,
+    block_batched_vapply_applicable,
+    block_batched_vapply_cost,
+    block_batched_vapply_optimized,
     block_diagonal_apply_generic,
     block_diagonal_rapply_generic,
+    block_diagonal_rvapply_generic,
+    block_diagonal_vapply_generic,
 )
 from spacecore.linop._algebra import IdentityLinOp, ZeroLinOp
 
@@ -323,3 +331,77 @@ class TestBlockDiagonalUniformRapply:
         parts = (_dense(numpy_ctx, s4, np.eye(4)), _dense(numpy_ctx, s8, np.eye(8)))
         y_parts = (numpy_ctx.asarray(np.ones(4)), numpy_ctx.asarray(np.ones(8)))
         assert not block_batched_rapply_applicable(parts, y_parts)
+
+
+# ===========================================================================
+# block-diagonal-uniform-dense-batched-vapply / -rvapply  (ADR-016 dispatch)
+# ===========================================================================
+class TestBlockDiagonalUniformVapply:
+    @pytest.mark.parametrize("block_count,n,N", [(2, 4, 3), (4, 16, 5), (8, 8, 2)])
+    def test_matches_generic(self, numpy_ctx, block_count, n, N):
+        """Batched vapply (X @ A2T) == per-block generic == NumPy ground truth, exactly."""
+        rng = np.random.default_rng(seed=block_count * 100 + n + N)
+        space = sc.DenseCoordinateSpace((n,), numpy_ctx)
+        mats = [rng.standard_normal((n, n)) for _ in range(block_count)]
+        parts = tuple(_dense(numpy_ctx, space, m) for m in mats)
+        x_parts = tuple(
+            numpy_ctx.asarray(rng.standard_normal((N, n))) for _ in range(block_count)
+        )
+
+        assert block_batched_vapply_applicable(parts, x_parts)
+        optimized = block_batched_vapply_optimized(parts, x_parts)
+        generic = block_diagonal_vapply_generic(parts, x_parts)
+        # Ground truth in the core's transpose-on-right orientation: X @ A2.T.
+        reference = tuple(to_numpy(x) @ to_numpy(m).T for m, x in zip(mats, x_parts))
+
+        assert len(optimized) == len(generic) == block_count
+        for o, g, r in zip(optimized, generic, reference):
+            np.testing.assert_array_equal(to_numpy(o), to_numpy(g))
+            np.testing.assert_array_equal(to_numpy(o), r)
+
+    def test_cost_is_shape_only_and_positive(self, numpy_ctx):
+        space = sc.DenseCoordinateSpace((8,), numpy_ctx)
+        parts = tuple(_dense(numpy_ctx, space, np.eye(8)) for _ in range(4))
+        x_parts = tuple(numpy_ctx.asarray(np.zeros((3, 8))) for _ in range(4))
+        cost = block_batched_vapply_cost(parts, x_parts)
+        assert cost is not None
+        # mats 4*(8*8) + batch 4*3*8 + out 4*3*8 = 256 + 96 + 96 = 448 elems * 8 bytes.
+        assert cost.peak_bytes == 448 * 8
+        assert cost.flops > 0
+
+    def test_not_applicable_for_single_block(self, numpy_ctx):
+        space = sc.DenseCoordinateSpace((4,), numpy_ctx)
+        parts = (_dense(numpy_ctx, space, np.eye(4)),)
+        x_parts = (numpy_ctx.asarray(np.ones((2, 4))),)
+        assert not block_batched_vapply_applicable(parts, x_parts)
+
+
+class TestBlockDiagonalUniformRvapply:
+    @pytest.mark.parametrize("block_count,n,N", [(2, 4, 3), (4, 16, 5), (8, 8, 2)])
+    def test_matches_generic(self, numpy_ctx, block_count, n, N):
+        """Batched rvapply (Y @ A2H.T) == per-block generic == NumPy ground truth, exactly."""
+        rng = np.random.default_rng(seed=block_count * 100 + n + N + 11)
+        space = sc.DenseCoordinateSpace((n,), numpy_ctx)
+        mats = [rng.standard_normal((n, n)) for _ in range(block_count)]
+        parts = tuple(_dense(numpy_ctx, space, m) for m in mats)
+        y_parts = tuple(
+            numpy_ctx.asarray(rng.standard_normal((N, n))) for _ in range(block_count)
+        )
+
+        assert block_batched_rvapply_applicable(parts, y_parts)
+        optimized = block_batched_rvapply_optimized(parts, y_parts)
+        generic = block_diagonal_rvapply_generic(parts, y_parts)
+        # Ground truth: Y @ conj(A2).  A2H.T == conj(A2); for real mats this is Y @ A2.
+        reference = tuple(to_numpy(y) @ to_numpy(m).conj() for m, y in zip(mats, y_parts))
+
+        assert len(optimized) == len(generic) == block_count
+        for o, g, r in zip(optimized, generic, reference):
+            np.testing.assert_array_equal(to_numpy(o), to_numpy(g))
+            np.testing.assert_array_equal(to_numpy(o), r)
+
+    def test_not_applicable_for_single_block(self, numpy_ctx):
+        space = sc.DenseCoordinateSpace((4,), numpy_ctx)
+        parts = (_dense(numpy_ctx, space, np.eye(4)),)
+        y_parts = (numpy_ctx.asarray(np.ones((2, 4))),)
+        assert not block_batched_rvapply_applicable(parts, y_parts)
+        assert block_batched_rvapply_cost(parts, y_parts) is None

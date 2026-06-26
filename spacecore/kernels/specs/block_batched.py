@@ -33,6 +33,7 @@ module imports nothing from :mod:`spacecore.linop`.
 """
 from __future__ import annotations
 
+from math import prod
 from typing import Any, Sequence
 
 from . import _batched
@@ -41,6 +42,8 @@ from ._registry import registry
 
 _BLOCK_DIAGONAL_APPLY_KEY = "linop.block_diagonal.apply"
 _BLOCK_DIAGONAL_RAPPLY_KEY = "linop.block_diagonal.rapply"
+_BLOCK_DIAGONAL_VAPPLY_KEY = "linop.block_diagonal.vapply"
+_BLOCK_DIAGONAL_RVAPPLY_KEY = "linop.block_diagonal.rvapply"
 
 
 def _A2(p: Any) -> Any:
@@ -49,6 +52,19 @@ def _A2(p: Any) -> Any:
 
 def _A2H(p: Any) -> Any:
     return p._A2H
+
+
+def _A2T(p: Any) -> Any:
+    return p._A2T
+
+
+def _A2H_T(p: Any) -> Any:
+    return p._A2H.T
+
+
+def _leading(batch: Any, cols: int) -> int:
+    """Flattened batch size ``M`` of an operand reshaped to ``(-1, cols)``."""
+    return prod(tuple(batch.shape)) // cols
 
 
 # ---------------------------------------------------------------------------
@@ -191,6 +207,151 @@ RAPPLY_SPEC = registry.register(
         notes=(
             "Euclidean-flat adjoint dual of the apply fold: stack _A2H -> one "
             "batched matmul. Materializing; NumPy-only until cross-backend "
+            "bit-exactness is verified."
+        ),
+    )
+)
+
+
+# ---------------------------------------------------------------------------
+# Batched vapply / rvapply (Euclidean-flat only, transpose-on-right)
+# ---------------------------------------------------------------------------
+def block_diagonal_vapply_generic(
+    parts: Sequence[Any], x_parts: Sequence[Any]
+) -> tuple[Any, ...]:
+    """Apply each block's batched core to its matching component (reference).
+
+    Byte-identical to the ``"linop.block_diagonal.vapply"`` call site's inline
+    path; pins the check-free ``_vapply_core`` (the dense core's transpose-on-
+    right ``xs.reshape((-1, n)) @ _A2T`` orientation).
+    """
+    return tuple(p._vapply_core(xi) for p, xi in zip(parts, x_parts))
+
+
+def block_batched_vapply_applicable(
+    parts: Sequence[Any], x_parts: Sequence[Any]
+) -> bool:
+    """Applicable to a uniform flat-dense batched tuple on the NumPy backend."""
+    if len(parts) != len(x_parts):
+        return False
+    info = _batched.uniform_flat_dense(parts, _A2T)
+    if info is None:
+        return False
+    _, dtype = info
+    if not _batched.operands_share_dtype(x_parts, dtype):
+        return False
+    return _batched.is_numpy(parts)
+
+
+def block_batched_vapply_optimized(
+    parts: Sequence[Any], x_parts: Sequence[Any]
+) -> tuple[Any, ...]:
+    """One batched ``matmul`` ``X_k @ A2T_k`` over the stacked operands."""
+    return _batched.batched_right_matmul(parts, x_parts, _A2T, parts[0]._dom_size)
+
+
+def block_batched_vapply_cost(
+    parts: Sequence[Any], x_parts: Sequence[Any]
+) -> "KernelCost | None":
+    """Shape-only peak-extra-cost estimate of the batched vapply fast path."""
+    info = _batched.uniform_flat_dense(parts, _A2T)
+    if info is None:
+        return None
+    cols = parts[0]._dom_size
+    lead = _leading(x_parts[0], cols)
+    return _batched.right_matmul_cost(info[0], len(parts), lead, int(parts[0]._A2T.itemsize))
+
+
+def block_diagonal_rvapply_generic(
+    parts: Sequence[Any], y_parts: Sequence[Any]
+) -> tuple[Any, ...]:
+    """Apply each block's batched adjoint core to its component (reference).
+
+    Byte-identical to the ``"linop.block_diagonal.rvapply"`` call site's inline
+    path; pins the check-free ``_rvapply_core`` (``ys.reshape((-1, m)) @
+    _A2H.T``). Euclidean-flat only: a non-Euclidean adjoint uses a metric path.
+    """
+    return tuple(p._rvapply_core(yi) for p, yi in zip(parts, y_parts))
+
+
+def block_batched_rvapply_applicable(
+    parts: Sequence[Any], y_parts: Sequence[Any]
+) -> bool:
+    """Applicable to a uniform flat-dense batched adjoint tuple on NumPy."""
+    if len(parts) != len(y_parts):
+        return False
+    info = _batched.uniform_flat_dense(parts, _A2H_T)
+    if info is None:
+        return False
+    _, dtype = info
+    if not _batched.operands_share_dtype(y_parts, dtype):
+        return False
+    return _batched.is_numpy(parts)
+
+
+def block_batched_rvapply_optimized(
+    parts: Sequence[Any], y_parts: Sequence[Any]
+) -> tuple[Any, ...]:
+    """One batched ``matmul`` ``Y_k @ A2H_k.T`` over the stacked operands."""
+    return _batched.batched_right_matmul(parts, y_parts, _A2H_T, parts[0]._cod_size)
+
+
+def block_batched_rvapply_cost(
+    parts: Sequence[Any], y_parts: Sequence[Any]
+) -> "KernelCost | None":
+    """Shape-only peak-extra-cost estimate of the batched rvapply fast path."""
+    info = _batched.uniform_flat_dense(parts, _A2H_T)
+    if info is None:
+        return None
+    cols = parts[0]._cod_size
+    lead = _leading(y_parts[0], cols)
+    return _batched.right_matmul_cost(info[0], len(parts), lead, int(parts[0]._A2H.itemsize))
+
+
+VAPPLY_SPEC = registry.register(
+    KernelSpec(
+        name="block-diagonal-uniform-dense-batched-vapply",
+        generic=block_diagonal_vapply_generic,
+        optimized=block_batched_vapply_optimized,
+        applicable=block_batched_vapply_applicable,
+        correctness_ref=(
+            "tests/kernels/test_kernels_match_generic.py"
+            "::TestBlockDiagonalUniformVapply::test_matches_generic"
+        ),
+        benchmark_id="kernels.block_diagonal_uniform_batched_vapply",
+        rtol=0.0,
+        atol=0.0,
+        dispatch_key=_BLOCK_DIAGONAL_VAPPLY_KEY,
+        priority=10,
+        cost=block_batched_vapply_cost,
+        notes=(
+            "Batched twin of the apply fold (transpose-on-right X @ A2T). "
+            "Materializing; NumPy-only until cross-backend bit-exactness is "
+            "verified."
+        ),
+    )
+)
+
+
+RVAPPLY_SPEC = registry.register(
+    KernelSpec(
+        name="block-diagonal-uniform-dense-batched-rvapply",
+        generic=block_diagonal_rvapply_generic,
+        optimized=block_batched_rvapply_optimized,
+        applicable=block_batched_rvapply_applicable,
+        correctness_ref=(
+            "tests/kernels/test_kernels_match_generic.py"
+            "::TestBlockDiagonalUniformRvapply::test_matches_generic"
+        ),
+        benchmark_id="kernels.block_diagonal_uniform_batched_rvapply",
+        rtol=0.0,
+        atol=0.0,
+        dispatch_key=_BLOCK_DIAGONAL_RVAPPLY_KEY,
+        priority=10,
+        cost=block_batched_rvapply_cost,
+        notes=(
+            "Euclidean-flat batched adjoint dual (transpose-on-right Y @ "
+            "A2H.T). Materializing; NumPy-only until cross-backend "
             "bit-exactness is verified."
         ),
     )
