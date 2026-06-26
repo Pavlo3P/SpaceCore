@@ -11,7 +11,7 @@ from .._base import LinOp
 from ..._checks import checked_method
 from ..._contextual._bound import _same_math_context
 from ...backend import Context, jax_pytree_class
-from ...kernels import dispatch, should_consult_dispatch
+from ...kernels import CachedStackParts, dispatch, should_consult_dispatch
 from ...space import TreeSpace
 
 # ADR-016 approves the block-diagonal apply as a dispatch call site. The
@@ -142,6 +142,11 @@ class BlockDiagonalLinOp(TreeLinOp[TreeSpace, TreeSpace]):
             cod = TreeSpace(treedef, tuple(block.codomain for block in block_parts), ctx=ctx)
 
         super().__init__(dom, cod, block_parts, ctx)
+        # ADR-022: carry the per-accessor stacked-block-matrix memo on the parts
+        # so the uniform-dense batched fold (block_batched) stacks once and reuses
+        # across applies. Built lazily on first optimized use, NumPy-only; dropped
+        # and rebuilt on a pytree round-trip (tree_flatten re-normalizes parts).
+        self.parts = CachedStackParts(self.parts)
 
     def _check_layout(self) -> None:
         """Check that each block maps the corresponding pair of tree leaves."""

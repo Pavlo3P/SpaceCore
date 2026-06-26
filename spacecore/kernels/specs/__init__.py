@@ -26,6 +26,7 @@ from ._dispatch import (
     set_memory_budget_fraction,
     should_consult_dispatch,
 )
+from ._batched import CachedStackParts
 from ._policy import (
     KernelCost,
     KernelSpec,
@@ -42,6 +43,7 @@ from . import block_batched  # noqa: F401  (side-effect: dispatch specs)
 from . import stacked_batched  # noqa: F401  (side-effect: dispatch specs)
 
 __all__ = [
+    "CachedStackParts",
     "KernelSpec",
     "KernelCost",
     "KernelRegistry",

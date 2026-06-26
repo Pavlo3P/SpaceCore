@@ -37,6 +37,62 @@ MIN_BLOCKS = 2
 Matrix = Callable[[Any], Any]
 
 
+class CachedStackParts(tuple):
+    """Operand tuple that memoizes the input-independent stacked block matrices.
+
+    Every batched fold builds ``ops.stack([matrix(p) for p in parts])`` — a
+    value fixed by the (immutable) blocks, so identical on every apply yet
+    rebuilt each call. A fold operator (block-diagonal / stacked /
+    sum-to-single) wraps its ``parts`` in this subclass once, at construction,
+    so the stack is built on first use and reused thereafter (ADR-022). The memo
+    is keyed by the matrix *accessor* (``_A2`` for apply, ``_A2H`` for adjoint
+    rapply, ``_A2T`` / ``_A2H.T`` for the transposed-right orientation), so each
+    fold direction gets its own slot.
+
+    Why carry the memo on the parts tuple: the stacked array must be reachable
+    from the spec layer, which receives only ``parts`` — keeping it here leaves
+    the dispatcher stateless and every spec signature unchanged. It is also
+    naturally excluded from the operator's pytree and mathematical identity:
+    :meth:`TreeLinOp.tree_flatten` re-normalizes ``parts`` to a plain ``tuple``
+    (dropping this subclass and its memo), so a pytree round-trip rebuilds an
+    empty cache, and ``__eq__`` / ``__hash__`` see only the element blocks.
+
+    Only the NumPy backend with dispatch ``on``/``verify`` ever populates the
+    memo (the folds are NumPy-only and inert while dispatch is ``off``), so the
+    default path holds no cache and pays nothing.
+    """
+
+    # No ``__slots__``: CPython forbids a nonempty ``__slots__`` on a ``tuple``
+    # subclass, so the memo lives in the per-instance ``__dict__``.
+
+    def __new__(cls, parts: Sequence[Any]) -> "CachedStackParts":
+        self = super().__new__(cls, parts)
+        self._stack_cache = {}
+        return self
+
+    def __getnewargs__(self) -> tuple[tuple[Any, ...]]:
+        # Reconstruct (e.g. under copy/pickle) from the blocks alone; the memo
+        # is derived and is rebuilt lazily on first use.
+        return (tuple(self),)
+
+
+def stacked_block_matrices(parts: Sequence[Any], matrix: Matrix) -> Any:
+    """Return ``ops.stack([matrix(p) for p in parts])``, memoized when possible.
+
+    When ``parts`` is a :class:`CachedStackParts` the input-independent stacked
+    array is built once per accessor and reused (ADR-022); for a plain tuple
+    (direct spec calls, tests) it is built fresh every call, exactly as before.
+    """
+    cache = getattr(parts, "_stack_cache", None)
+    if cache is None:
+        return parts[0].ops.stack([matrix(p) for p in parts])
+    stacked = cache.get(matrix)
+    if stacked is None:
+        stacked = parts[0].ops.stack([matrix(p) for p in parts])
+        cache[matrix] = stacked
+    return stacked
+
+
 def uniform_flat_dense(
     parts: Sequence[Any], matrix: Matrix
 ) -> "tuple[tuple[int, int], Any] | None":
@@ -99,7 +155,7 @@ def batched_matvec(
     the individual ``M_k @ v_k`` on NumPy.
     """
     ops = parts[0].ops
-    mats = ops.stack([matrix(p) for p in parts])     # (K, r, c)
+    mats = stacked_block_matrices(parts, matrix)     # (K, r, c), memoized
     stacked = ops.stack(list(vecs))                  # (K, c)
     out = ops.matmul(mats, stacked[..., None])[..., 0]  # (K, r)
     return tuple(out[k] for k in range(len(parts)))
@@ -116,7 +172,7 @@ def batched_matvec_shared(
     Per-slice identical to the individual ``M_k @ v`` on NumPy.
     """
     ops = parts[0].ops
-    mats = ops.stack([matrix(p) for p in parts])      # (K, r, c)
+    mats = stacked_block_matrices(parts, matrix)      # (K, r, c), memoized
     out = ops.matmul(mats, vec[..., None])[..., 0]    # (K, r), v broadcasts over K
     return tuple(out[k] for k in range(len(parts)))
 
@@ -133,7 +189,7 @@ def batched_right_matmul(
     ``X_k @ R_k`` on NumPy.
     """
     ops = parts[0].ops
-    rights = ops.stack([matrix(p) for p in parts])             # (K, cols, r)
+    rights = stacked_block_matrices(parts, matrix)             # (K, cols, r), memoized
     stacked = ops.stack([b.reshape((-1, cols)) for b in batches])  # (K, M, cols)
     out = ops.matmul(stacked, rights)                          # (K, M, r)
     return tuple(out[k] for k in range(len(parts)))

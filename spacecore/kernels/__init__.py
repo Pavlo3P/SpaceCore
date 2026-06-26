@@ -32,6 +32,7 @@ from .core import (
     register_core_kernels,
 )
 from .specs import (
+    CachedStackParts,
     DispatchAmbiguityError,
     DispatchMode,
     DispatchVerificationError,
@@ -59,6 +60,7 @@ __all__ = [
     "get_core_kernels",
     "register_core_kernels",
     # Benchmarked-spec layer
+    "CachedStackParts",
     "KernelSpec",
     "KernelCost",
     "KernelRegistry",

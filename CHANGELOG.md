@@ -74,6 +74,20 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   explicit opt-in that densifies it (via the `to_dense` basis probe) so an
   enclosing expression can collapse. Lives in `spacecore.linop`, separate from the
   ADR-016 dispatch layer.
+- ADR-022 **materialized-form cache** for the uniform batched folds: the
+  input-independent stacked block-matrix array `ops.stack([matrix(p) for p in
+  parts])` is now built once and reused across applies instead of re-stacked every
+  call. `BlockDiagonalLinOp`, `StackedLinOp`, and `SumToSingleLinOp` carry their
+  `parts` in a `spacecore.kernels.CachedStackParts` tuple that memoizes the stack
+  per matrix accessor (`_A2` apply, `_A2H` adjoint, `_A2T`/`_A2H.T` batched), so a
+  routed fold pays one `matmul` with no re-stack. The memo is built lazily on first
+  optimized use (NumPy-only, and only while dispatch is `on`/`verify`), so the
+  default `off` path is untouched. It is a derived value: excluded from operator
+  identity (`__eq__`/`__hash__`) and from the pytree (`tree_flatten` re-normalizes
+  `parts` to a plain tuple, so a round-trip rebuilds an empty cache), and a
+  matrix-free operand is never cache-materialized (the fold is inapplicable). The
+  dispatcher stays stateless. Dispatch-decision caching remains out of scope
+  (ADR-022 §"Decision caching").
 
 ### Fixed
 

@@ -5,7 +5,7 @@ from typing import Any, Sequence, Tuple, cast
 from ._base import TreeLinOp
 from .._base import LinOp, Codomain
 from ..._checks import checked_method
-from ...kernels import dispatch, should_consult_dispatch
+from ...kernels import CachedStackParts, dispatch, should_consult_dispatch
 from ...space import DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace, TreeSpace
 from ...backend import jax_pytree_class, Context
 
@@ -51,6 +51,9 @@ class SumToSingleLinOp(TreeLinOp[TreeSpace, Codomain]):
         ctx: Context | str | None = None,
     ) -> None:
         super().__init__(dom, cod, parts, ctx)
+        # ADR-022: memoize the stacked adjoint matrices for the sum_to_single.rapply
+        # broadcast fold (built once on first optimized use, NumPy-only).
+        self.parts = CachedStackParts(self.parts)
         self._flat_dense_apply_mats = self._make_flat_dense_apply_mats()
 
     def _make_flat_dense_apply_mats(self):
