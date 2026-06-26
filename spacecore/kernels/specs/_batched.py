@@ -105,6 +105,22 @@ def batched_matvec(
     return tuple(out[k] for k in range(len(parts)))
 
 
+def batched_matvec_shared(
+    parts: Sequence[Any], vec: Any, matrix: Matrix
+) -> tuple[Any, ...]:
+    """Return ``tuple(M_k @ v)`` for a single *shared* ``v`` via one batched ``matmul``.
+
+    Used by the broadcast-no-sum folds (``stacked.apply`` applies one ``x`` to
+    every block; ``sum_to_single.rapply`` applies one ``y`` to every adjoint).
+    ``v`` has shape ``(c,)`` and broadcasts over the ``K`` stacked matrices.
+    Per-slice identical to the individual ``M_k @ v`` on NumPy.
+    """
+    ops = parts[0].ops
+    mats = ops.stack([matrix(p) for p in parts])      # (K, r, c)
+    out = ops.matmul(mats, vec[..., None])[..., 0]    # (K, r), v broadcasts over K
+    return tuple(out[k] for k in range(len(parts)))
+
+
 def batched_right_matmul(
     parts: Sequence[Any], batches: Sequence[Any], matrix: Matrix, cols: int
 ) -> tuple[Any, ...]:
@@ -127,6 +143,13 @@ def matvec_cost(shape: tuple[int, int], k: int, itemsize: int) -> KernelCost:
     """Peak extra bytes for :func:`batched_matvec`: stacked mats + vecs + out."""
     r, c = shape
     peak_bytes = (k * r * c + k * c + k * r) * itemsize
+    return KernelCost(peak_bytes=peak_bytes, flops=2 * k * r * c)
+
+
+def matvec_shared_cost(shape: tuple[int, int], k: int, itemsize: int) -> KernelCost:
+    """Peak extra bytes for :func:`batched_matvec_shared`: stacked mats + one vec + out."""
+    r, c = shape
+    peak_bytes = (k * r * c + c + k * r) * itemsize
     return KernelCost(peak_bytes=peak_bytes, flops=2 * k * r * c)
 
 

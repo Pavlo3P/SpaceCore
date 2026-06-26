@@ -57,6 +57,16 @@ from spacecore.kernels.specs.block_batched import (
     block_diagonal_rvapply_generic,
     block_diagonal_vapply_generic,
 )
+from spacecore.kernels.specs.stacked_batched import (
+    stacked_apply_applicable,
+    stacked_apply_cost,
+    stacked_apply_generic,
+    stacked_apply_optimized,
+    sum_to_single_rapply_applicable,
+    sum_to_single_rapply_cost,
+    sum_to_single_rapply_generic,
+    sum_to_single_rapply_optimized,
+)
 from spacecore.linop._algebra import IdentityLinOp, ZeroLinOp
 
 
@@ -405,3 +415,92 @@ class TestBlockDiagonalUniformRvapply:
         y_parts = (numpy_ctx.asarray(np.ones((2, 4))),)
         assert not block_batched_rvapply_applicable(parts, y_parts)
         assert block_batched_rvapply_cost(parts, y_parts) is None
+
+
+# ===========================================================================
+# stacked-uniform-dense-batched-apply  (ADR-016 dispatch spec)
+# ===========================================================================
+def _rect_dense(numpy_ctx, X, Y, array):
+    return sc.DenseLinOp(numpy_ctx.asarray(array), X, Y, numpy_ctx)
+
+
+class TestStackedUniformApply:
+    @pytest.mark.parametrize("part_count,m,n", [(2, 4, 4), (4, 8, 6), (8, 3, 5)])
+    def test_matches_generic(self, numpy_ctx, part_count, m, n):
+        """Broadcast apply (M_k @ x) == per-component generic == NumPy ground truth."""
+        rng = np.random.default_rng(seed=part_count * 100 + m * 10 + n)
+        X = sc.DenseCoordinateSpace((n,), numpy_ctx)
+        Y = sc.DenseCoordinateSpace((m,), numpy_ctx)
+        mats = [rng.standard_normal((m, n)) for _ in range(part_count)]
+        parts = tuple(_rect_dense(numpy_ctx, X, Y, mat) for mat in mats)
+        x = numpy_ctx.asarray(rng.standard_normal(n))
+
+        assert stacked_apply_applicable(parts, x)
+        optimized = stacked_apply_optimized(parts, x)
+        generic = stacked_apply_generic(parts, x)
+        reference = tuple(to_numpy(mat) @ to_numpy(x) for mat in mats)
+
+        assert len(optimized) == len(generic) == part_count
+        for o, g, r in zip(optimized, generic, reference):
+            np.testing.assert_array_equal(to_numpy(o), to_numpy(g))
+            np.testing.assert_array_equal(to_numpy(o), r)
+
+    def test_cost_is_shape_only_and_positive(self, numpy_ctx):
+        X = sc.DenseCoordinateSpace((6,), numpy_ctx)
+        Y = sc.DenseCoordinateSpace((4,), numpy_ctx)
+        parts = tuple(_rect_dense(numpy_ctx, X, Y, np.zeros((4, 6))) for _ in range(3))
+        x = numpy_ctx.asarray(np.zeros(6))
+        cost = stacked_apply_cost(parts, x)
+        assert cost is not None
+        # mats 3*(4*6) + one shared vec 6 + out 3*4 = 72 + 6 + 12 = 90 elems * 8 bytes.
+        assert cost.peak_bytes == 90 * 8
+        assert cost.flops > 0
+
+    def test_not_applicable_for_nonuniform_codomain(self, numpy_ctx):
+        X = sc.DenseCoordinateSpace((4,), numpy_ctx)
+        Y4 = sc.DenseCoordinateSpace((4,), numpy_ctx)
+        Y8 = sc.DenseCoordinateSpace((8,), numpy_ctx)
+        parts = (
+            _rect_dense(numpy_ctx, X, Y4, np.zeros((4, 4))),
+            _rect_dense(numpy_ctx, X, Y8, np.zeros((8, 4))),
+        )
+        x = numpy_ctx.asarray(np.ones(4))
+        assert not stacked_apply_applicable(parts, x)
+        assert stacked_apply_cost(parts, x) is None
+
+
+# ===========================================================================
+# sum-to-single-uniform-dense-batched-rapply  (ADR-016 dispatch spec)
+# ===========================================================================
+class TestSumToSingleUniformRapply:
+    @pytest.mark.parametrize("part_count,m,n", [(2, 4, 4), (4, 6, 8), (8, 5, 3)])
+    def test_matches_generic(self, numpy_ctx, part_count, m, n):
+        """Broadcast rapply (M_k^H @ y) == per-component generic == NumPy ground truth."""
+        rng = np.random.default_rng(seed=part_count * 100 + m * 10 + n + 5)
+        X = sc.DenseCoordinateSpace((n,), numpy_ctx)
+        Y = sc.DenseCoordinateSpace((m,), numpy_ctx)
+        mats = [rng.standard_normal((m, n)) for _ in range(part_count)]
+        parts = tuple(_rect_dense(numpy_ctx, X, Y, mat) for mat in mats)
+        y = numpy_ctx.asarray(rng.standard_normal(m))
+
+        assert sum_to_single_rapply_applicable(parts, y)
+        optimized = sum_to_single_rapply_optimized(parts, y)
+        generic = sum_to_single_rapply_generic(parts, y)
+        reference = tuple(to_numpy(mat).conj().T @ to_numpy(y) for mat in mats)
+
+        assert len(optimized) == len(generic) == part_count
+        for o, g, r in zip(optimized, generic, reference):
+            np.testing.assert_array_equal(to_numpy(o), to_numpy(g))
+            np.testing.assert_array_equal(to_numpy(o), r)
+
+    def test_not_applicable_for_nonuniform_domain(self, numpy_ctx):
+        X4 = sc.DenseCoordinateSpace((4,), numpy_ctx)
+        X8 = sc.DenseCoordinateSpace((8,), numpy_ctx)
+        Y = sc.DenseCoordinateSpace((4,), numpy_ctx)
+        parts = (
+            _rect_dense(numpy_ctx, X4, Y, np.zeros((4, 4))),
+            _rect_dense(numpy_ctx, X8, Y, np.zeros((4, 8))),
+        )
+        y = numpy_ctx.asarray(np.ones(4))
+        assert not sum_to_single_rapply_applicable(parts, y)
+        assert sum_to_single_rapply_cost(parts, y) is None

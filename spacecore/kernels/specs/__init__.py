@@ -38,7 +38,8 @@ from ._registry import DispatchAmbiguityError, KernelRegistry, registry
 from . import block_diagonal  # noqa: F401  (side-effect: registration)
 from . import composed  # noqa: F401  (side-effect: registration)
 from . import composed_simplify  # noqa: F401  (side-effect: dispatch specs)
-from . import block_batched  # noqa: F401  (side-effect: dispatch spec)
+from . import block_batched  # noqa: F401  (side-effect: dispatch specs)
+from . import stacked_batched  # noqa: F401  (side-effect: dispatch specs)
 
 __all__ = [
     "KernelSpec",
