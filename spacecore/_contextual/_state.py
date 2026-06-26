@@ -283,8 +283,13 @@ class Contextual:
         if not clean:
             return ops.sanitize_dtype(None)
 
-        np_ops = NumpyOps()
-        joined = np_ops.np.result_type(*clean)
+        # Promote through the operands' OWN backend namespace. NumPy's
+        # ``result_type`` cannot interpret a torch/jax dtype, so joining the
+        # inferred contexts of a non-NumPy operator (for example a
+        # ``BlockDiagonalLinOp`` built with ``from_operators``, which infers a
+        # ``TreeSpace`` and joins its leaf dtypes) would otherwise raise
+        # ``TypeError: Cannot interpret 'torch.float64' as a data type``.
+        joined = ops.xp.result_type(*clean)
         return ops.sanitize_dtype(joined)
 
 
