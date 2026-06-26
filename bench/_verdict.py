@@ -63,18 +63,27 @@ def _categorize_speedup(speedup: float) -> Status:
     return Status.HEAVY_LOSS
 
 
-def categorize(result: ProbeResult) -> Status:
-    """Return the categorical status for one ``ProbeResult``.
+def correctness_tol(result: ProbeResult) -> float:
+    """Per-result correctness tolerance against the bare reference.
 
-    Tolerance is widened when the result was measured on a device or
-    backend that defaults to ``float32`` (Torch MPS, Torch float32
-    default, JAX without x64), because the bare NumPy reference is in
-    float64.
+    The base is the per-family tolerance, widened when the result was
+    measured on a device/backend that defaults to ``float32`` (Torch MPS,
+    Torch float32 default, JAX without x64), because the bare NumPy
+    reference is float64 and the same op rounds differently in float32.
+
+    This is the single source of truth for "is this case correct" — both
+    the verdict status (:func:`categorize`) and the diagnosis reason
+    (:mod:`bench._diagnose`) consult it, so they never disagree.
     """
     tol = _FAMILY_TOL.get(result.family, 1e-9)
     if _is_low_precision_device(result):
         tol = max(tol, 1e-4)
-    if result.error_max > tol:
+    return tol
+
+
+def categorize(result: ProbeResult) -> Status:
+    """Return the categorical status for one ``ProbeResult``."""
+    if result.error_max > correctness_tol(result):
         return Status.CORRECTNESS_FAILURE
     return _categorize_speedup(result.speedup)
 

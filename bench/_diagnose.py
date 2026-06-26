@@ -24,7 +24,7 @@ from statistics import median
 from typing import Any
 
 from ._probes import ProbeResult
-from ._verdict import _FAMILY_TOL
+from ._verdict import correctness_tol
 
 
 class Reason(str, Enum):
@@ -109,8 +109,7 @@ def _fires_memory_overhead(r: ProbeResult) -> bool:
 
 
 def _fires_correctness_failure(r: ProbeResult) -> bool:
-    tol = _FAMILY_TOL.get(r.family, 1e-9)
-    return r.error_max > tol
+    return r.error_max > correctness_tol(r)
 
 
 def _summary_for(reason: Reason, r: ProbeResult) -> str:
@@ -156,7 +155,7 @@ def _summary_for(reason: Reason, r: ProbeResult) -> str:
             f"is {ratio:.1f}x bare peak."
         )
     if reason is Reason.CORRECTNESS_FAILURE:
-        tol = _FAMILY_TOL.get(r.family, 1e-9)
+        tol = correctness_tol(r)
         return (
             f"Correctness failure: error {r.error_max:.2e} "
             f"exceeds family tolerance {tol:.0e}."
