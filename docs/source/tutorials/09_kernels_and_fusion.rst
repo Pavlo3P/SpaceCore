@@ -300,6 +300,94 @@ the batched-``matmul`` fast path.
     same action           : True
 
 
+4 · The performance payoff
+--------------------------
+
+The sections above showed the two layers are *correct*. Here is *why you
+reach for them* — measured on this machine, on the NumPy backend.
+
+.. code:: ipython3
+
+    import timeit
+    
+    def per_apply_us(fn, number=200):
+        fn()                                    # warm up
+        return timeit.timeit(fn, number=number) / number * 1e6
+    
+    n_big, depth = 384, 16
+    Xb = sc.DenseCoordinateSpace((n_big,), ctx)
+    factors = [sc.DenseLinOp(ctx.asarray(rng.standard_normal((n_big, n_big))), Xb, Xb, ctx)
+               for _ in range(depth)]
+    chain = factors[0]
+    for f in factors[1:]:
+        chain = chain @ f                       # a lazy depth-16 composition
+    fused = chain.fuse()                        # one DenseLinOp: the product matrix
+    xb = ctx.asarray(rng.standard_normal(n_big))
+    
+    t_lazy  = per_apply_us(lambda: chain.apply(xb))
+    t_fused = per_apply_us(lambda: fused.apply(xb))
+    print(f"lazy chain (depth {depth}) : {t_lazy:7.1f} us / apply   ({depth} matvecs)")
+    print(f"fused (one matmul)      : {t_fused:7.1f} us / apply   (1 matvec)")
+    print(f"speedup per apply       : {t_lazy / t_fused:5.1f}x")
+
+
+.. parsed-literal::
+
+    lazy chain (depth 16) :   213.5 us / apply   (16 matvecs)
+    fused (one matmul)      :    21.5 us / apply   (1 matvec)
+    speedup per apply       :   9.9x
+
+
+**Fusion amortizes a deep composition.** Applying the lazy chain walks
+every factor on *every* call — ``depth`` matrix–vector products.
+``fuse()`` precomputes the single product matrix once, so each later
+apply is **one** matvec. The wall-clock gain tracks that ``depth → 1``
+reduction once the operator is large enough for the matrix multiply —
+not the fixed per-call validation — to dominate.
+
+This is the classic *fuse once, apply many* win: in a solver that
+applies the same operator hundreds of times, you pay the product once
+and collect the speedup on every iteration. It holds on **any** backend
+— it is simply fewer operations per apply.
+
+.. code:: ipython3
+
+    m = 48
+    Xm = sc.DenseCoordinateSpace((m,), ctx)
+    bd_blocks = tuple(sc.DenseLinOp(ctx.asarray(rng.standard_normal((m, m))), Xm, Xm, ctx)
+                      for _ in range(8))
+    Abd = sc.BlockDiagonalLinOp.from_operators(bd_blocks)
+    xbd = tuple(ctx.asarray(rng.standard_normal(m)) for _ in range(8))
+    
+    with dispatch_mode("off"):
+        t_doff = per_apply_us(lambda: Abd.apply(xbd))     # per-block loop
+    with dispatch_mode("on"):
+        t_don = per_apply_us(lambda: Abd.apply(xbd))      # one batched matmul
+    print(f"dispatch off : {t_doff:7.1f} us / apply   (per-block loop)")
+    print(f"dispatch on  : {t_don:7.1f} us / apply   (one batched matmul)")
+    print(f"ratio        : {t_doff / t_don:5.2f}x   (> 1 means the fold won here)")
+
+
+.. parsed-literal::
+
+    dispatch off :   117.8 us / apply   (per-block loop)
+    dispatch on  :   138.9 us / apply   (one batched matmul)
+    ratio        :  0.85x   (> 1 means the fold won here)
+
+
+**Dispatch: measure before you trust.** The batched-``matmul`` fold
+replaces ``K`` backend calls with one. On **CPU** that is typically
+break-even — often a little *slower* — because NumPy’s per-block loop is
+already efficient and stacking the blocks costs something. The same fold
+is a decisive win on a **GPU**, where ``K`` separate kernel launches
+dominate and one batched launch replaces them.
+
+That asymmetry is exactly why dispatch ships **off by default** and a
+key is turned on only once a benchmark proves it wins *on your backend*
+— the fast path is always available, exact, and gated, never assumed.
+(Caching the one-time block stack — the subject of ADR-022 — is what
+tips the materializing folds further in their favour once they route.)
+
 Takeaways
 ---------
 
@@ -313,6 +401,11 @@ Takeaways
    dense operators into one matrix (equal up to rounding,
    adjoint-consistent on any geometry). It never densifies a matrix-free
    operand unless you pass ``materialize=True``.
+-  **Performance:** fusion is a structural win on *any* backend — fewer
+   operations per apply, a multi-× speedup for a deep chain applied
+   repeatedly. The dispatch batched folds are a GPU/accelerator win
+   (fewer kernel launches) and are gated on a per-backend benchmark,
+   which is why they stay off by default.
 -  The two **compose**: ``fuse()`` produces operators that dispatch can
    then accelerate.
 
