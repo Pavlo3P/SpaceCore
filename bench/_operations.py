@@ -658,12 +658,19 @@ def _make_hermitian_spectral_decompose(backend: str, seed: int, size: int) -> Pr
     ctx = _backend_ctx(backend)
     space = sc.HermitianSpace(int(size), ctx=ctx)
     a, a_np = _hermitian_matrix(ctx, size, seed)
+    # Eigenvectors are sign/basis-ambiguous: torch and numpy eigh return the
+    # same decomposition with columns flipped in sign (and arbitrary bases on
+    # degenerate eigenspaces), so an element-wise eigenvector comparison
+    # spuriously fails on Torch. Check only the (ascending) eigenvalues — the
+    # basis-invariant part; eigenvector validity is covered by from_spectrum's
+    # reconstruction probe. The bare still runs the full eigh for fair timing.
+    vals_np = np.linalg.eigvalsh(a_np)
     return ProbeCase(
         bare_label=f"{backend}: linalg.eigh(A)",
         sc_label="HermitianSpace.spectral_decompose",
         bare=lambda: np.linalg.eigh(a_np),
         sc=lambda: space.spectral_decompose(a),
-        reference=lambda: np.linalg.eigh(a_np),
+        reference=lambda: (vals_np, None),
     )
 
 
