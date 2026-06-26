@@ -25,7 +25,7 @@ Worked examples
 Performance and internals
 -------------------------
 
-* :doc:`09_kernels_and_fusion` — Optimized-kernel dispatch (ADR-016) and operator fusion (ADR-021): running the fastest *bit-exact* kernel, and multiplying operators together with ``fuse()`` — both opt-in, neither touching the matrix-free contract.
+* :doc:`09_kernels_and_fusion` — Optimized-kernel dispatch (ADR-016), operator fusion (ADR-021), and fold-stack caching (ADR-022): running the fastest *bit-exact* kernel, multiplying operators together with ``fuse()``, and reusing a fold's materialized stack across applies — all opt-in or invisible, none touching the matrix-free contract.
 
 .. toctree::
    :hidden:

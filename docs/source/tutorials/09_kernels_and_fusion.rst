@@ -2,8 +2,8 @@
 ====================================================
 
 The first eight tutorials are about *expressing* mathematics. This one
-is about the two layers that make that mathematics run fast **without
-changing how you write it** — and that both stay out of your way until
+is about the layers that make that mathematics run fast **without
+changing how you write it** — and that all stay out of your way until
 you ask for them:
 
 -  **Optimized-kernel dispatch**
@@ -18,8 +18,13 @@ you ask for them:
    where possible* (collapse ``A @ B @ C`` of dense operators into one
    matrix). Cheap rewrites happen automatically at construction;
    materializing fusions are an **explicit** ``fuse()`` call.
+-  **Caching the materialized form**
+   (`ADR-022 <../../docs/dev/adr/022_caching.md>`__) — when a fold has
+   to build an array from its operands (stacking ``K`` blocks for one
+   batched ``matmul``), build it **once and reuse it** across applies
+   instead of rebuilding every call.
 
-Neither touches the matrix-free contract: a matrix-free operator is
+None of these touch the matrix-free contract: a matrix-free operator is
 never silently turned into a dense one.
 
 .. code:: ipython3
@@ -310,9 +315,16 @@ reach for them* — measured on this machine, on the NumPy backend.
 
     import timeit
     
-    def per_apply_us(fn, number=200):
-        fn()                                    # warm up
-        return timeit.timeit(fn, number=number) / number * 1e6
+    def per_apply_us(fn, number=200, repeat=9):
+        """Average per-apply time in microseconds.
+    
+        Times ``number`` back-to-back calls in each of ``repeat`` batches and returns
+        the **mean** over all ``repeat x number`` timed calls (after a warm-up), so the
+        figure is averaged over many runs rather than read off a single measurement.
+        """
+        fn()                                    # warm up (allocator, caches, any JIT)
+        batches = timeit.repeat(fn, number=number, repeat=repeat)
+        return float(np.mean(batches)) / number * 1e6
     
     n_big, depth = 384, 16
     Xb = sc.DenseCoordinateSpace((n_big,), ctx)
@@ -333,9 +345,9 @@ reach for them* — measured on this machine, on the NumPy backend.
 
 .. parsed-literal::
 
-    lazy chain (depth 16) :   213.5 us / apply   (16 matvecs)
-    fused (one matmul)      :    21.5 us / apply   (1 matvec)
-    speedup per apply       :   9.9x
+    lazy chain (depth 16) :   221.3 us / apply   (16 matvecs)
+    fused (one matmul)      :    20.2 us / apply   (1 matvec)
+    speedup per apply       :  11.0x
 
 
 **Fusion amortizes a deep composition.** Applying the lazy chain walks
@@ -370,23 +382,122 @@ and collect the speedup on every iteration. It holds on **any** backend
 
 .. parsed-literal::
 
-    dispatch off :   117.8 us / apply   (per-block loop)
-    dispatch on  :   138.9 us / apply   (one batched matmul)
-    ratio        :  0.85x   (> 1 means the fold won here)
+    dispatch off :   117.0 us / apply   (per-block loop)
+    dispatch on  :   127.5 us / apply   (one batched matmul)
+    ratio        :  0.92x   (> 1 means the fold won here)
 
 
 **Dispatch: measure before you trust.** The batched-``matmul`` fold
 replaces ``K`` backend calls with one. On **CPU** that is typically
 break-even — often a little *slower* — because NumPy’s per-block loop is
-already efficient and stacking the blocks costs something. The same fold
-is a decisive win on a **GPU**, where ``K`` separate kernel launches
-dominate and one batched launch replaces them.
+already efficient, *and* the full dispatched path pays a small per-call
+selection cost (an applicability scan and a free-memory query for the
+gate) on top of the fold itself. The same fold is a decisive win on a
+**GPU**, where ``K`` separate kernel launches dominate and one batched
+launch replaces them.
 
 That asymmetry is exactly why dispatch ships **off by default** and a
 key is turned on only once a benchmark proves it wins *on your backend*
 — the fast path is always available, exact, and gated, never assumed.
-(Caching the one-time block stack — the subject of ADR-022 — is what
-tips the materializing folds further in their favour once they route.)
+
+The fold has one more cost worth isolating, though — the stacking of the
+``K`` blocks it has to build before that single ``matmul``. That is what
+the next section is about.
+
+5 · Caching the materialized fold (`ADR-022 <../../docs/dev/adr/022_caching.md>`__)
+-----------------------------------------------------------------------------------
+
+To issue **one** ``matmul``, the batched fold first **stacks** the ``K``
+block matrices into a single ``(K, m, m)`` array. The naïve fold
+rebuilds that stack on *every* apply — even though the blocks never
+change. On CPU that re-stack is roughly **half** the fold’s time, and it
+is a big part of why the fold struggles to beat the plain loop above.
+
+That stacked array depends only on the (fixed) blocks, so SpaceCore
+builds it **once and reuses it**
+(`ADR-022 <../../docs/dev/adr/022_caching.md>`__). The cache lives on
+the operator’s ``parts``, is built *lazily* the first time a fold
+actually routes, and keeps one slot per direction (``_A2`` for
+``apply``, ``_A2H`` for the adjoint, …). It is a purely *derived* value:
+excluded from operator identity, dropped and rebuilt empty after a
+pytree round-trip, and never built for a matrix-free block — a speed
+property of *this operator instance*, nothing more.
+
+First, watch the cache appear on its own — empty until a fold routes,
+then holding the stacked ``(K, m, m)`` block array:
+
+.. code:: ipython3
+
+    # A block-diagonal with enough uniform blocks that the fold's stacking cost bites.
+    Kc, mc = 24, 48
+    Xc = sc.DenseCoordinateSpace((mc,), ctx)
+    cache_blocks = tuple(sc.DenseLinOp(ctx.asarray(rng.standard_normal((mc, mc))), Xc, Xc, ctx)
+                         for _ in range(Kc))
+    Ac = sc.BlockDiagonalLinOp.from_operators(cache_blocks)
+    xc = tuple(ctx.asarray(rng.standard_normal(mc)) for _ in range(Kc))
+    
+    print("stack cache before a dispatched apply :", dict(Ac.parts._stack_cache))
+    with dispatch_mode("on"):
+        Ac.apply(xc)                                   # first routed apply builds the (K, m, m) stack
+    print("stack cache after  a dispatched apply :",
+          {k.__name__: tuple(np.asarray(v).shape) for k, v in Ac.parts._stack_cache.items()})
+
+
+.. parsed-literal::
+
+    stack cache before a dispatched apply : {}
+    stack cache after  a dispatched apply : {'_A2': (24, 48, 48)}
+
+
+.. code:: ipython3
+
+    # Measure the stacking cost in isolation, by calling the block-diagonal fold
+    # kernel directly — this strips away the dispatcher's per-call selection overhead
+    # (the separate ADR-016 tax above) and leaves just the materialization.
+    from spacecore.kernels.specs.block_batched import (
+        block_batched_optimized, block_diagonal_apply_generic,
+    )
+    
+    restack_every = tuple(cache_blocks)     # a plain tuple  -> rebuilds the (K, m, m) stack every apply
+    cached_parts  = Ac.parts                # CachedStackParts -> stack built once, then reused (ADR-022)
+    
+    t_loop    = per_apply_us(lambda: block_diagonal_apply_generic(restack_every, xc))
+    t_restack = per_apply_us(lambda: block_batched_optimized(restack_every, xc))
+    t_cached  = per_apply_us(lambda: block_batched_optimized(cached_parts,  xc))
+    
+    print(f"per-block loop                : {t_loop:7.1f} us / apply")
+    print(f"fold, re-stack every apply    : {t_restack:7.1f} us / apply   (rebuilds the (K, m, m) stack)")
+    print(f"fold, stack cached (ADR-022)  : {t_cached:7.1f} us / apply   (stack built once, reused)")
+    print(f"  re-stack removed            : {t_restack - t_cached:7.1f} us  "
+          f"({100 * (t_restack - t_cached) / t_restack:.0f}% of the uncached fold)")
+    print(f"  uncached fold vs loop       : {t_loop / t_restack:5.2f}x   (re-stacking, the fold loses)")
+    print(f"  cached fold   vs loop       : {t_loop / t_cached:5.2f}x   (caching tips it to a win)")
+
+
+.. parsed-literal::
+
+    per-block loop                :    22.8 us / apply
+    fold, re-stack every apply    :    35.1 us / apply   (rebuilds the (K, m, m) stack)
+    fold, stack cached (ADR-022)  :    18.2 us / apply   (stack built once, reused)
+      re-stack removed            :    16.9 us  (48% of the uncached fold)
+      uncached fold vs loop       :  0.65x   (re-stacking, the fold loses)
+      cached fold   vs loop       :  1.25x   (caching tips it to a win)
+
+
+**Caching is what tips a materializing fold to a win.** Re-stacking the
+blocks on every apply, the fold *loses* to NumPy’s per-block loop; cache
+that one-time stack and the same fold pulls ahead. That is the ADR-022
+lever — turning a repeated per-call materialization into a
+build-once-apply-many value, exactly the *fuse-once, apply-many* idea
+from §4 applied to the dispatch fold. It matters even more on
+accelerators, where the batched launch is the win and the one-time stack
+is negligible against many applies.
+
+And like every fast path in this tutorial, it changes nothing you can
+observe: the cached fold is bit-identical (``verify`` mode still
+passes), the cache is excluded from operator identity, and it is rebuilt
+empty after a pytree round-trip — a pure speed property layered under a
+result that never moves.
 
 Takeaways
 ---------
@@ -401,14 +512,20 @@ Takeaways
    dense operators into one matrix (equal up to rounding,
    adjoint-consistent on any geometry). It never densifies a matrix-free
    operand unless you pass ``materialize=True``.
+-  **Caching (ADR-022)** removes the fold’s repeated work: the
+   ``(K, m, m)`` block stack is built once and reused across applies,
+   which is what tips a materializing fold from break-even to a win once
+   it routes. The cache is derived — excluded from identity, rebuilt
+   empty after a pytree round-trip, never built for a matrix-free block.
 -  **Performance:** fusion is a structural win on *any* backend — fewer
    operations per apply, a multi-× speedup for a deep chain applied
-   repeatedly. The dispatch batched folds are a GPU/accelerator win
-   (fewer kernel launches) and are gated on a per-backend benchmark,
-   which is why they stay off by default.
--  The two **compose**: ``fuse()`` produces operators that dispatch can
-   then accelerate.
+   repeatedly. The dispatch batched folds are gated on a per-backend
+   benchmark (a GPU/accelerator win on kernel-launch count), and caching
+   the one-time stack is what makes them competitive on CPU once routed.
+-  The three **compose**: ``fuse()`` produces dense operators that
+   dispatch can accelerate, and the fold it routes to caches its
+   materialized stack.
 
-Both are opt-in by design — the default path always gives you the plain,
-predictable result, and the fast paths are there when you ask and only
-when they’re provably equivalent.
+Every one of these is opt-in or invisible by design — the default path
+always gives you the plain, predictable result, and the fast paths are
+there when you ask and only when they’re provably equivalent.
