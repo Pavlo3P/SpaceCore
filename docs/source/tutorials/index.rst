@@ -22,6 +22,11 @@ Worked examples
 * :doc:`07_manifold_descent` — A custom non-Euclidean geometry and Riemannian gradient descent.
 * :doc:`08_pdhg_conic_program` — A primal--dual solver for a conic program with a Jordan-cone projection.
 
+Performance and internals
+-------------------------
+
+* :doc:`09_kernels_and_fusion` — Optimized-kernel dispatch (ADR-016), operator fusion (ADR-021), and fold-stack caching (ADR-022): running the fastest *bit-exact* kernel, multiplying operators together with ``fuse()``, and reusing a fold's materialized stack across applies — all opt-in or invisible, none touching the matrix-free contract.
+
 .. toctree::
    :hidden:
    :maxdepth: 1
@@ -34,3 +39,4 @@ Worked examples
    06_optimal_transport
    07_manifold_descent
    08_pdhg_conic_program
+   09_kernels_and_fusion

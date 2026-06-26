@@ -77,7 +77,7 @@ SPEC = registry.register(
         applicable=block_diagonal_dense_apply_applicable,
         correctness_ref=(
             "tests/kernels/test_kernels_match_generic.py"
-            "::test_block_diagonal_dense_apply_matches_generic"
+            "::TestBlockDiagonalDenseApply::test_matches_generic"
         ),
         benchmark_id="kernels.block_diagonal_dense_apply",
         rtol=0.0,
