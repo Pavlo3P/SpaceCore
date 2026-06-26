@@ -235,6 +235,33 @@ class LinOp(ContextBound, Generic[Domain, Codomain]):
         """Return the Hermitian-adjoint view of this linear operator."""
         return self.H
 
+    def fuse(self) -> LinOp:
+        r"""
+        Return an equivalent operator with fusible sub-expressions multiplied out.
+
+        Tier-2 lazy-algebra simplification ([ADR-021](021_lazy_operator_algebra_and_simplification.md)):
+        collapse each maximal subtree of densely-fusible operators into a single
+        materialized operator — for example, a composition of dense operators
+        becomes one :class:`DenseLinOp` holding the matrix product
+        :math:`M_A M_B` — while leaving matrix-free and other
+        non-materializable leaves intact.
+
+        This is an **explicit, opt-in materialization**. The result is
+        mathematically equal to ``self`` but only *within floating-point
+        rounding*: fusing reassociates the arithmetic (multiplying matrices then
+        applying differs from applying in sequence at the ulp level), so equality
+        holds up to tolerance, not bit-for-bit. The fused operator preserves the
+        domain, codomain, context, and scalar-field/dtype identity, and a
+        matrix-free operand ([ADR-008](008_linop_subclasses.md)) is **never**
+        silently densified. A leaf operator returns itself.
+
+        Returns
+        -------
+        LinOp
+            A fused operator with the same action as ``self`` (up to rounding).
+        """
+        return self
+
     def to_dense(self) -> Any:
         """
         Materialize this operator as a dense backend array.

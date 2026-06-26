@@ -539,6 +539,31 @@ class ComposedLinOp(LinOp[Domain, Codomain]):
         """Return ``right.rvapply(left.rvapply(zs))``."""
         return self.right.rvapply(self.left.rvapply(zs))
 
+    def fuse(self) -> LinOp:
+        r"""Fuse a composition of dense operators into one ``DenseLinOp`` (ADR-021).
+
+        Fuse each operand first, then — when both fused operands are dense —
+        replace ``A @ B`` with a single :class:`DenseLinOp` holding the matrix
+        product :math:`M_A M_B`. Any operand that does not fuse to a dense
+        operator (matrix-free leaves, sparse, structured) keeps the composition
+        lazy, so a matrix-free operand is never densified. The fused matrix is
+        adjoint-consistent on any geometry: the shared middle-space Riesz maps
+        cancel, so the fused operator's metric adjoint equals
+        ``B* @ A*`` up to floating-point rounding.
+        """
+        from ._dense import DenseLinOp
+
+        left = self.left.fuse()
+        right = self.right.fuse()
+        if isinstance(left, DenseLinOp) and isinstance(right, DenseLinOp):
+            ops = self.ops
+            matrix = ops.matmul(left.to_matrix(), right.to_matrix())
+            tensor = ops.reshape(
+                matrix, tuple(left.codomain.shape) + tuple(right.domain.shape)
+            )
+            return DenseLinOp(tensor, right.domain, left.codomain, self.ctx)
+        return make_composed(left, right)
+
     def is_hermitian(self) -> bool | None:
         """
         Return whether this composition is structurally Hermitian.
