@@ -36,10 +36,9 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   shape-only `KernelCost` and the dispatcher gates it on the memory budget. All
   three route only under `dispatch_mode("on"/"verify")`; dispatch stays off by
   default. Each has a correctness reference and a `python -m bench` probe.
-- `NumpyOps.free_memory_bytes()` reports available system RAM via the optional
-  `psutil` dependency (returns `None` — "no fuse" — when `psutil` is absent), so
-  the dispatcher's memory gate can size materializing fast paths on the CPU
-  backend.
+- `NumpyOps.free_memory_bytes()` reports available system RAM via `psutil` (now a
+  required core dependency), so the dispatcher's memory gate can size
+  materializing fast paths on the CPU backend.
 - Five more dispatch-eligible batched-matmul kernels (exact, `rtol=atol=0`,
   NumPy-only until cross-backend bit-exactness is verified) extend the catalog to
   the adjoint and batched directions, each wired through `dispatch` at its own new

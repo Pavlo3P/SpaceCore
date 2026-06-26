@@ -56,20 +56,6 @@ def _vec_components(ctx, n, k, seed=1):
     return tuple(ctx.asarray(rng.standard_normal(n)) for _ in range(k))
 
 
-@pytest.fixture
-def routable(monkeypatch):
-    """Make the materializing folds route regardless of the environment.
-
-    A fold is selected only when the memory gate has a budget, which on NumPy
-    comes from ``free_memory_bytes()`` (psutil-backed). A *minimal* install has
-    no psutil -> ``None`` -> "no budget, no fuse", so the fold never routes and
-    the cache never fills. The cache tests below are about what happens *once a
-    fold routes*, so pin a large budget to make routing deterministic and
-    independent of whether psutil is installed.
-    """
-    monkeypatch.setattr(sc.NumpyOps, "free_memory_bytes", lambda self: 1 << 40)
-
-
 # ---------------------------------------------------------------------------
 # Wiring: the fold operators carry a (lazy, empty) cache.
 # ---------------------------------------------------------------------------
@@ -161,7 +147,7 @@ def test_stack_reused_across_applies_but_not_for_plain_tuple(numpy_ctx):
 # Caching never changes results.
 # ---------------------------------------------------------------------------
 @pytest.mark.parametrize("mode", ["on", "verify"])
-def test_cache_preserves_results_across_repeated_applies(numpy_ctx, mode, routable):
+def test_cache_preserves_results_across_repeated_applies(numpy_ctx, mode):
     _, mats, blocks = _blocks(numpy_ctx, 4, 3)
     op = BlockDiagonalLinOp.from_operators(blocks)
     comps = _vec_components(numpy_ctx, 4, 3)
@@ -181,7 +167,7 @@ def test_cache_preserves_results_across_repeated_applies(numpy_ctx, mode, routab
 # ---------------------------------------------------------------------------
 # The cache is excluded from the operator's mathematical identity.
 # ---------------------------------------------------------------------------
-def test_cache_excluded_from_equality(numpy_ctx, routable):
+def test_cache_excluded_from_equality(numpy_ctx):
     _, _, blocks = _blocks(numpy_ctx, 4, 3)
     populated = BlockDiagonalLinOp.from_operators(blocks)
     empty = BlockDiagonalLinOp.from_operators(blocks)
@@ -200,7 +186,7 @@ def test_cache_excluded_from_equality(numpy_ctx, routable):
 # Pytree round-trip drops the cache and rebuilds it lazily; still correct.
 # ---------------------------------------------------------------------------
 @pytest.mark.skipif(not has_jax(), reason="pytree round-trip needs jax")
-def test_pytree_roundtrip_rebuilds_empty_cache(numpy_ctx, routable):
+def test_pytree_roundtrip_rebuilds_empty_cache(numpy_ctx):
     import jax
 
     _, mats, blocks = _blocks(numpy_ctx, 4, 3)
@@ -227,7 +213,7 @@ def test_pytree_roundtrip_rebuilds_empty_cache(numpy_ctx, routable):
 # ---------------------------------------------------------------------------
 # A matrix-free operand is never cache-materialized (ADR-008 rail).
 # ---------------------------------------------------------------------------
-def test_matrix_free_block_is_never_cache_materialized(numpy_ctx, routable):
+def test_matrix_free_block_is_never_cache_materialized(numpy_ctx):
     space, mats, dense_blocks = _blocks(numpy_ctx, 4, 2)
     free = sc.IdentityLinOp(space)  # _core_kernel_set != "dense", no _A2
     op = BlockDiagonalLinOp.from_operators(dense_blocks + (free,))
@@ -250,7 +236,7 @@ def test_matrix_free_block_is_never_cache_materialized(numpy_ctx, routable):
 # ---------------------------------------------------------------------------
 # The broadcast folds (stacked.apply / sum_to_single.rapply) cache too.
 # ---------------------------------------------------------------------------
-def test_stacked_apply_caches_and_reuses(numpy_ctx, routable):
+def test_stacked_apply_caches_and_reuses(numpy_ctx):
     _, mats, blocks = _blocks(numpy_ctx, 4, 3)
     op = StackedLinOp.from_operators(blocks)
     x = _vec_components(numpy_ctx, 4, 1)[0]
@@ -264,7 +250,7 @@ def test_stacked_apply_caches_and_reuses(numpy_ctx, routable):
         np.testing.assert_allclose(to_numpy(a), m @ to_numpy(x), rtol=1e-12, atol=1e-12)
 
 
-def test_sum_to_single_rapply_caches_and_reuses(numpy_ctx, routable):
+def test_sum_to_single_rapply_caches_and_reuses(numpy_ctx):
     _, mats, blocks = _blocks(numpy_ctx, 4, 3)
     op = SumToSingleLinOp.from_operators(blocks)
     y = _vec_components(numpy_ctx, 4, 2)[0]
