@@ -325,10 +325,14 @@ def test_dashboard_writes_a_self_contained_html_file(tmp_path):
     """The Plotly dashboard ships every chart + the data inline."""
     from bench._dashboard import render_dashboard
 
+    # Cover all four performance statuses so the (count>0) status chips and
+    # cards actually render: WIN(1.0), NEUTRAL(0.8/0.5), LOSS(0.3), HEAVY_LOSS(0.05).
     results = [
         _mock_result("a", "space", 1.0),
         _mock_result("b", "linop", 0.5, check_level="none"),
         _mock_result("c", "functional", 0.8),
+        _mock_result("d", "linop", 0.3),
+        _mock_result("e", "space", 0.05),
     ]
     out = render_dashboard(results, tmp_path / "dashboard.html")
     assert out.exists()
@@ -337,9 +341,11 @@ def test_dashboard_writes_a_self_contained_html_file(tmp_path):
     assert "plotly" in body.lower()
     assert "BENCH_DATA" in body
     assert "<table" in body
-    # Status filter checkboxes must be present.
+    # Status filter chips render for the statuses present in the data.
     for status in ("WIN", "NEUTRAL", "LOSS", "HEAVY_LOSS"):
-        assert status in body
+        assert f'class="f-status" value="{status}"' in body
+    # A status with zero cases (no CORRECTNESS_FAILURE here) gets no chip.
+    assert 'class="f-status" value="CORRECTNESS_FAILURE"' not in body
     # Family filter checkboxes must be present.
     for family in ("space", "linop", "functional"):
         assert family in body

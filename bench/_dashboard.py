@@ -552,7 +552,9 @@ def _render_html(payload: dict) -> str:
     counts = payload["summary"]["counts"]
 
     summary_cards = _summary_cards_html(n_cases, median_speedup, counts)
-    filter_controls = _filter_controls_html(payload["families"], payload["backends"])
+    filter_controls = _filter_controls_html(
+        payload["families"], payload["backends"], counts
+    )
     diagnosis_section = _diagnosis_section_html(payload["overall_diagnosis"])
 
     return _TEMPLATE.format(
@@ -579,13 +581,20 @@ def _json_default(obj):
 
 
 def _summary_cards_html(n_cases: int, median_speedup: float, counts: dict) -> str:
-    """Build the summary card row HTML."""
+    """Build the summary card row HTML.
+
+    Only statuses that actually occurred get a card — a ``CORRECTNESS_FAILURE``
+    or ``REGRESSION`` card is *not* shown when its count is zero, so the label
+    never appears unless there is a real failure to look at.
+    """
     parts: list[str] = []
     parts.append(_card("Total cases", f"{n_cases}", "#1f77b4"))
     parts.append(_card("Median speedup", f"{median_speedup:.2f}x", "#1f77b4"))
     for status in Status:
-        color = _STATUS_COLORS[status.value]
-        parts.append(_card(status.value, str(counts.get(status.value, 0)), color))
+        count = counts.get(status.value, 0)
+        if count == 0:
+            continue
+        parts.append(_card(status.value, str(count), _STATUS_COLORS[status.value]))
     return "\n".join(parts)
 
 
@@ -598,7 +607,14 @@ def _card(label: str, value: str, color: str) -> str:
     )
 
 
-def _filter_controls_html(families: list[str], backends: list[str]) -> str:
+def _filter_controls_html(
+    families: list[str], backends: list[str], counts: dict | None = None
+) -> str:
+    # Only offer a status filter chip for statuses that actually occurred, so
+    # an absent CORRECTNESS_FAILURE / REGRESSION never shows up as a control.
+    present_statuses = [
+        s for s in Status if counts is None or counts.get(s.value, 0) > 0
+    ]
     backend_boxes = "\n".join(
         f'<label class="chip" data-backend-chip="{html.escape(b)}">'
         f'<input type="checkbox" class="f-backend" value="{html.escape(b)}" checked>'
@@ -614,7 +630,7 @@ def _filter_controls_html(families: list[str], backends: list[str]) -> str:
     status_boxes = "\n".join(
         f'<label class="chip"><input type="checkbox" class="f-status" value="{s.value}" checked>'
         f'<span style="color:{_STATUS_COLORS[s.value]};">{s.value}</span></label>'
-        for s in Status
+        for s in present_statuses
     )
     return f"""
 <div class="filter-row" id="backendFilter">
