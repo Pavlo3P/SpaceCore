@@ -162,7 +162,7 @@ static tables.
 
 - **Interactive group-by.** The page exposes controls to choose the grouping
   dimensions from a fixed vocabulary — `family` (the module roll-up: `space` /
-  `linop` / `functional` / `linalg` / `kernel`), `operation`, `size`, `backend`,
+  `linop` / `functional`), `operation`, `size`, `backend`,
   `device`, `check_level`, `regime`. Selecting `family` answers "per module";
   `size` answers "per size"; `regime` answers "what did dispatch / caching buy";
   `family + size + backend` gives a cube face; selecting nothing collapses to one

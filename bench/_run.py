@@ -67,18 +67,6 @@ def _error_vs_reference(actual: Any, reference: Any) -> float:
         return max(_error_vs_reference(a, r) for a, r in zip(actual, reference))
     if isinstance(reference, dict):
         return max(_error_vs_reference(actual[k], reference[k]) for k in reference)
-    if hasattr(actual, "x"):
-        # CG / LSQR result objects expose the approximate solution as ``x``.
-        actual = actual.x
-    elif hasattr(actual, "eigenvalue"):
-        # power_iteration / lanczos_smallest expose the benchmarked scalar here.
-        actual = actual.eigenvalue
-    elif hasattr(actual, "result"):
-        # expm_multiply-style result objects expose the array as ``result``.
-        actual = actual.result
-    elif hasattr(actual, "value") and hasattr(actual, "iterations"):
-        # Backward compatibility for older solver result shapes.
-        actual = actual.value
     try:
         from tests._helpers import to_numpy
 

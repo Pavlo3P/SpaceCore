@@ -20,7 +20,7 @@ Layout of the generated HTML
 4. **Filter controls**:
    - Backend checkbox group (numpy / jax / torch / cupy, as present).
    - Check-mode selector (all / none / cheap).
-   - Family checkbox group (space, linop, functional, linalg, kernel).
+   - Family checkbox group (space, linop, functional).
    - Status checkbox group (WIN ... REGRESSION).
    - Substring search on ``operation_name``.
    - Min/max speedup numeric inputs.
