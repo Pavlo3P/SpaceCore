@@ -200,6 +200,59 @@ class TestFuseAdjoint:
         np.testing.assert_allclose(to_numpy(fused.rapply(x)), to_numpy(lazy.rapply(x)), rtol=1e-10, atol=1e-12)
 
 
+class TestFuseTreeOperators:
+    def _components(self, space, value):
+        return space._components(value)
+
+    def test_block_diagonal_fuses_each_block(self, numpy_ctx):
+        """A composed-dense block collapses to one DenseLinOp; the operator stays correct."""
+        rng = np.random.default_rng(61)
+        n = 5
+        X = sc.DenseCoordinateSpace((n,), numpy_ctx)
+        A = _dense(numpy_ctx, X, X, rng.standard_normal((n, n)))
+        B = _dense(numpy_ctx, X, X, rng.standard_normal((n, n)))
+        C = _dense(numpy_ctx, X, X, rng.standard_normal((n, n)))
+        bd = sc.BlockDiagonalLinOp.from_operators((A @ B, C))
+        fused = bd.fuse()
+
+        # The composed-dense block is now a single DenseLinOp (newly foldable by
+        # the block-diagonal dispatch spec).
+        assert isinstance(fused.parts[0], sc.DenseLinOp)
+        assert isinstance(fused.parts[1], sc.DenseLinOp)
+        x = bd.domain._from_components(
+            (numpy_ctx.asarray(rng.standard_normal(n)), numpy_ctx.asarray(rng.standard_normal(n)))
+        )
+        f = self._components(fused.codomain, fused.apply(x))
+        g = self._components(bd.codomain, bd.apply(x))
+        for fi, gi in zip(f, g):
+            np.testing.assert_allclose(to_numpy(fi), to_numpy(gi), rtol=1e-10, atol=1e-12)
+
+    def test_stacked_fuses_each_component(self, numpy_ctx):
+        rng = np.random.default_rng(63)
+        n = 4
+        X = sc.DenseCoordinateSpace((n,), numpy_ctx)
+        comps = [_dense(numpy_ctx, X, X, rng.standard_normal((n, n))) @ _dense(numpy_ctx, X, X, rng.standard_normal((n, n))) for _ in range(3)]
+        S = sc.StackedLinOp.from_operators(tuple(comps))
+        fused = S.fuse()
+        assert all(isinstance(p, sc.DenseLinOp) for p in fused.parts)
+        x = numpy_ctx.asarray(rng.standard_normal(n))
+        f = self._components(fused.codomain, fused.apply(x))
+        g = self._components(S.codomain, S.apply(x))
+        for fi, gi in zip(f, g):
+            np.testing.assert_allclose(to_numpy(fi), to_numpy(gi), rtol=1e-10, atol=1e-12)
+
+    def test_sum_to_single_fuses_each_component(self, numpy_ctx):
+        rng = np.random.default_rng(65)
+        n = 4
+        X = sc.DenseCoordinateSpace((n,), numpy_ctx)
+        comps = [_dense(numpy_ctx, X, X, rng.standard_normal((n, n))) @ _dense(numpy_ctx, X, X, rng.standard_normal((n, n))) for _ in range(3)]
+        T = sc.SumToSingleLinOp.from_operators(tuple(comps))
+        fused = T.fuse()
+        assert all(isinstance(p, sc.DenseLinOp) for p in fused.parts)
+        x = T.domain._from_components(tuple(numpy_ctx.asarray(rng.standard_normal(n)) for _ in range(3)))
+        np.testing.assert_allclose(to_numpy(fused.apply(x)), to_numpy(T.apply(x)), rtol=1e-10, atol=1e-12)
+
+
 class TestFuseMetricAdjoint:
     def test_weighted_composition_adjoint_is_consistent(self, numpy_ctx):
         """On a non-Euclidean (weighted) space, the fused metric adjoint matches.

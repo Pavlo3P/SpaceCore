@@ -184,6 +184,12 @@ class SumToSingleLinOp(TreeLinOp[TreeSpace, Codomain]):
         x_parts = tuple(op.rvapply(y) for op in self.parts)
         return self.dom._from_components(x_parts)
 
+    def fuse(self) -> SumToSingleLinOp:
+        """Fuse each component operator (ADR-021), preserving dom/cod and context."""
+        return SumToSingleLinOp(
+            self.dom, self.cod, tuple(op.fuse() for op in self.parts), self.ctx
+        )
+
     @classmethod
     def from_operators(cls, parts: Tuple[LinOp, ...]) -> SumToSingleLinOp:
         """Build a sum-to-single operator from component operators."""

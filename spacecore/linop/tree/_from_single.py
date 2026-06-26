@@ -184,6 +184,12 @@ class StackedLinOp(TreeLinOp[Domain, TreeSpace]):
                 acc = self.domain.add_batch(acc, xi)
         return acc
 
+    def fuse(self) -> StackedLinOp:
+        """Fuse each component operator (ADR-021), preserving dom/cod and context."""
+        return StackedLinOp(
+            self.dom, self.cod, tuple(op.fuse() for op in self.parts), self.ctx
+        )
+
     @classmethod
     def from_operators(cls, parts: Tuple[LinOp, ...]) -> StackedLinOp:
         """Build a stacked operator from component operators."""

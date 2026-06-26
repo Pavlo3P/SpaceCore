@@ -251,6 +251,12 @@ class BlockDiagonalLinOp(TreeLinOp[TreeSpace, TreeSpace]):
             view._adjoint_view = self
         return view
 
+    def fuse(self) -> BlockDiagonalLinOp:
+        """Fuse each block (ADR-021), preserving the tree layout and context."""
+        return BlockDiagonalLinOp(
+            self.dom, self.cod, tuple(op.fuse() for op in self.parts), self.ctx
+        )
+
     @classmethod
     def from_operators(cls, parts: Sequence[LinOp]) -> BlockDiagonalLinOp:
         """Build a tuple-structured block-diagonal operator."""
@@ -432,6 +438,12 @@ class BlockMatrixLinOp(TreeLinOp[TreeSpace, TreeSpace]):
             self._adjoint_view = view
             view._adjoint_view = self
         return view
+
+    def fuse(self) -> BlockMatrixLinOp:
+        """Fuse each block (ADR-021), preserving the rectangular block layout."""
+        return BlockMatrixLinOp(
+            tuple(tuple(block.fuse() for block in row) for row in self.block_rows)
+        )
 
     def tree_flatten(self):
         """Flatten row-major blocks for JAX pytree registration."""
