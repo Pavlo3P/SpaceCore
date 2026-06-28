@@ -153,26 +153,41 @@ def _aggregate(
     )
 
 
-def _timed_callable(backend: str, fn) -> tuple[Any, float | None]:
-    """Resolve the callable to time and its compile latency.
+def _try_jit(fn) -> tuple[Any, float | None]:
+    """JIT ``fn`` and measure its first-call (compile) latency.
 
-    On JAX, ``fn`` is JIT-compiled and its first-call (compile) latency is
-    measured and returned; the returned callable is the jitted one, so the
-    subsequent steady-state ``time_op`` excludes compilation. If the function
-    is not jittable (it raises while tracing/compiling), fall back to the
-    eager callable with no compile time. On every other backend the eager
-    callable is returned with ``None`` compile time.
+    Returns ``(jitted, compile_ns)`` on success, or ``(None, None)`` if the
+    function is not jittable (it raises while tracing/compiling).
     """
-    if backend != "jax":
-        return fn, None
     import jax
 
     try:
         jitted = jax.jit(fn)
-        compile_ns = time_op_first_call(jitted)  # first call traces + compiles
-        return jitted, compile_ns
+        return jitted, time_op_first_call(jitted)  # first call traces + compiles
     except Exception:
-        return fn, None
+        return None, None
+
+
+def _resolve_timed_pair(
+    backend: str, sc, bare
+) -> tuple[Any, float | None, Any, float | None]:
+    """Resolve the (sc, bare) callables to time, with their compile latencies.
+
+    On JAX both are jitted and their post-compile steady state is timed — but
+    the comparison is kept **symmetric**: if *either* side is not jittable
+    (e.g. a value-dependent path) both are timed **eagerly**, so the speedup is
+    never an eager-vs-jitted (apples-to-oranges) comparison. Off JAX both run
+    eagerly with no compile time.
+
+    Returns ``(sc_fn, sc_compile_ns, bare_fn, bare_compile_ns)``.
+    """
+    if backend != "jax":
+        return sc, None, bare, None
+    sc_jit, sc_compile = _try_jit(sc)
+    bare_jit, bare_compile = _try_jit(bare)
+    if sc_jit is None or bare_jit is None:
+        return sc, None, bare, None  # one side not jittable → both eager
+    return sc_jit, sc_compile, bare_jit, bare_compile
 
 
 def _run_one_seed(
@@ -199,14 +214,15 @@ def _run_one_seed(
         reference = case.reference() if case.reference is not None else None
 
         # On JAX, benchmark the *jitted* steady state of both the SpaceCore
-        # call and the bare reference — that is how JAX is actually used —
-        # and record each one's first-call compile latency separately. The
+        # call and the bare reference — that is how JAX is actually used — and
+        # record each one's first-call compile latency separately. The
         # ``time_op`` warmup absorbs compilation, so the timed medians are the
         # post-compile per-call cost (compilation excluded from the speedup).
-        # A probe that is not jittable (e.g. value-dependent validation under
-        # ``cheap``) falls back to eager with no compile time.
-        sc_fn, sc_compile_ns = _timed_callable(backend, case.sc)
-        bare_fn, bare_compile_ns = _timed_callable(backend, case.bare)
+        # The pair is resolved symmetrically: if either side is not jittable,
+        # both are timed eagerly (never eager-vs-jitted).
+        sc_fn, sc_compile_ns, bare_fn, bare_compile_ns = _resolve_timed_pair(
+            backend, case.sc, case.bare
+        )
 
         sc_result = sc_fn()
         error = _error_vs_reference(sc_result, reference)
@@ -275,6 +291,9 @@ def run_probes(
         target on this machine.
     check_levels
         Validation modes to benchmark. Defaults to both ``none`` and ``cheap``.
+        **JAX is benchmarked only at ``none``** — under ``cheap`` the validation
+        is not jittable, which would make the jitted-vs-jitted comparison
+        eager-vs-jitted; ``cheap`` requests are dropped for the JAX backend.
     regimes
         Dispatch/cache regimes to sweep for dispatch-eligible (``linop``)
         probes. ``None`` selects :data:`bench._regimes.DEFAULT_DISPATCH_REGIMES`
@@ -321,9 +340,19 @@ def run_probes(
             eligible_sizes = probe.sizes if max_size is None else tuple(
                 s for s in probe.sizes if s <= max_size
             )
+            # JAX is benchmarked only at check_level="none". Under "cheap" the
+            # membership validation is value-dependent and not jittable, so the
+            # SpaceCore call would fall back to eager while the jnp bare jits —
+            # an apples-to-oranges (eager-vs-jitted) comparison. Restricting JAX
+            # to "none" keeps both sides jitted and the comparison honest.
+            backend_check_levels = (
+                tuple(c for c in check_levels if c == "none")
+                if backend == "jax"
+                else check_levels
+            )
             for device in iter_devs:
                 for size in eligible_sizes:
-                    for check_level in check_levels:
+                    for check_level in backend_check_levels:
                         if check_level not in {"none", "cheap"}:
                             raise ValueError(
                                 f"benchmark check_level must be 'none' or 'cheap', got {check_level!r}"

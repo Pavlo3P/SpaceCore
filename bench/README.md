@@ -8,12 +8,14 @@ plugs into a single CLI with an interactive HTML dashboard.
 Every operation is emitted as separate `check_level="none"` and
 `check_level="cheap"` result rows. Each row compares SpaceCore against the
 matching backend-native bare timing. The cheap row also reports validation
-overhead relative to its paired none row. On **JAX** the runner jits *both* the
-SpaceCore call and the bare reference and compares their post-compile steady
-state (the warmup absorbs compilation, so the speedup is jitted-vs-jitted with
-compilation excluded); each side's compile latency is recorded and shown in its
-own `sc compile` / `bare compile` column. A probe that is not jittable falls back
-to eager with no compile time.
+overhead relative to its paired none row. **JAX is benchmarked only at
+`check_level="none"`** (under `cheap` the validation is not jittable, which would
+make the comparison eager-vs-jitted). The runner jits *both* the SpaceCore call
+and the bare reference and compares their post-compile steady state (the warmup
+absorbs compilation, so the speedup is jitted-vs-jitted with compilation
+excluded); each side's compile latency is recorded and shown in its own
+`sc compile` / `bare compile` column. The pair is resolved symmetrically: if
+either side is not jittable, both are timed eagerly (never eager-vs-jitted).
 
 ## CLI
 
