@@ -21,9 +21,13 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   uniform **and** ragged. The interactive HTML dashboard gains a problem-size
   range slider, a backend/family/status/size/check/search/speedup filter set
   that drives a fully **filter-reactive** summary and diagnosis section, a
-  bottom-of-page tag legend, and zero-count-status hiding. Correctness tolerance
-  is float32-aware and shared by the verdict and diagnosis layers. Tooling only —
-  `spacecore` never imports `bench`.
+  bottom-of-page tag legend, and zero-count-status hiding. Every backend runs in
+  float64 for a fair comparison against the NumPy reference (JAX via
+  `enable_jax_x64`, Torch via `enable_torch_x64`); the sole exception is Apple
+  MPS (float32-only hardware), where the device probe builds a float32 case and
+  the correctness gate widens accordingly. The float64-aware tolerance is shared
+  by the verdict and diagnosis layers. Tooling only — `spacecore` never imports
+  `bench`.
 - ADR-016 optimized-kernel **dispatch** is accepted and implemented (off by
   default). `KernelSpec` gains `dispatch_key`, `priority`, and an optional
   shape-only `cost` estimator (`KernelCost`); a spec that names a `dispatch_key`

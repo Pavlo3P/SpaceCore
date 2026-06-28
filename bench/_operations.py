@@ -1405,7 +1405,18 @@ registry.register(
 def _make_dense_apply_device(backend: str, device: str, seed: int, size: int) -> ProbeCase:
     from ._devices import device_object
 
-    ctx = _backend_ctx(backend)
+    if backend == "torch" and device == "mps":
+        # Apple MPS is float32-only hardware and cannot take the float64
+        # tensors the rest of the Torch bench uses, so build this case at
+        # float32 (inputs, operator, and the bare reference all match). The
+        # correctness gate keeps a float32-width tolerance for MPS.
+        import torch
+
+        ctx = sc.Context(
+            sc.TorchOps(), dtype=torch.float32, check_level=_ACTIVE_CHECK_LEVEL.get()
+        )
+    else:
+        ctx = _backend_ctx(backend)
     space = sc.DenseCoordinateSpace((size,), ctx)
     a, a_np = _dense_matrix(ctx, size, seed)
     _, x_default, x_np = _dense_vector(ctx, size, seed + 7)

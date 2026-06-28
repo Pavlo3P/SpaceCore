@@ -395,7 +395,9 @@ applied N-wise; it does not introduce a second comparison contract.
   and the headless `compare`/`track`; do not let the two drift.
 - Benchmark runs use `check_level` `none` or `cheap` only.
 - No `spacecore -> bench` import edge; importing `bench` mutates no global state
-  except the explicit, runner-invoked `enable_jax_x64()`.
+  except the explicit, runner-invoked `enable_jax_x64()` / `enable_torch_x64()`
+  (every backend runs float64 for a fair comparison; Apple MPS is the float32-only
+  exception, handled by the device probe and a widened correctness gate).
 - A `REGRESSION` requires an explicit baseline artifact passed to `compare`; never
   hard-code an absolute timing threshold.
 - `compare` and `track` join on the **group key** and must refuse a regression

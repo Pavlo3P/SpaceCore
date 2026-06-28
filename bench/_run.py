@@ -270,11 +270,14 @@ def run_probes(
     if probes is None:
         probes = registry.all()
     probes = tuple(probes)
-    # Enable JAX x64 once per process before any JAX probe is built,
-    # so float64 comparisons are fair on dtype-sensitive operations.
-    from bench import enable_jax_x64
+    # Put the optional backends in float64 once per process, before any
+    # probe is built, so the comparison against the float64 NumPy reference
+    # is fair on dtype-sensitive operations. (Apple MPS stays float32 — it
+    # is float32-only hardware; the device probe handles that.)
+    from bench import enable_jax_x64, enable_torch_x64
 
     enable_jax_x64()
+    enable_torch_x64()
     results: list[ProbeResult] = []
     # Pre-resolve the (probe, backend, device, size) plan so the
     # progress counter is meaningful.

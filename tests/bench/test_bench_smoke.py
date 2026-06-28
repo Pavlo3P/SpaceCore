@@ -208,6 +208,8 @@ def _mock_result(
     err: float = 0.0,
     check_level: str = "cheap",
     size: int = 256,
+    backend: str = "numpy",
+    device: str = "cpu",
 ) -> ProbeResult:
     # Use bare=100 µs so the regression threshold (20% + 1 µs floor) is meaningful.
     bare = 100_000.0
@@ -240,6 +242,8 @@ def _mock_result(
         sc_peak_bytes_median=1024,
         bare_peak_bytes_median=512,
         check_level=check_level,
+        backend=backend,
+        device=device,
         abstraction_overhead_ns=sc - bare,
     )
 
@@ -256,6 +260,37 @@ def test_categorize_correctness_failure_dominates_speedup():
     """A correctness mismatch overrides the speedup band."""
     r = _mock_result("x", "linop", 5.0, err=1.0)
     assert categorize(r) == Status.CORRECTNESS_FAILURE
+
+
+def test_float64_policy_only_mps_gets_a_widened_tolerance():
+    """Backends run float64 (strict gate); only Apple MPS stays float32."""
+    from bench._verdict import _is_low_precision_device, correctness_tol
+
+    cpu = _mock_result("x", "linop", 1.0, backend="torch", device="cpu")
+    mps = _mock_result("x", "linop", 1.0, backend="torch", device="mps")
+    numpy = _mock_result("x", "linop", 1.0, backend="numpy", device="cpu")
+    assert not _is_low_precision_device(cpu)   # torch CPU is float64 now
+    assert not _is_low_precision_device(numpy)
+    assert _is_low_precision_device(mps)       # MPS is float32-only hardware
+    assert correctness_tol(cpu) == 1e-9
+    assert correctness_tol(mps) == 1e-4
+
+
+def test_enable_torch_x64_sets_float64_when_available():
+    from tests._helpers import has_torch
+
+    if not has_torch():
+        pytest.skip("torch not installed")
+    import torch
+
+    from bench import enable_torch_x64
+
+    prev = torch.get_default_dtype()
+    try:
+        enable_torch_x64()
+        assert torch.get_default_dtype() == torch.float64
+    finally:
+        torch.set_default_dtype(prev)  # don't leak float64 into other tests
 
 
 def test_make_verdict_reports_families_and_top_lists():

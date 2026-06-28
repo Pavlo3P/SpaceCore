@@ -66,10 +66,11 @@ def _categorize_speedup(speedup: float) -> Status:
 def correctness_tol(result: ProbeResult) -> float:
     """Per-result correctness tolerance against the bare reference.
 
-    The base is the per-family tolerance, widened when the result was
-    measured on a device/backend that defaults to ``float32`` (Torch MPS,
-    Torch float32 default, JAX without x64), because the bare NumPy
-    reference is float64 and the same op rounds differently in float32.
+    The base is the per-family tolerance. The bench runs every backend in
+    float64 (NumPy natively, JAX via ``enable_jax_x64``, Torch via
+    ``enable_torch_x64``), so the strict tolerance applies — *except* on
+    Apple MPS, which is float32-only hardware: there the same op rounds
+    differently from the float64 reference, so the tolerance is widened.
 
     This is the single source of truth for "is this case correct" — both
     the verdict status (:func:`categorize`) and the diagnosis reason
@@ -89,16 +90,13 @@ def categorize(result: ProbeResult) -> Status:
 
 
 def _is_low_precision_device(result: ProbeResult) -> bool:
-    """Return whether this case ran in float32 by default.
+    """Return whether this case necessarily ran in float32.
 
-    Torch MPS executes float32, Torch CPU's default is float32 unless
-    overridden, and JAX without x64 also reduces to float32.
+    Under the bench's float64 policy (``enable_jax_x64`` / ``enable_torch_x64``)
+    every backend runs float64 except **Apple MPS**, which is float32-only
+    hardware — so MPS is the sole low-precision case.
     """
-    if result.backend == "torch" and result.device == "mps":
-        return True
-    if result.backend == "torch" and result.device == "cpu":
-        return True
-    return False
+    return result.backend == "torch" and result.device == "mps"
 
 
 @dataclass(frozen=True, slots=True)
