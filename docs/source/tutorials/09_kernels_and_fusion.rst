@@ -27,7 +27,7 @@ you ask for them:
 None of these touch the matrix-free contract: a matrix-free operator is
 never silently turned into a dense one.
 
-.. code:: ipython3
+.. code:: python
 
     import numpy as np
     import matplotlib as mpl
@@ -59,7 +59,7 @@ Let’s build an operator the dispatcher knows a fast path for: a
 block-diagonal operator whose blocks are all the same-shape dense
 matrices.
 
-.. code:: ipython3
+.. code:: python
 
     n, K = 6, 4
     X = sc.DenseCoordinateSpace((n,), ctx)
@@ -97,7 +97,7 @@ Because every auto-routable spec is required to be **exactly**
 equivalent (``rtol == atol == 0``), ``"on"`` is bit-identical to
 ``"off"`` — it is faster, not different.
 
-.. code:: ipython3
+.. code:: python
 
     from spacecore.kernels import dispatch_mode
     
@@ -138,7 +138,7 @@ Each operation family the dispatcher knows about is a **dispatch key**;
 many specs can register under one key, and the dispatcher picks the
 highest-priority applicable one. Here is the live catalog:
 
-.. code:: ipython3
+.. code:: python
 
     from spacecore.kernels import registry
     
@@ -163,7 +163,7 @@ exploits: ``K`` independent dense blocks on the diagonal, all the same
 shape, are exactly the case a single batched ``matmul`` handles in one
 backend call.
 
-.. code:: ipython3
+.. code:: python
 
     dense_blockdiag = block_diag(*block_mats)
     fig, ax = plt.subplots(figsize=(4.2, 4.2))
@@ -193,7 +193,7 @@ the moment you build the expression: an identity factor disappears, a
 zero map collapses the product, nested scalars fold. These cost nothing
 and are always applied.
 
-.. code:: ipython3
+.. code:: python
 
     M1 = sc.DenseLinOp(ctx.asarray(rng.standard_normal((n, n))), X, X, ctx)
     I  = sc.IdentityLinOp(X, ctx)
@@ -221,7 +221,7 @@ equal **up to rounding**, not bit-for-bit. It is adjoint-consistent on
 any geometry — including non-Euclidean — because the shared middle-space
 Riesz maps cancel.
 
-.. code:: ipython3
+.. code:: python
 
     M2 = sc.DenseLinOp(ctx.asarray(rng.standard_normal((n, n))), X, X, ctx)
     M3 = sc.DenseLinOp(ctx.asarray(rng.standard_normal((n, n))), X, X, ctx)
@@ -254,7 +254,7 @@ If you genuinely want to densify a matrix-free operand — accepting the
 cost and giving up the matrix-free property — that is an **explicit
 opt-in**: ``fuse(materialize=True)``.
 
-.. code:: ipython3
+.. code:: python
 
     Mf = sc.MatrixFreeLinOp(lambda v: 2.0 * v, lambda v: 2.0 * v, X, X, ctx)  # matrix-free
     
@@ -279,7 +279,7 @@ was a composition of dense operators turns it into a single dense block
 — which then makes the enclosing block-diagonal operator eligible for
 the batched-``matmul`` fast path.
 
-.. code:: ipython3
+.. code:: python
 
     # A block-diagonal whose blocks are themselves compositions of dense operators.
     composed_blocks = tuple(
@@ -311,7 +311,7 @@ the batched-``matmul`` fast path.
 The sections above showed the two layers are *correct*. Here is *why you
 reach for them* — measured on this machine, on the NumPy backend.
 
-.. code:: ipython3
+.. code:: python
 
     import timeit
     
@@ -362,7 +362,7 @@ applies the same operator hundreds of times, you pay the product once
 and collect the speedup on every iteration. It holds on **any** backend
 — it is simply fewer operations per apply.
 
-.. code:: ipython3
+.. code:: python
 
     m = 48
     Xm = sc.DenseCoordinateSpace((m,), ctx)
@@ -426,7 +426,7 @@ property of *this operator instance*, nothing more.
 First, watch the cache appear on its own — empty until a fold routes,
 then holding the stacked ``(K, m, m)`` block array:
 
-.. code:: ipython3
+.. code:: python
 
     # A block-diagonal with enough uniform blocks that the fold's stacking cost bites.
     Kc, mc = 24, 48
@@ -449,7 +449,7 @@ then holding the stacked ``(K, m, m)`` block array:
     stack cache after  a dispatched apply : {'_A2': (24, 48, 48)}
 
 
-.. code:: ipython3
+.. code:: python
 
     # Measure the stacking cost in isolation, by calling the block-diagonal fold
     # kernel directly — this strips away the dispatcher's per-call selection overhead
