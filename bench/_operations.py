@@ -213,7 +213,6 @@ for _name, _factory in [
             factory=_factory,
             sizes=(256, 4096, 65536),
             backends=("numpy", "jax", "torch"),
-            jit_compatible=_name in {"space.add", "space.scale", "space.inner", "space.norm"},
         )
     )
 
@@ -410,7 +409,6 @@ for _name, _factory, _sizes, _backends in _LINOP_PROBES:
             factory=_factory,
             sizes=_sizes,
             backends=_backends,
-            jit_compatible=_name.startswith("linop.dense."),
         )
     )
 

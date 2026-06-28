@@ -301,11 +301,11 @@ def render_text(results: list[ProbeResult], verdict: Verdict) -> str:
                 f"  {name:<40s} n={size:<6d} old={old:6.2f}x new={new:6.2f}x"
             )
     lines.append("")
-    lines.append("Per-case detail")
-    lines.append("-" * 96)
+    lines.append("Per-case detail (JAX bare/sc are jitted steady state; compile shown separately)")
+    lines.append("-" * 110)
     lines.append(
         f"  {'name':<30s} {'backend':>8s} {'checks':>7s} {'n':>6s} "
-        f"{'bare':>10s} {'spacecore':>10s} {'jit':>10s}"
+        f"{'bare':>10s} {'spacecore':>10s} {'sc cmp':>11s} {'bare cmp':>11s}"
     )
     for r in sorted(
         results,
@@ -315,7 +315,15 @@ def render_text(results: list[ProbeResult], verdict: Verdict) -> str:
             f"  {r.operation_name:<30s} {r.backend:>8s} {r.check_level:>7s} {r.size:>6d} "
             f"{_fmt_ns(r.bare_median_ns)} "
             f"{_fmt_ns(r.sc_median_ns)} "
-            f"{_fmt_ns(r.jit_median_ns) if r.jit_median_ns is not None else '       n/a'}"
+            f"{_fmt_compile(r.compile_ns_median)} "
+            f"{_fmt_compile(r.bare_compile_ns_median)}"
         )
-    lines.append("=" * 96)
+    lines.append("=" * 110)
     return "\n".join(lines)
+
+
+def _fmt_compile(ns: float | None) -> str:
+    """Format a JAX compile latency in milliseconds (or n/a)."""
+    if ns is None:
+        return f"{'n/a':>11s}"
+    return f"{ns / 1_000_000.0:>8.2f} ms"

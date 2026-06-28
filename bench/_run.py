@@ -118,6 +118,9 @@ def _aggregate(
         if record.optimized_median_ns is not None and record.optimized_median_ns > 0:
             optimized_speedups.append(record.sc_median_ns / record.optimized_median_ns)
     compile_records = [s.compile_ns for s in seed_records if s.compile_ns is not None]
+    bare_compile_records = [
+        s.bare_compile_ns for s in seed_records if s.bare_compile_ns is not None
+    ]
     return ProbeResult(
         operation_name=probe.name,
         family=probe.family,
@@ -140,16 +143,36 @@ def _aggregate(
         compile_ns_median=(
             float(median(compile_records)) if compile_records else None
         ),
+        bare_compile_ns_median=(
+            float(median(bare_compile_records)) if bare_compile_records else None
+        ),
         unchecked_median_ns=unchecked_med,
         abstraction_overhead_ns=sc_med - bare_med,
         validation_overhead_ns=sc_med - unchecked_med if unchecked_med is not None else None,
-        jit_median_ns=(
-            float(median(s.jit_median_ns for s in seed_records if s.jit_median_ns is not None))
-            if any(s.jit_median_ns is not None for s in seed_records)
-            else None
-        ),
         notes=probe.notes,
     )
+
+
+def _timed_callable(backend: str, fn) -> tuple[Any, float | None]:
+    """Resolve the callable to time and its compile latency.
+
+    On JAX, ``fn`` is JIT-compiled and its first-call (compile) latency is
+    measured and returned; the returned callable is the jitted one, so the
+    subsequent steady-state ``time_op`` excludes compilation. If the function
+    is not jittable (it raises while tracing/compiling), fall back to the
+    eager callable with no compile time. On every other backend the eager
+    callable is returned with ``None`` compile time.
+    """
+    if backend != "jax":
+        return fn, None
+    import jax
+
+    try:
+        jitted = jax.jit(fn)
+        compile_ns = time_op_first_call(jitted)  # first call traces + compiles
+        return jitted, compile_ns
+    except Exception:
+        return fn, None
 
 
 def _run_one_seed(
@@ -175,34 +198,32 @@ def _run_one_seed(
             case = _build_case(probe, backend, device, seed, size)
         reference = case.reference() if case.reference is not None else None
 
-        sc_result = case.sc()
+        # On JAX, benchmark the *jitted* steady state of both the SpaceCore
+        # call and the bare reference — that is how JAX is actually used —
+        # and record each one's first-call compile latency separately. The
+        # ``time_op`` warmup absorbs compilation, so the timed medians are the
+        # post-compile per-call cost (compilation excluded from the speedup).
+        # A probe that is not jittable (e.g. value-dependent validation under
+        # ``cheap``) falls back to eager with no compile time.
+        sc_fn, sc_compile_ns = _timed_callable(backend, case.sc)
+        bare_fn, bare_compile_ns = _timed_callable(backend, case.bare)
+
+        sc_result = sc_fn()
         error = _error_vs_reference(sc_result, reference)
         if case.optimized is not None:
             error = max(error, _error_vs_reference(case.optimized(), reference))
 
-        compile_ns: float | None = None
-        jit_t = None
-        if backend == "jax" and probe.jit_compatible:
-            import jax
-
-            jitted = jax.jit(case.sc)
-            compile_ns = time_op_first_call(jitted)
-            jit_t = time_op(jitted, repeat=repeat, number=number, warmup=warmup)
-
-        bare_t = time_op(case.bare, repeat=repeat, number=number, warmup=warmup)
-        sc_t = time_op(case.sc, repeat=repeat, number=number, warmup=warmup)
+        bare_t = time_op(bare_fn, repeat=repeat, number=number, warmup=warmup)
+        sc_t = time_op(sc_fn, repeat=repeat, number=number, warmup=warmup)
         opt_t = (
             time_op(case.optimized, repeat=repeat, number=number, warmup=warmup)
             if case.optimized is not None
             else None
         )
 
-        sc_mem = measure_peak_memory(case.sc)
-        bare_mem = measure_peak_memory(case.bare)
+        sc_mem = measure_peak_memory(sc_fn)
+        bare_mem = measure_peak_memory(bare_fn)
 
-    # The compile_ns we report is just the first-call total — leaving
-    # the subtraction (first_call − typical_call) to the dashboard so
-    # both raw and net numbers are inspectable.
     del sc_result
     return SeedTiming(
         seed=seed,
@@ -215,9 +236,8 @@ def _run_one_seed(
         error_vs_reference=error,
         sc_peak_bytes=int(sc_mem["peak_bytes"]),
         bare_peak_bytes=int(bare_mem["peak_bytes"]),
-        compile_ns=compile_ns,
-        jit_best_ns=jit_t["best_ns"] if jit_t else None,
-        jit_median_ns=jit_t["median_ns"] if jit_t else None,
+        compile_ns=sc_compile_ns,
+        bare_compile_ns=bare_compile_ns,
     )
 
 

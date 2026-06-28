@@ -26,8 +26,12 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   `enable_jax_x64`, Torch via `enable_torch_x64`); the sole exception is Apple
   MPS (float32-only hardware), where the device probe builds a float32 case and
   the correctness gate widens accordingly. The float64-aware tolerance is shared
-  by the verdict and diagnosis layers. Tooling only — `spacecore` never imports
-  `bench`.
+  by the verdict and diagnosis layers. **JAX probes jit both the SpaceCore call
+  and the bare reference** and compare their post-compile steady state (the
+  warmup absorbs compilation, so the speedup is jitted-vs-jitted with compilation
+  excluded); each side's compile latency is recorded and reported separately (two
+  `sc compile` / `bare compile` columns). Tooling only — `spacecore` never
+  imports `bench`.
 - ADR-016 optimized-kernel **dispatch** is accepted and implemented (off by
   default). `KernelSpec` gains `dispatch_key`, `priority`, and an optional
   shape-only `cost` estimator (`KernelCost`); a spec that names a `dispatch_key`

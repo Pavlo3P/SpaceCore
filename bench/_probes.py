@@ -65,11 +65,10 @@ class Probe:
         Backend families this probe runs on. ``("numpy",)`` is the
         default. Adding ``"jax"`` or ``"torch"`` lets the runner
         exercise the same operation on those backends; the runner
-        skips a backend at runtime if its library is not installed.
-    jit_compatible
-        Whether the JAX backend should JIT-compile the SpaceCore call.
-        When ``True`` and the backend is ``"jax"``, the runner times
-        the first call separately to record JIT compilation latency.
+        skips a backend at runtime if its library is not installed. On
+        JAX the runner jits **both** the SpaceCore call and the bare
+        reference and times their post-compile steady state, recording
+        each one's compile latency separately.
     notes
         One-line note shown in ``python -m bench list``.
     """
@@ -87,7 +86,6 @@ class Probe:
     device_aware: bool = False
     """``True`` if the factory takes ``device`` and the runner should
     iterate over every available device for the backend."""
-    jit_compatible: bool = False
     notes: str = ""
 
 
@@ -106,11 +104,13 @@ class SeedTiming:
     sc_peak_bytes: int
     bare_peak_bytes: int
     compile_ns: float | None = None
-    """JAX JIT first-call latency. ``None`` for non-JIT backends."""
+    """JAX JIT first-call (compile) latency of the **SpaceCore** call.
+    ``None`` for non-JAX backends or a probe that did not jit."""
+    bare_compile_ns: float | None = None
+    """JAX JIT first-call (compile) latency of the **bare** reference.
+    ``None`` for non-JAX backends or a probe that did not jit."""
     unchecked_best_ns: float | None = None
     unchecked_median_ns: float | None = None
-    jit_best_ns: float | None = None
-    jit_median_ns: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -142,11 +142,15 @@ class ProbeResult:
     ``None`` when no baseline cell is available to pair against."""
     optimized_speedup: float | None = None
     compile_ns_median: float | None = None
-    """Median JAX JIT first-call compile latency, or ``None``."""
+    """Median JAX JIT compile latency of the **SpaceCore** call, or ``None``.
+    The steady-state ``sc_median_ns`` excludes this (it is the post-compile,
+    jitted per-call cost)."""
+    bare_compile_ns_median: float | None = None
+    """Median JAX JIT compile latency of the **bare** reference, or ``None``.
+    ``bare_median_ns`` likewise excludes it."""
     unchecked_median_ns: float | None = None
     abstraction_overhead_ns: float | None = None
     validation_overhead_ns: float | None = None
-    jit_median_ns: float | None = None
     notes: str = ""
 
 

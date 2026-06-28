@@ -262,6 +262,41 @@ def test_categorize_correctness_failure_dominates_speedup():
     assert categorize(r) == Status.CORRECTNESS_FAILURE
 
 
+def test_timed_callable_is_eager_with_no_compile_off_jax():
+    """Non-JAX backends are timed eagerly with no compile latency."""
+    from bench._run import _timed_callable
+
+    sentinel = object()
+    fn, compile_ns = _timed_callable("numpy", lambda: sentinel)
+    assert fn() is sentinel
+    assert compile_ns is None
+
+
+def test_jax_records_both_compile_times_and_jitted_steady_state():
+    """A JAX run jits sc AND bare and records each compile time; numpy doesn't."""
+    from tests._helpers import has_jax
+
+    if not has_jax():
+        pytest.skip("jax not installed")
+    from bench._probes import registry
+    from bench._run import run_probes
+
+    probe = registry.get("space.add")  # x + y — jittable on both sides
+    results = run_probes(
+        [probe], seeds=(0,), backends=("jax", "numpy"), max_size=256, progress=False
+    )
+    jax_rows = [r for r in results if r.backend == "jax"]
+    np_rows = [r for r in results if r.backend == "numpy"]
+    assert jax_rows and np_rows
+    # JAX: both compile latencies recorded; steady-state medians are positive.
+    assert any(r.compile_ns_median is not None for r in jax_rows)
+    assert any(r.bare_compile_ns_median is not None for r in jax_rows)
+    assert all(r.sc_median_ns > 0 and r.bare_median_ns > 0 for r in jax_rows)
+    # NumPy: no compilation.
+    assert all(r.compile_ns_median is None for r in np_rows)
+    assert all(r.bare_compile_ns_median is None for r in np_rows)
+
+
 def test_float64_policy_only_mps_gets_a_widened_tolerance():
     """Backends run float64 (strict gate); only Apple MPS stays float32."""
     from bench._verdict import _is_low_precision_device, correctness_tol

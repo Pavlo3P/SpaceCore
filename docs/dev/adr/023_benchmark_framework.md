@@ -73,9 +73,11 @@ operation expressible in the target array library alone**, written idiomatically
 - **Per-backend, idiomatic.** "Efficient" is library-specific, so `bare` is
   resolved per backend: the NumPy baseline is a single vectorized `np` expression
   (e.g. `A @ x`, `np.einsum`, a fused BLAS call); the JAX baseline is the
-  jit-friendly `jnp` equivalent (and, for `jit_compatible` probes, the
-  `jax.jit`-wrapped form so SpaceCore is compared against *compiled* JAX, not
-  traced); the Torch baseline is the idiomatic `torch` op on the right device. A
+  jit-friendly `jnp` equivalent — on JAX **both** the bare and the SpaceCore call
+  are `jax.jit`-wrapped and compared at their post-compile steady state (that is
+  how JAX is actually run), with each side's compile latency reported separately
+  and excluded from the per-call speedup; the Torch baseline is the idiomatic
+  `torch` op on the right device. A
   probe declares one `bare` per backend it supports; the factory returns the one
   matching its `backend` argument.
 - **Hand-optimal, not strawman.** `bare` must not allocate needlessly, must reuse
@@ -366,7 +368,8 @@ applied N-wise; it does not introduce a second comparison contract.
   in the correct family.
 - The `bare` callable must be the **most efficient pure-array-library**
   implementation of the operation, written idiomatically **per backend**
-  (vectorized `np`, jit-wrapped `jnp` for `jit_compatible` probes, idiomatic
+  (vectorized `np`, jit-friendly `jnp` — on JAX both bare and sc are jitted and
+  compared at steady state, compile latency reported separately — idiomatic
   `torch`), importing **nothing from `spacecore`**, and must compute the **same
   value as the `reference`** (the runner checks `bare`'s error too). A naive or
   deliberately slow baseline is a probe bug — it must be the strongest opponent you

@@ -67,10 +67,9 @@ def load(path: str | Path) -> list[ProbeResult]:
                 sc_peak_bytes=s["sc_peak_bytes"],
                 bare_peak_bytes=s["bare_peak_bytes"],
                 compile_ns=s.get("compile_ns"),
+                bare_compile_ns=s.get("bare_compile_ns"),
                 unchecked_best_ns=s.get("unchecked_best_ns"),
                 unchecked_median_ns=s.get("unchecked_median_ns"),
-                jit_best_ns=s.get("jit_best_ns"),
-                jit_median_ns=s.get("jit_median_ns"),
             )
             for s in row["seeds"]
         )
@@ -89,10 +88,10 @@ def load(path: str | Path) -> list[ProbeResult]:
                 bare_peak_bytes_median=row["bare_peak_bytes_median"],
                 optimized_speedup=row.get("optimized_speedup"),
                 compile_ns_median=row.get("compile_ns_median"),
+                bare_compile_ns_median=row.get("bare_compile_ns_median"),
                 unchecked_median_ns=row.get("unchecked_median_ns"),
                 abstraction_overhead_ns=row.get("abstraction_overhead_ns"),
                 validation_overhead_ns=row.get("validation_overhead_ns"),
-                jit_median_ns=row.get("jit_median_ns"),
                 backend=row.get("backend", "numpy"),
                 device=row.get("device", "cpu"),
                 check_level=row.get("check_level", "cheap"),

@@ -391,15 +391,22 @@ def _build_overall(
         for r in by_speed[:5]
     ]
 
-    # ----- panel 5: JAX compile summary --------------------------------
+    # ----- panel 5: JAX compile summary (sc + bare) --------------------
     jax_compiles = [
         r.compile_ns_median for r in results
         if r.backend == "jax" and r.compile_ns_median is not None
     ]
-    if jax_compiles:
+    jax_bare_compiles = [
+        r.bare_compile_ns_median for r in results
+        if r.backend == "jax" and r.bare_compile_ns_median is not None
+    ]
+    if jax_compiles or jax_bare_compiles:
         jax_summary = {
-            "cases": len(jax_compiles),
-            "median_compile_ns": float(median(jax_compiles)),
+            "cases": max(len(jax_compiles), len(jax_bare_compiles)),
+            "median_compile_ns": float(median(jax_compiles)) if jax_compiles else None,
+            "median_bare_compile_ns": (
+                float(median(jax_bare_compiles)) if jax_bare_compiles else None
+            ),
         }
     else:
         jax_summary = None
@@ -512,6 +519,7 @@ def _row_payload(r: ProbeResult, status: Status, diagnosis: dict | None) -> dict
         "bare_peak_bytes": r.bare_peak_bytes_median,
         "optimized_speedup": r.optimized_speedup,
         "compile_ns_median": r.compile_ns_median,
+        "bare_compile_ns_median": r.bare_compile_ns_median,
         "notes": r.notes,
         "status": status.value,
         "diagnosis_reason": diag["reason"],
@@ -1459,8 +1467,14 @@ _JS = r"""
     const jaxComp = rows.filter(function (r) {
       return r.backend === "jax" && r.compile_ns_median != null;
     }).map(function (r) { return r.compile_ns_median; });
-    const jaxSummary = jaxComp.length
-      ? { cases: jaxComp.length, median_compile_ns: median(jaxComp) } : null;
+    const jaxBareComp = rows.filter(function (r) {
+      return r.backend === "jax" && r.bare_compile_ns_median != null;
+    }).map(function (r) { return r.bare_compile_ns_median; });
+    const jaxSummary = (jaxComp.length || jaxBareComp.length) ? {
+      cases: Math.max(jaxComp.length, jaxBareComp.length),
+      median_compile_ns: jaxComp.length ? median(jaxComp) : null,
+      median_bare_compile_ns: jaxBareComp.length ? median(jaxBareComp) : null,
+    } : null;
 
     let narrative = "";
     if (rows.length) {
@@ -1470,8 +1484,9 @@ _JS = r"""
       const nonNeutral = dominant.filter(function (kv) { return kv[0] !== "NEUTRAL"; });
       const domReason = (nonNeutral[0] || dominant[0] || ["NEUTRAL"])[0];
       const jaxNote = jaxSummary
-        ? "JAX compile latency seen on " + jaxSummary.cases + " case(s); median " +
-          (jaxSummary.median_compile_ns / 1e6).toFixed(2) + " ms"
+        ? "JAX compile latency on " + jaxSummary.cases + " case(s); median sc " +
+          (jaxSummary.median_compile_ns != null ? (jaxSummary.median_compile_ns / 1e6).toFixed(2) : "n/a") +
+          " ms"
         : "No JAX compile latency recorded";
       narrative = rows.length + " cases across " + nBackends + " backend(s). " +
         "Median speedup " + med.toFixed(2) + "x (" + medFactor.toFixed(2) +
@@ -1564,8 +1579,9 @@ _JS = r"""
         jaxPanel.style.display = "none";
       } else {
         jaxPanel.style.display = "";
-        const ms = (j.median_compile_ns / 1e6).toFixed(2);
-        jaxBody.textContent = j.cases + " JAX cases; median compile time " + ms + "ms";
+        const fmt = function (ns) { return ns != null ? (ns / 1e6).toFixed(2) + " ms" : "n/a"; };
+        jaxBody.textContent = j.cases + " JAX case(s); median compile — sc " +
+          fmt(j.median_compile_ns) + ", bare " + fmt(j.median_bare_compile_ns);
       }
     }
   }
@@ -1589,7 +1605,8 @@ _JS = r"""
     { key: "validation_overhead_ns", label: "validation ns", num: true },
     { key: "speedup",           label: "speedup",      num: true  },
     { key: "speedup_std",       label: "std",          num: true  },
-    { key: "compile_ns_median", label: "Compile (ms)", num: true  },
+    { key: "compile_ns_median", label: "sc compile (ms)",   num: true },
+    { key: "bare_compile_ns_median", label: "bare compile (ms)", num: true },
     { key: "error_max",         label: "err max",      num: true  },
     { key: "sc_peak_bytes",     label: "sc peak",      num: true  },
   ];
@@ -1668,6 +1685,7 @@ _JS = r"""
         '<td class="num">' + fmtNum(r.speedup) + "x</td>",
         '<td class="num">' + fmtNum(r.speedup_std) + "</td>",
         '<td class="num">' + fmtCompileMs(r.compile_ns_median) + "</td>",
+        '<td class="num">' + fmtCompileMs(r.bare_compile_ns_median) + "</td>",
         '<td class="num">' + fmtErr(r.error_max) + "</td>",
         '<td class="num">' + fmtBytes(r.sc_peak_bytes) + "</td>",
       ];
