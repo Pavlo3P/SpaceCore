@@ -1,0 +1,451 @@
+"""Multi-seed, multi-backend benchmark runner.
+
+The runner walks every probe in :mod:`bench._operations`, every backend
+the probe declares it supports, every problem size, and every seed in
+:data:`bench._seeds.SEEDS`. For each ``(probe, backend, size, seed)``
+quartet it:
+
+* builds a fresh :class:`ProbeCase` via the probe factory;
+* times backend-native bare, unchecked SpaceCore, and checked SpaceCore variants;
+* captures peak Python memory through :mod:`tracemalloc`;
+* records the maximum absolute error against the NumPy reference;
+* for JAX-compatible probes, records JIT compilation separately from
+  steady-state compiled execution.
+
+The per-seed records are aggregated to one :class:`ProbeResult` per
+``(probe, backend, size)`` triple. The aggregate carries per-seed
+records (so the dashboard can show jitter) along with median speedup,
+speedup std-dev, error_max, median peak memory, and the median
+compile_ns when applicable.
+"""
+from __future__ import annotations
+
+import math
+from dataclasses import replace
+from statistics import median, stdev
+from typing import Any, Iterable
+
+import numpy as np
+
+from ._devices import devices_for
+from ._probes import Probe, ProbeCase, ProbeResult, SeedTiming, registry
+from ._regimes import BASELINE, Regime, benchmark_regime, regimes_for
+from ._seeds import SEEDS
+from .harness import measure_peak_memory, time_op, time_op_first_call
+
+
+def _backend_available(backend: str) -> bool:
+    """Return whether the backend's library imports successfully."""
+    if backend == "numpy":
+        return True
+    if backend == "jax":
+        try:
+            import jax  # noqa: F401
+
+            return True
+        except ImportError:
+            return False
+    if backend == "torch":
+        try:
+            import torch  # noqa: F401
+
+            return True
+        except ImportError:
+            return False
+    if backend == "cupy":
+        from tests._helpers import has_cupy
+
+        return has_cupy()
+    return False
+
+
+def _error_vs_reference(actual: Any, reference: Any) -> float:
+    """Maximum absolute element difference, tolerant of containers."""
+    if reference is None:
+        return 0.0
+    if isinstance(reference, tuple):
+        return max(_error_vs_reference(a, r) for a, r in zip(actual, reference))
+    if isinstance(reference, dict):
+        return max(_error_vs_reference(actual[k], reference[k]) for k in reference)
+    try:
+        from tests._helpers import to_numpy
+
+        a = np.asarray(to_numpy(actual))
+        r = np.asarray(reference)
+    except Exception:
+        return 0.0
+    if a.shape != r.shape:
+        return float("inf")
+    try:
+        return float(np.max(np.abs(a - r)))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _safe_stdev(values: list[float]) -> float:
+    return float(stdev(values)) if len(values) >= 2 else 0.0
+
+
+def _build_case(probe: Probe, backend: str, device: str, seed: int, size: int) -> ProbeCase:
+    """Call the probe factory with the right argument count."""
+    if probe.device_aware:
+        return probe.factory(backend, device, seed, size)
+    return probe.factory(backend, seed, size)
+
+
+def _aggregate(
+    probe: Probe,
+    backend: str,
+    device: str,
+    size: int,
+    check_level: str,
+    regime: str,
+    seed_records: list[SeedTiming],
+) -> ProbeResult:
+    bare_medians = [s.bare_median_ns for s in seed_records]
+    sc_medians = [s.sc_median_ns for s in seed_records]
+    unchecked_medians = [
+        s.unchecked_median_ns for s in seed_records if s.unchecked_median_ns is not None
+    ]
+    unchecked_med = float(median(unchecked_medians)) if unchecked_medians else None
+    bare_med = float(median(bare_medians))
+    sc_med = float(median(sc_medians))
+    speedups = [
+        (b / s if s else math.inf) for b, s in zip(bare_medians, sc_medians)
+    ]
+    optimized_speedups: list[float] = []
+    for record in seed_records:
+        if record.optimized_median_ns is not None and record.optimized_median_ns > 0:
+            optimized_speedups.append(record.sc_median_ns / record.optimized_median_ns)
+    compile_records = [s.compile_ns for s in seed_records if s.compile_ns is not None]
+    bare_compile_records = [
+        s.bare_compile_ns for s in seed_records if s.bare_compile_ns is not None
+    ]
+    return ProbeResult(
+        operation_name=probe.name,
+        family=probe.family,
+        size=size,
+        seeds=tuple(seed_records),
+        bare_median_ns=bare_med,
+        sc_median_ns=sc_med,
+        speedup=float(median(speedups)),
+        speedup_std=_safe_stdev(speedups),
+        error_max=max(s.error_vs_reference for s in seed_records),
+        sc_peak_bytes_median=int(median(s.sc_peak_bytes for s in seed_records)),
+        bare_peak_bytes_median=int(median(s.bare_peak_bytes for s in seed_records)),
+        backend=backend,
+        device=device,
+        check_level=check_level,
+        regime=regime,
+        optimized_speedup=(
+            float(median(optimized_speedups)) if optimized_speedups else None
+        ),
+        compile_ns_median=(
+            float(median(compile_records)) if compile_records else None
+        ),
+        bare_compile_ns_median=(
+            float(median(bare_compile_records)) if bare_compile_records else None
+        ),
+        unchecked_median_ns=unchecked_med,
+        abstraction_overhead_ns=sc_med - bare_med,
+        validation_overhead_ns=sc_med - unchecked_med if unchecked_med is not None else None,
+        notes=probe.notes,
+    )
+
+
+def _try_jit(fn) -> tuple[Any, float | None]:
+    """JIT ``fn`` and measure its first-call (compile) latency.
+
+    Returns ``(jitted, compile_ns)`` on success, or ``(None, None)`` if the
+    function is not jittable (it raises while tracing/compiling).
+    """
+    import jax
+
+    try:
+        jitted = jax.jit(fn)
+        return jitted, time_op_first_call(jitted)  # first call traces + compiles
+    except Exception:
+        return None, None
+
+
+def _resolve_timed_pair(
+    backend: str, sc, bare
+) -> tuple[Any, float | None, Any, float | None]:
+    """Resolve the (sc, bare) callables to time, with their compile latencies.
+
+    On JAX both are jitted and their post-compile steady state is timed — but
+    the comparison is kept **symmetric**: if *either* side is not jittable
+    (e.g. a value-dependent path) both are timed **eagerly**, so the speedup is
+    never an eager-vs-jitted (apples-to-oranges) comparison. Off JAX both run
+    eagerly with no compile time.
+
+    Returns ``(sc_fn, sc_compile_ns, bare_fn, bare_compile_ns)``.
+    """
+    if backend != "jax":
+        return sc, None, bare, None
+    sc_jit, sc_compile = _try_jit(sc)
+    bare_jit, bare_compile = _try_jit(bare)
+    if sc_jit is None or bare_jit is None:
+        return sc, None, bare, None  # one side not jittable → both eager
+    return sc_jit, sc_compile, bare_jit, bare_compile
+
+
+def _run_one_seed(
+    probe: Probe,
+    backend: str,
+    device: str,
+    size: int,
+    seed: int,
+    check_level: str,
+    regime: Regime,
+    *,
+    repeat: int,
+    number: int,
+    warmup: int,
+) -> SeedTiming:
+    from ._operations import benchmark_check_level
+
+    # The regime's dispatch mode must be active for the whole timed
+    # section so every ``sc`` call routes (or not) under it. Case
+    # construction runs under it too, which is harmless.
+    with benchmark_regime(regime):
+        with benchmark_check_level(check_level):
+            case = _build_case(probe, backend, device, seed, size)
+        reference = case.reference() if case.reference is not None else None
+
+        # On JAX, benchmark the *jitted* steady state of both the SpaceCore
+        # call and the bare reference — that is how JAX is actually used — and
+        # record each one's first-call compile latency separately. The
+        # ``time_op`` warmup absorbs compilation, so the timed medians are the
+        # post-compile per-call cost (compilation excluded from the speedup).
+        # The pair is resolved symmetrically: if either side is not jittable,
+        # both are timed eagerly (never eager-vs-jitted).
+        sc_fn, sc_compile_ns, bare_fn, bare_compile_ns = _resolve_timed_pair(
+            backend, case.sc, case.bare
+        )
+
+        sc_result = sc_fn()
+        error = _error_vs_reference(sc_result, reference)
+        if case.optimized is not None:
+            error = max(error, _error_vs_reference(case.optimized(), reference))
+
+        bare_t = time_op(bare_fn, repeat=repeat, number=number, warmup=warmup)
+        sc_t = time_op(sc_fn, repeat=repeat, number=number, warmup=warmup)
+        opt_t = (
+            time_op(case.optimized, repeat=repeat, number=number, warmup=warmup)
+            if case.optimized is not None
+            else None
+        )
+
+        sc_mem = measure_peak_memory(sc_fn)
+        bare_mem = measure_peak_memory(bare_fn)
+
+    del sc_result
+    return SeedTiming(
+        seed=seed,
+        bare_best_ns=bare_t["best_ns"],
+        bare_median_ns=bare_t["median_ns"],
+        sc_best_ns=sc_t["best_ns"],
+        sc_median_ns=sc_t["median_ns"],
+        optimized_best_ns=opt_t["best_ns"] if opt_t else None,
+        optimized_median_ns=opt_t["median_ns"] if opt_t else None,
+        error_vs_reference=error,
+        sc_peak_bytes=int(sc_mem["peak_bytes"]),
+        bare_peak_bytes=int(bare_mem["peak_bytes"]),
+        compile_ns=sc_compile_ns,
+        bare_compile_ns=bare_compile_ns,
+    )
+
+
+def _numbers_for(size: int) -> tuple[int, int, int]:
+    if size <= 128:
+        return 7, 200, 2
+    if size <= 1024:
+        return 7, 50, 2
+    if size <= 8192:
+        return 5, 10, 1
+    return 5, 3, 1
+
+
+def run_probes(
+    probes: Iterable[Probe] = None,
+    *,
+    seeds: tuple[int, ...] = SEEDS,
+    backends: tuple[str, ...] | None = None,
+    devices: tuple[str, ...] | None = None,
+    check_levels: tuple[str, ...] = ("none", "cheap"),
+    regimes: tuple[Regime, ...] | None = None,
+    max_size: int | None = None,
+    progress: bool = True,
+) -> list[ProbeResult]:
+    """Run probes across seeds, sizes, backends, and devices.
+
+    Parameters
+    ----------
+    backends
+        Filter the per-probe ``backends`` list. ``None`` keeps every
+        backend each probe declares.
+    devices
+        Filter the per-backend device list (``cpu`` / ``cuda`` / ``mps`` /
+        ``gpu`` / ``tpu``). ``None`` keeps every device the backend can
+        target on this machine.
+    check_levels
+        Validation modes to benchmark. Defaults to both ``none`` and ``cheap``.
+        **JAX is benchmarked only at ``none``** — under ``cheap`` the validation
+        is not jittable, which would make the jitted-vs-jitted comparison
+        eager-vs-jitted; ``cheap`` requests are dropped for the JAX backend.
+    regimes
+        Dispatch/cache regimes to sweep for dispatch-eligible (``linop``)
+        probes. ``None`` selects :data:`bench._regimes.DEFAULT_DISPATCH_REGIMES`
+        (``baseline`` + ``dispatch_cache``); non-dispatch families always run
+        ``baseline`` only. ``baseline`` is always included so it can serve as
+        the ``regime_speedup`` reference.
+    max_size
+        Run each probe only at sizes ``<= max_size``. ``None`` (the
+        default) keeps every configured size. Use a small value to keep
+        the run light on CPU and memory; a probe whose smallest size
+        exceeds ``max_size`` is skipped entirely.
+    """
+    if probes is None:
+        probes = registry.all()
+    probes = tuple(probes)
+    # Put the optional backends in float64 once per process, before any
+    # probe is built, so the comparison against the float64 NumPy reference
+    # is fair on dtype-sensitive operations. (Apple MPS stays float32 — it
+    # is float32-only hardware; the device probe handles that.)
+    from bench import enable_jax_x64, enable_torch_x64
+
+    enable_jax_x64()
+    enable_torch_x64()
+    results: list[ProbeResult] = []
+    # Pre-resolve the (probe, backend, device, size) plan so the
+    # progress counter is meaningful.
+    plan: list[tuple[Probe, str, str, int, str, Regime]] = []
+    for probe in probes:
+        eligible_backends = probe.backends if backends is None else tuple(
+            b for b in probe.backends if b in backends
+        )
+        for backend in eligible_backends:
+            if not _backend_available(backend):
+                continue
+            available_devs = devices_for(backend)
+            if not available_devs:
+                continue
+            eligible_devs = available_devs if devices is None else tuple(
+                d for d in available_devs if d in devices
+            )
+            # A non-device-aware probe is still run once on the first
+            # eligible device (its sc closures don't honor device anyway).
+            iter_devs = eligible_devs if probe.device_aware else eligible_devs[:1]
+            eligible_sizes = probe.sizes if max_size is None else tuple(
+                s for s in probe.sizes if s <= max_size
+            )
+            # JAX is benchmarked only at check_level="none". Under "cheap" the
+            # membership validation is value-dependent and not jittable, so the
+            # SpaceCore call would fall back to eager while the jnp bare jits —
+            # an apples-to-oranges (eager-vs-jitted) comparison. Restricting JAX
+            # to "none" keeps both sides jitted and the comparison honest.
+            backend_check_levels = (
+                tuple(c for c in check_levels if c == "none")
+                if backend == "jax"
+                else check_levels
+            )
+            for device in iter_devs:
+                for size in eligible_sizes:
+                    for check_level in backend_check_levels:
+                        if check_level not in {"none", "cheap"}:
+                            raise ValueError(
+                                f"benchmark check_level must be 'none' or 'cheap', got {check_level!r}"
+                            )
+                        for regime in regimes_for(probe.family, regimes):
+                            plan.append(
+                                (probe, backend, device, size, check_level, regime)
+                            )
+    total = len(plan)
+    for i, (probe, backend, device, size, check_level, regime) in enumerate(plan, 1):
+        if progress:
+            tag = f"{backend}/{device}" if probe.device_aware else backend
+            print(
+                f"[{i}/{total}] {probe.name} {tag} n={size} "
+                f"checks={check_level} regime={regime}",
+                flush=True,
+            )
+        seed_records: list[SeedTiming] = []
+        repeat, number, warmup = _numbers_for(size)
+        for seed in seeds:
+            try:
+                seed_records.append(
+                    _run_one_seed(
+                        probe,
+                        backend,
+                        device,
+                        size,
+                        seed,
+                        check_level,
+                        regime,
+                        repeat=repeat,
+                        number=number,
+                        warmup=warmup,
+                    )
+                )
+            except Exception as err:
+                if progress:
+                    print(
+                        f"    skipped seed={seed}: {type(err).__name__}: {err}",
+                        flush=True,
+                    )
+                continue
+        if seed_records:
+            results.append(
+                _aggregate(
+                    probe, backend, device, size, check_level, regime, seed_records
+                )
+            )
+    by_case = {
+        (r.operation_name, r.backend, r.device, r.size, r.check_level, r.regime): r
+        for r in results
+    }
+    paired: list[ProbeResult] = []
+    for result in results:
+        # Validation overhead pairs cheap-vs-none within the same regime.
+        none_result = by_case.get(
+            (
+                result.operation_name,
+                result.backend,
+                result.device,
+                result.size,
+                "none",
+                result.regime,
+            )
+        )
+        validation_overhead = (
+            result.sc_median_ns - none_result.sc_median_ns
+            if result.check_level == "cheap" and none_result is not None
+            else 0.0 if result.check_level == "none" else None
+        )
+        # Regime speedup pairs this regime against baseline at the same
+        # (operation, backend, device, size, check_level).
+        base_result = by_case.get(
+            (
+                result.operation_name,
+                result.backend,
+                result.device,
+                result.size,
+                result.check_level,
+                BASELINE,
+            )
+        )
+        if result.regime == BASELINE:
+            regime_speedup: float | None = 1.0
+        elif base_result is not None and result.sc_median_ns:
+            regime_speedup = base_result.sc_median_ns / result.sc_median_ns
+        else:
+            regime_speedup = None
+        paired.append(
+            replace(
+                result,
+                validation_overhead_ns=validation_overhead,
+                regime_speedup=regime_speedup,
+            )
+        )
+    return paired

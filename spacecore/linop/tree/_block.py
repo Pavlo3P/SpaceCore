@@ -11,7 +11,7 @@ from .._base import LinOp
 from ..._checks import checked_method
 from ..._contextual._bound import _same_math_context
 from ...backend import Context, jax_pytree_class
-from ...kernels import dispatch, should_consult_dispatch
+from ...kernels import CachedStackParts, dispatch, should_consult_dispatch
 from ...space import TreeSpace
 
 # ADR-016 approves the block-diagonal apply as a dispatch call site. The
@@ -22,11 +22,29 @@ from ...space import TreeSpace
 # bound core in ``self._apply_parts[i]``, so the generic stays byte-identical.
 # The ``should_consult_dispatch`` guard keeps the default path untouched.
 _BLOCK_DIAGONAL_APPLY_KEY = "linop.block_diagonal.apply"
+_BLOCK_DIAGONAL_RAPPLY_KEY = "linop.block_diagonal.rapply"
+_BLOCK_DIAGONAL_VAPPLY_KEY = "linop.block_diagonal.vapply"
+_BLOCK_DIAGONAL_RVAPPLY_KEY = "linop.block_diagonal.rvapply"
 
 
 def _block_diagonal_apply(parts: Any, x_parts: Any) -> tuple[Any, ...]:
     """Apply each block core to its own component (generic block-diagonal apply)."""
     return tuple(p._apply_core(xi) for p, xi in zip(parts, x_parts))
+
+
+def _block_diagonal_rapply(parts: Any, y_parts: Any) -> tuple[Any, ...]:
+    """Apply each block adjoint core to its own component (generic block-diagonal rapply)."""
+    return tuple(p._rapply_core(yi) for p, yi in zip(parts, y_parts))
+
+
+def _block_diagonal_vapply(parts: Any, x_parts: Any) -> tuple[Any, ...]:
+    """Apply each block batched core to its own component (generic block-diagonal vapply)."""
+    return tuple(p._vapply_core(xi) for p, xi in zip(parts, x_parts))
+
+
+def _block_diagonal_rvapply(parts: Any, y_parts: Any) -> tuple[Any, ...]:
+    """Apply each block batched adjoint core to its own component (generic block-diagonal rvapply)."""
+    return tuple(p._rvapply_core(yi) for p, yi in zip(parts, y_parts))
 
 
 def _validate_blocks(blocks: Sequence[Any], owner: str) -> tuple[LinOp, ...]:
@@ -124,6 +142,11 @@ class BlockDiagonalLinOp(TreeLinOp[TreeSpace, TreeSpace]):
             cod = TreeSpace(treedef, tuple(block.codomain for block in block_parts), ctx=ctx)
 
         super().__init__(dom, cod, block_parts, ctx)
+        # ADR-022: carry the per-accessor stacked-block-matrix memo on the parts
+        # so the uniform-dense batched fold (block_batched) stacks once and reuses
+        # across applies. Built lazily on first optimized use, NumPy-only; dropped
+        # and rebuilt on a pytree round-trip (tree_flatten re-normalizes parts).
+        self.parts = CachedStackParts(self.parts)
 
     def _check_layout(self) -> None:
         """Check that each block maps the corresponding pair of tree leaves."""
@@ -164,7 +187,16 @@ class BlockDiagonalLinOp(TreeLinOp[TreeSpace, TreeSpace]):
 
     def _rapply_unchecked(self, y: Any) -> Any:
         y_parts = self.cod._components(y)
-        x_parts = tuple(rapply(yi) for rapply, yi in zip(self._rapply_parts, y_parts))
+        if should_consult_dispatch(self.ctx):
+            x_parts = dispatch(
+                _BLOCK_DIAGONAL_RAPPLY_KEY,
+                self.parts,
+                y_parts,
+                generic=_block_diagonal_rapply,
+                ctx=self.ctx,
+            )
+        else:
+            x_parts = _block_diagonal_rapply(self.parts, y_parts)
         return self.dom._from_components(x_parts)
 
     @checked_method(
@@ -172,8 +204,20 @@ class BlockDiagonalLinOp(TreeLinOp[TreeSpace, TreeSpace]):
     )
     def vapply(self, x: Any) -> Any:
         """Apply each block over a tree of leading-axis batches."""
+        return self._vapply_unchecked(x)
+
+    def _vapply_unchecked(self, x: Any) -> Any:
         x_parts = self.dom._components(x)
-        y_parts = tuple(op.vapply(xi) for op, xi in zip(self.parts, x_parts))
+        if should_consult_dispatch(self.ctx):
+            y_parts = dispatch(
+                _BLOCK_DIAGONAL_VAPPLY_KEY,
+                self.parts,
+                x_parts,
+                generic=_block_diagonal_vapply,
+                ctx=self.ctx,
+            )
+        else:
+            y_parts = _block_diagonal_vapply(self.parts, x_parts)
         return self.cod._from_components(y_parts)
 
     @checked_method(
@@ -181,8 +225,20 @@ class BlockDiagonalLinOp(TreeLinOp[TreeSpace, TreeSpace]):
     )
     def rvapply(self, y: Any) -> Any:
         """Apply each metric adjoint over a tree of leading-axis batches."""
+        return self._rvapply_unchecked(y)
+
+    def _rvapply_unchecked(self, y: Any) -> Any:
         y_parts = self.cod._components(y)
-        x_parts = tuple(op.rvapply(yi) for op, yi in zip(self.parts, y_parts))
+        if should_consult_dispatch(self.ctx):
+            x_parts = dispatch(
+                _BLOCK_DIAGONAL_RVAPPLY_KEY,
+                self.parts,
+                y_parts,
+                generic=_block_diagonal_rvapply,
+                ctx=self.ctx,
+            )
+        else:
+            x_parts = _block_diagonal_rvapply(self.parts, y_parts)
         return self.dom._from_components(x_parts)
 
     @property
@@ -199,6 +255,15 @@ class BlockDiagonalLinOp(TreeLinOp[TreeSpace, TreeSpace]):
             self._adjoint_view = view
             view._adjoint_view = self
         return view
+
+    def fuse(self, *, materialize: bool = False) -> BlockDiagonalLinOp:
+        """Fuse each block (ADR-021), preserving the tree layout and context."""
+        return BlockDiagonalLinOp(
+            self.dom,
+            self.cod,
+            tuple(op.fuse(materialize=materialize) for op in self.parts),
+            self.ctx,
+        )
 
     @classmethod
     def from_operators(cls, parts: Sequence[LinOp]) -> BlockDiagonalLinOp:
@@ -381,6 +446,15 @@ class BlockMatrixLinOp(TreeLinOp[TreeSpace, TreeSpace]):
             self._adjoint_view = view
             view._adjoint_view = self
         return view
+
+    def fuse(self, *, materialize: bool = False) -> BlockMatrixLinOp:
+        """Fuse each block (ADR-021), preserving the rectangular block layout."""
+        return BlockMatrixLinOp(
+            tuple(
+                tuple(block.fuse(materialize=materialize) for block in row)
+                for row in self.block_rows
+            )
+        )
 
     def tree_flatten(self):
         """Flatten row-major blocks for JAX pytree registration."""

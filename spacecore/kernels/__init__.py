@@ -32,6 +32,7 @@ from .core import (
     register_core_kernels,
 )
 from .specs import (
+    CachedStackParts as CachedStackParts,  # internal ADR-022 detail; not in __all__
     DispatchAmbiguityError,
     DispatchMode,
     DispatchVerificationError,

@@ -31,6 +31,13 @@ order once the foundations are in place.
 8. [`08_pdhg_conic_program.ipynb`](08_pdhg_conic_program.ipynb) — a primal–dual (PDHG) solver
    for a conic program using a Jordan-algebra cone projection.
 
+### Performance and internals
+
+9. [`09_kernels_and_fusion.ipynb`](09_kernels_and_fusion.ipynb) — optimized-kernel
+   **dispatch** (ADR-016) and operator **fusion** (ADR-021): running the fastest bit-exact
+   kernel with `dispatch_mode`, and multiplying operators together with `fuse()`. Both are
+   opt-in and neither densifies a matrix-free operator.
+
 ## Running
 
 Every notebook runs on the NumPy backend with only `numpy` and `matplotlib`; tutorial 1 also

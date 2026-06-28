@@ -17,6 +17,7 @@ dependencies = [
   "array-api-compat>=1.14.0",
   "numpy>=2.0.0",
   "optree>=0.17.0",
+  "psutil>=5.9.0",
   "scipy>=1.17",
 ]
 
@@ -63,6 +64,10 @@ docs = [
   "sphinx-copybutton>=0.5",
   "sphinx-design>=0.6",
   "numpydoc>=1.8",
+  # Registers the ``ipython3`` Pygments lexer that nbconvert-generated
+  # tutorial RST uses, so the strict (`-W`) docs build does not fail on
+  # "lexer not known" if a tutorial is regenerated with that directive.
+  "ipython>=8.0",
 ]
 dev = [
   "pytest>=8.0",

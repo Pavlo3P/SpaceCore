@@ -5,8 +5,21 @@ from typing import Any, Sequence, Tuple, cast
 from ._base import TreeLinOp
 from .._base import LinOp, Codomain
 from ..._checks import checked_method
+from ...kernels import CachedStackParts, dispatch, should_consult_dispatch
 from ...space import DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace, TreeSpace
 from ...backend import jax_pytree_class, Context
+
+# ADR-016 dispatch call site: a SumToSingleLinOp applies one shared input through
+# every component adjoint. The per-component loop is the ``generic`` fallback;
+# the ``sum-to-single-uniform-dense-batched-rapply`` spec routes here when
+# dispatch is on and the components are uniform flat-dense. ``parts[i]._rapply_core``
+# is exactly ``self._rapply_parts[i]``, so the generic stays byte-identical.
+_SUM_TO_SINGLE_RAPPLY_KEY = "linop.sum_to_single.rapply"
+
+
+def _sum_to_single_rapply(parts: Any, y: Any) -> tuple[Any, ...]:
+    """Apply the shared input through each component adjoint core (generic rapply)."""
+    return tuple(p._rapply_core(y) for p in parts)
 
 
 @jax_pytree_class
@@ -38,6 +51,9 @@ class SumToSingleLinOp(TreeLinOp[TreeSpace, Codomain]):
         ctx: Context | str | None = None,
     ) -> None:
         super().__init__(dom, cod, parts, ctx)
+        # ADR-022: memoize the stacked adjoint matrices for the sum_to_single.rapply
+        # broadcast fold (built once on first optimized use, NumPy-only).
+        self.parts = CachedStackParts(self.parts)
         self._flat_dense_apply_mats = self._make_flat_dense_apply_mats()
 
     def _make_flat_dense_apply_mats(self):
@@ -115,7 +131,15 @@ class SumToSingleLinOp(TreeLinOp[TreeSpace, Codomain]):
 
     def _rapply_unchecked(self, y: Any) -> Any:
         """Apply component adjoints without checks and rebuild domain representation."""
-        if self._num_parts == 2:
+        if should_consult_dispatch(self.ctx):
+            x_parts = dispatch(
+                _SUM_TO_SINGLE_RAPPLY_KEY,
+                self.parts,
+                y,
+                generic=_sum_to_single_rapply,
+                ctx=self.ctx,
+            )
+        elif self._num_parts == 2:
             x_parts = (self._rapply_parts[0](y), self._rapply_parts[1](y))
         else:
             x_parts = tuple(rapply(y) for rapply in self._rapply_parts)
@@ -162,6 +186,15 @@ class SumToSingleLinOp(TreeLinOp[TreeSpace, Codomain]):
         """Apply the adjoint over a codomain batch without checks and rebuild domain representation."""
         x_parts = tuple(op.rvapply(y) for op in self.parts)
         return self.dom._from_components(x_parts)
+
+    def fuse(self, *, materialize: bool = False) -> SumToSingleLinOp:
+        """Fuse each component operator (ADR-021), preserving dom/cod and context."""
+        return SumToSingleLinOp(
+            self.dom,
+            self.cod,
+            tuple(op.fuse(materialize=materialize) for op in self.parts),
+            self.ctx,
+        )
 
     @classmethod
     def from_operators(cls, parts: Tuple[LinOp, ...]) -> SumToSingleLinOp:

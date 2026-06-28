@@ -7,8 +7,35 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.1] — 2026-06-28
+
 ### Added
 
+- The **`bench` benchmark submodule** is brought under version control and
+  aligned to the agreed 0.4.1 micro-surface (ADR-023,
+  `docs/dev/0.4.1-bench-surface.md`): probes measure per-call SpaceCore overhead
+  against a hand-optimal pure-array-library bare, across `space` / `linop` /
+  `functional` only (linalg, the synthetic kernel-comparison probes,
+  `check_member`, tree-space, and generated-linop probes removed). New
+  **configuration-regime axis** (`baseline` / `dispatch` / `dispatch_cache` /
+  `verify`) times the same probe under the ADR-016 dispatch and ADR-022 caching
+  toggles, recording a within-run `regime_speedup`; block operators are measured
+  uniform **and** ragged. The interactive HTML dashboard gains a problem-size
+  range slider, a backend/family/status/size/check/search/speedup filter set
+  that drives a fully **filter-reactive** summary and diagnosis section, a
+  bottom-of-page tag legend, and zero-count-status hiding. Every backend runs in
+  float64 for a fair comparison against the NumPy reference (JAX via
+  `enable_jax_x64`, Torch via `enable_torch_x64`); the sole exception is Apple
+  MPS (float32-only hardware), where the device probe builds a float32 case and
+  the correctness gate widens accordingly. The float64-aware tolerance is shared
+  by the verdict and diagnosis layers. **JAX is benchmarked only at
+  `check_level="none"`** and **jits both the SpaceCore call and the bare
+  reference**, comparing their post-compile steady state (the warmup absorbs
+  compilation, so the speedup is jitted-vs-jitted with compilation excluded);
+  each side's compile latency is recorded and reported separately (two
+  `sc compile` / `bare compile` columns). The pair is resolved **symmetrically** —
+  if either side is not jittable, both are timed eagerly, so a comparison is never
+  eager-vs-jitted. Tooling only — `spacecore` never imports `bench`.
 - ADR-016 optimized-kernel **dispatch** is accepted and implemented (off by
   default). `KernelSpec` gains `dispatch_key`, `priority`, and an optional
   shape-only `cost` estimator (`KernelCost`); a spec that names a `dispatch_key`
@@ -36,10 +63,64 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   shape-only `KernelCost` and the dispatcher gates it on the memory budget. All
   three route only under `dispatch_mode("on"/"verify")`; dispatch stays off by
   default. Each has a correctness reference and a `python -m bench` probe.
-- `NumpyOps.free_memory_bytes()` reports available system RAM via the optional
-  `psutil` dependency (returns `None` — "no fuse" — when `psutil` is absent), so
-  the dispatcher's memory gate can size materializing fast paths on the CPU
-  backend.
+- `NumpyOps.free_memory_bytes()` reports available system RAM via `psutil` (now a
+  required core dependency), so the dispatcher's memory gate can size
+  materializing fast paths on the CPU backend.
+- Five more dispatch-eligible batched-matmul kernels (exact, `rtol=atol=0`,
+  NumPy-only until cross-backend bit-exactness is verified) extend the catalog to
+  the adjoint and batched directions, each wired through `dispatch` at its own new
+  key with a shape-only `KernelCost` and a `Class::method` correctness reference:
+  `block-diagonal-uniform-dense-batched-rapply` / `-vapply` / `-rvapply` (under
+  `linop.block_diagonal.rapply` / `.vapply` / `.rvapply`) and the broadcast-no-sum
+  folds `stacked-uniform-dense-batched-apply` /
+  `sum-to-single-uniform-dense-batched-rapply` (under `linop.stacked.apply` /
+  `linop.sum_to_single.rapply`). The adjoint folds exploit the Euclidean-flat
+  adjoint and so guard on `EUCLIDEAN_FLAT`; the batched folds use the dense core's
+  transpose-on-right orientation. All five reuse one shared
+  `spacecore.kernels.specs._batched` helper (stack uniform flat-dense matrices into
+  a single batched `matmul`) instead of duplicating the fold. The
+  `BlockDiagonalLinOp` (`rapply`/`vapply`/`rvapply`), `StackedLinOp` (`apply`) and
+  `SumToSingleLinOp` (`rapply`) call sites are wired through `dispatch`;
+  dispatch-off is result-identical to the prior inline paths. Off by default.
+- `SparseLinOp` is confirmed to need no dispatch spec: every direction is already a
+  single optimal backend call — one SpMV for `apply`/`rapply` and one batched SpMV
+  over the stacked right-hand side for `vapply`/`rvapply` — so the reserved
+  `linop.matvec.sparse` key stays inert (a spec would add only dispatch overhead).
+- ADR-021 **lazy-operator-algebra `fuse()`** (Tier-2 explicit simplification):
+  `LinOp.fuse(*, materialize=False)` collapses each maximal subtree of dense
+  operators into a single materialized `DenseLinOp` — a composition becomes the
+  matrix product `M_A @ M_B`, a scalar folds into the matrix, a sum of dense terms
+  is added into one matrix, an adjoint fuses its operand, and block/tree operators
+  fuse each component (so a composed-dense block becomes foldable by the
+  block-diagonal dispatch spec). It is mathematically equal to the original up to
+  floating-point rounding (fusion reassociates the arithmetic) and is
+  adjoint-consistent on any geometry — the shared middle-space Riesz maps cancel,
+  so fusion is not restricted to Euclidean spaces. A matrix-free operand is
+  **never** densified by the default `fuse()`; `fuse(materialize=True)` is the
+  explicit opt-in that densifies it (via the `to_dense` basis probe) so an
+  enclosing expression can collapse. Lives in `spacecore.linop`, separate from the
+  ADR-016 dispatch layer.
+- ADR-022 **materialized-form cache** for the uniform batched folds: the
+  input-independent stacked block-matrix array `ops.stack([matrix(p) for p in
+  parts])` is now built once and reused across applies instead of re-stacked every
+  call. `BlockDiagonalLinOp`, `StackedLinOp`, and `SumToSingleLinOp` carry their
+  `parts` in a `spacecore.kernels.CachedStackParts` tuple that memoizes the stack
+  per matrix accessor (`_A2` apply, `_A2H` adjoint, `_A2T`/`_A2H.T` batched), so a
+  routed fold pays one `matmul` with no re-stack. The memo is built lazily on first
+  optimized use (NumPy-only, and only while dispatch is `on`/`verify`), so the
+  default `off` path is untouched. It is a derived value: excluded from operator
+  identity (`__eq__`/`__hash__`) and from the pytree (`tree_flatten` re-normalizes
+  `parts` to a plain tuple, so a round-trip rebuilds an empty cache), and a
+  matrix-free operand is never cache-materialized (the fold is inapplicable). The
+  dispatcher stays stateless. Dispatch-decision caching remains out of scope
+  (ADR-022 §"Decision caching").
+
+### Fixed
+
+- Corrected stale `correctness_ref` node ids on two shipped `KernelSpec`s
+  (`composed-chain-apply`, `block-diagonal-dense-apply`) that named non-existent
+  module-level test nodes instead of the real `Class::method` ids (ADR-016
+  requires the reference pin an existing test).
 
 ## [0.4.0] — 2026-06-24
 
