@@ -372,6 +372,13 @@ def test_dashboard_writes_a_self_contained_html_file(tmp_path):
     # the top edge stays re-openable (don't bury the min thumb).
     assert "function setSizeZ()" in body
     assert "#f-size-min { z-index" in body
+    # Summary cards and the diagnosis section recompute from the filtered rows
+    # (so they react to every filter), not from a baked-in static rollup.
+    assert 'id="summary-cards"' in body
+    assert "function computeOverall" in body
+    assert "renderSummaryCards(rows)" in body
+    assert "renderDiagnosisSection(computeOverall(rows))" in body
+    assert "diagnosis_reasons" in body  # per-row reason list drives the tally
     assert 'id="f-check-level"' in body
     assert 'value="all"' in body
     assert 'value="none"' in body

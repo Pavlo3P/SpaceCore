@@ -302,23 +302,30 @@ def _diagnosis_to_dict(verdict) -> dict:
     Both shapes are accepted so the dashboard stays robust to small
     changes in the diagnosis module's API.
     """
+    def _name(x):
+        if hasattr(x, "value"):
+            return str(x.value)
+        if hasattr(x, "name"):
+            return str(x.name)
+        return str(x)
+
     if verdict is None:
-        return {"reason": "NEUTRAL", "summary": ""}
+        return {"reason": "NEUTRAL", "summary": "", "reasons": ["NEUTRAL"]}
     if isinstance(verdict, dict):
+        raw_reasons = verdict.get("reasons")
         reason = verdict.get("reason", "NEUTRAL")
         summary = verdict.get("summary", "")
     else:
+        raw_reasons = getattr(verdict, "reasons", None)
         reason = getattr(verdict, "reason", None)
         if reason is None:
-            reasons = getattr(verdict, "reasons", ())
-            reason = reasons[0] if reasons else "NEUTRAL"
+            reason = raw_reasons[0] if raw_reasons else "NEUTRAL"
         summary = getattr(verdict, "summary", "")
-    # ``reason`` may itself be an Enum.
-    if hasattr(reason, "value"):
-        reason = reason.value
-    elif hasattr(reason, "name"):
-        reason = reason.name
-    return {"reason": str(reason), "summary": str(summary)}
+    reasons = [_name(x) for x in (raw_reasons or [reason])]
+    # The dominant reason drives the badge; the full list drives the
+    # client-side "dominant reasons" tally so it matches bench._diagnose
+    # (which counts every applicable reason per case).
+    return {"reason": _name(reason), "summary": str(summary), "reasons": reasons}
 
 
 def _overhead_factor(r: ProbeResult) -> float:
@@ -484,7 +491,7 @@ def _row_payload(r: ProbeResult, status: Status, diagnosis: dict | None) -> dict
         }
         for s in r.seeds
     ]
-    diag = diagnosis or {"reason": "NEUTRAL", "summary": ""}
+    diag = diagnosis or {"reason": "NEUTRAL", "summary": "", "reasons": ["NEUTRAL"]}
     return {
         "operation_name": r.operation_name,
         "family": r.family,
@@ -508,6 +515,7 @@ def _row_payload(r: ProbeResult, status: Status, diagnosis: dict | None) -> dict
         "notes": r.notes,
         "status": status.value,
         "diagnosis_reason": diag["reason"],
+        "diagnosis_reasons": diag.get("reasons", [diag["reason"]]),
         "diagnosis_summary": diag["summary"],
         "seeds": seeds,
     }
@@ -1360,7 +1368,122 @@ _JS = r"""
     return v.toFixed(0) + " ns";
   }
 
-  function renderDiagnosisSection() {
+  function median(arr) {
+    if (!arr.length) return 0;
+    const s = arr.slice().sort(function (a, b) { return a - b; });
+    const m = Math.floor(s.length / 2);
+    return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+  }
+
+  function summaryCard(label, value, color) {
+    return '<div class="card" style="border-top:4px solid ' + color + ';">' +
+           '<div class="card-label">' + escapeHtml(label) + '</div>' +
+           '<div class="card-value" style="color:' + color + ';">' +
+           escapeHtml(value) + "</div></div>";
+  }
+
+  // Rebuild the summary cards (total / median / per-status counts) from the
+  // currently-filtered rows, so the headline numbers track the filters.
+  function renderSummaryCards(rows) {
+    const container = document.getElementById("summary-cards");
+    if (!container) return;
+    const counts = {};
+    rows.forEach(function (r) { counts[r.status] = (counts[r.status] || 0) + 1; });
+    const med = rows.length ? median(rows.map(function (r) { return r.speedup; })) : 0;
+    const cards = [
+      summaryCard("Total cases", String(rows.length), "#1f77b4"),
+      summaryCard("Median speedup", med.toFixed(2) + "x", "#1f77b4"),
+    ];
+    STATUSES.forEach(function (s) {
+      const c = counts[s] || 0;
+      if (c > 0) cards.push(summaryCard(s, String(c), STATUS_COLORS[s] || "#888"));
+    });
+    container.innerHTML = cards.join("");
+  }
+
+  // Recompute the whole diagnosis rollup (dominant reasons, narrative, worst
+  // overhead, persistence, top wins, JAX summary) from the filtered rows. Each
+  // row already carries its per-case diagnosis_reason/summary from the server;
+  // this is purely the aggregation, mirrored from bench._diagnose.
+  function computeOverall(rows) {
+    // Count every applicable reason per case (a case may carry several),
+    // matching bench._diagnose.overall_diagnosis.
+    const reasonCounts = {};
+    rows.forEach(function (r) {
+      const reasons = r.diagnosis_reasons || [r.diagnosis_reason || "NEUTRAL"];
+      reasons.forEach(function (reason) {
+        reasonCounts[reason] = (reasonCounts[reason] || 0) + 1;
+      });
+    });
+    const dominant = Object.keys(reasonCounts)
+      .map(function (k) { return [k, reasonCounts[k]]; })
+      .sort(function (a, b) { return b[1] - a[1]; })
+      .slice(0, 5);
+
+    const topOverhead = rows.slice().sort(function (a, b) {
+      return (b.overhead_factor - a.overhead_factor) || (b.overhead_ns - a.overhead_ns);
+    }).slice(0, 5).map(function (r) {
+      return { operation_name: r.operation_name, size: r.size, backend: r.backend,
+               check_level: r.check_level, overhead_factor: r.overhead_factor,
+               overhead_ns: r.overhead_ns, reason: r.diagnosis_reason,
+               summary: r.diagnosis_summary };
+    });
+
+    function eff(r) { return (r.optimized_speedup != null) ? r.optimized_speedup : r.speedup; }
+    const topWins = rows.slice().sort(function (a, b) { return eff(b) - eff(a); })
+      .slice(0, 5).map(function (r) {
+        return { operation_name: r.operation_name, size: r.size, backend: r.backend,
+                 check_level: r.check_level, speedup: eff(r),
+                 is_optimized: r.optimized_speedup != null, reason: r.diagnosis_reason };
+      });
+
+    const byKey = {};
+    rows.forEach(function (r) {
+      const k = r.operation_name + "||" + r.backend + "||" + r.check_level;
+      (byKey[k] = byKey[k] || []).push(r);
+    });
+    const persistent = [];
+    Object.keys(byKey).forEach(function (k) {
+      const ordered = byKey[k].slice().sort(function (a, b) { return a.size - b.size; });
+      if (ordered.length < 2) return;
+      const first = ordered[0], last = ordered[ordered.length - 1];
+      const lf = last.overhead_factor, ff = first.overhead_factor;
+      if (lf < 1.10) return;
+      persistent.push({ operation_name: first.operation_name, backend: first.backend,
+        check_level: first.check_level, small_size: first.size, large_size: last.size,
+        small_overhead_factor: ff, large_overhead_factor: lf,
+        trend: (lf >= ff * 0.80) ? "persists" : "shrinks" });
+    });
+    persistent.sort(function (a, b) { return b.large_overhead_factor - a.large_overhead_factor; });
+
+    const jaxComp = rows.filter(function (r) {
+      return r.backend === "jax" && r.compile_ns_median != null;
+    }).map(function (r) { return r.compile_ns_median; });
+    const jaxSummary = jaxComp.length
+      ? { cases: jaxComp.length, median_compile_ns: median(jaxComp) } : null;
+
+    let narrative = "";
+    if (rows.length) {
+      const nBackends = new Set(rows.map(function (r) { return r.backend; })).size;
+      const med = median(rows.map(function (r) { return r.speedup; }));
+      const medFactor = 1 / Math.max(med, 1e-12);
+      const nonNeutral = dominant.filter(function (kv) { return kv[0] !== "NEUTRAL"; });
+      const domReason = (nonNeutral[0] || dominant[0] || ["NEUTRAL"])[0];
+      const jaxNote = jaxSummary
+        ? "JAX compile latency seen on " + jaxSummary.cases + " case(s); median " +
+          (jaxSummary.median_compile_ns / 1e6).toFixed(2) + " ms"
+        : "No JAX compile latency recorded";
+      narrative = rows.length + " cases across " + nBackends + " backend(s). " +
+        "Median speedup " + med.toFixed(2) + "x (" + medFactor.toFixed(2) +
+        "x runtime vs bare). Biggest overhead source is " + domReason + ". " + jaxNote + ".";
+    }
+
+    return { dominant_reason_counts: dominant, narrative: narrative,
+             top_overhead: topOverhead, persistent_overhead: persistent.slice(0, 5),
+             top_wins: topWins, jax_compile_summary: jaxSummary };
+  }
+
+  function renderDiagnosisSection(OVERALL) {
     // Panel 1: dominant reasons.
     const dom = document.getElementById("diag-dominant-body");
     if (dom) {
@@ -1557,10 +1680,12 @@ _JS = r"""
   // ---- Orchestration ----------------------------------------------------
   function refresh() {
     const rows = filtered();
+    renderSummaryCards(rows);
     speedupDistribution(rows);
     overheadDecomposition(rows);
     memoryBars(rows);
     baselineScatter(rows);
+    renderDiagnosisSection(computeOverall(rows));
     renderTableBody();
   }
 
@@ -1662,8 +1787,7 @@ _JS = r"""
   document.addEventListener("DOMContentLoaded", function () {
     renderTableHead();
     wireFilters();
-    renderDiagnosisSection();
-    refresh();
+    refresh();  // also renders summary cards + diagnosis from the initial (unfiltered) rows
   });
 })();
 """
@@ -1693,7 +1817,7 @@ _TEMPLATE = """<!DOCTYPE html>
   &nbsp;|&nbsp; <code>{n_cases} cases</code>
 </div>
 
-<div class="cards">
+<div class="cards" id="summary-cards">
 {summary_cards}
 </div>
 
