@@ -359,11 +359,15 @@ def test_dashboard_writes_a_self_contained_html_file(tmp_path):
     # Family filter checkboxes must be present.
     for family in ("space", "linop", "functional"):
         assert family in body
-    # Problem-size filter chips render for each distinct size present.
+    # Problem size is a dual-handle range slider over the distinct sizes.
     assert "Problem size" in body
-    for size in ("64", "256", "1024"):
-        assert f'class="f-size" value="{size}"' in body
-    assert "state.sizes" in body  # wired into the JS filter
+    assert 'class="dual-range"' in body
+    assert 'id="f-size-min"' in body and 'id="f-size-max"' in body
+    # 3 distinct sizes (64/256/1024) -> slider indices 0..2.
+    assert 'id="f-size-max" min="0" max="2"' in body
+    assert "SIZES_NUM" in body  # wired into the JS filter
+    # The readout shows the current low/high size.
+    assert 'id="size-min-label"' in body and 'id="size-max-label"' in body
     assert 'id="f-check-level"' in body
     assert 'value="all"' in body
     assert 'value="none"' in body

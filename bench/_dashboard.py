@@ -695,10 +695,23 @@ def _filter_controls_html(
     present_statuses = [
         s for s in Status if counts is None or counts.get(s.value, 0) > 0
     ]
-    size_boxes = "\n".join(
-        f'<label class="chip"><input type="checkbox" class="f-size" value="{int(n)}" checked>'
-        f"<span>{int(n)}</span></label>"
-        for n in (sizes or [])
+    # Problem size is a dual-handle range slider over the *indices* of the
+    # sorted distinct sizes, so the two thumbs snap to actual sizes present
+    # and stay evenly spaced even though sizes span orders of magnitude.
+    size_list = [int(n) for n in (sizes or [])]
+    max_idx = max(0, len(size_list) - 1)
+    lo_label = size_list[0] if size_list else "—"
+    hi_label = size_list[-1] if size_list else "—"
+    size_slider = (
+        '<div class="size-readout">n ∈ ['
+        f'<span id="size-min-label">{lo_label}</span>, '
+        f'<span id="size-max-label">{hi_label}</span>]</div>'
+        '<div class="dual-range">'
+        f'<input type="range" id="f-size-min" min="0" max="{max_idx}" value="0" step="1" '
+        'aria-label="minimum problem size">'
+        f'<input type="range" id="f-size-max" min="0" max="{max_idx}" value="{max_idx}" step="1" '
+        'aria-label="maximum problem size">'
+        "</div>"
     )
     backend_boxes = "\n".join(
         f'<label class="chip" data-backend-chip="{html.escape(b)}">'
@@ -731,9 +744,9 @@ def _filter_controls_html(
       <option value="cheap">cheap</option>
     </select>
   </div>
-  <div class="filter-group">
+  <div class="filter-group size-filter">
     <div class="filter-label">Problem size</div>
-    <div class="chips">{size_boxes}</div>
+    {size_slider}
   </div>
 </div>
 <div class="filter-row">
@@ -979,6 +992,20 @@ _CSS = """
     font-size: 12px; line-height: 1.4; }
   .legend-list .badge { flex: 0 0 auto; }
   .legend-desc { color: var(--fg); }
+  .size-filter { min-width: 220px; }
+  .size-readout { font-size: 12px; color: var(--muted); margin-bottom: 6px; font-variant-numeric: tabular-nums; }
+  .size-readout span { color: var(--fg); font-weight: 600; }
+  .dual-range { position: relative; height: 24px; }
+  .dual-range::before { content: ""; position: absolute; left: 0; right: 0; top: 50%;
+    height: 4px; transform: translateY(-50%); background: var(--border); border-radius: 2px; }
+  .dual-range input[type=range] { position: absolute; left: 0; top: 0; width: 100%;
+    height: 24px; margin: 0; background: transparent; pointer-events: none; -webkit-appearance: none; appearance: none; }
+  .dual-range input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none;
+    pointer-events: auto; height: 16px; width: 16px; border-radius: 50%; background: var(--accent);
+    border: 2px solid var(--card); cursor: pointer; }
+  .dual-range input[type=range]::-moz-range-thumb { pointer-events: auto; height: 16px; width: 16px;
+    border-radius: 50%; background: var(--accent); border: 2px solid var(--card); cursor: pointer; }
+  .dual-range input[type=range]::-moz-range-track { background: transparent; }
 """
 
 
@@ -1009,7 +1036,7 @@ _JS = r"""
   const STATUSES = DATA.statuses;
   const FAMILIES = DATA.families;
   const BACKENDS = DATA.backends || [];
-  const SIZES = (DATA.sizes || []).map(String);
+  const SIZES_NUM = (DATA.sizes || []).slice().sort(function (a, b) { return a - b; });
   const CHECK_LEVELS = DATA.check_levels || ["none", "cheap"];
   const OVERALL = DATA.overall_diagnosis || {
     dominant_reason_counts: [],
@@ -1025,12 +1052,23 @@ _JS = r"""
     backends: new Set(BACKENDS),
     families: new Set(FAMILIES),
     statuses: new Set(STATUSES),
-    sizes: new Set(SIZES),
+    sizeMinIdx: 0,
+    sizeMaxIdx: Math.max(0, SIZES_NUM.length - 1),
     checkLevel: "all",
     search: "",
     minSpeedup: null,
     maxSpeedup: null,
   };
+
+  function sizeLow() { return SIZES_NUM.length ? SIZES_NUM[state.sizeMinIdx] : -Infinity; }
+  function sizeHigh() { return SIZES_NUM.length ? SIZES_NUM[state.sizeMaxIdx] : Infinity; }
+
+  function updateSizeLabels() {
+    const lo = document.getElementById("size-min-label");
+    const hi = document.getElementById("size-max-label");
+    if (lo) lo.textContent = SIZES_NUM.length ? sizeLow() : "—";
+    if (hi) hi.textContent = SIZES_NUM.length ? sizeHigh() : "—";
+  }
 
   function filtered() {
     return ROWS.filter(function (r) {
@@ -1038,7 +1076,7 @@ _JS = r"""
       if (state.checkLevel !== "all" && r.check_level !== state.checkLevel) return false;
       if (!state.families.has(r.family)) return false;
       if (!state.statuses.has(r.status)) return false;
-      if (!state.sizes.has(String(r.size))) return false;
+      if (r.size < sizeLow() || r.size > sizeHigh()) return false;
       if (state.search && r.operation_name.indexOf(state.search) === -1) return false;
       if (state.minSpeedup !== null && r.speedup < state.minSpeedup) return false;
       if (state.maxSpeedup !== null && r.speedup > state.maxSpeedup) return false;
@@ -1548,13 +1586,24 @@ _JS = r"""
         refresh();
       });
     });
-    document.querySelectorAll(".f-size").forEach(function (el) {
-      el.addEventListener("change", function () {
-        if (el.checked) state.sizes.add(el.value);
-        else state.sizes.delete(el.value);
+    const sizeMinEl = document.getElementById("f-size-min");
+    const sizeMaxEl = document.getElementById("f-size-max");
+    if (sizeMinEl && sizeMaxEl) {
+      sizeMinEl.addEventListener("input", function () {
+        let v = parseInt(sizeMinEl.value, 10);
+        if (v > state.sizeMaxIdx) { v = state.sizeMaxIdx; sizeMinEl.value = v; }  // don't cross
+        state.sizeMinIdx = v;
+        updateSizeLabels();
         refresh();
       });
-    });
+      sizeMaxEl.addEventListener("input", function () {
+        let v = parseInt(sizeMaxEl.value, 10);
+        if (v < state.sizeMinIdx) { v = state.sizeMinIdx; sizeMaxEl.value = v; }  // don't cross
+        state.sizeMaxIdx = v;
+        updateSizeLabels();
+        refresh();
+      });
+    }
     document.getElementById("f-search").addEventListener("input", function (e) {
       state.search = e.target.value || "";
       refresh();
@@ -1573,12 +1622,16 @@ _JS = r"""
       state.backends = new Set(BACKENDS);
       state.families = new Set(FAMILIES);
       state.statuses = new Set(STATUSES);
-      state.sizes = new Set(SIZES);
+      state.sizeMinIdx = 0;
+      state.sizeMaxIdx = Math.max(0, SIZES_NUM.length - 1);
       state.checkLevel = "all";
       state.search = ""; state.minSpeedup = null; state.maxSpeedup = null;
-      document.querySelectorAll(".f-backend, .f-family, .f-status, .f-size").forEach(function (el) {
+      document.querySelectorAll(".f-backend, .f-family, .f-status").forEach(function (el) {
         el.checked = true;
       });
+      if (sizeMinEl) sizeMinEl.value = 0;
+      if (sizeMaxEl) sizeMaxEl.value = state.sizeMaxIdx;
+      updateSizeLabels();
       document.getElementById("f-search").value = "";
       document.getElementById("f-check-level").value = "all";
       document.getElementById("f-min").value = "";
