@@ -211,7 +211,7 @@ for _name, _factory in [
             name=_name,
             family="space",
             factory=_factory,
-            sizes=(256, 4096, 65536),
+            sizes=(64, 256, 1024),
             backends=("numpy", "jax", "torch"),
         )
     )
@@ -394,9 +394,9 @@ _LINOP_PROBES = [
     ("linop.dense.apply", _make_dense_apply, (64, 256, 1024), ("numpy", "jax", "torch")),
     ("linop.dense.rapply", _make_dense_rapply, (64, 256, 1024), ("numpy", "jax", "torch")),
     ("linop.dense.vapply", _make_dense_vapply, (64, 256, 1024), ("numpy", "jax", "torch")),
-    ("linop.diagonal.apply", _make_diagonal_apply, (256, 4096, 65536), ("numpy", "jax", "torch")),
-    ("linop.sparse.apply", _make_sparse_apply, (256, 4096, 65536), ("numpy",)),
-    ("linop.identity.apply", _make_identity_apply, (256, 4096), ("numpy", "jax", "torch")),
+    ("linop.diagonal.apply", _make_diagonal_apply, (64, 256, 1024), ("numpy", "jax", "torch")),
+    ("linop.sparse.apply", _make_sparse_apply, (64, 256, 1024), ("numpy",)),
+    ("linop.identity.apply", _make_identity_apply, (64, 256, 1024), ("numpy", "jax", "torch")),
     ("linop.composed.apply", _make_composed_apply, (64, 256, 1024), ("numpy", "jax", "torch")),
     ("linop.summed.apply", _make_summed_apply, (64, 256, 1024), ("numpy", "jax", "torch")),
     ("linop.scaled.apply", _make_scaled_apply, (64, 256, 1024), ("numpy", "jax", "torch")),
@@ -582,7 +582,7 @@ for _name, _factory in [
             name=_name,
             family="space",
             factory=_factory,
-            sizes=(32, 64, 128),
+            sizes=(64, 256, 1024),
             backends=("numpy", "jax", "torch"),
         )
     )
@@ -605,7 +605,7 @@ registry.register(
         name="space.convert.self",
         family="space",
         factory=_make_space_convert_self,
-        sizes=(256, 4096),
+        sizes=(64, 256, 1024),
         backends=("numpy", "jax", "torch"),
     )
 )
@@ -700,7 +700,7 @@ for _name, _factory in [
             name=_name,
             family="space",
             factory=_factory,
-            sizes=(8, 16, 32, 64),
+            sizes=(16, 64, 256),
             backends=("numpy", "jax", "torch"),
         )
     )
@@ -771,7 +771,7 @@ for _name, _factory in [
             name=_name,
             family="space",
             factory=_factory,
-            sizes=(256, 4096),
+            sizes=(64, 256, 1024),
             backends=("numpy", "jax", "torch"),
         )
     )
@@ -834,7 +834,7 @@ for _name, _factory in [
             name=_name,
             family="space",
             factory=_factory,
-            sizes=(256, 4096),
+            sizes=(64, 256, 1024),
             backends=("numpy", "jax", "torch"),
         )
     )
@@ -971,10 +971,10 @@ def _make_composed_rapply(backend: str, seed: int, size: int) -> ProbeCase:
 _EXTRA_LINOP_PROBES_BASIC = [
     ("linop.dense.H_apply", _make_dense_H_apply, (64, 256, 1024), ("numpy", "jax", "torch")),
     ("linop.dense.to_dense", _make_dense_to_dense, (64, 256, 1024), ("numpy", "jax", "torch")),
-    ("linop.diagonal.rapply", _make_diagonal_rapply, (256, 4096, 65536), ("numpy", "jax", "torch")),
-    ("linop.diagonal.vapply", _make_diagonal_vapply, (256, 4096, 65536), ("numpy", "jax", "torch")),
-    ("linop.diagonal.rvapply", _make_diagonal_rvapply, (256, 4096, 65536), ("numpy", "jax", "torch")),
-    ("linop.sparse.rapply", _make_sparse_rapply, (256, 4096, 65536), ("numpy",)),
+    ("linop.diagonal.rapply", _make_diagonal_rapply, (64, 256, 1024), ("numpy", "jax", "torch")),
+    ("linop.diagonal.vapply", _make_diagonal_vapply, (64, 256, 1024), ("numpy", "jax", "torch")),
+    ("linop.diagonal.rvapply", _make_diagonal_rvapply, (64, 256, 1024), ("numpy", "jax", "torch")),
+    ("linop.sparse.rapply", _make_sparse_rapply, (64, 256, 1024), ("numpy",)),
     ("linop.composed.rapply", _make_composed_rapply, (64, 256, 1024), ("numpy", "jax", "torch")),
 ]
 for _name, _factory, _sizes, _backends in _EXTRA_LINOP_PROBES_BASIC:
@@ -1026,7 +1026,7 @@ for _name, _factory in [
             name=_name,
             family="linop",
             factory=_factory,
-            sizes=(256, 4096),
+            sizes=(64, 256, 1024),
             backends=("numpy", "jax", "torch"),
         )
     )
@@ -1131,10 +1131,10 @@ def _make_matrix_free_shift_apply(backend: str, seed: int, size: int) -> ProbeCa
 
 
 _MATRIX_FREE_LINOP_PROBES = [
-    ("linop.matrix_free.diagonal_action.apply", _make_matrix_free_diagonal_apply, (256, 4096, 65536), ("numpy", "jax", "torch")),
-    ("linop.matrix_free.diagonal_action.rapply", _make_matrix_free_diagonal_rapply, (256, 4096, 65536), ("numpy", "jax", "torch")),
-    ("linop.matrix_free.fft_action.apply", _make_matrix_free_fft_apply, (256, 4096, 65536), ("numpy",)),
-    ("linop.matrix_free.shift_action.apply", _make_matrix_free_shift_apply, (256, 4096, 65536), ("numpy",)),
+    ("linop.matrix_free.diagonal_action.apply", _make_matrix_free_diagonal_apply, (64, 256, 1024), ("numpy", "jax", "torch")),
+    ("linop.matrix_free.diagonal_action.rapply", _make_matrix_free_diagonal_rapply, (64, 256, 1024), ("numpy", "jax", "torch")),
+    ("linop.matrix_free.fft_action.apply", _make_matrix_free_fft_apply, (64, 256, 1024), ("numpy",)),
+    ("linop.matrix_free.shift_action.apply", _make_matrix_free_shift_apply, (64, 256, 1024), ("numpy",)),
 ]
 for _name, _factory, _sizes, _backends in _MATRIX_FREE_LINOP_PROBES:
     registry.register(
@@ -1342,14 +1342,14 @@ def _make_sum_to_single_apply_ragged(backend: str, seed: int, size: int) -> Prob
 
 
 _TREE_LINOP_PROBES = [
-    ("linop.block_diagonal.apply", _make_block_diagonal_apply, (32, 128, 512), ("numpy", "jax", "torch"), "uniform blocks; dispatch fold target"),
-    ("linop.block_diagonal.rapply", _make_block_diagonal_rapply, (32, 128, 512), ("numpy", "jax", "torch"), "uniform blocks; dispatch fold target"),
-    ("linop.stacked.apply", _make_stacked_linop_apply, (32, 128, 512), ("numpy", "jax", "torch"), "uniform blocks; dispatch fold target"),
-    ("linop.sum_to_single.apply", _make_sum_to_single_apply, (32, 128, 512), ("numpy", "jax", "torch"), "uniform blocks; dispatch fold target"),
-    ("linop.block_diagonal.apply.ragged", _make_block_diagonal_apply_ragged, (32, 128, 512), ("numpy", "jax", "torch"), "ragged blocks; no uniform fold"),
-    ("linop.block_diagonal.rapply.ragged", _make_block_diagonal_rapply_ragged, (32, 128, 512), ("numpy", "jax", "torch"), "ragged blocks; no uniform fold"),
-    ("linop.stacked.apply.ragged", _make_stacked_linop_apply_ragged, (32, 128, 512), ("numpy", "jax", "torch"), "ragged blocks; no uniform fold"),
-    ("linop.sum_to_single.apply.ragged", _make_sum_to_single_apply_ragged, (32, 128, 512), ("numpy", "jax", "torch"), "ragged blocks; no uniform fold"),
+    ("linop.block_diagonal.apply", _make_block_diagonal_apply, (64, 256, 1024), ("numpy", "jax", "torch"), "uniform blocks; dispatch fold target"),
+    ("linop.block_diagonal.rapply", _make_block_diagonal_rapply, (64, 256, 1024), ("numpy", "jax", "torch"), "uniform blocks; dispatch fold target"),
+    ("linop.stacked.apply", _make_stacked_linop_apply, (64, 256, 1024), ("numpy", "jax", "torch"), "uniform blocks; dispatch fold target"),
+    ("linop.sum_to_single.apply", _make_sum_to_single_apply, (64, 256, 1024), ("numpy", "jax", "torch"), "uniform blocks; dispatch fold target"),
+    ("linop.block_diagonal.apply.ragged", _make_block_diagonal_apply_ragged, (64, 256, 1024), ("numpy", "jax", "torch"), "ragged blocks; no uniform fold"),
+    ("linop.block_diagonal.rapply.ragged", _make_block_diagonal_rapply_ragged, (64, 256, 1024), ("numpy", "jax", "torch"), "ragged blocks; no uniform fold"),
+    ("linop.stacked.apply.ragged", _make_stacked_linop_apply_ragged, (64, 256, 1024), ("numpy", "jax", "torch"), "ragged blocks; no uniform fold"),
+    ("linop.sum_to_single.apply.ragged", _make_sum_to_single_apply_ragged, (64, 256, 1024), ("numpy", "jax", "torch"), "ragged blocks; no uniform fold"),
 ]
 for _name, _factory, _sizes, _backends, _notes in _TREE_LINOP_PROBES:
     registry.register(
