@@ -64,6 +64,10 @@ docs = [
   "sphinx-copybutton>=0.5",
   "sphinx-design>=0.6",
   "numpydoc>=1.8",
+  # Registers the ``ipython3`` Pygments lexer that nbconvert-generated
+  # tutorial RST uses, so the strict (`-W`) docs build does not fail on
+  # "lexer not known" if a tutorial is regenerated with that directive.
+  "ipython>=8.0",
 ]
 dev = [
   "pytest>=8.0",

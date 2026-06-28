@@ -9,6 +9,31 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- The **`bench` benchmark submodule** is brought under version control and
+  aligned to the agreed 0.4.1 micro-surface (ADR-023,
+  `docs/dev/0.4.1-bench-surface.md`): probes measure per-call SpaceCore overhead
+  against a hand-optimal pure-array-library bare, across `space` / `linop` /
+  `functional` only (linalg, the synthetic kernel-comparison probes,
+  `check_member`, tree-space, and generated-linop probes removed). New
+  **configuration-regime axis** (`baseline` / `dispatch` / `dispatch_cache` /
+  `verify`) times the same probe under the ADR-016 dispatch and ADR-022 caching
+  toggles, recording a within-run `regime_speedup`; block operators are measured
+  uniform **and** ragged. The interactive HTML dashboard gains a problem-size
+  range slider, a backend/family/status/size/check/search/speedup filter set
+  that drives a fully **filter-reactive** summary and diagnosis section, a
+  bottom-of-page tag legend, and zero-count-status hiding. Every backend runs in
+  float64 for a fair comparison against the NumPy reference (JAX via
+  `enable_jax_x64`, Torch via `enable_torch_x64`); the sole exception is Apple
+  MPS (float32-only hardware), where the device probe builds a float32 case and
+  the correctness gate widens accordingly. The float64-aware tolerance is shared
+  by the verdict and diagnosis layers. **JAX is benchmarked only at
+  `check_level="none"`** and **jits both the SpaceCore call and the bare
+  reference**, comparing their post-compile steady state (the warmup absorbs
+  compilation, so the speedup is jitted-vs-jitted with compilation excluded);
+  each side's compile latency is recorded and reported separately (two
+  `sc compile` / `bare compile` columns). The pair is resolved **symmetrically** —
+  if either side is not jittable, both are timed eagerly, so a comparison is never
+  eager-vs-jitted. Tooling only — `spacecore` never imports `bench`.
 - ADR-016 optimized-kernel **dispatch** is accepted and implemented (off by
   default). `KernelSpec` gains `dispatch_key`, `priority`, and an optional
   shape-only `cost` estimator (`KernelCost`); a spec that names a `dispatch_key`

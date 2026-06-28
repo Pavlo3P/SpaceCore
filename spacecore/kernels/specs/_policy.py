@@ -135,8 +135,7 @@ class KernelSpec:
         ``test_block_diagonal_dense_apply_matches_generic"``.
     benchmark_id
         Identifier of the bench case that measures the optimized vs
-        generic ratio. Must be reachable through
-        :func:`bench._operations.kernel_benchmark_ids`. Required.
+        generic ratio. Required.
     rtol, atol
         Tolerance used by the matching test. Defaults are tight; loosen
         only when an underlying backend op already disagrees with the
