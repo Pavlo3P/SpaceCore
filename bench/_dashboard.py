@@ -229,6 +229,7 @@ def render_dashboard(
         "reason_colors": _REASON_COLORS,
         "families": sorted({r["family"] for r in rows}),
         "backends": backends,
+        "sizes": sorted({r["size"] for r in rows}),
         "check_levels": sorted({r["check_level"] for r in rows}),
         "statuses": [s.value for s in Status],
         "has_baseline": bool(baseline_rows),
@@ -585,7 +586,7 @@ def _render_html(payload: dict) -> str:
 
     summary_cards = _summary_cards_html(n_cases, median_speedup, counts)
     filter_controls = _filter_controls_html(
-        payload["families"], payload["backends"], counts
+        payload["families"], payload["backends"], payload["sizes"], counts
     )
     diagnosis_section = _diagnosis_section_html(payload["overall_diagnosis"])
     legend_section = _legend_section_html(payload)
@@ -684,13 +685,21 @@ def _card(label: str, value: str, color: str) -> str:
 
 
 def _filter_controls_html(
-    families: list[str], backends: list[str], counts: dict | None = None
+    families: list[str],
+    backends: list[str],
+    sizes: list[int] | None = None,
+    counts: dict | None = None,
 ) -> str:
     # Only offer a status filter chip for statuses that actually occurred, so
     # an absent CORRECTNESS_FAILURE / REGRESSION never shows up as a control.
     present_statuses = [
         s for s in Status if counts is None or counts.get(s.value, 0) > 0
     ]
+    size_boxes = "\n".join(
+        f'<label class="chip"><input type="checkbox" class="f-size" value="{int(n)}" checked>'
+        f"<span>{int(n)}</span></label>"
+        for n in (sizes or [])
+    )
     backend_boxes = "\n".join(
         f'<label class="chip" data-backend-chip="{html.escape(b)}">'
         f'<input type="checkbox" class="f-backend" value="{html.escape(b)}" checked>'
@@ -721,6 +730,10 @@ def _filter_controls_html(
       <option value="none">none</option>
       <option value="cheap">cheap</option>
     </select>
+  </div>
+  <div class="filter-group">
+    <div class="filter-label">Problem size</div>
+    <div class="chips">{size_boxes}</div>
   </div>
 </div>
 <div class="filter-row">
@@ -996,6 +1009,7 @@ _JS = r"""
   const STATUSES = DATA.statuses;
   const FAMILIES = DATA.families;
   const BACKENDS = DATA.backends || [];
+  const SIZES = (DATA.sizes || []).map(String);
   const CHECK_LEVELS = DATA.check_levels || ["none", "cheap"];
   const OVERALL = DATA.overall_diagnosis || {
     dominant_reason_counts: [],
@@ -1011,6 +1025,7 @@ _JS = r"""
     backends: new Set(BACKENDS),
     families: new Set(FAMILIES),
     statuses: new Set(STATUSES),
+    sizes: new Set(SIZES),
     checkLevel: "all",
     search: "",
     minSpeedup: null,
@@ -1023,6 +1038,7 @@ _JS = r"""
       if (state.checkLevel !== "all" && r.check_level !== state.checkLevel) return false;
       if (!state.families.has(r.family)) return false;
       if (!state.statuses.has(r.status)) return false;
+      if (!state.sizes.has(String(r.size))) return false;
       if (state.search && r.operation_name.indexOf(state.search) === -1) return false;
       if (state.minSpeedup !== null && r.speedup < state.minSpeedup) return false;
       if (state.maxSpeedup !== null && r.speedup > state.maxSpeedup) return false;
@@ -1532,6 +1548,13 @@ _JS = r"""
         refresh();
       });
     });
+    document.querySelectorAll(".f-size").forEach(function (el) {
+      el.addEventListener("change", function () {
+        if (el.checked) state.sizes.add(el.value);
+        else state.sizes.delete(el.value);
+        refresh();
+      });
+    });
     document.getElementById("f-search").addEventListener("input", function (e) {
       state.search = e.target.value || "";
       refresh();
@@ -1550,9 +1573,10 @@ _JS = r"""
       state.backends = new Set(BACKENDS);
       state.families = new Set(FAMILIES);
       state.statuses = new Set(STATUSES);
+      state.sizes = new Set(SIZES);
       state.checkLevel = "all";
       state.search = ""; state.minSpeedup = null; state.maxSpeedup = null;
-      document.querySelectorAll(".f-backend, .f-family, .f-status").forEach(function (el) {
+      document.querySelectorAll(".f-backend, .f-family, .f-status, .f-size").forEach(function (el) {
         el.checked = true;
       });
       document.getElementById("f-search").value = "";

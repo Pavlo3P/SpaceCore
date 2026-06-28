@@ -207,6 +207,7 @@ def _mock_result(
     *,
     err: float = 0.0,
     check_level: str = "cheap",
+    size: int = 256,
 ) -> ProbeResult:
     # Use bare=100 µs so the regression threshold (20% + 1 µs floor) is meaningful.
     bare = 100_000.0
@@ -229,7 +230,7 @@ def _mock_result(
     return ProbeResult(
         operation_name=name,
         family=family,
-        size=256,
+        size=size,
         seeds=seeds,
         bare_median_ns=bare,
         sc_median_ns=sc,
@@ -327,12 +328,13 @@ def test_dashboard_writes_a_self_contained_html_file(tmp_path):
 
     # Cover all four performance statuses so the (count>0) status chips and
     # cards actually render: WIN(1.0), NEUTRAL(0.8/0.5), LOSS(0.3), HEAVY_LOSS(0.05).
+    # Vary the size so multiple problem-size filter chips render.
     results = [
-        _mock_result("a", "space", 1.0),
-        _mock_result("b", "linop", 0.5, check_level="none"),
-        _mock_result("c", "functional", 0.8),
-        _mock_result("d", "linop", 0.3),
-        _mock_result("e", "space", 0.05),
+        _mock_result("a", "space", 1.0, size=64),
+        _mock_result("b", "linop", 0.5, check_level="none", size=64),
+        _mock_result("c", "functional", 0.8, size=256),
+        _mock_result("d", "linop", 0.3, size=256),
+        _mock_result("e", "space", 0.05, size=1024),
     ]
     out = render_dashboard(results, tmp_path / "dashboard.html")
     assert out.exists()
@@ -357,6 +359,11 @@ def test_dashboard_writes_a_self_contained_html_file(tmp_path):
     # Family filter checkboxes must be present.
     for family in ("space", "linop", "functional"):
         assert family in body
+    # Problem-size filter chips render for each distinct size present.
+    assert "Problem size" in body
+    for size in ("64", "256", "1024"):
+        assert f'class="f-size" value="{size}"' in body
+    assert "state.sizes" in body  # wired into the JS filter
     assert 'id="f-check-level"' in body
     assert 'value="all"' in body
     assert 'value="none"' in body
