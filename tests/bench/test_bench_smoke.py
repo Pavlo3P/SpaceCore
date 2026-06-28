@@ -346,6 +346,14 @@ def test_dashboard_writes_a_self_contained_html_file(tmp_path):
         assert f'class="f-status" value="{status}"' in body
     # A status with zero cases (no CORRECTNESS_FAILURE here) gets no chip.
     assert 'class="f-status" value="CORRECTNESS_FAILURE"' not in body
+    # Bottom-of-page tag legend explains the badges that are present and
+    # omits the ones that are not (no CORRECTNESS_FAILURE row this run).
+    assert "Tag legend" in body
+    assert "matches or beats the bare" in body  # WIN explanation
+    # Scope the absent-tag check to the legend section itself (the embedded
+    # JSON after it legitimately carries the full color/enum vocabulary).
+    legend_seg = body.split("Tag legend", 1)[1].split('class="footer"', 1)[0]
+    assert "CORRECTNESS_FAILURE" not in legend_seg
     # Family filter checkboxes must be present.
     for family in ("space", "linop", "functional"):
         assert family in body

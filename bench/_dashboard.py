@@ -133,6 +133,38 @@ _REASON_COLORS: dict[str, str] = {
 }
 
 
+# Human-readable explanations for the badge legend at the foot of the page.
+# Only tags actually present in a run are shown (see _legend_section_html).
+_STATUS_LEGEND: dict[str, str] = {
+    "WIN": "SpaceCore matches or beats the bare backend call (speedup ≥ 0.95).",
+    "NEUTRAL": "Small, usually constant-factor overhead (0.50 ≤ speedup < 0.95).",
+    "LOSS": "Meaningful overhead (0.10 ≤ speedup < 0.50).",
+    "HEAVY_LOSS": "More than 10× slower than bare (speedup < 0.10) — typically a "
+                  "tiny-problem-size effect that amortizes as inputs grow.",
+    "CORRECTNESS_FAILURE": "Max error vs the NumPy reference exceeds the per-family "
+                           "tolerance (float32 backends use a wider gate).",
+    "REGRESSION": "Compare mode only: slower than the supplied baseline beyond the "
+                  "regression threshold.",
+}
+
+_REASON_LEGEND: dict[str, str] = {
+    "CONSTANT_VALIDATION_COST": "A fixed per-call validation cost dominates an "
+                                "otherwise cheap bare op.",
+    "BARE_SATURATES_OP": "SpaceCore is within 5% of bare — the problem is large "
+                         "enough to amortize the abstraction overhead.",
+    "BARE_TOO_SMALL_TO_COMPARE": "The bare reference is under 100 ns — too small for "
+                                 "a meaningful ratio.",
+    "JAX_COMPILE_DOMINANT": "JAX compile latency is more than 10× the steady-state call.",
+    "JAX_TRACE_OVERHEAD": "JAX eager-trace overhead dominates the call.",
+    "TORCH_EAGER_OVERHEAD": "Torch eager-dispatch overhead dominates the call.",
+    "HIGH_SEED_JITTER": "High variance across the four seeds — read the number cautiously.",
+    "MEMORY_OVERHEAD": "SpaceCore peak allocation is more than 4× the bare peak.",
+    "CORRECTNESS_FAILURE": "Result diverges from the reference beyond tolerance "
+                           "(see the status column).",
+    "NEUTRAL": "No specific overhead source identified.",
+}
+
+
 _REGRESSION_THRESHOLD = 0.20
 _REGRESSION_NOISE_FLOOR_NS = 1_000.0
 
@@ -556,6 +588,7 @@ def _render_html(payload: dict) -> str:
         payload["families"], payload["backends"], counts
     )
     diagnosis_section = _diagnosis_section_html(payload["overall_diagnosis"])
+    legend_section = _legend_section_html(payload)
 
     return _TEMPLATE.format(
         plotly_cdn=_PLOTLY_CDN,
@@ -567,6 +600,7 @@ def _render_html(payload: dict) -> str:
         summary_cards=summary_cards,
         filter_controls=filter_controls,
         diagnosis_section=diagnosis_section,
+        legend_section=legend_section,
         embedded_data=embedded_html_safe,
         plot_baseline_block=_PLOT_BASELINE_BLOCK if payload["has_baseline"] else "",
         js=_JS,
@@ -596,6 +630,48 @@ def _summary_cards_html(n_cases: int, median_speedup: float, counts: dict) -> st
             continue
         parts.append(_card(status.value, str(count), _STATUS_COLORS[status.value]))
     return "\n".join(parts)
+
+
+def _legend_section_html(payload: dict) -> str:
+    """Explain every status and diagnosis-reason badge that appears in the run.
+
+    Only tags actually present are listed, so the legend matches what is on
+    the page (and never explains a CORRECTNESS_FAILURE that did not occur).
+    """
+    counts = payload["summary"]["counts"]
+    rows = payload.get("rows", [])
+    present_status = [s.value for s in Status if counts.get(s.value, 0) > 0]
+    present_reason = sorted(
+        {row.get("diagnosis_reason") for row in rows if row.get("diagnosis_reason")}
+    )
+
+    def _items(tags: list[str], colors: dict, text: dict) -> str:
+        out = []
+        for tag in tags:
+            badge = (
+                f'<span class="badge" style="background:{colors.get(tag, "#888")};">'
+                f"{html.escape(tag)}</span>"
+            )
+            desc = html.escape(text.get(tag, ""))
+            out.append(f'<li>{badge}<span class="legend-desc">{desc}</span></li>')
+        return "".join(out)
+
+    groups = []
+    status_items = _items(present_status, _STATUS_COLORS, _STATUS_LEGEND)
+    if status_items:
+        groups.append(
+            '<div class="legend-group"><h3>Status — overall verdict per case</h3>'
+            f'<ul class="legend-list">{status_items}</ul></div>'
+        )
+    reason_items = _items(present_reason, _REASON_COLORS, _REASON_LEGEND)
+    if reason_items:
+        groups.append(
+            '<div class="legend-group"><h3>Diagnosis — why the case looks that way</h3>'
+            f'<ul class="legend-list">{reason_items}</ul></div>'
+        )
+    if not groups:
+        return ""
+    return '<h2>Tag legend</h2>\n<div class="legend">' + "\n".join(groups) + "</div>"
 
 
 def _card(label: str, value: str, color: str) -> str:
@@ -881,6 +957,15 @@ _CSS = """
   }
   .table-wrap table { border: 0; border-radius: 0; }
   .footer { color: var(--muted); font-size: 12px; margin-top: 16px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 28px; margin: 8px 0 20px; }
+  .legend-group { flex: 1 1 360px; min-width: 300px; }
+  .legend-group h3 { font-size: 13px; font-weight: 600; color: var(--muted);
+    margin: 0 0 10px; text-transform: none; }
+  .legend-list { list-style: none; padding: 0; margin: 0; }
+  .legend-list li { display: flex; align-items: baseline; gap: 8px; margin: 7px 0;
+    font-size: 12px; line-height: 1.4; }
+  .legend-list .badge { flex: 0 0 auto; }
+  .legend-desc { color: var(--fg); }
 """
 
 
@@ -1553,6 +1638,8 @@ _TEMPLATE = """<!DOCTYPE html>
     <tbody id="table-body"></tbody>
   </table>
 </div>
+
+{legend_section}
 
 <div class="footer">
   Generated by <code>bench/_dashboard.py</code>. Charts are rendered client-side
