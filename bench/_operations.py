@@ -473,7 +473,7 @@ for _name, _factory in [
             name=_name,
             family="functional",
             factory=_factory,
-            sizes=(256, 4096, 65536),
+            sizes=(64, 256, 1024),
             backends=("numpy", "jax", "torch"),
         )
     )
@@ -1389,7 +1389,7 @@ registry.register(
         name="functional.matrix_free.value",
         family="functional",
         factory=_make_matrix_free_linear_functional_value,
-        sizes=(256, 4096, 65536),
+        sizes=(64, 256, 1024),
         backends=("numpy", "jax", "torch"),
     )
 )
