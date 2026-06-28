@@ -1,6 +1,59 @@
 Release notes
 =============
 
+Version 0.4.1
+-------------
+
+Released 2026-06-28. SpaceCore 0.4.1 lands the optimized-kernel **dispatch**
+layer (off by default), explicit lazy-operator **fusion**, a materialized-form
+**cache** for the batched folds, and a unified **benchmark submodule** — all
+without changing any default-path result.
+
+Added
+~~~~~
+
+* ADR-016 optimized-kernel **dispatch** (off by default). ``KernelSpec`` gains
+  ``dispatch_key`` / ``priority`` / a shape-only ``KernelCost``; the registry
+  indexes dispatch-eligible (``rtol == atol == 0``) specs by key, and a single
+  ``spacecore.kernels.dispatch`` entry point routes the first applicable,
+  affordable spec or runs the inline ``generic`` fallback. ``dispatch_mode``
+  (``off`` / ``on`` / ``verify``) is settable process-globally and per-scope;
+  the materializing fast path is gated by a memory budget from
+  ``BackendOps.free_memory_bytes()``. With dispatch off, every wired call site is
+  result-identical to its prior inline path.
+* Eight dispatch-eligible kernels (exact, ``rtol = atol = 0``): composed
+  zero-annihilation and identity-elision, and the uniform flat-dense
+  block-diagonal / stacked / sum-to-single batched-``matmul`` folds across the
+  apply / adjoint / batched directions. Each carries a correctness reference and
+  a ``python -m bench`` probe; all route only under
+  ``dispatch_mode("on"/"verify")``.
+* ADR-021 lazy-operator-algebra ``LinOp.fuse(*, materialize=False)``: collapses
+  each maximal dense subtree into one ``DenseLinOp`` (composition becomes a matrix
+  product, with scalar / sum / adjoint / block folds), mathematically equal up to
+  rounding and adjoint-consistent on any geometry. A matrix-free operand is never
+  densified unless ``materialize=True``.
+* ADR-022 materialized-form cache for the uniform batched folds: the
+  input-independent stacked block-matrix array is built once and reused, memoized
+  per accessor on ``CachedStackParts`` (excluded from operator identity and the
+  pytree; matrix-free never cached; the dispatcher stays stateless).
+* ``NumpyOps.free_memory_bytes()`` via ``psutil`` (now a required core
+  dependency), so the dispatcher's memory gate can size materializing fast paths
+  on the CPU backend.
+* Unified ``bench`` benchmark submodule (``python -m bench``): factory probes
+  over ``space`` / ``linop`` / ``functional`` measuring per-call overhead against
+  a hand-optimal pure-array-library bare, a dispatch/cache regime axis, uniform-
+  and-ragged block probes, all backends benchmarked in float64, JAX run
+  jitted-vs-jitted (compilation excluded and reported separately), and a
+  filter-reactive interactive HTML dashboard. Tooling only — ``spacecore`` never
+  imports ``bench``.
+
+Fixed
+~~~~~
+
+* Corrected stale ``correctness_ref`` node ids on two shipped ``KernelSpec``
+  objects (``composed-chain-apply``, ``block-diagonal-dense-apply``) that named
+  non-existent module-level test nodes instead of the real ``Class::method`` ids.
+
 Version 0.4.0
 -------------
 

@@ -145,4 +145,4 @@ def test_package_version_matches_project_metadata():
     assert metadata["tool"]["setuptools"]["dynamic"]["version"]["attr"] == (
         "spacecore._version.__version__"
     )
-    assert sc.__version__ == "0.4.0"
+    assert sc.__version__ == "0.4.1"

@@ -7,6 +7,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.1] — 2026-06-28
+
 ### Added
 
 - The **`bench` benchmark submodule** is brought under version control and
