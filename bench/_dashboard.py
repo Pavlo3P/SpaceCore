@@ -1006,6 +1006,10 @@ _CSS = """
   .dual-range input[type=range]::-moz-range-thumb { pointer-events: auto; height: 16px; width: 16px;
     border-radius: 50%; background: var(--accent); border: 2px solid var(--card); cursor: pointer; }
   .dual-range input[type=range]::-moz-range-track { background: transparent; }
+  /* Max on top by default; JS lifts min above max when they collapse at the
+     top edge so the buried thumb stays grabbable (setSizeZ). */
+  .dual-range #f-size-min { z-index: 2; }
+  .dual-range #f-size-max { z-index: 3; }
 """
 
 
@@ -1588,11 +1592,23 @@ _JS = r"""
     });
     const sizeMinEl = document.getElementById("f-size-min");
     const sizeMaxEl = document.getElementById("f-size-max");
+    function setSizeZ() {
+      // Overlapping range inputs: the later sibling (max) paints on top, so a
+      // collapsed range at the top edge would bury the min thumb and trap it.
+      // When min is pinned at the top, the max thumb has nowhere up to go —
+      // lift min above max so the range stays re-openable. Everywhere else the
+      // default (max on top) keeps the max thumb grabbable.
+      if (!sizeMinEl || !sizeMaxEl) return;
+      const minOnTop = state.sizeMinIdx >= SIZES_NUM.length - 1;
+      sizeMinEl.style.zIndex = minOnTop ? "4" : "2";
+      sizeMaxEl.style.zIndex = minOnTop ? "2" : "3";
+    }
     if (sizeMinEl && sizeMaxEl) {
       sizeMinEl.addEventListener("input", function () {
         let v = parseInt(sizeMinEl.value, 10);
         if (v > state.sizeMaxIdx) { v = state.sizeMaxIdx; sizeMinEl.value = v; }  // don't cross
         state.sizeMinIdx = v;
+        setSizeZ();
         updateSizeLabels();
         refresh();
       });
@@ -1600,9 +1616,11 @@ _JS = r"""
         let v = parseInt(sizeMaxEl.value, 10);
         if (v < state.sizeMinIdx) { v = state.sizeMinIdx; sizeMaxEl.value = v; }  // don't cross
         state.sizeMaxIdx = v;
+        setSizeZ();
         updateSizeLabels();
         refresh();
       });
+      setSizeZ();  // initial stacking
     }
     document.getElementById("f-search").addEventListener("input", function (e) {
       state.search = e.target.value || "";
@@ -1631,6 +1649,7 @@ _JS = r"""
       });
       if (sizeMinEl) sizeMinEl.value = 0;
       if (sizeMaxEl) sizeMaxEl.value = state.sizeMaxIdx;
+      setSizeZ();
       updateSizeLabels();
       document.getElementById("f-search").value = "";
       document.getElementById("f-check-level").value = "all";

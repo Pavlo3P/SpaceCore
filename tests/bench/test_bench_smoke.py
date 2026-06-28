@@ -368,6 +368,10 @@ def test_dashboard_writes_a_self_contained_html_file(tmp_path):
     assert "SIZES_NUM" in body  # wired into the JS filter
     # The readout shows the current low/high size.
     assert 'id="size-min-label"' in body and 'id="size-max-label"' in body
+    # Overlapping-range thumbs get z-index management so a range collapsed at
+    # the top edge stays re-openable (don't bury the min thumb).
+    assert "function setSizeZ()" in body
+    assert "#f-size-min { z-index" in body
     assert 'id="f-check-level"' in body
     assert 'value="all"' in body
     assert 'value="none"' in body
