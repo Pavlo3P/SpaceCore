@@ -303,6 +303,21 @@ class TestGradientNorm:
         # A non-finite imaginary part is caught even though the real part is finite.
         assert not bool(_tree_all_finite((jnp.array([1 + 0j, complex(0, float("nan"))]),)))
 
+    def test_linesearch_steps_sums_all_counters(self):
+        import collections
+
+        import jax.numpy as jnp
+
+        from spacecore.optimize._optax import _linesearch_steps
+
+        Info = collections.namedtuple("Info", ["num_linesearch_steps"])
+        # Two separate line-search infos nested in a chain-like state are summed,
+        # not just the first one found.
+        state = (Info(jnp.asarray(3)), ("other", Info(jnp.asarray(4))))
+        assert int(_linesearch_steps(state)) == 7
+        # No counter present -> None (gradient-transformation optimizers).
+        assert _linesearch_steps(("no", "counters")) is None
+
 
 # ===========================================================================
 # Input guards

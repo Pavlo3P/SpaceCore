@@ -78,26 +78,35 @@ class _LoopState(NamedTuple):
 
 def _linesearch_steps(opt_state: Any) -> Any:
     """
-    Return an optax state's ``num_linesearch_steps`` counter, or ``None``.
+    Sum every ``num_linesearch_steps`` counter in an optax state, or ``None``.
 
-    Line-search optimizers (e.g. ``optax.lbfgs``) expose
-    ``info.num_linesearch_steps`` somewhere in their state; gradient-transformation
+    Line-search optimizers expose ``num_linesearch_steps`` as *per-update*
+    line-search info in their state (backtracking reports ``search_state.iter_num``,
+    zoom reports ``final_state.count`` for the current round); gradient-transformation
     optimizers (adam, sgd, ...) do not. The search is structural (walks NamedTuple
-    fields / tuples / dicts) so it is robust to how the optimizer nests its state.
+    fields / tuples / dicts), and *every* counter found is summed, so a chain of
+    several line-search transforms is counted in full rather than only the first.
+    Returns ``None`` when no counter is present.
     """
+    found = []
     stack = [opt_state]
     while stack:
         node = stack.pop()
         fields = getattr(node, "_fields", None)
         if fields is not None:  # NamedTuple
             if "num_linesearch_steps" in fields:
-                return node.num_linesearch_steps
+                found.append(node.num_linesearch_steps)
             stack.extend(getattr(node, f) for f in fields)
         elif isinstance(node, (tuple, list)):
             stack.extend(node)
         elif isinstance(node, dict):
             stack.extend(node.values())
-    return None
+    if not found:
+        return None
+    total = found[0]
+    for extra in found[1:]:
+        total = total + extra
+    return total
 
 
 def _tree_l2_norm(tree: Any) -> Any:
@@ -155,10 +164,14 @@ class OptaxResult:
         optimizer makes internally -- those are reported separately as
         ``n_linesearch_steps``.
     n_linesearch_steps : int
-        Cumulative line-search iterations reported by the optimizer (from
-        ``num_linesearch_steps`` in the optax state, e.g. ``optax.lbfgs``); ``0``
-        when the optimizer performs no line search. Each step performs roughly one
-        internal objective evaluation. The driver does not reuse these via
+        Cumulative line-search iterations, summed over the run from the optimizer's
+        per-update ``num_linesearch_steps`` (e.g. ``optax.lbfgs``; a chain of several
+        line-search transforms is summed in full). ``0`` when the optimizer performs
+        no line search. This is an *approximate* count of the extra internal
+        objective evaluations: each line-search step corresponds to roughly one
+        evaluation, but the exact per-step count is optax-internal and
+        line-search-dependent, so treat it as an estimate rather than an exact
+        ``nfev`` contribution. The driver does not reuse these values via
         ``optax.value_and_grad_from_state``: that would substitute the autodiff
         gradient of ``F.value`` for the ``X.riesz(F.grad)`` gradient the SpaceCore
         contract requires, so line-search values are recomputed rather than cached.
