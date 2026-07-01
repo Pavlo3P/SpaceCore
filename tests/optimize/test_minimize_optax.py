@@ -71,7 +71,9 @@ class TestConvergence:
         assert res.message == "converged"
         assert res.num_iters < 2000  # stopped on the gradient tolerance, not the cap
         assert res.final_grad_norm <= 1e-5
-        # One fused value_and_grad per iteration plus the initial evaluation.
+        # One fused value_and_grad per iteration plus the initial evaluation
+        # (adam does no line search, so n_linesearch_steps is 0).
+        assert res.n_linesearch_steps == 0
         assert res.nfev == res.njev == res.num_iters + 1
         np.testing.assert_allclose(to_numpy(res.x_element), x_star, atol=1e-2)
 
@@ -155,7 +157,21 @@ class TestStopReasons:
         res = sc.minimize_optax(F, X.zeros(), optax.sgd(1e-2), max_iter=17, tol=0.0, verbose=0)
 
         assert res.num_iters == 17
+        assert res.n_linesearch_steps == 0
         assert res.nfev == 18 and res.njev == 18  # num_iters + 1
+
+    def test_lbfgs_folds_linesearch_into_nfev(self):
+        import optax
+
+        ctx = _jax_ctx()
+        X, F, x_star = euclidean_problem(ctx)
+        res = sc.minimize_optax(F, X.zeros(), optax.lbfgs(), max_iter=100, tol=1e-6, verbose=0)
+
+        assert res.success
+        assert res.n_linesearch_steps > 0  # lbfgs runs a line search
+        # nfev = driver evals (num_iters + 1) + optax line-search evals.
+        assert res.nfev == res.njev == res.num_iters + 1 + res.n_linesearch_steps
+        np.testing.assert_allclose(to_numpy(res.x_element), x_star, atol=1e-4)
 
     def test_nonfinite_diverges(self):
         import optax

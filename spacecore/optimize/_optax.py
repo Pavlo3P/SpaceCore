@@ -66,13 +66,38 @@ class _History(NamedTuple):
 
 
 class _LoopState(NamedTuple):
-    """``while_loop`` carry: counter, optimizer state, finiteness, history."""
+    """``while_loop`` carry: counter, optimizer state, finiteness, history, ls-count."""
 
     iteration: Any
     state: _OptaxState
     finite: Any
     history: _History
     history_index: Any
+    nls: Any  # cumulative line-search steps
+
+
+def _linesearch_steps(opt_state: Any) -> Any:
+    """
+    Return an optax state's ``num_linesearch_steps`` counter, or ``None``.
+
+    Line-search optimizers (e.g. ``optax.lbfgs``) expose
+    ``info.num_linesearch_steps`` somewhere in their state; gradient-transformation
+    optimizers (adam, sgd, ...) do not. The search is structural (walks NamedTuple
+    fields / tuples / dicts) so it is robust to how the optimizer nests its state.
+    """
+    stack = [opt_state]
+    while stack:
+        node = stack.pop()
+        fields = getattr(node, "_fields", None)
+        if fields is not None:  # NamedTuple
+            if "num_linesearch_steps" in fields:
+                return node.num_linesearch_steps
+            stack.extend(getattr(node, f) for f in fields)
+        elif isinstance(node, (tuple, list)):
+            stack.extend(node)
+        elif isinstance(node, dict):
+            stack.extend(node.values())
+    return None
 
 
 @dataclass
@@ -91,10 +116,15 @@ class OptaxResult:
     num_iters : int
         Iterations executed.
     nfev, njev : int
-        Value and gradient evaluations performed by the driver: one fused
-        ``value_and_grad`` per iteration plus one initial evaluation, i.e.
-        ``num_iters + 1``. Extra value evaluations made internally by line-search
-        optimizers (e.g. ``optax.lbfgs`` via ``value_fn``) are not counted.
+        Value and gradient evaluations: one fused ``value_and_grad`` per iteration
+        plus one initial evaluation (``num_iters + 1``), plus the optimizer's
+        line-search evaluations (``n_linesearch_steps``). For gradient-transformation
+        optimizers (adam, sgd, ...) there is no line search, so
+        ``nfev == njev == num_iters + 1``.
+    n_linesearch_steps : int
+        Cumulative line-search iterations reported by the optimizer (from
+        ``num_linesearch_steps`` in the optax state, e.g. ``optax.lbfgs``); ``0``
+        when the optimizer performs no line search.
     final_value, final_grad_norm : float
         Objective and coordinate-gradient norm at the final point.
     x_element : Any
@@ -112,6 +142,7 @@ class OptaxResult:
     num_iters: int
     nfev: int
     njev: int
+    n_linesearch_steps: int
     final_value: float
     final_grad_norm: float
     x_element: Any
@@ -305,7 +336,8 @@ def minimize_optax(
         else:
             history_index = jnp.asarray(0, jnp.int32)
         loop0 = _LoopState(
-            jnp.asarray(0, jnp.int32), init_state, finite0, history, history_index
+            jnp.asarray(0, jnp.int32), init_state, finite0, history, history_index,
+            jnp.asarray(0, jnp.int32),
         )
 
         def cond_fn(ls: _LoopState):
@@ -315,6 +347,12 @@ def minimize_optax(
             prev_value = ls.state.value
             next_state = step(ls.state)
             iteration = ls.iteration + jnp.asarray(1, jnp.int32)
+            step_ls = _linesearch_steps(next_state.opt_state)
+            nls = ls.nls + (
+                jnp.asarray(0, jnp.int32)
+                if step_ls is None
+                else step_ls.astype(jnp.int32)
+            )
             value = next_state.value
             delta = jnp.real(value - prev_value)
             grad_norm = next_state.grad_norm
@@ -348,7 +386,7 @@ def minimize_optax(
             else:
                 history, history_index = ls.history, ls.history_index
 
-            return _LoopState(iteration, next_state, finite, history, history_index)
+            return _LoopState(iteration, next_state, finite, history, history_index, nls)
 
         return jax.lax.while_loop(cond_fn, body_fn, loop0)
 
@@ -370,8 +408,10 @@ def minimize_optax(
 
     final = result.state
     num_iters = int(result.iteration)
-    # One fused value_and_grad per iteration, plus the initial evaluation.
-    nfev = njev = num_iters + 1
+    n_linesearch_steps = int(result.nls)
+    # One fused value_and_grad per iteration + the initial evaluation, plus the
+    # optimizer's line-search evaluations (0 for gradient-transformation optimizers).
+    nfev = njev = num_iters + 1 + n_linesearch_steps
     final_value = float(np.real(final.value))
     final_grad_norm = float(final.grad_norm)
     finite = bool(np.asarray(result.finite))
@@ -413,7 +453,7 @@ def minimize_optax(
         if verbose >= 2:
             print(_RULE)
         print(f"status   : {message}")
-        print(f"iters    : {num_iters}  (nfev={nfev}, njev={njev})")
+        print(f"iters    : {num_iters}  (nfev={nfev}, njev={njev}, ls={n_linesearch_steps})")
         print(f"value    : {final_value:+.8e}")
         print(f"grad_norm: {final_grad_norm:.3e}")
         print(
@@ -428,6 +468,7 @@ def minimize_optax(
         num_iters=num_iters,
         nfev=nfev,
         njev=njev,
+        n_linesearch_steps=n_linesearch_steps,
         final_value=final_value,
         final_grad_norm=final_grad_norm,
         x_element=final.params,
