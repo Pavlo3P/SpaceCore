@@ -41,6 +41,21 @@ def _scalar_eq(a: Any, b: Any) -> bool:
         return False
 
 
+def _require_same_domain(terms: Any) -> None:
+    """Raise unless every functional in ``terms`` shares the first term's domain.
+
+    Domain equality folds in the backend/dtype context, so this also rejects a
+    same-shape space on a different backend or dtype.
+    """
+    domain = terms[0].domain
+    for i, term in enumerate(terms[1:], start=1):
+        if term.domain != domain:
+            raise ValueError(
+                "All SumFunctional operands must have the same domain; operand 0 has "
+                f"domain {domain!r}, operand {i} has domain {term.domain!r}."
+            )
+
+
 @jax_pytree_class
 class ScaledFunctional(Functional):
     """
@@ -73,13 +88,21 @@ class ScaledFunctional(Functional):
         return self.scalar * self.functional._value_core(x, *args, **kwargs)
 
     def grad(self, x: Any, *args: Any, **kwargs: Any) -> Any:
-        """Return ``scalar * functional.grad(x)`` scaled in the domain geometry."""
-        return self.domain.scale(self.scalar, self.functional.grad(x, *args, **kwargs))
+        """Return the Riesz gradient ``conj(scalar) * functional.grad(x)``.
+
+        The value scales by ``scalar`` but the metric gradient scales by its
+        conjugate: the domain inner product conjugates its first argument, so
+        ``<conj(a) g, h> = a <g, h>`` recovers ``D(a F)(x)[h]`` (mirrors
+        ``ScaledLinOp.rapply``). For a real scalar this is just ``scalar``.
+        """
+        conj_scalar = self.ops.conj(self.scalar)
+        return self.domain.scale(conj_scalar, self.functional.grad(x, *args, **kwargs))
 
     def value_and_grad(self, x: Any, *args: Any, **kwargs: Any) -> tuple[Any, Any]:
-        """Return ``(scalar * value, scalar * grad)`` from one fused child evaluation."""
+        """Return ``(scalar * value, conj(scalar) * grad)`` from one fused child eval."""
         value, grad = self.functional.value_and_grad(x, *args, **kwargs)
-        return self.scalar * value, self.domain.scale(self.scalar, grad)
+        conj_scalar = self.ops.conj(self.scalar)
+        return self.scalar * value, self.domain.scale(conj_scalar, grad)
 
     def __eq__(self, other: Any) -> bool:
         """Return whether another scaled functional has the same scalar and operand."""
@@ -157,15 +180,8 @@ class SumFunctional(Functional):
         for i, term in enumerate(parts):
             if not isinstance(term, Functional):
                 raise TypeError(f"operand {i} must be a Functional, got {type(term).__name__}.")
-        domain = parts[0].domain
-        ctx = parts[0].ctx
-        for i, term in enumerate(parts[1:], start=1):
-            if term.domain != domain:
-                raise ValueError(
-                    "All SumFunctional operands must have the same domain; operand 0 has "
-                    f"domain {domain!r}, operand {i} has domain {term.domain!r}."
-                )
-        super().__init__(domain, ctx)
+        _require_same_domain(parts)
+        super().__init__(parts[0].domain, parts[0].ctx)
         self.terms = tuple(term.convert(self.ctx) for term in parts)
 
     @property
@@ -265,6 +281,9 @@ def make_functional_sum(terms: Any) -> Functional:
             "make_functional_sum requires a nonempty sequence of Functional operands."
         )
     flat = _flatten_functional_sum_terms(terms)
+    # Validate all terms' domains BEFORE dropping zeros, so a domain mismatch is
+    # never swallowed by the single-survivor unwrap or the all-zero collapse.
+    _require_same_domain(flat)
     nonzero = tuple(term for term in flat if not isinstance(term, ZeroFunctional))
     if not nonzero:
         return ZeroFunctional(flat[0].domain, flat[0].ctx)

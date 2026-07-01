@@ -82,6 +82,20 @@ class TestScaled:
         with pytest.raises(TypeError, match="Functional"):
             sc.ScaledFunctional(2.0, "nope")
 
+    def test_complex_scalar_conjugates_gradient(self):
+        # Riesz gradient of a*F is conj(a)*grad(F): the inner product conjugates
+        # its first argument, so <grad(aF), h> must recover a * <grad(F), h>.
+        ctx = sc.Context(sc.NumpyOps(), dtype=np.complex128, check_level="standard")
+        X = sc.DenseCoordinateSpace((3,), ctx)
+        c = ctx.asarray([1 + 1j, 2 - 0.5j, -1 + 0.3j])
+        F = sc.InnerProductFunctional(c, X, ctx)
+        a = 2 + 3j
+        x = ctx.asarray([0.5 - 1j, 1 + 0j, -2 + 0.5j])
+        h = ctx.asarray([1 + 0j, 0 + 1j, 0.5 - 0.5j])
+        lhs = complex(to_numpy(X.inner((a * F).grad(x), h)))
+        rhs = a * complex(to_numpy(X.inner(c, h)))
+        assert np.isclose(lhs, rhs)
+
 
 class TestScaledFactory:
     def test_unit_scalar_passes_through(self, numpy_ctx):
@@ -247,6 +261,13 @@ class TestZero:
         X, _, _ = _dense(numpy_ctx)
         s = sc.make_functional_sum([sc.ZeroFunctional(X, numpy_ctx), sc.ZeroFunctional(X, numpy_ctx)])
         assert isinstance(s, sc.ZeroFunctional)
+
+    def test_domain_mismatch_with_dropped_zero_raises(self, numpy_ctx):
+        # A mismatched-domain Zero term must not be silently dropped.
+        X, F, _ = _dense(numpy_ctx)
+        other = sc.ZeroFunctional(sc.DenseCoordinateSpace((2,), numpy_ctx), numpy_ctx)
+        with pytest.raises(ValueError, match="same domain"):
+            sc.make_functional_sum([F, other])
 
     def test_pytree_round_trip(self, numpy_ctx):
         X, F, _ = _dense(numpy_ctx)
