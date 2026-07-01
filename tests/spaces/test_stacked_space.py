@@ -98,6 +98,9 @@ class _JordanPair(_PairCoordinateSpace, sc.JordanAlgebraSpace):
             raise ValueError("frame must be None")
         return eigvals
 
+    def unit(self):
+        return (1.0, 1.0)
+
 
 # ===========================================================================
 # Core contract
@@ -215,6 +218,9 @@ class TestCapabilityDispatch:
                     raise ValueError("frame must be None")
                 return eigvals
 
+            def unit(self):
+                return (1.0, 1.0)
+
         stacked = _InnerJordanPair(numpy_ctx).stacked(2)
         assert _capability_set(stacked) == {sc.InnerProductSpace, sc.JordanAlgebraSpace}
 
@@ -233,6 +239,9 @@ class TestCapabilityDispatch:
                 if frame is not None:
                     raise ValueError("frame must be None")
                 return eigvals
+
+            def unit(self):
+                return (1.0, 1.0)
 
         stacked = _StarJordanPair(numpy_ctx).stacked(2)
         assert _capability_set(stacked) == {sc.StarSpace, sc.JordanAlgebraSpace}

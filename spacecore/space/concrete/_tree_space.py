@@ -826,6 +826,29 @@ class _LeafwiseJordanMixin(_LeafwiseHostMixin):
             )
         )
 
+    def trace(self, x: Any) -> Any:
+        """Return the direct-sum trace: the sum of the leaf traces."""
+        leaf_spaces = cast("Sequence[JordanAlgebraSpace]", self.leaf_spaces)
+        total = None
+        for space, leaf in zip(leaf_spaces, self._components(x)):
+            value = space.trace(leaf)
+            total = value if total is None else total + value
+        return total
+
+    def determinant(self, x: Any) -> Any:
+        """Return the direct-sum determinant: the product of the leaf determinants."""
+        leaf_spaces = cast("Sequence[JordanAlgebraSpace]", self.leaf_spaces)
+        total = None
+        for space, leaf in zip(leaf_spaces, self._components(x)):
+            value = space.determinant(leaf)
+            total = value if total is None else total * value
+        return total
+
+    def unit(self) -> Any:
+        """Return the leafwise Jordan identity assembled into a tree element."""
+        leaf_spaces = cast("Sequence[JordanAlgebraSpace]", self.leaf_spaces)
+        return self._from_components(tuple(space.unit() for space in leaf_spaces))
+
 
 class TreeInnerProductSpace(_LeafwiseInnerProductMixin, TreeSpace, InnerProductSpace):
     """TreeSpace specialization whose leaves all have inner products."""

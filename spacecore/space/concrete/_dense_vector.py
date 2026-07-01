@@ -168,6 +168,20 @@ class ElementwiseJordanSpace(JordanAlgebraSpace, DenseCoordinateSpace, StarSpace
         self._check_unbatched_member(eigvals)
         return eigvals
 
+    def trace(self, x: DenseArray) -> DenseArray:
+        """Return the Jordan trace as the sum over the element's own coordinates."""
+        self._check_unbatched_member(x)
+        return self.ops.sum(x, axis=tuple(range(-len(self.shape), 0)))
+
+    def determinant(self, x: DenseArray) -> DenseArray:
+        """Return the Jordan determinant as the product over the coordinates."""
+        self._check_unbatched_member(x)
+        return self.ops.prod(x, axis=tuple(range(-len(self.shape), 0)))
+
+    def unit(self) -> DenseArray:
+        """Return the Jordan identity: the all-ones element in the space dtype."""
+        return self.ops.ones(self.shape, dtype=self.dtype)
+
     def _apply_entrywise(self, x: DenseArray, f: Callable[[DenseArray], DenseArray]) -> DenseArray:
         """Apply ``f`` entrywise and verify that shape is preserved."""
         try:

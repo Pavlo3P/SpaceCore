@@ -312,6 +312,31 @@ class _StackedJordanMixin:
                 x
             )
 
+    def trace(self, x: Any) -> Any:
+        """Return the direct-sum trace: the sum of the per-copy base traces."""
+        base = cast(JordanAlgebraSpace, self.base)
+        try:
+            traces = base.trace(x)
+        except _STACKED_FALLBACK_ERRORS:
+            traces = self.ops.vmap(base.trace, in_axes=0, out_axes=0)(x)
+        # Reduce only the copy axis; leading batch axes are preserved.
+        return self.ops.sum(traces, axis=-1)
+
+    def determinant(self, x: Any) -> Any:
+        """Return the direct-sum determinant: the product of the per-copy base determinants."""
+        base = cast(JordanAlgebraSpace, self.base)
+        try:
+            dets = base.determinant(x)
+        except _STACKED_FALLBACK_ERRORS:
+            dets = self.ops.vmap(base.determinant, in_axes=0, out_axes=0)(x)
+        # Reduce only the copy axis; leading batch axes are preserved.
+        return self.ops.prod(dets, axis=-1)
+
+    def unit(self) -> Any:
+        """Return the stacked identity: ``base.unit()`` replicated across every copy."""
+        base = cast(JordanAlgebraSpace, self.base)
+        return self.ops.broadcast_to(base.unit(), self.shape)
+
 
 @jax_pytree_class
 class _StackedInnerProductSpace(_StackedInnerProductMixin, StackedSpace, InnerProductSpace):
