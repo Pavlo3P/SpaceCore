@@ -52,6 +52,27 @@ class _SumSquares(sc.Functional):
         return _SumSquares(self.domain.convert(new_ctx), new_ctx)
 
 
+class _ScaledSumSquares(_SumSquares):
+    """``F(x, scale=1.0) = scale * sum(x * x)`` — exercises auxiliary value args."""
+
+    def value(self, x, scale=1.0):
+        return self.ops.sum(x * x) * scale
+
+
+class _SumSquaresGrad(_SumSquares):
+    """``_SumSquares`` with a gradient, so ``value_and_grad`` has both halves."""
+
+    def grad(self, x):
+        return 2.0 * x
+
+
+class _SumSquaresFused(_SumSquaresGrad):
+    """Overrides ``value_and_grad`` with a single-pass evaluator."""
+
+    def value_and_grad(self, x):
+        return self.ops.sum(x * x), 2.0 * x
+
+
 # ===========================================================================
 # Abstract enforcement
 # ===========================================================================
@@ -80,6 +101,54 @@ class TestDomainAndValue:
         x = numpy_ctx.asarray([1.0, 2.0, 3.0])
         np.testing.assert_allclose(to_numpy(f(x)), to_numpy(f.value(x)))
         np.testing.assert_allclose(to_numpy(f.value(x)), 14.0)
+
+
+# ===========================================================================
+# W0/F1: value(x, *args, **kwargs) — auxiliary parameters forwarded
+# ===========================================================================
+class TestValueAuxArgs:
+    def test_value_accepts_positional_and_keyword(self, numpy_ctx):
+        space = sc.DenseCoordinateSpace((3,), numpy_ctx)
+        f = _ScaledSumSquares(space, numpy_ctx)
+        x = numpy_ctx.asarray([1.0, 2.0, 3.0])
+        np.testing.assert_allclose(to_numpy(f.value(x)), 14.0)  # default scale
+        np.testing.assert_allclose(to_numpy(f.value(x, 2.0)), 28.0)  # positional
+        np.testing.assert_allclose(to_numpy(f.value(x, scale=0.5)), 7.0)  # keyword
+
+    def test_call_forwards_aux_args(self, numpy_ctx):
+        space = sc.DenseCoordinateSpace((3,), numpy_ctx)
+        f = _ScaledSumSquares(space, numpy_ctx)
+        x = numpy_ctx.asarray([1.0, 2.0, 3.0])
+        np.testing.assert_allclose(to_numpy(f(x, scale=3.0)), 42.0)
+        np.testing.assert_allclose(to_numpy(f(x, 3.0)), 42.0)
+
+
+# ===========================================================================
+# W0/F2: value_and_grad
+# ===========================================================================
+class TestValueAndGrad:
+    def test_default_equals_value_then_grad(self, numpy_ctx):
+        space = sc.DenseCoordinateSpace((3,), numpy_ctx)
+        f = _SumSquaresGrad(space, numpy_ctx)
+        x = numpy_ctx.asarray([1.0, 2.0, 3.0])
+        value, grad = f.value_and_grad(x)
+        np.testing.assert_allclose(to_numpy(value), to_numpy(f.value(x)))
+        np.testing.assert_allclose(to_numpy(grad), to_numpy(f.grad(x)))
+
+    def test_fused_override_matches_default(self, numpy_ctx):
+        space = sc.DenseCoordinateSpace((3,), numpy_ctx)
+        x = numpy_ctx.asarray([1.0, 2.0, 3.0])
+        default = _SumSquaresGrad(space, numpy_ctx).value_and_grad(x)
+        fused = _SumSquaresFused(space, numpy_ctx).value_and_grad(x)
+        np.testing.assert_allclose(to_numpy(fused[0]), to_numpy(default[0]))
+        np.testing.assert_allclose(to_numpy(fused[1]), to_numpy(default[1]))
+
+    def test_default_without_grad_raises(self, numpy_ctx):
+        space = sc.DenseCoordinateSpace((3,), numpy_ctx)
+        f = _SumSquares(space, numpy_ctx)  # no grad defined
+        x = numpy_ctx.asarray([1.0, 2.0, 3.0])
+        with pytest.raises(NotImplementedError):
+            f.value_and_grad(x)
 
 
 # ===========================================================================
