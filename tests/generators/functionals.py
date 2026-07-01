@@ -418,6 +418,82 @@ def _tree_case(dtype: Any, check_level: sc.CheckLevel | str) -> FunctionalCase:
     )
 
 
+def _algebra_case(
+    dtype: Any,
+    check_level: sc.CheckLevel | str,
+    *,
+    kind: str,
+    build: Any,
+    value: Any,
+    gradient: np.ndarray,
+    id_stub: str,
+) -> FunctionalCase:
+    """Build a euclidean case for a lazy functional-algebra node (W4).
+
+    ``build(base, domain, ctx)`` returns the algebra functional wrapping the
+    linear ``base`` (whose Riesz gradient is its representer). Euclidean geometry
+    makes the Riesz gradient equal the analytic ``gradient``.
+    """
+    ctx = _context(dtype, check_level)
+    domain = sc.DenseCoordinateSpace((3,), ctx)
+    x_np, c_np, _weights, _diagonal = _values(dtype)
+    base = sc.InnerProductFunctional(ctx.asarray(c_np), domain, ctx)
+    functional = build(base, domain, ctx)
+    target_ctx = _context(_target_dtype(dtype), check_level)
+    capabilities = {"gradient", "conversion", "euclidean", kind}
+    capabilities.add("complex" if np.issubdtype(np.dtype(dtype), np.complexfloating) else "real")
+    return FunctionalCase(
+        obj=functional,
+        reference={
+            "kind": kind,
+            "domain": domain,
+            "x": ctx.asarray(x_np),
+            "value": value(x_np, c_np),
+            "gradient": ctx.asarray(gradient(x_np, c_np)),
+            "target_ctx": target_ctx,
+            "check_level": check_level,
+        },
+        capabilities=frozenset(capabilities),
+        id=f"{id_stub}-euclidean-{np.dtype(dtype).name}-checks-{check_level}",
+    )
+
+
+def _algebra_cases(dtype: Any, check_level: sc.CheckLevel | str) -> tuple[FunctionalCase, ...]:
+    """Generated cases for the W4 functional-algebra nodes (Scaled/Sum/Shifted/Zero)."""
+    c2 = np.asarray([0.5, -0.25, 1.0], dtype=dtype)
+    offset = np.asarray(0.75, dtype=dtype)
+    return (
+        _algebra_case(
+            dtype, check_level, kind="scaled-functional", id_stub="scaled-functional",
+            build=lambda base, domain, ctx: sc.ScaledFunctional(2.0, base),
+            value=lambda x, c: 2.0 * np.vdot(c, x),
+            gradient=lambda x, c: 2.0 * c,
+        ),
+        _algebra_case(
+            dtype, check_level, kind="sum-functional", id_stub="sum-functional",
+            build=lambda base, domain, ctx: sc.SumFunctional(
+                (base, sc.InnerProductFunctional(ctx.asarray(c2), domain, ctx))
+            ),
+            value=lambda x, c: np.vdot(c, x) + np.vdot(c2, x),
+            gradient=lambda x, c: c + c2,
+        ),
+        _algebra_case(
+            dtype, check_level, kind="shifted-functional", id_stub="shifted-functional",
+            build=lambda base, domain, ctx: sc.ShiftedFunctional(base, offset),
+            value=lambda x, c: np.vdot(c, x) + offset,
+            gradient=lambda x, c: c,
+        ),
+        # kind "zero" so the constant-value directional-derivative law skips it,
+        # like the existing zero-representer case.
+        _algebra_case(
+            dtype, check_level, kind="zero", id_stub="zero-functional",
+            build=lambda base, domain, ctx: sc.ZeroFunctional(domain, ctx),
+            value=lambda x, c: np.asarray(0.0, dtype=dtype),
+            gradient=lambda x, c: np.zeros(3, dtype=dtype),
+        ),
+    )
+
+
 def functional_cases(
     *,
     dtypes: Iterable[Any] = NUMPY_FUNCTIONAL_DTYPES,
@@ -436,6 +512,7 @@ def functional_cases(
             cases.append(_explicit_composed_case(dtype, check_level))
             cases.append(_matrix_free_linear_case(dtype, check_level))
             cases.append(_tree_case(dtype, check_level))
+            cases.extend(_algebra_cases(dtype, check_level))
         # ADR-019 battery functionals are real-coordinate objectives; generate
         # them once per check level for float64 when that dtype is requested.
         if any(np.dtype(d) == np.dtype(np.float64) for d in dtypes):

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from abc import abstractmethod
+from numbers import Number
 from typing import TYPE_CHECKING, Any, Generic, Self, TypeVar
 
 from .._batching import _leading_batch_size, _warn_vmap_fallback_once
@@ -58,16 +59,32 @@ class Functional(ContextBound, Generic[Domain]):
         return self.dom
 
     @abstractmethod
-    def value(self, x: Any) -> Any:
-        """Evaluate this functional at an element of ``self.domain``."""
+    def value(self, x: Any, *args: Any, **kwargs: Any) -> Any:
+        """Evaluate this functional at an element of ``self.domain``.
 
-    def grad(self, x: Any) -> Any:
+        Subclasses may accept extra positional/keyword arguments — auxiliary
+        parameters such as data, temperature, or a penalty weight — that are not
+        part of the domain. Overrides that take only ``x`` remain valid.
+        """
+
+    def grad(self, x: Any, *args: Any, **kwargs: Any) -> Any:
         """Gradient at an element of ``self.domain``.
 
         Override in subclasses that support differentiation; the base raises
-        :class:`NotImplementedError`.
+        :class:`NotImplementedError`. Any auxiliary ``*args``/``**kwargs`` mirror
+        those accepted by :meth:`value`.
         """
         raise NotImplementedError(f"{type(self).__name__} does not implement grad().")
+
+    def value_and_grad(self, x: Any, *args: Any, **kwargs: Any) -> tuple[Any, Any]:
+        """Return ``(value, gradient)`` at ``x``.
+
+        The base default evaluates :meth:`value` and :meth:`grad` separately.
+        Subclasses may override with a single-pass evaluator (e.g.
+        ``jax.value_and_grad``); an override must return the same pair as the
+        default, with the gradient in the same geometry as :meth:`grad`.
+        """
+        return self.value(x, *args, **kwargs), self.grad(x, *args, **kwargs)
 
     def vgrad(self, xs: Any) -> Any:
         """Gradient over a leading batch axis.
@@ -77,13 +94,13 @@ class Functional(ContextBound, Generic[Domain]):
         """
         raise NotImplementedError(f"{type(self).__name__} does not implement vgrad().")
 
-    def _value_core(self, x: Any) -> Any:
+    def _value_core(self, x: Any, *args: Any, **kwargs: Any) -> Any:
         """Check-free value core; the base falls back to the checked ``value``."""
-        return self.value(x)
+        return self.value(x, *args, **kwargs)
 
-    def _grad_core(self, x: Any) -> Any:
+    def _grad_core(self, x: Any, *args: Any, **kwargs: Any) -> Any:
         """Check-free gradient core; the base falls back to the checked ``grad``."""
-        return self.grad(x)
+        return self.grad(x, *args, **kwargs)
 
     def _vvalue_core(self, xs: Any) -> Any:
         """Check-free batched-value core; the base falls back to ``vvalue``."""
@@ -93,9 +110,9 @@ class Functional(ContextBound, Generic[Domain]):
         """Check-free batched-gradient core; the base falls back to ``vgrad``."""
         return self.vgrad(xs)
 
-    def __call__(self, x: Any) -> Any:
+    def __call__(self, x: Any, *args: Any, **kwargs: Any) -> Any:
         """Evaluate this functional at ``x``."""
-        return self.value(x)
+        return self.value(x, *args, **kwargs)
 
     def compose(self, A: "LinOp") -> "Functional":
         """
@@ -114,6 +131,74 @@ class Functional(ContextBound, Generic[Domain]):
         from ._composed import make_functional_composed
 
         return make_functional_composed(self, A)
+
+    def __add__(self, other: Any) -> "Functional":
+        """Return ``self + other`` — a lazy sum (functional) or affine shift (scalar)."""
+        from ._algebra import is_scalar_like, make_functional_sum, make_shifted_functional
+
+        if isinstance(other, Functional):
+            return make_functional_sum((self, other))
+        if is_scalar_like(other):
+            return make_shifted_functional(self, other)
+        return NotImplemented
+
+    def __radd__(self, other: Any) -> "Functional":
+        """Return ``other + self`` (``0 + self`` enables builtin ``sum``)."""
+        from ._algebra import is_scalar_like, make_functional_sum, make_shifted_functional
+
+        if isinstance(other, Number) and other == 0:
+            return self
+        if isinstance(other, Functional):
+            return make_functional_sum((other, self))
+        if is_scalar_like(other):
+            return make_shifted_functional(self, other)
+        return NotImplemented
+
+    def __sub__(self, other: Any) -> "Functional":
+        """Return ``self - other`` — a lazy difference (functional) or shift (scalar)."""
+        from ._algebra import is_scalar_like, make_functional_sum, make_scaled_functional
+        from ._algebra import make_shifted_functional
+
+        if isinstance(other, Functional):
+            return make_functional_sum((self, make_scaled_functional(-1, other)))
+        if is_scalar_like(other):
+            return make_shifted_functional(self, -other)
+        return NotImplemented
+
+    def __rsub__(self, other: Any) -> "Functional":
+        """Return ``other - self`` — a lazy difference (functional) or shift (scalar)."""
+        from ._algebra import is_scalar_like, make_functional_sum, make_scaled_functional
+        from ._algebra import make_shifted_functional
+
+        if isinstance(other, Number) and other == 0:
+            return make_scaled_functional(-1, self)
+        if isinstance(other, Functional):
+            return make_functional_sum((other, make_scaled_functional(-1, self)))
+        if is_scalar_like(other):
+            return make_shifted_functional(make_scaled_functional(-1, self), other)
+        return NotImplemented
+
+    def __neg__(self) -> "Functional":
+        """Return the lazy negation ``-self``."""
+        from ._algebra import make_scaled_functional
+
+        return make_scaled_functional(-1, self)
+
+    def __mul__(self, scalar: Any) -> "Functional":
+        """Return the lazy right scalar multiple ``self * scalar``."""
+        from ._algebra import is_scalar_like, make_scaled_functional
+
+        if not is_scalar_like(scalar):
+            return NotImplemented
+        return make_scaled_functional(scalar, self)
+
+    def __rmul__(self, scalar: Any) -> "Functional":
+        """Return the lazy left scalar multiple ``scalar * self``."""
+        from ._algebra import is_scalar_like, make_scaled_functional
+
+        if not is_scalar_like(scalar):
+            return NotImplemented
+        return make_scaled_functional(scalar, self)
 
     @checked_method(in_space="domain", in_batched=True)
     def vvalue(self, xs: Any) -> Any:

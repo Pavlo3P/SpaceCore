@@ -128,6 +128,20 @@ class HermitianSpace(DenseCoordinateSpace, StarSpace, EuclideanJordanAlgebraSpac
         """Reconstruct a Hermitian element from eigenvalues and eigenvectors."""
         return self.eig_to_dense(eigvals, frame)
 
+    def trace(self, x: DenseArray) -> DenseArray:
+        """Return the (real) trace as the diagonal sum, avoiding an eigendecomposition.
+
+        ``'...ii->...'`` sums the trailing-two-axes diagonal and preserves leading
+        batch axes; ``ops.trace``/``ops.diagonal`` default to the *first* two axes
+        and are not batch-safe for ``(..., n, n)`` input.
+        """
+        self._check_unbatched_member(x)
+        return self.ops.real(self.ops.einsum("...ii->...", x))
+
+    def unit(self) -> DenseArray:
+        """Return the Jordan identity: the ``n x n`` identity in the space dtype."""
+        return self.ops.eye(self.n, dtype=self.dtype)
+
     def unflatten(self, v: DenseArray) -> DenseArray:
         """Reshape dense coordinates and symmetrize the result."""
         vv = self._coerce_dense(v)

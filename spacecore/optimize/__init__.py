@@ -10,10 +10,11 @@ external optimizer owns the loop, line search, and convergence.
 
 from __future__ import annotations
 
-from ._optax import minimize_optax
+from ._optax import OptaxResult, minimize_optax
 from ._scipy import line_search_scipy, minimize_scipy
 
 __all__ = [
+    "OptaxResult",
     "line_search_scipy",
     "minimize_optax",
     "minimize_scipy",
