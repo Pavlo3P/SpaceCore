@@ -29,7 +29,7 @@ class TestFunctionalGuard:
             if fn is sc.line_search_scipy:
                 fn(object(), [1.0], [1.0])
             elif fn is sc.minimize_optax:
-                fn(object(), [1.0], None, steps=1)
+                fn(object(), [1.0], None, max_iter=1)
             else:
                 fn(object(), [1.0])
 
@@ -81,10 +81,10 @@ class TestOptaxBackendGuard:
 
         X, F, _ = euclidean_problem(ctx)
         with pytest.raises(TypeError, match="JAX-backed"):
-            sc.minimize_optax(F, X.zeros(), optax.sgd(0.1), steps=1)
+            sc.minimize_optax(F, X.zeros(), optax.sgd(0.1), max_iter=1)
 
     @pytest.mark.skipif(not has_jax(), reason="jax is not installed")
-    def test_optax_negative_steps(self):
+    def test_optax_negative_max_iter(self):
         if not has_optax():
             pytest.skip("optax is not installed")
         import optax
@@ -92,7 +92,7 @@ class TestOptaxBackendGuard:
         ctx = make_ctx("jax", np.float32)
         X, F, _ = euclidean_problem(ctx)
         with pytest.raises(ValueError, match="non-negative"):
-            sc.minimize_optax(F, X.zeros(), optax.sgd(0.1), steps=-1)
+            sc.minimize_optax(F, X.zeros(), optax.sgd(0.1), max_iter=-1)
 
 
 class TestScipyUnsupportedParameters:
