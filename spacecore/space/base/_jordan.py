@@ -38,6 +38,18 @@ class JordanAlgebraSpace(VectorSpace):
         feigvals = f(eigvals)
         return self.from_spectrum(feigvals, frame)
 
+    @abstractmethod
+    def unit(self) -> Any:
+        """Return the Jordan-algebraic identity element ``e`` (all-ones spectrum)."""
+
+    def trace(self, x: Any) -> Any:
+        """Return the Jordan trace ``sum_i lambda_i(x)`` of the spectrum."""
+        return self.ops.sum(self.spectrum(x), axis=-1)
+
+    def determinant(self, x: Any) -> Any:
+        """Return the Jordan determinant ``prod_i lambda_i(x)`` of the spectrum."""
+        return self.ops.prod(self.spectrum(x), axis=-1)
+
 
 class EuclideanJordanAlgebraSpace(JordanAlgebraSpace, InnerProductSpace):
     """
