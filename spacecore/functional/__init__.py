@@ -8,7 +8,12 @@ subpackage and are re-exported here for convenience.
 """
 
 from ._base import Functional
-from ._algebra import ScaledFunctional, make_scaled_functional
+from ._algebra import (
+    ScaledFunctional,
+    SumFunctional,
+    make_functional_sum,
+    make_scaled_functional,
+)
 from ._composed import ComposedFunctional, make_functional_composed
 from ._linear import InnerProductFunctional, LinearFunctional, MatrixFreeLinearFunctional
 from ._quadratic import LinOpQuadraticForm, QuadraticForm
@@ -45,9 +50,11 @@ __all__ = [
     "ScaledFunctional",
     "SpectralLpNormFunctional",
     "SquaredL2NormFunctional",
+    "SumFunctional",
     "generalized_shrinkage",
     "least_squares",
     "make_functional_composed",
+    "make_functional_sum",
     "make_scaled_functional",
     "project_nonneg",
     "prox_l1",

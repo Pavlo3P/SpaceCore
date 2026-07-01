@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from abc import abstractmethod
+from numbers import Number
 from typing import TYPE_CHECKING, Any, Generic, Self, TypeVar
 
 from .._batching import _leading_batch_size, _warn_vmap_fallback_once
@@ -130,6 +131,42 @@ class Functional(ContextBound, Generic[Domain]):
         from ._composed import make_functional_composed
 
         return make_functional_composed(self, A)
+
+    def __add__(self, other: Any) -> "Functional":
+        """Return the lazy sum ``self + other`` of two functionals on one domain."""
+        from ._algebra import make_functional_sum
+
+        if not isinstance(other, Functional):
+            return NotImplemented
+        return make_functional_sum((self, other))
+
+    def __radd__(self, other: Any) -> "Functional":
+        """Return the lazy sum ``other + self`` (``0 + self`` enables ``sum``)."""
+        from ._algebra import make_functional_sum
+
+        if isinstance(other, Number) and other == 0:
+            return self
+        if not isinstance(other, Functional):
+            return NotImplemented
+        return make_functional_sum((other, self))
+
+    def __sub__(self, other: Any) -> "Functional":
+        """Return the lazy difference ``self - other``."""
+        from ._algebra import make_functional_sum, make_scaled_functional
+
+        if not isinstance(other, Functional):
+            return NotImplemented
+        return make_functional_sum((self, make_scaled_functional(-1, other)))
+
+    def __rsub__(self, other: Any) -> "Functional":
+        """Return the lazy difference ``other - self``."""
+        from ._algebra import make_functional_sum, make_scaled_functional
+
+        if isinstance(other, Number) and other == 0:
+            return make_scaled_functional(-1, self)
+        if not isinstance(other, Functional):
+            return NotImplemented
+        return make_functional_sum((other, make_scaled_functional(-1, self)))
 
     def __neg__(self) -> "Functional":
         """Return the lazy negation ``-self``."""

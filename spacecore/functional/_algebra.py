@@ -131,3 +131,136 @@ def make_scaled_functional(scalar: Any, functional: Functional) -> Functional:
     if isinstance(functional, ScaledFunctional):
         return make_scaled_functional(scalar * functional.scalar, functional.functional)
     return ScaledFunctional(scalar, functional)
+
+
+@jax_pytree_class
+class SumFunctional(Functional):
+    """
+    Lazy sum ``F_1 + ... + F_n`` of functionals on a common domain.
+
+    Parameters
+    ----------
+    terms : sequence of Functional
+        Nonempty sequence of functionals sharing one domain.
+    """
+
+    def __init__(self, terms: Any) -> None:
+        parts = tuple(terms)
+        if not parts:
+            raise ValueError(
+                "SumFunctional requires a nonempty sequence of Functional operands."
+            )
+        for i, term in enumerate(parts):
+            if not isinstance(term, Functional):
+                raise TypeError(f"operand {i} must be a Functional, got {type(term).__name__}.")
+        domain = parts[0].domain
+        ctx = parts[0].ctx
+        for i, term in enumerate(parts[1:], start=1):
+            if term.domain != domain:
+                raise ValueError(
+                    "All SumFunctional operands must have the same domain; operand 0 has "
+                    f"domain {domain!r}, operand {i} has domain {term.domain!r}."
+                )
+        super().__init__(domain, ctx)
+        self.terms = tuple(term.convert(self.ctx) for term in parts)
+
+    @property
+    def parts(self) -> tuple[Functional, ...]:
+        """Return the summed terms in order."""
+        return self.terms
+
+    @checked_method(in_space="domain")
+    def value(self, x: Any, *args: Any, **kwargs: Any) -> Any:
+        """Return the sum of the term values at ``x``."""
+        return self._value_core(x, *args, **kwargs)
+
+    def _value_core(self, x: Any, *args: Any, **kwargs: Any) -> Any:
+        """Check-free sum of term values."""
+        total = None
+        for term in self.terms:
+            value = term._value_core(x, *args, **kwargs)
+            total = value if total is None else total + value
+        return total
+
+    def grad(self, x: Any, *args: Any, **kwargs: Any) -> Any:
+        """Return the domain-sum of the term gradients (combined via ``X.add``)."""
+        domain = self.domain
+        terms = iter(self.terms)
+        total = next(terms).grad(x, *args, **kwargs)
+        for term in terms:
+            total = domain.add(total, term.grad(x, *args, **kwargs))
+        return total
+
+    def value_and_grad(self, x: Any, *args: Any, **kwargs: Any) -> tuple[Any, Any]:
+        """Return ``(sum values, domain-sum grads)`` from one fused pass per term."""
+        domain = self.domain
+        value_total = None
+        grad_total = None
+        for term in self.terms:
+            value, grad = term.value_and_grad(x, *args, **kwargs)
+            value_total = value if value_total is None else value_total + value
+            grad_total = grad if grad_total is None else domain.add(grad_total, grad)
+        return value_total, grad_total
+
+    def __eq__(self, other: Any) -> bool:
+        """Return whether another sum has the same ordered terms."""
+        if not self._eq_backend_compatible(other):
+            return NotImplemented
+        if len(self.terms) != len(other.terms):
+            return False
+        return all(a == b for a, b in zip(self.terms, other.terms))
+
+    def tree_flatten(self):
+        """Flatten this functional for pytree registration."""
+        return self.terms, ()
+
+    @classmethod
+    def tree_unflatten(cls, aux, children):
+        """Rebuild this functional from pytree data."""
+        return cls(tuple(children))
+
+    def _convert(self, new_ctx: Context) -> "SumFunctional":
+        """Convert every term to ``new_ctx``."""
+        return SumFunctional(tuple(term.convert(new_ctx) for term in self.terms))
+
+
+def _flatten_functional_sum_terms(terms: Any) -> tuple[Functional, ...]:
+    """Flatten nested :class:`SumFunctional` nodes into a flat term tuple."""
+    flat: list[Functional] = []
+    for i, term in enumerate(terms):
+        if not isinstance(term, Functional):
+            raise TypeError(f"operand {i} must be a Functional, got {type(term).__name__}.")
+        if isinstance(term, SumFunctional):
+            flat.extend(term.terms)
+        else:
+            flat.append(term)
+    return tuple(flat)
+
+
+def make_functional_sum(terms: Any) -> Functional:
+    """
+    Return a locally simplified lazy sum of functionals.
+
+    Nested :class:`SumFunctional` nodes are flattened; a single surviving term is
+    returned unwrapped. Domain and context compatibility is validated by
+    :class:`SumFunctional`.
+
+    Parameters
+    ----------
+    terms : sequence of Functional
+        Nonempty sequence of functionals sharing one domain.
+
+    Returns
+    -------
+    Functional
+        Simplified lazy sum, or the single operand when only one remains.
+    """
+    terms = tuple(terms)
+    if not terms:
+        raise ValueError(
+            "make_functional_sum requires a nonempty sequence of Functional operands."
+        )
+    flat = _flatten_functional_sum_terms(terms)
+    if len(flat) == 1:
+        return flat[0]
+    return SumFunctional(flat)

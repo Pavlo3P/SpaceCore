@@ -10,13 +10,17 @@ from tests._helpers import to_numpy
 
 
 class _SumSquares(sc.Functional):
-    """Differentiable test functional: ``F(x) = sum(x * x)``, ``grad = 2x``."""
+    """Sum-of-squares test functional; ``grad = 2x`` as a domain element.
+
+    ``grad``/``value`` go through the domain vector ops (``scale``/``flatten``)
+    so the functional is valid on dense *and* tree domains.
+    """
 
     def value(self, x, *args, **kwargs):
-        return self.ops.sum(x * x)
+        return self.ops.sum(self.domain.flatten(x) ** 2)
 
     def grad(self, x, *args, **kwargs):
-        return 2.0 * x
+        return self.domain.scale(2.0, x)
 
     def tree_flatten(self):
         return (), (self.domain, self.ctx)
@@ -33,6 +37,14 @@ class _SumSquares(sc.Functional):
 def _dense(ctx):
     X = sc.DenseCoordinateSpace((3,), ctx)
     return X, _SumSquares(X, ctx), ctx.asarray([1.0, -2.0, 3.0])
+
+
+def _tree(ctx):
+    left = sc.DenseCoordinateSpace((2,), ctx)
+    right = sc.DenseCoordinateSpace((1,), ctx)
+    X = sc.TreeSpace.from_leaf_spaces((left, right), ctx=ctx)
+    x = X.element((ctx.asarray([1.0, -2.0]), ctx.asarray([3.0])))
+    return X, _SumSquares(X, ctx), x
 
 
 # ===========================================================================
@@ -91,3 +103,94 @@ class TestScaledPytree:
         restored = sc.ScaledFunctional.tree_unflatten(aux, children)
         assert restored == G
         np.testing.assert_allclose(to_numpy(restored.value(x)), to_numpy(G.value(x)))
+
+
+# ===========================================================================
+# Sums: F + G, F - G, sum(...)
+# ===========================================================================
+class TestSum:
+    def test_value_grad_linearity(self, numpy_ctx):
+        X, F, x = _dense(numpy_ctx)
+        G = _SumSquares(X, numpy_ctx)
+        S = F + G
+        np.testing.assert_allclose(
+            to_numpy(S.value(x)), to_numpy(F.value(x)) + to_numpy(G.value(x))
+        )
+        np.testing.assert_allclose(to_numpy(S.grad(x)), to_numpy(X.add(F.grad(x), G.grad(x))))
+        v, g = S.value_and_grad(x)
+        np.testing.assert_allclose(to_numpy(v), to_numpy(F.value(x)) + to_numpy(G.value(x)))
+        np.testing.assert_allclose(to_numpy(g), to_numpy(X.add(F.grad(x), G.grad(x))))
+
+    def test_difference_is_zero_when_equal(self, numpy_ctx):
+        X, F, x = _dense(numpy_ctx)
+        G = _SumSquares(X, numpy_ctx)
+        np.testing.assert_allclose(to_numpy((F - G).value(x)), 0.0, atol=1e-12)
+        np.testing.assert_allclose(to_numpy((F - G).grad(x)), 0.0, atol=1e-12)
+
+    def test_sum_builtin(self, numpy_ctx):
+        X, F, x = _dense(numpy_ctx)
+        G = _SumSquares(X, numpy_ctx)
+        np.testing.assert_allclose(to_numpy(sum([F, G]).value(x)), to_numpy((F + G).value(x)))
+
+    def test_mixed_scale_and_sum_grad(self, numpy_ctx):
+        X, F, x = _dense(numpy_ctx)
+        G = _SumSquares(X, numpy_ctx)
+        C = 2.0 * F + (-1.0) * G
+        expected = X.add(X.scale(2.0, F.grad(x)), X.scale(-1.0, G.grad(x)))
+        np.testing.assert_allclose(to_numpy(C.grad(x)), to_numpy(expected))
+
+    def test_non_functional_returns_notimplemented(self, numpy_ctx):
+        _, F, _ = _dense(numpy_ctx)
+        assert F.__add__(object()) is NotImplemented
+        assert F.__sub__(object()) is NotImplemented
+
+
+class TestSumFactory:
+    def test_nested_sums_flatten(self, numpy_ctx):
+        X, F, _ = _dense(numpy_ctx)
+        G = _SumSquares(X, numpy_ctx)
+        H = _SumSquares(X, numpy_ctx)
+        s = sc.make_functional_sum([F, sc.make_functional_sum([G, H])])
+        assert isinstance(s, sc.SumFunctional)
+        assert len(s.parts) == 3
+
+    def test_single_term_unwraps(self, numpy_ctx):
+        _, F, _ = _dense(numpy_ctx)
+        assert sc.make_functional_sum([F]) is F
+
+
+class TestSumDomainAndPytree:
+    def test_domain_mismatch_raises(self, numpy_ctx):
+        X, F, _ = _dense(numpy_ctx)
+        G = _SumSquares(sc.DenseCoordinateSpace((2,), numpy_ctx), numpy_ctx)
+        with pytest.raises(ValueError, match="same domain"):
+            F + G
+
+    def test_pytree_round_trip(self, numpy_ctx):
+        X, F, x = _dense(numpy_ctx)
+        G = _SumSquares(X, numpy_ctx)
+        S = F + G
+        children, aux = S.tree_flatten()
+        restored = sc.SumFunctional.tree_unflatten(aux, children)
+        assert restored == S
+        np.testing.assert_allclose(to_numpy(restored.value(x)), to_numpy(S.value(x)))
+
+
+# ===========================================================================
+# Tree domain: gradients must combine via X.add / X.scale, not raw +/*
+# ===========================================================================
+class TestTreeDomainGrad:
+    def test_sum_grad_via_domain_add(self, numpy_ctx):
+        X, F, x = _tree(numpy_ctx)
+        G = _SumSquares(X, numpy_ctx)
+        np.testing.assert_allclose(
+            to_numpy(X.flatten((F + G).grad(x))),
+            to_numpy(X.flatten(X.add(F.grad(x), G.grad(x)))),
+        )
+
+    def test_scaled_grad_via_domain_scale(self, numpy_ctx):
+        X, F, x = _tree(numpy_ctx)
+        np.testing.assert_allclose(
+            to_numpy(X.flatten((3.0 * F).grad(x))),
+            to_numpy(X.flatten(X.scale(3.0, F.grad(x)))),
+        )
