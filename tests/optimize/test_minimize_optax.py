@@ -1,8 +1,12 @@
-"""Tests for :func:`spacecore.minimize_optax` (ADR-018).
+"""Tests for :func:`spacecore.minimize_optax` (ADR-018, 0.4.2 W1).
 
-optax is JAX-native, so these tests require both jax and optax. They cover
-convergence on Euclidean and weighted dense spaces, the pytree pass-through for a
-tree space, the callback, the ``steps=0`` no-op, and the optimizer-state usage.
+``minimize_optax`` is the compiled, convergence-aware optax driver: the whole
+loop runs inside ``jax.jit(jax.lax.while_loop(...))`` with the fused
+``F.value_and_grad`` cached once per iteration. These tests (jax + optax) cover
+convergence + early stop, the weighted-metric Riesz handoff, tree / bound-element
+pass-through, the ``max_iter``/finiteness stop reasons, the ``project`` hook, the
+four-column history + ``progress_callback`` replay, the guarantee that
+``value_and_grad`` is evaluated once (not per iteration), and the input guards.
 """
 from __future__ import annotations
 
@@ -25,89 +29,248 @@ def _jax_ctx():
     return make_ctx("jax", np.float32)
 
 
-def test_euclidean_convergence():
-    import optax
+class _CountingQuadratic(sc.Functional):
+    """``F(x) = 1/2 sum(x^2)`` that counts ``value_and_grad`` (Python) calls."""
 
-    ctx = _jax_ctx()
-    X, F, x_star = euclidean_problem(ctx)
+    calls = 0
 
-    x = sc.minimize_optax(F, X.zeros(), optax.adam(1e-1), steps=1000)
+    def value(self, x, *args, **kwargs):
+        return self.ops.sum(x * x) * 0.5
 
-    np.testing.assert_allclose(to_numpy(x), x_star, atol=1e-2)
+    def grad(self, x, *args, **kwargs):
+        return x
 
+    def value_and_grad(self, x, *args, **kwargs):
+        type(self).calls += 1
+        return self.value(x), self.grad(x)
 
-def test_weighted_convergence():
-    """The riesz coordinate-gradient handoff drives optax to the metric minimizer."""
-    import optax
+    def tree_flatten(self):
+        return (), (self.domain, self.ctx)
 
-    ctx = _jax_ctx()
-    X, F, x_star = weighted_problem(ctx)
+    @classmethod
+    def tree_unflatten(cls, aux, children):
+        domain, ctx = aux
+        return cls(domain, ctx)
 
-    x = sc.minimize_optax(F, X.zeros(), optax.adam(5e-2), steps=4000)
-
-    np.testing.assert_allclose(to_numpy(x), x_star, atol=2e-2)
-
-
-def test_tree_space_pytree_passthrough():
-    import optax
-
-    ctx = _jax_ctx()
-    treedef = optree.tree_structure((0, 0))
-    Xa = sc.DenseCoordinateSpace((2,), ctx)
-    Xb = sc.DenseCoordinateSpace((1,), ctx)
-    X = sc.TreeSpace(treedef, (Xa, Xb), ctx=ctx)
-    F = sc.LinOpQuadraticForm(sc.IdentityLinOp(X, ctx))
-    x0 = (ctx.asarray([3.0, -1.0]), ctx.asarray([2.0]))
-
-    x = sc.minimize_optax(F, x0, optax.sgd(0.2), steps=300)
-
-    assert isinstance(x, tuple) and len(x) == 2
-    np.testing.assert_allclose(to_numpy(X.flatten(x)), 0.0, atol=1e-3)
+    def _convert(self, new_ctx):
+        return _CountingQuadratic(self.domain.convert(new_ctx), new_ctx)
 
 
-def test_tree_element_x0_is_normalized():
-    """A bound ``TreeElement`` x0 is normalized so apply_updates does not collide."""
-    import optax
+# ===========================================================================
+# Convergence + early stop + pass-through
+# ===========================================================================
+class TestConvergence:
+    def test_euclidean_converges_and_stops_early(self):
+        import optax
 
-    ctx = _jax_ctx()
-    treedef = optree.tree_structure((0, 0))
-    Xa = sc.DenseCoordinateSpace((2,), ctx)
-    Xb = sc.DenseCoordinateSpace((1,), ctx)
-    X = sc.TreeSpace(treedef, (Xa, Xb), ctx=ctx)
-    F = sc.LinOpQuadraticForm(sc.IdentityLinOp(X, ctx))
-    # The idiomatic SpaceCore element is a bound TreeElement, which is its own
-    # pytree and previously collided with the raw-tuple gradient at step 1.
-    x0 = X.element((ctx.asarray([3.0, -1.0]), ctx.asarray([2.0])))
-    assert isinstance(x0, sc.TreeElement)
+        ctx = _jax_ctx()
+        X, F, x_star = euclidean_problem(ctx)
+        res = sc.minimize_optax(F, X.zeros(), optax.adam(1e-1), max_iter=2000, tol=1e-5, verbose=0)
 
-    x = sc.minimize_optax(F, x0, optax.sgd(0.2), steps=50)
+        assert res.success and res.status == 0
+        assert res.message == "converged"
+        assert res.num_iters < 2000  # stopped on the gradient tolerance, not the cap
+        assert res.final_grad_norm <= 1e-5
+        np.testing.assert_allclose(to_numpy(res.x_element), x_star, atol=1e-2)
 
-    np.testing.assert_allclose(to_numpy(X.flatten(x)), 0.0, atol=1e-3)
+    def test_weighted_metric_handoff(self):
+        """X.riesz coordinate-gradient handoff drives optax to the metric minimizer."""
+        import optax
+
+        ctx = _jax_ctx()
+        X, F, x_star = weighted_problem(ctx)
+        res = sc.minimize_optax(F, X.zeros(), optax.adam(5e-2), max_iter=8000, tol=1e-5, verbose=0)
+
+        assert res.success
+        np.testing.assert_allclose(to_numpy(res.x_element), x_star, atol=2e-2)
+
+    def test_tree_space_passthrough(self):
+        import optax
+
+        ctx = _jax_ctx()
+        treedef = optree.tree_structure((0, 0))
+        Xa = sc.DenseCoordinateSpace((2,), ctx)
+        Xb = sc.DenseCoordinateSpace((1,), ctx)
+        X = sc.TreeSpace(treedef, (Xa, Xb), ctx=ctx)
+        F = sc.LinOpQuadraticForm(sc.IdentityLinOp(X, ctx))
+        x0 = (ctx.asarray([3.0, -1.0]), ctx.asarray([2.0]))
+
+        res = sc.minimize_optax(F, x0, optax.sgd(0.2), max_iter=500, tol=1e-4, verbose=0)
+
+        assert isinstance(res.x_element, tuple) and len(res.x_element) == 2
+        np.testing.assert_allclose(to_numpy(X.flatten(res.x_element)), 0.0, atol=1e-3)
+
+    def test_tree_element_x0_is_normalized(self):
+        """A bound ``TreeElement`` x0 is normalized so apply_updates does not collide."""
+        import optax
+
+        ctx = _jax_ctx()
+        treedef = optree.tree_structure((0, 0))
+        Xa = sc.DenseCoordinateSpace((2,), ctx)
+        Xb = sc.DenseCoordinateSpace((1,), ctx)
+        X = sc.TreeSpace(treedef, (Xa, Xb), ctx=ctx)
+        F = sc.LinOpQuadraticForm(sc.IdentityLinOp(X, ctx))
+        x0 = X.element((ctx.asarray([3.0, -1.0]), ctx.asarray([2.0])))
+        assert isinstance(x0, sc.TreeElement)
+
+        res = sc.minimize_optax(F, x0, optax.sgd(0.2), max_iter=200, tol=1e-4, verbose=0)
+
+        np.testing.assert_allclose(to_numpy(X.flatten(res.x_element)), 0.0, atol=1e-3)
 
 
-def test_callback_records_trajectory():
-    import optax
+# ===========================================================================
+# Stop reasons: max-iter and nonfinite
+# ===========================================================================
+class TestStopReasons:
+    def test_max_iter_cap(self):
+        import optax
 
-    ctx = _jax_ctx()
-    X, F, _ = euclidean_problem(ctx)
-    values = []
+        ctx = _jax_ctx()
+        X, F, _ = euclidean_problem(ctx)
+        res = sc.minimize_optax(F, X.zeros(), optax.adam(1e-3), max_iter=3, tol=0.0, verbose=0)
 
-    def callback(step, params):
-        values.append(float(F.value(params)))
+        assert res.num_iters == 3
+        assert res.status == 1 and not res.success
+        assert res.message == "maximum iterations reached"
 
-    sc.minimize_optax(F, X.zeros(), optax.sgd(1e-1), steps=10, callback=callback)
+    def test_max_iter_zero_returns_initial_point(self):
+        import optax
 
-    assert len(values) == 10
-    assert values[-1] < values[0]  # objective decreased over the run
+        ctx = _jax_ctx()
+        X, F, _ = euclidean_problem(ctx)
+        x0 = ctx.asarray([0.3, -0.7])
+        res = sc.minimize_optax(F, x0, optax.adam(1e-1), max_iter=0, tol=1e-6, verbose=0)
+
+        assert res.num_iters == 0
+        np.testing.assert_array_equal(to_numpy(res.x_element), to_numpy(x0))
+
+    def test_nonfinite_diverges(self):
+        import optax
+
+        ctx = _jax_ctx()
+        X, F, _ = weighted_problem(ctx)
+        # A wildly oversized step overflows to inf within a few iterations.
+        res = sc.minimize_optax(F, X.zeros(), optax.sgd(1e20), max_iter=1000, tol=1e-6, verbose=0)
+
+        assert res.status == 2 and not res.success
+        assert "nonfinite" in res.message
 
 
-def test_zero_steps_returns_initial_point():
-    import optax
+# ===========================================================================
+# project hook
+# ===========================================================================
+class TestProject:
+    def test_project_keeps_iterate_in_set(self):
+        import optax
 
-    ctx = _jax_ctx()
-    X, F, _ = euclidean_problem(ctx)
-    x0 = ctx.asarray([0.3, -0.7])
+        ctx = _jax_ctx()
+        X, F, _ = weighted_problem(ctx)
+        # Retraction pins the third coordinate to zero after every update.
+        project = lambda p: p.at[2].set(0.0)  # noqa: E731
+        res = sc.minimize_optax(
+            F, X.zeros(), optax.adam(5e-2), max_iter=200, tol=1e-8, project=project, verbose=0
+        )
 
-    x = sc.minimize_optax(F, x0, optax.adam(1e-1), steps=0)
+        assert float(to_numpy(res.x_element)[2]) == 0.0
 
-    np.testing.assert_array_equal(to_numpy(x), to_numpy(x0))
+
+# ===========================================================================
+# History columns + callback replay
+# ===========================================================================
+class TestHistory:
+    def test_four_columns_and_delta_is_objective_difference(self):
+        import optax
+
+        ctx = _jax_ctx()
+        X, F, _ = euclidean_problem(ctx)
+        # Record every iteration so value_delta[k] == value[k] - value[k-1].
+        res = sc.minimize_optax(
+            F, X.zeros(), optax.sgd(1e-1), max_iter=30, tol=0.0,
+            history_every=1, log_every=1000, verbose=0,
+        )
+        h = res.history
+        assert set(h) == {"iteration", "value", "value_delta", "grad_norm"}
+        assert h["iteration"][0] == 0 and h["value_delta"][0] == 0.0
+        # Column 3 is the per-iteration objective change F_k - F_{k-1}.
+        np.testing.assert_allclose(h["value_delta"][1:], np.diff(h["value"]), atol=1e-6)
+        assert h["value"][-1] < h["value"][0]  # objective decreased
+
+    def test_progress_callback_replayed_from_history(self):
+        import optax
+
+        ctx = _jax_ctx()
+        X, F, _ = euclidean_problem(ctx)
+        rows = []
+        res = sc.minimize_optax(
+            F, X.zeros(), optax.adam(1e-1), max_iter=500, tol=1e-5,
+            history_every=25, verbose=0, progress_callback=rows.append,
+        )
+
+        assert len(rows) == len(res.history["iteration"])
+        assert rows and set(rows[0]) == {"iteration", "value", "value_delta", "grad_norm"}
+
+    def test_record_history_false_empty(self):
+        import optax
+
+        ctx = _jax_ctx()
+        X, F, _ = euclidean_problem(ctx)
+        res = sc.minimize_optax(
+            F, X.zeros(), optax.adam(1e-1), max_iter=50, tol=1e-5,
+            record_history=False, verbose=0,
+        )
+        assert res.history == {}
+
+
+# ===========================================================================
+# One value_and_grad per iteration (traced once, not O(iterations))
+# ===========================================================================
+class TestSingleEvaluation:
+    def test_value_and_grad_call_count_independent_of_max_iter(self):
+        import optax
+
+        ctx = _jax_ctx()
+        X = sc.DenseCoordinateSpace((3,), ctx)
+
+        counts = {}
+        for max_iter in (5, 500):
+            _CountingQuadratic.calls = 0
+            sc.minimize_optax(
+                _CountingQuadratic(X, ctx), X.zeros(), optax.sgd(1e-1),
+                max_iter=max_iter, tol=1e-9, verbose=0,
+            )
+            counts[max_iter] = _CountingQuadratic.calls
+
+        # The loop body is traced once, so the count does not grow with max_iter:
+        # one initial evaluation + one traced body evaluation.
+        assert counts[5] == counts[500]
+        assert counts[5] <= 3
+
+
+# ===========================================================================
+# Input guards
+# ===========================================================================
+class TestGuards:
+    def test_rejects_non_jax_domain(self):
+        import optax
+
+        ctx = make_ctx("numpy", np.float64)
+        X, F, _ = euclidean_problem(ctx)
+        with pytest.raises(TypeError, match="JAX-backed"):
+            sc.minimize_optax(F, X.zeros(), optax.adam(1e-1), max_iter=10)
+
+    @pytest.mark.parametrize(
+        "kwargs, match",
+        [
+            ({"max_iter": -1}, "max_iter"),
+            ({"tol": -1.0}, "tol"),
+            ({"log_every": 0}, "log_every"),
+            ({"history_every": 0}, "history_every"),
+        ],
+    )
+    def test_rejects_bad_parameters(self, kwargs, match):
+        import optax
+
+        ctx = _jax_ctx()
+        X, F, _ = euclidean_problem(ctx)
+        with pytest.raises(ValueError, match=match):
+            sc.minimize_optax(F, X.zeros(), optax.adam(1e-1), **kwargs)

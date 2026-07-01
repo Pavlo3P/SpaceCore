@@ -72,6 +72,7 @@ from .linalg import (
     power_iteration,
 )
 from .optimize import (
+    OptaxResult,
     line_search_scipy,
     minimize_optax,
     minimize_scipy,
@@ -177,6 +178,7 @@ __all__ = [
     "power_iteration",
     "minimize_scipy",
     "minimize_optax",
+    "OptaxResult",
     "line_search_scipy",
     "BackendCheck",
     "DTypeCheck",
