@@ -126,7 +126,11 @@ def make_scaled_functional(scalar: Any, functional: Functional) -> Functional:
         raise TypeError(f"functional must be a Functional, got {type(functional).__name__}.")
     if not is_scalar_like(scalar):
         raise TypeError(f"scalar must be scalar-like, got {type(scalar).__name__}.")
+    if _scalar_eq(scalar, 0):
+        return ZeroFunctional(functional.domain, functional.ctx)
     if _scalar_eq(scalar, 1):
+        return functional
+    if isinstance(functional, ZeroFunctional):
         return functional
     if isinstance(functional, ScaledFunctional):
         return make_scaled_functional(scalar * functional.scalar, functional.functional)
@@ -261,6 +265,157 @@ def make_functional_sum(terms: Any) -> Functional:
             "make_functional_sum requires a nonempty sequence of Functional operands."
         )
     flat = _flatten_functional_sum_terms(terms)
-    if len(flat) == 1:
-        return flat[0]
-    return SumFunctional(flat)
+    nonzero = tuple(term for term in flat if not isinstance(term, ZeroFunctional))
+    if not nonzero:
+        return ZeroFunctional(flat[0].domain, flat[0].ctx)
+    if len(nonzero) == 1:
+        return nonzero[0]
+    return SumFunctional(nonzero)
+
+
+@jax_pytree_class
+class ZeroFunctional(Functional):
+    """
+    The zero functional: value ``0``, gradient the domain's zero element.
+
+    The additive identity of the functional algebra (``make_functional_sum``
+    drops it and ``make_scaled_functional`` returns it for a zero scalar).
+
+    Parameters
+    ----------
+    dom : Space
+        Domain space.
+    ctx : Context, str, or None, optional
+        Backend context specification.
+    """
+
+    def __init__(self, dom: Any, ctx: Context | str | None = None) -> None:
+        super().__init__(dom, ctx)
+
+    @checked_method(in_space="domain")
+    def value(self, x: Any, *args: Any, **kwargs: Any) -> Any:
+        """Return the scalar zero."""
+        return self._value_core(x, *args, **kwargs)
+
+    def _value_core(self, x: Any, *args: Any, **kwargs: Any) -> Any:
+        """Check-free scalar zero in the domain dtype."""
+        return self.ctx.asarray(0.0)
+
+    def grad(self, x: Any, *args: Any, **kwargs: Any) -> Any:
+        """Return the domain's zero element."""
+        return self.domain.zeros()
+
+    def value_and_grad(self, x: Any, *args: Any, **kwargs: Any) -> tuple[Any, Any]:
+        """Return ``(0, X.zeros())``."""
+        return self._value_core(x, *args, **kwargs), self.domain.zeros()
+
+    def __eq__(self, other: Any) -> bool:
+        """Return whether another zero functional has the same domain."""
+        if not self._eq_backend_compatible(other):
+            return NotImplemented
+        return self.domain == other.domain
+
+    def tree_flatten(self):
+        """Flatten this functional for pytree registration."""
+        return (), (self.domain, self.ctx)
+
+    @classmethod
+    def tree_unflatten(cls, aux, children):
+        """Rebuild this functional from pytree data."""
+        dom, ctx = aux
+        return cls(dom, ctx)
+
+    def _convert(self, new_ctx: Context) -> "ZeroFunctional":
+        """Convert the zero functional to ``new_ctx``."""
+        return ZeroFunctional(self.domain.convert(new_ctx), new_ctx)
+
+
+@jax_pytree_class
+class ShiftedFunctional(Functional):
+    """
+    Affine shift ``functional + offset``: value shifted, gradient unchanged.
+
+    Parameters
+    ----------
+    functional : Functional
+        Functional to shift.
+    offset : scalar-like
+        Constant added to the value.
+    """
+
+    def __init__(self, functional: Functional, offset: Any) -> None:
+        if not isinstance(functional, Functional):
+            raise TypeError(f"functional must be a Functional, got {type(functional).__name__}.")
+        if not is_scalar_like(offset):
+            raise TypeError(f"offset must be scalar-like, got {type(offset).__name__}.")
+        super().__init__(functional.domain, functional.ctx)
+        self.functional = functional.convert(self.ctx)
+        self.offset = offset
+
+    @checked_method(in_space="domain")
+    def value(self, x: Any, *args: Any, **kwargs: Any) -> Any:
+        """Return ``functional.value(x) + offset``."""
+        return self._value_core(x, *args, **kwargs)
+
+    def _value_core(self, x: Any, *args: Any, **kwargs: Any) -> Any:
+        """Check-free shifted value."""
+        return self.functional._value_core(x, *args, **kwargs) + self.offset
+
+    def grad(self, x: Any, *args: Any, **kwargs: Any) -> Any:
+        """Return ``functional.grad(x)`` (a constant shift has zero gradient)."""
+        return self.functional.grad(x, *args, **kwargs)
+
+    def value_and_grad(self, x: Any, *args: Any, **kwargs: Any) -> tuple[Any, Any]:
+        """Return ``(value + offset, grad)`` from one fused child evaluation."""
+        value, grad = self.functional.value_and_grad(x, *args, **kwargs)
+        return value + self.offset, grad
+
+    def __eq__(self, other: Any) -> bool:
+        """Return whether another shifted functional has the same offset and operand."""
+        if not self._eq_backend_compatible(other):
+            return NotImplemented
+        return _scalar_eq(self.offset, other.offset) and self.functional == other.functional
+
+    def tree_flatten(self):
+        """Flatten this functional for pytree registration (offset is a traced child)."""
+        return (self.functional, self.offset), ()
+
+    @classmethod
+    def tree_unflatten(cls, aux, children):
+        """Rebuild this functional from pytree data."""
+        functional, offset = children
+        return cls(functional, offset)
+
+    def _convert(self, new_ctx: Context) -> "ShiftedFunctional":
+        """Convert the shifted functional to ``new_ctx``."""
+        return ShiftedFunctional(self.functional.convert(new_ctx), self.offset)
+
+
+def make_shifted_functional(functional: Functional, offset: Any) -> Functional:
+    """
+    Return a locally simplified affine shift of a functional.
+
+    A zero offset passes ``functional`` through unchanged and nested
+    :class:`ShiftedFunctional` nodes fold into one offset.
+
+    Parameters
+    ----------
+    functional : Functional
+        Functional to shift.
+    offset : scalar-like
+        Constant added to the value.
+
+    Returns
+    -------
+    Functional
+        Simplified affine shift.
+    """
+    if not isinstance(functional, Functional):
+        raise TypeError(f"functional must be a Functional, got {type(functional).__name__}.")
+    if not is_scalar_like(offset):
+        raise TypeError(f"offset must be scalar-like, got {type(offset).__name__}.")
+    if _scalar_eq(offset, 0):
+        return functional
+    if isinstance(functional, ShiftedFunctional):
+        return make_shifted_functional(functional.functional, functional.offset + offset)
+    return ShiftedFunctional(functional, offset)

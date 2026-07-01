@@ -6,7 +6,8 @@ import pytest
 
 import spacecore as sc
 
-from tests._helpers import to_numpy
+from tests._helpers import has_jax, to_numpy
+from tests.optimize._helpers import has_optax
 
 
 class _SumSquares(sc.Functional):
@@ -194,3 +195,82 @@ class TestTreeDomainGrad:
             to_numpy(X.flatten((3.0 * F).grad(x))),
             to_numpy(X.flatten(X.scale(3.0, F.grad(x)))),
         )
+
+
+# ===========================================================================
+# Affine shift: F + c  (value shifted, gradient unchanged)
+# ===========================================================================
+class TestShifted:
+    def test_affine_value_and_grad(self, numpy_ctx):
+        X, F, x = _dense(numpy_ctx)
+        A = F + 3.0
+        np.testing.assert_allclose(to_numpy(A.value(x)), to_numpy(F.value(x)) + 3.0)
+        np.testing.assert_allclose(to_numpy(A.grad(x)), to_numpy(F.grad(x)))  # shift ⇒ same grad
+
+    def test_left_scalar_add_and_scalar_sub(self, numpy_ctx):
+        X, F, x = _dense(numpy_ctx)
+        np.testing.assert_allclose(to_numpy((3.0 + F).value(x)), to_numpy((F + 3.0).value(x)))
+        np.testing.assert_allclose(to_numpy((F - 2.0).value(x)), to_numpy(F.value(x)) - 2.0)
+        np.testing.assert_allclose(to_numpy((10.0 - F).value(x)), 10.0 - to_numpy(F.value(x)))
+        np.testing.assert_allclose(to_numpy((10.0 - F).grad(x)), -to_numpy(F.grad(x)))
+
+    def test_zero_offset_and_nested_fold(self, numpy_ctx):
+        _, F, _ = _dense(numpy_ctx)
+        assert (F + 0.0) is F
+        s = (F + 3.0) + 2.0
+        assert isinstance(s, sc.ShiftedFunctional) and s.offset == 5.0
+
+    def test_non_scalar_non_functional_notimplemented(self, numpy_ctx):
+        _, F, _ = _dense(numpy_ctx)
+        assert F.__add__(object()) is NotImplemented
+
+
+# ===========================================================================
+# ZeroFunctional (additive identity) + factory zero handling
+# ===========================================================================
+class TestZero:
+    def test_value_and_grad(self, numpy_ctx):
+        X, F, x = _dense(numpy_ctx)
+        Z = sc.ZeroFunctional(X, numpy_ctx)
+        np.testing.assert_allclose(to_numpy(Z.value(x)), 0.0)
+        np.testing.assert_allclose(to_numpy(Z.grad(x)), 0.0)
+
+    def test_zero_scalar_makes_zero(self, numpy_ctx):
+        _, F, _ = _dense(numpy_ctx)
+        assert isinstance(sc.make_scaled_functional(0.0, F), sc.ZeroFunctional)
+
+    def test_zero_is_additive_identity(self, numpy_ctx):
+        X, F, _ = _dense(numpy_ctx)
+        assert sc.make_functional_sum([F, sc.ZeroFunctional(X, numpy_ctx)]) is F
+
+    def test_all_zero_sum_is_zero(self, numpy_ctx):
+        X, _, _ = _dense(numpy_ctx)
+        s = sc.make_functional_sum([sc.ZeroFunctional(X, numpy_ctx), sc.ZeroFunctional(X, numpy_ctx)])
+        assert isinstance(s, sc.ZeroFunctional)
+
+    def test_pytree_round_trip(self, numpy_ctx):
+        X, F, _ = _dense(numpy_ctx)
+        for obj, cls in [(F + 3.0, sc.ShiftedFunctional), (sc.ZeroFunctional(X, numpy_ctx), sc.ZeroFunctional)]:
+            children, aux = obj.tree_flatten()
+            assert cls.tree_unflatten(aux, children) == obj
+
+
+# ===========================================================================
+# End-to-end: a composed functional drives minimize_optax
+# ===========================================================================
+@pytest.mark.skipif(not (has_jax() and has_optax()), reason="requires jax and optax")
+class TestOptimizerIntegration:
+    def test_minimize_sum_functional(self):
+        import optax
+
+        from tests.linalg._helpers import make_ctx
+        from tests.optimize._helpers import euclidean_problem
+
+        ctx = make_ctx("jax", np.float32)
+        X, F, x_star = euclidean_problem(ctx)
+        # A SumFunctional of two ScaledFunctionals; argmin(0.5F + 0.5F) == argmin F.
+        composed = 0.5 * F + 0.5 * F
+        assert isinstance(composed, sc.SumFunctional)
+        res = sc.minimize_optax(composed, X.zeros(), optax.adam(1e-1), max_iter=2000, tol=1e-5, verbose=0)
+        assert res.success
+        np.testing.assert_allclose(to_numpy(res.x_element), x_star, atol=1e-2)

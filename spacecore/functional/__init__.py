@@ -10,9 +10,12 @@ subpackage and are re-exported here for convenience.
 from ._base import Functional
 from ._algebra import (
     ScaledFunctional,
+    ShiftedFunctional,
     SumFunctional,
+    ZeroFunctional,
     make_functional_sum,
     make_scaled_functional,
+    make_shifted_functional,
 )
 from ._composed import ComposedFunctional, make_functional_composed
 from ._linear import InnerProductFunctional, LinearFunctional, MatrixFreeLinearFunctional
@@ -48,14 +51,17 @@ __all__ = [
     "NuclearNormFunctional",
     "QuadraticForm",
     "ScaledFunctional",
+    "ShiftedFunctional",
     "SpectralLpNormFunctional",
     "SquaredL2NormFunctional",
     "SumFunctional",
+    "ZeroFunctional",
     "generalized_shrinkage",
     "least_squares",
     "make_functional_composed",
     "make_functional_sum",
     "make_scaled_functional",
+    "make_shifted_functional",
     "project_nonneg",
     "prox_l1",
     "prox_l2sq",
