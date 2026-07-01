@@ -7,6 +7,41 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.2] — 2026-07-01
+
+### Added
+
+- **Jordan spectral primitives** on every Jordan-algebra space: `trace`,
+  `determinant`, and the algebra identity `unit()`, derived from the spectrum and
+  batch-axis preserving. Hermitian `trace` reads the diagonal (no eigendecomposition);
+  tree/stacked spaces are direct sums, so `trace` is additive and `determinant`
+  multiplicative (#56).
+- **Lazy functional algebra** mirroring `LinOp`: `SumFunctional`, `ScaledFunctional`,
+  `ShiftedFunctional` (affine `F + c`), and `ZeroFunctional`, wired to
+  `Functional.__add__` / `__sub__` / `__neg__` / `__mul__` / `__rmul__` and the
+  `make_functional_sum` / `make_scaled_functional` / `make_shifted_functional`
+  factories. Gradients combine through the domain's `add`/`scale` (metric-correct on
+  tree/stacked/weighted domains), and a complex scalar conjugates on the gradient
+  side (#60).
+- **`Functional.value_and_grad`** — a fused evaluator (base default returns
+  `(value, grad)`; subclasses may override with a single-pass AD) — and
+  `value`/`grad` now accept auxiliary `*args, **kwargs` (#51).
+- **Structure-preserving tree spectra**: `TreeSpace.spectrum(x, structured=True)`
+  returns a `treedef`-shaped tree of per-leaf eigenvalues, and
+  `TreeSpectralDecomposition` carries the `treedef` with a `to_tree()` view. The
+  flat `spectrum(x)` is unchanged (#58).
+
+### Changed
+
+- **`minimize_optax` is now a compiled, convergence-aware driver** (breaking): the
+  whole loop runs inside `jax.jit(jax.lax.while_loop(...))` with the fused
+  `value_and_grad` cached once per iteration; on-device `grad_norm <= tol` and
+  finiteness stopping; four-column progress logging (iteration · value · ΔF ·
+  grad norm) + a preallocated history buffer with post-hoc `progress_callback`
+  replay; an optional `project` retraction hook; and a rich `OptaxResult`
+  (success/status/message/iters/`nfev`/`njev`/`n_linesearch_steps`/history/timing/
+  `x_element`). The old fixed-`steps` eager loop is removed (#54).
+
 ## [0.4.1] — 2026-06-28
 
 ### Added
