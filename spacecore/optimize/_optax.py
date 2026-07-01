@@ -90,6 +90,11 @@ class OptaxResult:
         Human-readable status.
     num_iters : int
         Iterations executed.
+    nfev, njev : int
+        Value and gradient evaluations performed by the driver: one fused
+        ``value_and_grad`` per iteration plus one initial evaluation, i.e.
+        ``num_iters + 1``. Extra value evaluations made internally by line-search
+        optimizers (e.g. ``optax.lbfgs`` via ``value_fn``) are not counted.
     final_value, final_grad_norm : float
         Objective and coordinate-gradient norm at the final point.
     x_element : Any
@@ -105,6 +110,8 @@ class OptaxResult:
     status: int
     message: str
     num_iters: int
+    nfev: int
+    njev: int
     final_value: float
     final_grad_norm: float
     x_element: Any
@@ -363,6 +370,8 @@ def minimize_optax(
 
     final = result.state
     num_iters = int(result.iteration)
+    # One fused value_and_grad per iteration, plus the initial evaluation.
+    nfev = njev = num_iters + 1
     final_value = float(np.real(final.value))
     final_grad_norm = float(final.grad_norm)
     finite = bool(np.asarray(result.finite))
@@ -404,7 +413,7 @@ def minimize_optax(
         if verbose >= 2:
             print(_RULE)
         print(f"status   : {message}")
-        print(f"iters    : {num_iters}")
+        print(f"iters    : {num_iters}  (nfev={nfev}, njev={njev})")
         print(f"value    : {final_value:+.8e}")
         print(f"grad_norm: {final_grad_norm:.3e}")
         print(
@@ -417,6 +426,8 @@ def minimize_optax(
         status=status,
         message=message,
         num_iters=num_iters,
+        nfev=nfev,
+        njev=njev,
         final_value=final_value,
         final_grad_norm=final_grad_norm,
         x_element=final.params,

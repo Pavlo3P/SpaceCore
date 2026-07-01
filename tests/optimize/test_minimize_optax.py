@@ -71,6 +71,8 @@ class TestConvergence:
         assert res.message == "converged"
         assert res.num_iters < 2000  # stopped on the gradient tolerance, not the cap
         assert res.final_grad_norm <= 1e-5
+        # One fused value_and_grad per iteration plus the initial evaluation.
+        assert res.nfev == res.njev == res.num_iters + 1
         np.testing.assert_allclose(to_numpy(res.x_element), x_star, atol=1e-2)
 
     def test_weighted_metric_handoff(self):
@@ -142,7 +144,18 @@ class TestStopReasons:
         res = sc.minimize_optax(F, x0, optax.adam(1e-1), max_iter=0, tol=1e-6, verbose=0)
 
         assert res.num_iters == 0
+        assert res.nfev == res.njev == 1  # only the initial evaluation
         np.testing.assert_array_equal(to_numpy(res.x_element), to_numpy(x0))
+
+    def test_nfev_njev_scale_with_iterations(self):
+        import optax
+
+        ctx = _jax_ctx()
+        X, F, _ = euclidean_problem(ctx)
+        res = sc.minimize_optax(F, X.zeros(), optax.sgd(1e-2), max_iter=17, tol=0.0, verbose=0)
+
+        assert res.num_iters == 17
+        assert res.nfev == 18 and res.njev == 18  # num_iters + 1
 
     def test_nonfinite_diverges(self):
         import optax
