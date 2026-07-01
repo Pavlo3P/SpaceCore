@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from abc import abstractmethod
+from numbers import Number
 from typing import TYPE_CHECKING, Any, Generic, Self, TypeVar
 
 from .._batching import _leading_batch_size, _warn_vmap_fallback_once
@@ -130,6 +131,74 @@ class Functional(ContextBound, Generic[Domain]):
         from ._composed import make_functional_composed
 
         return make_functional_composed(self, A)
+
+    def __add__(self, other: Any) -> "Functional":
+        """Return ``self + other`` — a lazy sum (functional) or affine shift (scalar)."""
+        from ._algebra import is_scalar_like, make_functional_sum, make_shifted_functional
+
+        if isinstance(other, Functional):
+            return make_functional_sum((self, other))
+        if is_scalar_like(other):
+            return make_shifted_functional(self, other)
+        return NotImplemented
+
+    def __radd__(self, other: Any) -> "Functional":
+        """Return ``other + self`` (``0 + self`` enables builtin ``sum``)."""
+        from ._algebra import is_scalar_like, make_functional_sum, make_shifted_functional
+
+        if isinstance(other, Number) and other == 0:
+            return self
+        if isinstance(other, Functional):
+            return make_functional_sum((other, self))
+        if is_scalar_like(other):
+            return make_shifted_functional(self, other)
+        return NotImplemented
+
+    def __sub__(self, other: Any) -> "Functional":
+        """Return ``self - other`` — a lazy difference (functional) or shift (scalar)."""
+        from ._algebra import is_scalar_like, make_functional_sum, make_scaled_functional
+        from ._algebra import make_shifted_functional
+
+        if isinstance(other, Functional):
+            return make_functional_sum((self, make_scaled_functional(-1, other)))
+        if is_scalar_like(other):
+            return make_shifted_functional(self, -other)
+        return NotImplemented
+
+    def __rsub__(self, other: Any) -> "Functional":
+        """Return ``other - self`` — a lazy difference (functional) or shift (scalar)."""
+        from ._algebra import is_scalar_like, make_functional_sum, make_scaled_functional
+        from ._algebra import make_shifted_functional
+
+        if isinstance(other, Number) and other == 0:
+            return make_scaled_functional(-1, self)
+        if isinstance(other, Functional):
+            return make_functional_sum((other, make_scaled_functional(-1, self)))
+        if is_scalar_like(other):
+            return make_shifted_functional(make_scaled_functional(-1, self), other)
+        return NotImplemented
+
+    def __neg__(self) -> "Functional":
+        """Return the lazy negation ``-self``."""
+        from ._algebra import make_scaled_functional
+
+        return make_scaled_functional(-1, self)
+
+    def __mul__(self, scalar: Any) -> "Functional":
+        """Return the lazy right scalar multiple ``self * scalar``."""
+        from ._algebra import is_scalar_like, make_scaled_functional
+
+        if not is_scalar_like(scalar):
+            return NotImplemented
+        return make_scaled_functional(scalar, self)
+
+    def __rmul__(self, scalar: Any) -> "Functional":
+        """Return the lazy left scalar multiple ``scalar * self``."""
+        from ._algebra import is_scalar_like, make_scaled_functional
+
+        if not is_scalar_like(scalar):
+            return NotImplemented
+        return make_scaled_functional(scalar, self)
 
     @checked_method(in_space="domain", in_batched=True)
     def vvalue(self, xs: Any) -> Any:
