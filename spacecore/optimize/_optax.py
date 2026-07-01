@@ -100,6 +100,39 @@ def _linesearch_steps(opt_state: Any) -> Any:
     return None
 
 
+def _tree_l2_norm(tree: Any) -> Any:
+    """
+    Euclidean L2 norm of a gradient pytree, correct for complex leaves.
+
+    Uses ``|g|**2 = re**2 + im**2`` per element, so a purely imaginary gradient
+    has a nonzero norm (unlike ``real(g)**2``, which would drop the imaginary part).
+    """
+    import jax
+    import jax.numpy as jnp
+
+    leaves = jax.tree_util.tree_leaves(tree)
+    if not leaves:
+        return jnp.asarray(0.0)
+    squared = [jnp.sum(jnp.abs(leaf) ** 2) for leaf in leaves]
+    return jnp.sqrt(jnp.sum(jnp.stack(squared)))
+
+
+def _tree_all_finite(tree: Any) -> Any:
+    """
+    Return ``True`` iff every leaf is entirely finite (real and imaginary parts).
+
+    Checks the leaves directly rather than relying on a scalar norm, so a single
+    non-finite gradient entry is caught even if it would not surface in the norm.
+    """
+    import jax
+    import jax.numpy as jnp
+
+    leaves = jax.tree_util.tree_leaves(tree)
+    if not leaves:
+        return jnp.asarray(True)
+    return jnp.stack([jnp.all(jnp.isfinite(leaf)) for leaf in leaves]).all()
+
+
 @dataclass
 class OptaxResult:
     """
@@ -116,19 +149,24 @@ class OptaxResult:
     num_iters : int
         Iterations executed.
     nfev, njev : int
-        Value and gradient evaluations: one fused ``value_and_grad`` per iteration
-        plus one initial evaluation (``num_iters + 1``), plus the optimizer's
-        line-search evaluations (``n_linesearch_steps``). For gradient-transformation
-        optimizers (adam, sgd, ...) there is no line search, so
-        ``nfev == njev == num_iters + 1``.
+        Value and gradient evaluations the driver itself performs: one fused
+        ``value_and_grad`` per iteration plus one initial evaluation, i.e.
+        ``num_iters + 1``. This does not include evaluations a line-search
+        optimizer makes internally -- those are reported separately as
+        ``n_linesearch_steps``.
     n_linesearch_steps : int
         Cumulative line-search iterations reported by the optimizer (from
         ``num_linesearch_steps`` in the optax state, e.g. ``optax.lbfgs``); ``0``
-        when the optimizer performs no line search.
+        when the optimizer performs no line search. Each step performs roughly one
+        internal objective evaluation. The driver does not reuse these via
+        ``optax.value_and_grad_from_state``: that would substitute the autodiff
+        gradient of ``F.value`` for the ``X.riesz(F.grad)`` gradient the SpaceCore
+        contract requires, so line-search values are recomputed rather than cached.
     final_value, final_grad_norm : float
         Objective and coordinate-gradient norm at the final point.
     x_element : Any
-        The minimizer, an element of ``F.domain`` (same representation as ``x0``).
+        The minimizer, an element of ``F.domain`` (a bound element for a
+        structured space such as ``TreeSpace``; a raw array otherwise).
     history : dict
         Arrays ``iteration``/``value``/``value_delta``/``grad_norm`` (empty when
         ``record_history=False``).
@@ -280,17 +318,10 @@ def minimize_optax(
     params = X.unflatten_tree(X.flatten_tree(x0)) if isinstance(X, TreeSpace) else x0
     opt = optax.with_extra_args_support(opt)
 
-    def tree_l2_norm(tree: Any) -> Any:
-        leaves = jax.tree_util.tree_leaves(tree)
-        if not leaves:
-            return jnp.asarray(0.0)
-        sq = [jnp.sum(jnp.square(jnp.real(leaf))) for leaf in leaves]
-        return jnp.sqrt(jnp.sum(jnp.stack(sq)))
-
     def evaluate(p: Any):
         value, mgrad = F.value_and_grad(p)  # fused value + metric (Riesz) gradient
         grad = X.riesz(mgrad)  # metric -> coordinate gradient for optax
-        return value, grad, tree_l2_norm(grad)
+        return value, grad, _tree_l2_norm(grad)
 
     def value_fn(p: Any):  # objective for line-search optimizers (optax minimizes)
         return F.value(p)
@@ -324,9 +355,9 @@ def minimize_optax(
     def run_loop(init_state: _OptaxState, tol_val):
         zeros = jnp.zeros((capacity,), real_dtype)
         history = _History(jnp.zeros((capacity,), jnp.int32), zeros, zeros, zeros)
-        finite0 = jnp.isfinite(jnp.real(init_state.value)) & jnp.isfinite(
-            init_state.grad_norm
-        )
+        finite0 = _tree_all_finite(
+            (init_state.value, init_state.grad)
+        ) & jnp.isfinite(init_state.grad_norm)
         if record_history:
             history = record(
                 history, 0, 0, init_state.value, jnp.asarray(0.0, real_dtype),
@@ -356,7 +387,7 @@ def minimize_optax(
             value = next_state.value
             delta = jnp.real(value - prev_value)
             grad_norm = next_state.grad_norm
-            finite = jnp.isfinite(jnp.real(value)) & jnp.isfinite(grad_norm)
+            finite = _tree_all_finite((value, next_state.grad)) & jnp.isfinite(grad_norm)
             done_after = (iteration >= max_iter) | (grad_norm <= tol_val) | (~finite)
 
             if verbose >= 2:
@@ -409,11 +440,17 @@ def minimize_optax(
     final = result.state
     num_iters = int(result.iteration)
     n_linesearch_steps = int(result.nls)
-    # One fused value_and_grad per iteration + the initial evaluation, plus the
-    # optimizer's line-search evaluations (0 for gradient-transformation optimizers).
-    nfev = njev = num_iters + 1 + n_linesearch_steps
+    # Count only the value_and_grad calls the driver itself makes: one per
+    # iteration plus the initial evaluation. A line-search optimizer's internal
+    # evaluations are reported separately as n_linesearch_steps and are not folded
+    # in here (their exact count is optax-internal, and the driver does not reuse
+    # them via value_and_grad_from_state -- see the class docstring).
+    nfev = njev = num_iters + 1
     final_value = float(np.real(final.value))
     final_grad_norm = float(final.grad_norm)
+    # Return the minimizer as an element of F.domain (bound element for a
+    # structured space; the raw array is already an element otherwise).
+    x_element = X.element(final.params) if isinstance(X, TreeSpace) else final.params
     finite = bool(np.asarray(result.finite))
     success = finite and final_grad_norm <= tol
     if not finite:
@@ -471,7 +508,7 @@ def minimize_optax(
         n_linesearch_steps=n_linesearch_steps,
         final_value=final_value,
         final_grad_norm=final_grad_norm,
-        x_element=final.params,
+        x_element=x_element,
         history=history,
         compile_seconds=compile_seconds,
         execution_seconds=execution_seconds,

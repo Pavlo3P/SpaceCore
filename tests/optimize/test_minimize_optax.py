@@ -101,7 +101,9 @@ class TestConvergence:
 
         res = sc.minimize_optax(F, x0, optax.sgd(0.2), max_iter=500, tol=1e-4, verbose=0)
 
-        assert isinstance(res.x_element, tuple) and len(res.x_element) == 2
+        # x_element is a bound domain element (not the raw optimizer pytree).
+        assert isinstance(res.x_element, sc.TreeElement)
+        X.check_member(res.x_element)
         np.testing.assert_allclose(to_numpy(X.flatten(res.x_element)), 0.0, atol=1e-3)
 
     def test_tree_element_x0_is_normalized(self):
@@ -160,7 +162,7 @@ class TestStopReasons:
         assert res.n_linesearch_steps == 0
         assert res.nfev == 18 and res.njev == 18  # num_iters + 1
 
-    def test_lbfgs_folds_linesearch_into_nfev(self):
+    def test_lbfgs_reports_linesearch_separately(self):
         import optax
 
         ctx = _jax_ctx()
@@ -169,8 +171,9 @@ class TestStopReasons:
 
         assert res.success
         assert res.n_linesearch_steps > 0  # lbfgs runs a line search
-        # nfev = driver evals (num_iters + 1) + optax line-search evals.
-        assert res.nfev == res.njev == res.num_iters + 1 + res.n_linesearch_steps
+        # nfev/njev count only the driver's own value_and_grad calls; the optax
+        # line-search evaluations are reported separately, not folded in.
+        assert res.nfev == res.njev == res.num_iters + 1
         np.testing.assert_allclose(to_numpy(res.x_element), x_star, atol=1e-4)
 
     def test_nonfinite_diverges(self):
@@ -273,6 +276,32 @@ class TestSingleEvaluation:
         # one initial evaluation + one traced body evaluation.
         assert counts[5] == counts[500]
         assert counts[5] <= 3
+
+
+# ===========================================================================
+# Gradient norm / finiteness (complex-correct)
+# ===========================================================================
+class TestGradientNorm:
+    def test_l2_norm_is_complex_correct(self):
+        import jax.numpy as jnp
+
+        from spacecore.optimize._optax import _tree_l2_norm
+
+        # Purely imaginary gradient must have a nonzero norm (regression: a
+        # real()-before-square norm would report 0 here).
+        g = jnp.array([0 + 1j, 0 + 2j])
+        assert float(_tree_l2_norm(g)) == pytest.approx(np.sqrt(5.0), rel=1e-5)
+        assert float(_tree_l2_norm(jnp.array([3 + 4j]))) == pytest.approx(5.0, rel=1e-5)
+
+    def test_all_finite_checks_leaves_including_complex(self):
+        import jax.numpy as jnp
+
+        from spacecore.optimize._optax import _tree_all_finite
+
+        assert bool(_tree_all_finite((jnp.array([1.0, 2.0]), jnp.array([3.0]))))
+        assert not bool(_tree_all_finite((jnp.array([1.0, jnp.inf]),)))
+        # A non-finite imaginary part is caught even though the real part is finite.
+        assert not bool(_tree_all_finite((jnp.array([1 + 0j, complex(0, float("nan"))]),)))
 
 
 # ===========================================================================
