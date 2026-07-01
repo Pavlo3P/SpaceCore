@@ -77,9 +77,10 @@ class _LoopState(NamedTuple):
 
 @dataclass
 class OptaxResult:
-    """Result of :func:`minimize_optax`.
+    """
+    Result of :func:`minimize_optax`.
 
-    Attributes
+    Parameters
     ----------
     success : bool
         ``True`` iff the run stopped with ``grad_norm <= tol`` and stayed finite.
@@ -127,7 +128,8 @@ def minimize_optax(
     record_history: bool = True,
     progress_callback: Callable[[dict], None] | None = None,
 ) -> OptaxResult:
-    r"""Minimize a SpaceCore functional with a compiled, convergence-aware optax loop.
+    r"""
+    Minimize a SpaceCore functional with a compiled, convergence-aware optax loop.
 
     The whole loop runs inside ``jax.jit(jax.lax.while_loop(...))``. The fused
     ``F.value_and_grad`` is evaluated once per iteration and cached, so the
