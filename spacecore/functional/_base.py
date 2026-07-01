@@ -58,16 +58,32 @@ class Functional(ContextBound, Generic[Domain]):
         return self.dom
 
     @abstractmethod
-    def value(self, x: Any) -> Any:
-        """Evaluate this functional at an element of ``self.domain``."""
+    def value(self, x: Any, *args: Any, **kwargs: Any) -> Any:
+        """Evaluate this functional at an element of ``self.domain``.
 
-    def grad(self, x: Any) -> Any:
+        Subclasses may accept extra positional/keyword arguments — auxiliary
+        parameters such as data, temperature, or a penalty weight — that are not
+        part of the domain. Overrides that take only ``x`` remain valid.
+        """
+
+    def grad(self, x: Any, *args: Any, **kwargs: Any) -> Any:
         """Gradient at an element of ``self.domain``.
 
         Override in subclasses that support differentiation; the base raises
-        :class:`NotImplementedError`.
+        :class:`NotImplementedError`. Any auxiliary ``*args``/``**kwargs`` mirror
+        those accepted by :meth:`value`.
         """
         raise NotImplementedError(f"{type(self).__name__} does not implement grad().")
+
+    def value_and_grad(self, x: Any, *args: Any, **kwargs: Any) -> tuple[Any, Any]:
+        """Return ``(value, gradient)`` at ``x``.
+
+        The base default evaluates :meth:`value` and :meth:`grad` separately.
+        Subclasses may override with a single-pass evaluator (e.g.
+        ``jax.value_and_grad``); an override must return the same pair as the
+        default, with the gradient in the same geometry as :meth:`grad`.
+        """
+        return self.value(x, *args, **kwargs), self.grad(x, *args, **kwargs)
 
     def vgrad(self, xs: Any) -> Any:
         """Gradient over a leading batch axis.
@@ -77,13 +93,13 @@ class Functional(ContextBound, Generic[Domain]):
         """
         raise NotImplementedError(f"{type(self).__name__} does not implement vgrad().")
 
-    def _value_core(self, x: Any) -> Any:
+    def _value_core(self, x: Any, *args: Any, **kwargs: Any) -> Any:
         """Check-free value core; the base falls back to the checked ``value``."""
-        return self.value(x)
+        return self.value(x, *args, **kwargs)
 
-    def _grad_core(self, x: Any) -> Any:
+    def _grad_core(self, x: Any, *args: Any, **kwargs: Any) -> Any:
         """Check-free gradient core; the base falls back to the checked ``grad``."""
-        return self.grad(x)
+        return self.grad(x, *args, **kwargs)
 
     def _vvalue_core(self, xs: Any) -> Any:
         """Check-free batched-value core; the base falls back to ``vvalue``."""
@@ -93,9 +109,9 @@ class Functional(ContextBound, Generic[Domain]):
         """Check-free batched-gradient core; the base falls back to ``vgrad``."""
         return self.vgrad(xs)
 
-    def __call__(self, x: Any) -> Any:
+    def __call__(self, x: Any, *args: Any, **kwargs: Any) -> Any:
         """Evaluate this functional at ``x``."""
-        return self.value(x)
+        return self.value(x, *args, **kwargs)
 
     def compose(self, A: "LinOp") -> "Functional":
         """
