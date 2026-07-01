@@ -723,10 +723,22 @@ class TreeSpectralDecomposition:
         Eigenvalue data for each TreeSpace leaf.
     frames : tuple
         Spectral frame data for each TreeSpace leaf.
+    treedef : optree.PyTreeSpec or None, optional
+        The producing space's ``treedef``, tagged on by
+        :meth:`TreeSpace.spectral_decompose` so :meth:`to_tree` can expose the
+        eigenvalues in the tree's own structure. ``None`` for hand-built
+        decompositions.
+
+    Notes
+    -----
+    ``treedef`` is static JAX pytree aux, so decompositions combined in a single
+    ``jax.lax.cond`` / ``while_loop`` must all be tagged (or all ``None``);
+    otherwise JAX raises a pytree-structure mismatch.
     """
 
     eigvals: tuple[Any, ...]
     frames: tuple[Any, ...]
+    treedef: Any = None
 
     def __repr__(self) -> str:
         """Summarize spectral arrays rather than dumping their full contents."""
@@ -737,15 +749,31 @@ class TreeSpectralDecomposition:
             f"frames={summarize_value(self.frames)})"
         )
 
+    def to_tree(self) -> Any:
+        """Return the eigenvalues as a pytree matching the space ``treedef``.
+
+        The result mirrors the tree structure (nested for a nested tree), each leaf
+        holding that leaf's eigenvalue vector. It is a structure-only view: the
+        leaves are eigenvalue-shaped, so it is **not** a member of the space and
+        must not be fed back into space operations. Requires ``treedef`` (set on
+        decompositions produced by :meth:`TreeSpace.spectral_decompose`).
+        """
+        if self.treedef is None:
+            raise ValueError(
+                "TreeSpectralDecomposition.to_tree() requires 'treedef'; it is set "
+                "only on decompositions produced by TreeSpace.spectral_decompose."
+            )
+        return optree.tree_unflatten(self.treedef, self.eigvals)
+
     def tree_flatten(self):
-        """Flatten spectral data for JAX pytree registration."""
-        return (self.eigvals, self.frames), None
+        """Flatten spectral data for JAX pytree registration (``treedef`` is static aux)."""
+        return (self.eigvals, self.frames), self.treedef
 
     @classmethod
     def tree_unflatten(cls, aux: Any, children: Sequence[Any]) -> "TreeSpectralDecomposition":
         """Rebuild spectral data from JAX pytree children."""
         eigvals, frames = children
-        return cls(tuple(eigvals), tuple(frames))
+        return cls(tuple(eigvals), tuple(frames), treedef=aux)
 
 
 class _LeafwiseJordanMixin(_LeafwiseHostMixin):
@@ -764,19 +792,36 @@ class _LeafwiseJordanMixin(_LeafwiseHostMixin):
             )
         )
 
-    def spectrum(self, x: Any) -> DenseArray:
-        """Concatenate leaf Jordan spectra in deterministic leaf order."""
+    def spectrum(self, x: Any, *, structured: bool = False) -> Any:
+        """Return the leaf Jordan spectra.
+
+        By default (``structured=False``) the leaf spectra are concatenated in
+        deterministic leaf order into one flat array — the direct-sum spectrum, as
+        spectral norms and ``trace``/``determinant`` consume it. With
+        ``structured=True`` the result mirrors the space ``treedef`` instead: a
+        (possibly nested) pytree whose leaves hold each leaf's eigenvalue vector.
+        The structured result is a structure-only view — its leaves are
+        eigenvalue-shaped, so it is **not** a member of the space.
+        """
         leaf_spaces = cast("Sequence[JordanAlgebraSpace]", self.leaf_spaces)
         parts = tuple(
             space.spectrum(leaf)
             for space, leaf in zip(leaf_spaces, self._components(x))
         )
+        if structured:
+            return self._from_components(parts)
         if len(parts) == 1:
             return parts[0]
         return self.ops.concatenate(parts, axis=-1)
 
     def spectral_decompose(self, x: Any) -> TreeSpectralDecomposition:
-        """Return leafwise spectral data independent of tree structure."""
+        """Return leafwise spectral data tagged with the space ``treedef``.
+
+        Eigenvalues and frames are stored as flat leaf-order tuples (so
+        :meth:`from_spectrum` round-trips, including on nested trees); the
+        ``treedef`` lets :meth:`TreeSpectralDecomposition.to_tree` expose the
+        eigenvalues in the tree's own structure.
+        """
         leaf_spaces = cast("Sequence[JordanAlgebraSpace]", self.leaf_spaces)
         decompositions = tuple(
             space.spectral_decompose(leaf)
@@ -785,6 +830,7 @@ class _LeafwiseJordanMixin(_LeafwiseHostMixin):
         return TreeSpectralDecomposition(
             eigvals=tuple(eigvals for eigvals, _frame in decompositions),
             frames=tuple(frame for _eigvals, frame in decompositions),
+            treedef=self.treedef,
         )
 
     def from_spectrum(
