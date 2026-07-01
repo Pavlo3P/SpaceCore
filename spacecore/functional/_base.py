@@ -131,6 +131,28 @@ class Functional(ContextBound, Generic[Domain]):
 
         return make_functional_composed(self, A)
 
+    def __neg__(self) -> "Functional":
+        """Return the lazy negation ``-self``."""
+        from ._algebra import make_scaled_functional
+
+        return make_scaled_functional(-1, self)
+
+    def __mul__(self, scalar: Any) -> "Functional":
+        """Return the lazy right scalar multiple ``self * scalar``."""
+        from ._algebra import is_scalar_like, make_scaled_functional
+
+        if not is_scalar_like(scalar):
+            return NotImplemented
+        return make_scaled_functional(scalar, self)
+
+    def __rmul__(self, scalar: Any) -> "Functional":
+        """Return the lazy left scalar multiple ``scalar * self``."""
+        from ._algebra import is_scalar_like, make_scaled_functional
+
+        if not is_scalar_like(scalar):
+            return NotImplemented
+        return make_scaled_functional(scalar, self)
+
     @checked_method(in_space="domain", in_batched=True)
     def vvalue(self, xs: Any) -> Any:
         """Evaluate over a leading batch axis. Input must have shape ``(N,) + domain.shape``; use ``moveaxis`` for other layouts."""
