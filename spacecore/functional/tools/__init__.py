@@ -10,7 +10,12 @@ from ._huber import HuberFunctional
 from ._least_squares import least_squares
 from ._norms import L1NormFunctional, LpNormFunctional, SquaredL2NormFunctional
 from ._proximal import generalized_shrinkage, project_nonneg, prox_l1, prox_l2sq
-from ._spectral import NuclearNormFunctional, SpectralLpNormFunctional
+from ._spectral import (
+    NuclearNormFunctional,
+    SpectralFunctional,
+    eigenvalue_space,
+    spectralize,
+)
 
 __all__ = [
     "HuberFunctional",
@@ -19,11 +24,13 @@ __all__ = [
     "LpNormFunctional",
     "NegativeEntropyFunctional",
     "NuclearNormFunctional",
-    "SpectralLpNormFunctional",
+    "SpectralFunctional",
     "SquaredL2NormFunctional",
     "generalized_shrinkage",
     "least_squares",
     "project_nonneg",
     "prox_l1",
     "prox_l2sq",
+    "eigenvalue_space",
+    "spectralize",
 ]

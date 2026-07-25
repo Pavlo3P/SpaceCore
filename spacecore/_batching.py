@@ -18,10 +18,16 @@ def _check_batched(space: Any, xs: Any) -> None:
 
 
 def _check_scalar_shape(values: Any, shape: tuple[int, ...]) -> None:
-    """Raise if scalar output does not have ``shape``."""
+    """Raise if scalar output does not have ``shape``.
+
+    ``shape`` is ``()`` for a single evaluation and the leading batch shape for a
+    batched one; the message distinguishes the two, since this now guards every
+    ``Functional.value``/``vvalue`` rather than only the batched paths.
+    """
     value_shape = tuple(getattr(values, "shape", ()))
     if value_shape != shape:
-        raise ValueError(f"Expected scalar batch output with shape {shape}, got {value_shape}.")
+        kind = "scalar output" if shape == () else "scalar batch output"
+        raise ValueError(f"Expected {kind} with shape {shape}, got {value_shape}.")
 
 
 def _leading_batch_size(space: Any, xs: Any) -> int:

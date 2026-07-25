@@ -195,23 +195,44 @@ class Functional(PyTreeNode, ContextBound, Generic[Domain]):
 
         return make_scaled_functional(-1, self)
 
-    def __mul__(self, scalar: Any) -> "Functional":
-        """Return the lazy right scalar multiple ``self * scalar``."""
-        from ._algebra import is_scalar_like, make_scaled_functional
+    def __mul__(self, other: Any) -> Any:
+        """Return ``self * other``.
 
-        if not is_scalar_like(scalar):
-            return NotImplemented
-        return make_scaled_functional(scalar, self)
+        Three cases, by operand type: a scalar gives a ``ScaledFunctional``,
+        another ``Functional`` the pointwise product, and a ``LinOp`` the
+        functional-weighted map ``x -> F(x) A x``. The last is **not** a
+        ``LinOp`` — it is non-linear — so it returns an
+        :class:`~spacecore.opfamily.OperatorFamily`; see that module.
+        """
+        from ..linop import LinOp
+        from ._algebra import is_scalar_like, make_functional_product, make_scaled_functional
 
-    def __rmul__(self, scalar: Any) -> "Functional":
-        """Return the lazy left scalar multiple ``scalar * self``."""
-        from ._algebra import is_scalar_like, make_scaled_functional
+        if isinstance(other, Functional):
+            return make_functional_product(self, other)
+        if isinstance(other, LinOp):
+            from ..opfamily import make_functional_scaled_operator
 
-        if not is_scalar_like(scalar):
-            return NotImplemented
-        return make_scaled_functional(scalar, self)
+            return make_functional_scaled_operator(self, other)
+        if is_scalar_like(other):
+            return make_scaled_functional(other, self)
+        return NotImplemented
 
-    @checked_method(in_space="domain", in_batched=True)
+    def __rmul__(self, other: Any) -> Any:
+        """Return ``other * self`` — see :meth:`__mul__` for the operand cases."""
+        from ..linop import LinOp
+        from ._algebra import is_scalar_like, make_functional_product, make_scaled_functional
+
+        if isinstance(other, Functional):
+            return make_functional_product(other, self)
+        if isinstance(other, LinOp):
+            from ..opfamily import make_functional_scaled_operator
+
+            return make_functional_scaled_operator(self, other)
+        if is_scalar_like(other):
+            return make_scaled_functional(other, self)
+        return NotImplemented
+
+    @checked_method(in_space="domain", in_batched=True, out_batched_scalar=True)
     def vvalue(self, xs: Any) -> Any:
         """Evaluate over a leading batch axis. Input must have shape ``(N,) + domain.shape``; use ``moveaxis`` for other layouts."""
         _warn_vmap_fallback_once(self, "vvalue", _leading_batch_size(self.domain, xs))

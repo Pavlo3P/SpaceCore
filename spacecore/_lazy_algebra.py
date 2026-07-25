@@ -29,8 +29,38 @@ def is_scalar_like(value: Any) -> bool:
     return getattr(value, "ndim", None) == 0
 
 
+def conjugate_scalar(value: Any) -> Any:
+    """Return the scalar conjugate when the value supports conjugation.
+
+    Duck-typed rather than backend-dispatched: Python numbers, NumPy/CuPy
+    scalars, and 0-d Torch/JAX arrays all expose ``conjugate`` or ``conj``, and
+    a value that exposes neither is its own conjugate as far as this module is
+    concerned.
+    """
+    if hasattr(value, "conjugate"):
+        return value.conjugate()
+    if hasattr(value, "conj"):
+        return value.conj()
+    return value
+
+
 def scalar_eq(a: Any, b: Any) -> bool:
-    """Return whether two scalar-likes are equal, NaN-reflexive, as a real ``bool``.
+    """Return whether two scalar-likes are *recognizably* equal, as a real ``bool``.
+
+    Recognizably: the comparison must be decidable from the values themselves.
+    A concrete pair answers truthfully; an **abstract** (traced) scalar has no
+    value at trace time, so no comparison about it can be decided and this
+    returns ``False`` — "not recognizably equal", the conservative answer. The
+    callers are canonicalizers (:func:`fold_scaled`, the ``__eq__`` of scaled
+    nodes), and for them ``False`` means "skip the simplification", which is
+    always sound. Under ``jax.jit`` a traced coefficient therefore builds a
+    larger-but-correct expression tree rather than a folded one.
+
+    That verdict is deliberate, so the catch is narrowed to :class:`TypeError` —
+    the base class of JAX's ``TracerBoolConversionError`` and of any other
+    "cannot reduce to a concrete bool" failure. Every other exception means the
+    operand's ``__eq__`` is itself broken and propagates instead of being
+    silently reported as inequality.
 
     Two matching NaN scalars compare equal (mirrors ``equal_nan=True``), so a
     NaN-scaled node equals itself. Always returns a genuine Python ``bool`` — a
@@ -43,7 +73,30 @@ def scalar_eq(a: Any, b: Any) -> bool:
         # ``x != x`` is True only for NaN (including a complex value with a NaN
         # component), so this matches NaN against NaN.
         return bool(a != a) and bool(b != b)
-    except Exception:
+    except TypeError:
+        return False
+
+
+def is_recognizably_nonreal(value: Any) -> bool:
+    """Return whether ``value`` is *provably* a non-real scalar.
+
+    The polarity matters: this answers "can we see an imaginary part?", not "is
+    this real?". A traced scalar has no value to inspect, so it is reported as
+    ``False`` (not provably non-real) and callers let it through. Rejecting on
+    ``True`` therefore never fires spuriously under ``jax.jit``; it only rejects
+    a concrete value that genuinely carries an imaginary part.
+
+    Used by spaces whose scalar field is narrower than their entry dtype (see
+    :attr:`spacecore.space.Space.scalar_field`), where an imaginary multiplier
+    would silently produce an element outside the space.
+    """
+    try:
+        # A NaN in any component makes ``!=`` uninformative (``nan != nan`` is
+        # True for a *real* NaN), so nothing is provable and we let it through.
+        if bool(value != value):
+            return False
+        return bool(value != conjugate_scalar(value))
+    except TypeError:
         return False
 
 

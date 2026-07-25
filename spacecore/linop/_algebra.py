@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import warnings
 from math import prod
 from typing import Any, Callable, Sequence, cast
 
@@ -7,7 +8,6 @@ from ._base import LinOp, Domain, Codomain
 from ._metric import _requires_euclidean_or_riesz, metric_rapply, metric_rvapply
 from .._check_policy import CheckLevel, minimum_check_level
 from .._checks import checked_method
-from ..contextual import resolve_context_priority
 from .._repr import summarize_value
 from ..contextual import Context
 from ..kernels import core_kernels
@@ -26,6 +26,13 @@ from .._lazy_algebra import (
     is_scalar_like as is_scalar_like,  # re-exported for linop/_base.py
     scalar_eq,
 )
+
+
+#: Sentinel for "the caller did not mention ``euclidean_adjoint`` at all".
+#: Passing ``False`` explicitly is an assertion that ``rapply`` already carries the
+#: geometry, so it silences the advisory; omitting it means the question was never
+#: considered, which is the only case worth warning about.
+_ADJOINT_UNSPECIFIED = object()
 
 
 def _require_same_context(ops: Sequence[LinOp]) -> Context:
@@ -900,6 +907,22 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
         Optional callable with signature ``rvapply(ys: Any) -> Any`` for
         batched adjoint application. If omitted, backend ``vmap`` fallback is
         used.
+    euclidean_adjoint : bool, optional
+        How ``rapply`` is interpreted. Omitted or ``False`` (the default): the
+        callable **is** the metric adjoint and is stored verbatim -- the design
+        choice that lets a caller supply a hand-derived adjoint no wrapper could
+        produce. ``True``: the callable is the *Euclidean coordinate* adjoint
+        ``A^dagger``, wrapped once into ``R_X^-1 A^dagger R_Y``; this is exactly
+        what :meth:`from_coordinate_adjoint` does, and it requires usable Riesz
+        maps on any non-Euclidean space.
+
+        Because verbatim storage is trusted and unverifiable, *omitting* the
+        argument on a non-Euclidean geometry emits a ``UserWarning``: there a
+        coordinate adjoint is silently wrong and nothing downstream detects it.
+        Passing ``False`` **explicitly** asserts that the supplied adjoint
+        already carries the geometry and silences the advisory -- the
+        distinction drawn is between "never considered" and "considered and
+        declared".
     check_level : {"none", "cheap", "standard", "strict"}, optional
         Runtime validation policy for this object. When omitted, the ambient
         default (see :func:`spacecore.get_check_level`) is used. Unlike the
@@ -929,6 +952,8 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
         vapply: Callable[[Any], Any] | None = None,
         rvapply: Callable[[Any], Any] | None = None,
         check_level: CheckLevel | bool | None = None,
+        *,
+        euclidean_adjoint: bool | Any = _ADJOINT_UNSPECIFIED,
     ) -> None:
         """
         Initialize a matrix-free linear operator.
@@ -973,12 +998,67 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
         if rvapply is not None and not callable(rvapply):
             raise TypeError(f"rvapply must be callable, got {type(rvapply).__name__}.")
         super().__init__(dom, cod, ctx, check_level=check_level)
+
+        non_euclidean = not (self.domain.is_euclidean and self.codomain.is_euclidean)
+        if euclidean_adjoint is True:
+            # The caller supplied the *coordinate* adjoint A^dagger; wrap it into
+            # the metric adjoint R_X^-1 A^dagger R_Y once, here.
+            try:
+                _requires_euclidean_or_riesz(
+                    self.domain,
+                    self.codomain,
+                    "MatrixFreeLinOp(euclidean_adjoint=True) / "
+                    "MatrixFreeLinOp.from_coordinate_adjoint",
+                )
+            except TypeError as exc:
+                raise ValueError(str(exc)) from exc
+            rapply, rvapply = self._wrap_coordinate_adjoint(rapply, rvapply)
+        elif non_euclidean and euclidean_adjoint is _ADJOINT_UNSPECIFIED:
+            # The callable is stored verbatim and *trusted* as the metric adjoint.
+            # On a non-Euclidean geometry a coordinate adjoint is simply wrong here
+            # and nothing downstream detects it, so say so once, at construction.
+            # Silent on Euclidean spaces (the two coincide) and silent when the
+            # caller passed ``euclidean_adjoint=False`` explicitly, which asserts
+            # that the supplied adjoint already carries the geometry.
+            warnings.warn(
+                "MatrixFreeLinOp stores `rapply` verbatim as the metric adjoint, but "
+                f"{'domain' if not self.domain.is_euclidean else 'codomain'} geometry is "
+                "non-Euclidean, where the metric adjoint R_X^-1 A^dagger R_Y differs from "
+                "the coordinate adjoint. Pass euclidean_adjoint=True to have the coordinate "
+                "adjoint wrapped for you, or confirm `rapply` already carries the geometry.",
+                UserWarning,
+                stacklevel=2,
+            )
+
         self.apply_fn = apply
         self.rapply_fn = rapply
         self.vapply_fn = vapply
         self.rvapply_fn = rvapply
         if self._checks_at_least("strict"):
             self._check_adjoint_consistency()
+
+    def _wrap_coordinate_adjoint(
+        self,
+        coordinate_rapply: Callable[[Any], Any],
+        coordinate_rvapply: Callable[[Any], Any] | None,
+    ) -> tuple[Callable[[Any], Any], Callable[[Any], Any] | None]:
+        """Return ``(rapply, rvapply)`` wrapping coordinate adjoints in Riesz maps."""
+        dom, cod, ops = self.domain, self.codomain, self.ctx.ops
+
+        def wrapped_rapply(y: Any) -> Any:
+            return metric_rapply(dom, cod, coordinate_rapply, y)
+
+        wrapped_rvapply: Callable[[Any], Any] | None = None
+        if coordinate_rvapply is not None:
+
+            def _wrapped_rvapply(ys: Any) -> Any:
+                return metric_rvapply(
+                    dom, cod, coordinate_rapply, coordinate_rvapply, ys,
+                    opname="MatrixFreeLinOp", ops=ops,
+                )
+
+            wrapped_rvapply = _wrapped_rvapply
+        return wrapped_rapply, wrapped_rvapply
 
     def _check_adjoint_consistency(self) -> None:
         """Probe the declared adjoint identity on deterministic space elements."""
@@ -1078,34 +1158,19 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
                     f"coordinate_rvapply must be callable, got {type(coordinate_rvapply).__name__}."
                 )
 
-        resolved_ctx = resolve_context_priority(ctx, dom, cod)
-        dom = dom.convert(resolved_ctx)
-        cod = cod.convert(resolved_ctx)
-        try:
-            _requires_euclidean_or_riesz(dom, cod, "MatrixFreeLinOp.from_coordinate_adjoint")
-        except TypeError as exc:
-            raise ValueError(str(exc)) from exc
-
-        def wrapped_rapply(y: Any) -> Any:
-            return metric_rapply(dom, cod, coordinate_rapply, y)
-
-        wrapped_rvapply: Callable[[Any], Any] | None = None
-        if coordinate_rvapply is not None:
-
-            def _wrapped_rvapply(ys: Any) -> Any:
-                return metric_rvapply(
-                    dom,
-                    cod,
-                    coordinate_rapply,
-                    coordinate_rvapply,
-                    ys,
-                    opname="MatrixFreeLinOp.from_coordinate_adjoint",
-                    ops=resolved_ctx.ops,
-                )
-
-            wrapped_rvapply = _wrapped_rvapply
-
-        return cls(apply, wrapped_rapply, dom, cod, resolved_ctx, vapply, wrapped_rvapply)
+        # The wrapping now lives in __init__ behind euclidean_adjoint=True, so the
+        # two entry points cannot drift apart, and this path raises no warning:
+        # passing the coordinate adjoint is exactly what it is documented to take.
+        return cls(
+            apply,
+            coordinate_rapply,
+            dom,
+            cod,
+            ctx,
+            vapply,
+            coordinate_rvapply,
+            euclidean_adjoint=True,
+        )
 
     @checked_method(in_space="domain", out_space="codomain")
     def apply(self, x: Any) -> Any:
@@ -1251,6 +1316,11 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
             Operator with converted spaces and the same user-supplied
             callables.
         """
+        # ``self.rapply_fn`` is already the metric adjoint by construction -- either
+        # supplied that way, or wrapped once at __init__ under
+        # ``euclidean_adjoint=True``. Declaring ``False`` here is therefore both
+        # correct (re-wrapping would apply the Riesz maps twice) and quiet: the
+        # construction advisory belongs to the original call, not to every convert.
         return MatrixFreeLinOp(
             self.apply_fn,
             self.rapply_fn,
@@ -1259,6 +1329,7 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
             new_ctx,
             self.vapply_fn,
             self.rvapply_fn,
+            euclidean_adjoint=False,
         )
 
 

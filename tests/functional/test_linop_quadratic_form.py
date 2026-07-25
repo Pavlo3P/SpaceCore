@@ -75,7 +75,7 @@ class TestConstruction:
         with sc.use_check_level("none"):
             space = sc.DenseCoordinateSpace((2,), ctx)
             Q = sc.IdentityLinOp(space, ctx)
-            with pytest.raises(ValueError, match="scalar batch"):
+            with pytest.raises(ValueError, match="scalar output"):
                 sc.LinOpQuadraticForm(Q, a=ctx.asarray([0.0, 0.0]), ctx=ctx)
 
     def test_explicit_context_overrides_inferred(self, numpy_f32_ctx, numpy_ctx):

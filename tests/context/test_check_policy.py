@@ -128,7 +128,7 @@ def test_functional_scalar_output_shape_is_standard():
     standard_functional = sc.MatrixFreeLinearFunctional(
         lambda _x: ctx.asarray([1.0]), standard_space, ctx, check_level="standard"
     )
-    with pytest.raises(ValueError, match="scalar batch output"):
+    with pytest.raises(ValueError, match="scalar output"):
         standard_functional.value(ctx.asarray([1.0, 2.0]))
 
 

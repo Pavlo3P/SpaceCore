@@ -253,7 +253,7 @@ def test_standard_functional_checks_reject_nonscalar_output(check_level):
         lambda x: x, domain, ctx, check_level=check_level
     )
 
-    with pytest.raises(ValueError, match="Expected scalar batch output"):
+    with pytest.raises(ValueError, match="Expected scalar output"):
         functional.value(ctx.asarray([1.0, 2.0]))
 
 

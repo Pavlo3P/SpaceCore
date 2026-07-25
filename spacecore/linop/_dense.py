@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import warnings
+
 from functools import cached_property
 from math import prod
 from typing import Any, cast
@@ -45,7 +47,19 @@ class DenseLinOp(LinOp[Domain, Codomain]):
         Domain space.
     cod : Space or None, optional
         Codomain space. If omitted, it is inferred from the leading axes of
-        ``A``.
+        ``A`` — as a **Euclidean** :class:`DenseCoordinateSpace`. Only the
+        *shape* is inferred, never the geometry.
+
+        .. warning::
+
+           On a non-Euclidean domain this is almost certainly not the operator
+           you meant. ``DenseLinOp(M, X)`` with square ``M`` and weighted ``X``
+           builds ``X -> Y_euclidean``, **not** an endomorphism of ``X``: the
+           adjoint is then ``R_X^{-1} M^T`` rather than ``R_X^{-1} M^T R_X``, and
+           ``is_hermitian()`` reports ``False`` for a matrix that is self-adjoint
+           with respect to ``X``. Pass ``cod=X`` explicitly. Note the asymmetry
+           with :class:`~spacecore.DiagonalLinOp` and
+           :class:`~spacecore.IdentityLinOp`, which do reuse the given space.
     ctx : Context, str, or None, optional
         Backend context specification. Default is resolved from the spaces.
     check_level : {"none", "cheap", "standard", "strict"}, optional
@@ -84,6 +98,22 @@ class DenseLinOp(LinOp[Domain, Codomain]):
         if cod is None:
             cod_shape_len = len(A.shape) - len(dom.shape)
             cod = cast(Codomain, DenseCoordinateSpace(tuple(A.shape[:cod_shape_len]), ctx))
+            if not dom.is_euclidean:
+                # Only the shape is inferable from ``A``; the geometry is not. On a
+                # non-Euclidean domain the Euclidean default is very often not what
+                # the caller meant -- ``DenseLinOp(M, X)`` with square ``M`` reads as
+                # an endomorphism of ``X`` but is not one, which changes the adjoint
+                # and makes ``is_hermitian`` report False for a self-adjoint matrix.
+                # Silent when the domain is Euclidean, where the default is right.
+                warnings.warn(
+                    "DenseLinOp inferred a EUCLIDEAN codomain from the shape of `A`, but "
+                    "the domain geometry is non-Euclidean. The operator therefore maps "
+                    "X -> (Euclidean space), not X -> X, so its adjoint is "
+                    "R_X^-1 A^dagger rather than R_X^-1 A^dagger R_X. Pass `cod=` "
+                    "explicitly to state the codomain geometry you intend.",
+                    UserWarning,
+                    stacklevel=2,
+                )
 
         _requires_euclidean_or_riesz(dom, cod, "DenseLinOp")
 

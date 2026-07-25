@@ -1,4 +1,24 @@
-"""Entropy objectives: negative entropy and KL divergence (ADR-019)."""
+"""Entropy objectives: negative entropy and KL divergence (ADR-019).
+
+References
+----------
+.. [Beck] A. Beck, *First-Order Methods in Optimization*, MOS-SIAM, 2017.
+   **§4.4.10** (a worked section, p. 97, not a numbered example) gives the
+   conjugate of the negative entropy over the unit simplex — the log-sum-exp
+   function of §4.4.11; Example 5.27 gives its ``1``-strong convexity over the
+   simplex w.r.t. the ``l_1`` norm — the property that makes it the standard
+   mirror-descent kernel (Example 9.10, entropic mirror descent / the
+   multiplicative-weights update).
+.. [Lifted] Composed with a Jordan spectrum via
+   :func:`~spacecore.spectralize`, the negative entropy becomes the **von Neumann
+   entropy** ``S(rho) = -tr(rho log rho)``; see Aubrun & Szarek, *Alice and Bob
+   Meet Banach*, AMS, 2017, **§1.3.3**, eq. (1.36) for the definition and
+   **Proposition 1.19(i)** for concavity of ``S`` — equivalently convexity of the
+   negative entropy — whose proof uses concavity of ``x -> -x log x`` together
+   with Klein's lemma. The majorization machinery it sits on is §1.3.1,
+   **Proposition 1.12** (``x < y`` iff ``x`` is a convex combination of
+   coordinate permutations of ``y`` iff ``y = Bx`` for a bistochastic ``B``).
+"""
 from __future__ import annotations
 
 from typing import Any, cast
@@ -47,7 +67,7 @@ class NegativeEntropyFunctional(_CoordinateFunctional[Domain]):
     ) -> None:
         super().__init__(dom, ctx, check_level=check_level)
 
-    @checked_method(in_space="domain")
+    @checked_method(in_space="domain", out_scalar=True)
     def value(self, x: Any) -> Any:
         """Return ``sum_i x_i log x_i`` with ``0 log 0 = 0``."""
         o = self.ops
@@ -126,7 +146,7 @@ class KLDivergenceFunctional(_CoordinateFunctional[Domain]):
         """Stored reference element ``t``."""
         return self._target
 
-    @checked_method(in_space="domain")
+    @checked_method(in_space="domain", out_scalar=True)
     def value(self, x: Any) -> Any:
         """Return ``sum_i x_i log(x_i / t_i)`` with ``0 log 0 = 0``."""
         o = self.ops

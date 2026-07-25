@@ -51,6 +51,11 @@ class HermitianSpace(DenseCoordinateSpace, StarSpace, EuclideanJordanAlgebraSpac
         Matrix dimension.
     """
 
+    # Hermitian matrices with complex entries form a *real* vector space of
+    # dimension n^2 -- their complex span is all of Mat(n, C). The dtype says
+    # "complex" (correctly, about the entries); the scalars are real either way.
+    declared_scalar_field = "real"
+
     def __init__(
         self,
         n: int,
@@ -95,6 +100,30 @@ class HermitianSpace(DenseCoordinateSpace, StarSpace, EuclideanJordanAlgebraSpac
                 enforce=self.enforce_herm,
             ),
         )
+
+    @checked_method(in_space="self", arg_positions=(1,))
+    def scale(self, a: Any, x: DenseArray) -> DenseArray:
+        """Return ``a * x``, rejecting a multiplier that would leave the space.
+
+        Hermitian matrices are closed under **real** scaling only: for Hermitian
+        ``H``, ``(aH)* = conj(a) H``, which equals ``aH`` exactly when ``a`` is
+        real, and ``i H`` is anti-Hermitian. The inherited
+        :meth:`~spacecore.space.DenseCoordinateSpace.scale` validates only its
+        *input*, so without this override ``scale(1j, H)`` would return a
+        skew-Hermitian array still typed as an element of ``Herm(n)`` and the
+        error would surface at some unrelated later membership check — or never,
+        at ``check_level="none"``.
+
+        Only a *provably* non-real multiplier is rejected, so a traced scalar
+        under ``jax.jit`` passes through unchanged.
+        """
+        self.check_scalar(a)
+        return self._scale_core(a, x)
+
+    def scale_batch(self, a: Any, x: DenseArray) -> DenseArray:
+        """Return the leading-axis batch scalar product, with the same guard as :meth:`scale`."""
+        self.check_scalar(a)
+        return super().scale_batch(a, x)
 
     def is_hermitian(self, x: DenseArray) -> bool:
         """Return whether ``x`` satisfies this space's Hermitian check."""

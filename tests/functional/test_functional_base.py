@@ -21,6 +21,7 @@ import pytest
 
 import spacecore as sc
 
+from spacecore._checks import checked_method
 from spacecore.functional._base import (
     _check_scalar_shape,
     _leading_batch_size,
@@ -268,11 +269,111 @@ class TestCheckScalarShape:
         _check_scalar_shape(np.zeros((4,)), (4,))  # batch, no raise
 
     def test_rejects_mismatched_shape(self):
-        with pytest.raises(ValueError, match="Expected scalar batch output with shape"):
+        with pytest.raises(ValueError, match="Expected scalar output with shape"):
             _check_scalar_shape(np.zeros((2,)), ())
 
     def test_treats_objects_without_shape_as_scalar(self):
         _check_scalar_shape(3.0, ())  # Python float has no ``shape`` -> ()
+
+    def test_message_distinguishes_single_from_batched(self):
+        """The helper now guards every ``value``/``vvalue``, so wording matters."""
+        with pytest.raises(ValueError, match="Expected scalar output"):
+            _check_scalar_shape(np.zeros((2,)), ())
+        with pytest.raises(ValueError, match="Expected scalar batch output"):
+            _check_scalar_shape(np.zeros((2,)), (4,))
+
+
+# ===========================================================================
+# Functional codomain contract: out_scalar / out_batched_scalar
+# ===========================================================================
+class _NonScalar(sc.Functional):
+    """Violates the ``F : X -> K`` contract by returning its input."""
+
+    def value(self, x, *args, **kwargs):
+        return x
+
+    def grad(self, x, *args, **kwargs):
+        return self.domain.zeros()
+
+    def tree_flatten(self):
+        return (), (self.domain, self.ctx)
+
+    @classmethod
+    def tree_unflatten(cls, aux, children):
+        domain, ctx = aux
+        return cls(domain, ctx)
+
+    def _convert(self, new_ctx):
+        return _NonScalar(self.domain.convert(new_ctx), new_ctx)
+
+
+class TestScalarOutputContract:
+    """``out_scalar`` is the codomain check ``out_space`` cannot express.
+
+    A ``Functional``'s codomain is the scalar field, reported only as a string
+    via ``domain.field`` — there is no ``Space`` object to bind ``out_space`` to,
+    which is why the output side went unchecked while every input was validated.
+    """
+
+    def _domain(self, ctx, check_level=None):
+        return sc.DenseCoordinateSpace((2,), ctx, check_level=check_level)
+
+    @pytest.mark.parametrize("build, label", [
+        (lambda F: 2.0 * F, "scaled"),
+        (lambda F: F + F, "sum"),
+        (lambda F: F + 1.0, "shifted"),
+        (lambda F: F * F, "product"),
+    ])
+    def test_algebra_nodes_reject_non_scalar_operand_output(self, numpy_ctx, build, label):
+        X = self._domain(numpy_ctx)
+        node = build(_NonScalar(X, numpy_ctx))
+        with pytest.raises(ValueError, match="Expected scalar output"):
+            node.value(numpy_ctx.asarray([1.0, 2.0]))
+
+    @pytest.mark.parametrize("level, raises", [
+        ("none", False),
+        ("cheap", False),
+        ("standard", True),
+        ("strict", True),
+    ])
+    def test_runs_at_standard_and_above(self, numpy_ctx, level, raises):
+        """Matches the level the hand-written checks it replaces already used."""
+        X = self._domain(numpy_ctx, check_level=level)
+        node = sc.ScaledFunctional(2.0, _NonScalar(X, numpy_ctx, check_level=level),
+                                   check_level=level)
+        x = numpy_ctx.asarray([1.0, 2.0])
+        if raises:
+            with pytest.raises(ValueError, match="Expected scalar output"):
+                node.value(x)
+        else:
+            node.value(x)  # no raise
+
+    def test_conforming_functionals_are_unaffected(self, numpy_ctx):
+        X = self._domain(numpy_ctx)
+        F = sc.InnerProductFunctional(numpy_ctx.asarray([1.0, 1.0]), X, numpy_ctx)
+        assert tuple(np.shape(F.value(numpy_ctx.asarray([1.0, 2.0])))) == ()
+        assert F.vvalue(numpy_ctx.asarray([[1.0, 2.0], [3.0, 4.0]])).shape == (2,)
+
+    def test_batched_output_must_be_one_scalar_per_element(self, numpy_ctx):
+        X = self._domain(numpy_ctx)
+        F = sc.MatrixFreeLinearFunctional(
+            lambda x: X.inner(numpy_ctx.asarray([1.0, 1.0]), x), X, numpy_ctx,
+            vvalue=lambda xs: xs,          # returns (N, 2), not (N,)
+        )
+        with pytest.raises(ValueError, match="scalar batch output"):
+            F.vvalue(numpy_ctx.asarray([[1.0, 2.0], [3.0, 4.0]]))
+
+
+class TestCheckedMethodScalarFlags:
+    """Guards on the decorator itself."""
+
+    def test_flags_are_mutually_exclusive(self):
+        with pytest.raises(TypeError):
+            checked_method(in_space="domain", out_scalar=True, out_batched_scalar=True)
+
+    def test_batched_scalar_requires_in_space(self):
+        with pytest.raises(TypeError, match="requires in_space"):
+            checked_method(out_batched_scalar=True)
 
 
 # ===========================================================================

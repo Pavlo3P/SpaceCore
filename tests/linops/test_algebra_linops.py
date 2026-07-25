@@ -323,7 +323,11 @@ class TestMatrixFreeLinOp:
             called.append(y)
             return y * 5.0  # user's chosen adjoint, untouched by Riesz
 
-        op = sc.MatrixFreeLinOp(lambda x: x, rev, X, X, numpy_ctx)
+        # Deliberately verbatim: this test pins that the supplied reverse is
+        # stored as-is. Declaring the flag states the intent and skips the advisory.
+        op = sc.MatrixFreeLinOp(
+            lambda x: x, rev, X, X, numpy_ctx, euclidean_adjoint=False
+        )
         out = op.rapply(numpy_ctx.asarray([1.0, 2.0]))
         assert len(called) == 1
         np.testing.assert_allclose(out, [5.0, 10.0])
@@ -435,8 +439,10 @@ def _non_euclidean_matrix_free_fixture(ctx):
     matrix = ctx.asarray(matrix_np)
     metric_adjoint = ctx.asarray(metric_adjoint_np)
 
+    # ``metric_adjoint`` is already the metric adjoint, hence the explicit flag.
     op = sc.MatrixFreeLinOp(
         lambda z: matrix @ z, lambda w: metric_adjoint @ w, domain, codomain, ctx,
+        euclidean_adjoint=False,
     )
     return {
         "op": op,
@@ -520,7 +526,10 @@ class TestMatrixFreeFromCoordinateAdjoint:
                 self.geometry = BrokenInnerProduct()
 
         space = BrokenSpace((2,), numpy_ctx)
-        with pytest.raises(ValueError, match="MatrixFreeLinOp.from_coordinate_adjoint"):
+        # The Riesz-map requirement moved into ``__init__`` behind
+        # ``euclidean_adjoint=True``, which this classmethod delegates to, so the
+        # message now names both entry points rather than only the classmethod.
+        with pytest.raises(ValueError, match="from_coordinate_adjoint"):
             sc.MatrixFreeLinOp.from_coordinate_adjoint(
                 lambda x: x, lambda y: y, space, space, numpy_ctx
             )
@@ -567,7 +576,9 @@ class TestMatrixFreeFromCoordinateAdjoint:
         def coordinate_rapply(w):
             return matrix.T @ w
 
-        direct = sc.MatrixFreeLinOp(apply, metric_rapply, domain, codomain, numpy_ctx)
+        direct = sc.MatrixFreeLinOp(
+            apply, metric_rapply, domain, codomain, numpy_ctx, euclidean_adjoint=False
+        )
         wrapped = sc.MatrixFreeLinOp.from_coordinate_adjoint(
             apply, coordinate_rapply, domain, codomain, numpy_ctx,
         )
@@ -643,7 +654,9 @@ class TestMatrixFreeFromCoordinateAdjoint:
         def rapply(w):
             return metric_adjoint @ w
 
-        op = sc.MatrixFreeLinOp(apply, rapply, domain, codomain, numpy_ctx)
+        op = sc.MatrixFreeLinOp(
+            apply, rapply, domain, codomain, numpy_ctx, euclidean_adjoint=False
+        )
         converted = op.convert(new_ctx)
         assert converted is not op
         x = new_ctx.asarray([0.25, -1.5])

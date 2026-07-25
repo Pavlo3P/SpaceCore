@@ -415,6 +415,37 @@ class BackendOps(ABC):
             return self.sanitize_dtype("float64")
         return self.sanitize_dtype("float32" if itemsize <= 8 else "float64")
 
+    def complex_dtype(self, dtype: DType) -> DType:
+        """
+        Return the complex dtype with the same precision as ``dtype``.
+
+        The inverse of :meth:`real_dtype`, and the pairing a caller needs when
+        moving between a complex space and a real view of it. Backend dtype
+        policy belongs here rather than at the call site: promoting through
+        ``result_type(dtype, 1j)`` is *not* portable — NumPy widens ``float32``
+        to ``complex128`` because a Python ``complex`` is double precision, while
+        JAX and Torch give ``complex64``.
+
+        Parameters
+        ----------
+        dtype:
+            Backend or portable dtype specifier.
+
+        Returns
+        -------
+        DType
+            ``dtype`` itself when it is already complex; otherwise the complex
+            dtype whose real component is ``dtype`` (``complex64`` for float32,
+            ``complex128`` for float64).
+        """
+        dtype = self.sanitize_dtype(dtype)
+        if self.is_complex_dtype(dtype):
+            return dtype
+        for candidate in (self.xp.complex64, self.xp.complex128):
+            if self.real_dtype(candidate) == dtype:
+                return candidate
+        return self.xp.result_type(dtype, self.xp.asarray(1j))
+
     def get_dtype(self, x: Any) -> DType:
         """Return x.dtype after verifying x is a backend array."""
         if self.is_array(x):

@@ -4,7 +4,7 @@ from abc import abstractmethod
 from typing import Any, Callable
 
 from ._base import Domain, Functional
-from .._batching import _check_scalar_shape, _leading_batch_size
+from .._batching import _check_scalar_shape
 from .._checks import checked_method
 from .._check_policy import CheckLevel
 from ..contextual import Context
@@ -112,18 +112,15 @@ class InnerProductFunctional(LinearFunctional[Domain]):
         """Stored domain element ``c`` defining ``ell_c(x) = <c, x>``."""
         return self._c
 
-    @checked_method(in_space="domain")
+    @checked_method(in_space="domain", out_scalar=True)
     def value(self, x: Any) -> Any:
         """Return ``domain.inner(representer, x)``."""
         return self._value_core(x)
 
-    @checked_method(in_space="domain", in_batched=True)
+    @checked_method(in_space="domain", in_batched=True, out_batched_scalar=True)
     def vvalue(self, xs: Any) -> Any:
         """Evaluate ``domain.inner(representer, xs[i])`` without a Python loop."""
-        values = self._vvalue_core(xs)
-        if self._checks_at_least("standard"):
-            _check_scalar_shape(values, (_leading_batch_size(self.domain, xs),))
-        return values
+        return self._vvalue_core(xs)
 
     def __eq__(self, other: Any) -> bool:
         """Return whether another inner-product functional has the same representer."""
@@ -239,7 +236,7 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
         """
         raise NotImplementedError(f"{type(self).__name__} does not store a Riesz representer.")
 
-    @checked_method(in_space="domain")
+    @checked_method(in_space="domain", out_scalar=True)
     def value(self, x: Any) -> Any:
         """
         Evaluate the scalar functional.
@@ -254,11 +251,14 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
         Any
             Scalar-like backend value returned by ``value_fn``.
         """
-        y = self._value_core(x)
-        if self._checks_at_least("standard"):
-            _check_scalar_shape(y, ())
-        return y
+        return self._value_core(x)
 
+    # NOT ``out_batched_scalar=True``: the decorator derives the expected batch
+    # shape as ``(_leading_batch_size(domain, xs),)`` — one leading axis, the
+    # contract ``Functional.vvalue`` documents. The check below is deliberately
+    # more permissive, stripping the domain shape so a user-supplied
+    # ``vvalue_fn`` may take *several* leading axes. Narrowing that to the
+    # documented contract is a real behavior change and is left alone here.
     @checked_method(in_space="domain", in_batched=True)
     def vvalue(self, xs: Any) -> Any:
         """

@@ -82,7 +82,26 @@ def _warn_metric_batch_fallback(opname: str, error: Exception) -> None:
 
 
 def metric_rapply(domain, codomain, euclidean_rapply, y):
-    """Apply the metric adjoint ``R_X^{-1} A^dagger R_Y`` to one element."""
+    r"""Apply the metric adjoint ``R_X^{-1} A^dagger R_Y`` to one element.
+
+    Derivation. Write ``R_X``, ``R_Y`` for the Riesz maps sending an element to
+    the coordinate functional that represents it, and ``A^dagger`` for the plain
+    coordinate (conjugate-)transpose. The defining identity
+    ``<Ax, y>_Y = <x, A^# y>_X`` expands to ``(Ax)^dagger R_Y y = x^dagger R_X A^# y``
+    for all ``x``, hence ``A^dagger R_Y = R_X A^#`` and
+    ``A^# = R_X^{-1} A^dagger R_Y``. The Euclidean short-circuit below is the case
+    ``R_X = R_Y = I``, where the metric adjoint collapses to the transpose.
+
+    Getting this wrong is silent: a coordinate transpose satisfies the identity on
+    every Euclidean space, so only a non-Euclidean test can detect it.
+
+    References
+    ----------
+    .. [Conway] J. B. Conway, *A Course in Functional Analysis*, 2nd ed.,
+       Springer, 1990, II.2.2/II.2.4 — existence and uniqueness of the adjoint
+       from the Riesz representation theorem. The formula here is that
+       existence proof made computational: ``R`` is the Riesz isomorphism.
+    """
     if domain.is_euclidean and codomain.is_euclidean:
         return euclidean_rapply(y)
     return domain.riesz_inverse(euclidean_rapply(codomain.riesz(y)))

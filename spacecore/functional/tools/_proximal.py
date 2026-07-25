@@ -20,6 +20,26 @@ where ``c`` is a *metric gradient* (e.g. ``F.grad(x)``), consistent with
 metrics; on a non-diagonal metric the subproblem does not separate, so the
 primitive **raises** rather than returning a wrong (separable) answer
 (ADR-019 / ADR-020 diagonal-metric rule).
+
+References
+----------
+.. [Beck] A. Beck, *First-Order Methods in Optimization*, MOS-SIAM, 2017.
+   Definition 6.1 (the proximal mapping ``prox_f(v) = argmin_u f(u) + 1/2||u-v||^2``)
+   and Theorem 6.3 (existence and uniqueness for closed proper convex ``f``).
+   §6.2.4 (``g_2``) gives the scalar soft-threshold
+   ``T_lambda(x) = [|x| - lambda]_+ sgn(x)``, which is ``prox`` of
+   ``lambda|.|``; separability (Theorem 6.6, in §6.3) lifts it coordinatewise,
+   and Example 6.8 states the resulting ``l_1``-norm prox directly. The ``prox``
+   of ``t/2 ||.||^2`` is the linear shrinkage ``v/(1+t)``: **§6.2.3** (Convex
+   Quadratic, p. 132) — a worked section that carries no numbered result, so it
+   is cited as a section. (Not "Example 6.9", which is the negative sum of
+   logs.)
+.. [BC] H. H. Bauschke and P. L. Combettes, *Convex Analysis and Monotone
+   Operator Theory in Hilbert Spaces*, 2nd ed., Springer, 2017, Ch. 24
+   (proximity operators): §24.2 basic properties, §24.4 functions on the real
+   line, §24.5 proximal thresholding — the Hilbert-space statement, which is the
+   setting SpaceCore actually works in (the threshold below is metric-aware for
+   exactly this reason).
 """
 from __future__ import annotations
 

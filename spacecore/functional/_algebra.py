@@ -1,9 +1,18 @@
-"""Lazy functional algebra: scalar multiples and sums (mirrors ``linop/_algebra.py``).
+"""Lazy functional algebra: scalar multiples, sums, and pointwise products.
 
-`Functional` gains the additive/scalar algebra `LinOp` already has, so objectives
-compose as ``a * F``, ``F + G``, ``F - G``, ``-F``. The operator overloads live on
+Mirrors ``linop/_algebra.py`` for the parts they share. `Functional` gains the
+additive/scalar algebra `LinOp` already has, so objectives compose as ``a * F``,
+``F + G``, ``F - G``, ``-F``. The operator overloads live on
 :class:`~spacecore.functional.Functional` and delegate to the ``make_*`` factories
 here, which do local canonicalization (fold nested scalars, flatten nested sums).
+
+Unlike the operator algebra this one is also **multiplicative**: functionals are
+scalar-valued, so ``F * G`` is the pointwise product
+(:class:`ProductFunctional`), with :class:`ConstantFunctional` as the embedding
+of a plain scalar. Multiplying by a constant functional folds back to
+:class:`ScaledFunctional` — scaling is the constant-factor case of a product.
+Canonicalization stays *structural*: it reads node types, never values, so a
+functional that merely happens to be constant is not recognized as one.
 
 A functional's ``grad`` is a *metric (Riesz) gradient* -- an element of the domain
 ``X`` -- so the algebra combines child gradients through the domain's own vector
@@ -27,17 +36,24 @@ from .._lazy_algebra import (
 )
 
 
-def _require_same_domain(terms: Any) -> None:
+def _require_same_domain(terms: Any, node: str = "SumFunctional") -> None:
     """Raise unless every functional in ``terms`` shares the first term's domain.
 
     Domain equality folds in the backend/dtype context, so this also rejects a
     same-shape space on a different backend or dtype.
+
+    Parameters
+    ----------
+    terms : sequence of Functional
+        Operands to compare.
+    node : str, optional
+        Node name used in the error message; sums and products share this check.
     """
     domain = terms[0].domain
     for i, term in enumerate(terms[1:], start=1):
         if term.domain != domain:
             raise ValueError(
-                "All SumFunctional operands must have the same domain; operand 0 has "
+                f"All {node} operands must have the same domain; operand 0 has "
                 f"domain {domain!r}, operand {i} has domain {term.domain!r}."
             )
 
@@ -76,7 +92,7 @@ class ScaledFunctional(Functional):
         self.scalar = scalar
         self.functional = functional.convert(self.ctx)
 
-    @checked_method(in_space="domain")
+    @checked_method(in_space="domain", out_scalar=True)
     def value(self, x: Any, *args: Any, **kwargs: Any) -> Any:
         """Return ``scalar * functional.value(x)``."""
         return self._value_core(x, *args, **kwargs)
@@ -194,7 +210,7 @@ class SumFunctional(Functional):
         """Return the summed terms in order."""
         return self.terms
 
-    @checked_method(in_space="domain")
+    @checked_method(in_space="domain", out_scalar=True)
     def value(self, x: Any, *args: Any, **kwargs: Any) -> Any:
         """Return the sum of the term values at ``x``."""
         return self._value_core(x, *args, **kwargs)
@@ -314,7 +330,7 @@ class ZeroFunctional(Functional):
     ) -> None:
         super().__init__(dom, ctx, check_level=check_level)
 
-    @checked_method(in_space="domain")
+    @checked_method(in_space="domain", out_scalar=True)
     def value(self, x: Any, *args: Any, **kwargs: Any) -> Any:
         """Return the scalar zero."""
         return self._value_core(x, *args, **kwargs)
@@ -352,6 +368,121 @@ class ZeroFunctional(Functional):
         return ZeroFunctional(self.domain.convert(new_ctx), new_ctx)
 
 
+class ConstantFunctional(Functional):
+    """
+    The constant functional ``x -> constant``: fixed value, zero gradient.
+
+    The embedding of a scalar into the functional algebra. It generalizes
+    :class:`ZeroFunctional` (which is the ``constant = 0`` case, kept separate
+    because it is the additive identity the canonicalizers recognize), and it is
+    what :func:`make_functional_product` folds against: multiplying by a constant
+    functional is exactly scaling by its value, so ``C * F`` collapses to a
+    :class:`ScaledFunctional` rather than building a product node.
+
+    Parameters
+    ----------
+    dom : Space
+        Domain space.
+    constant : scalar-like
+        Value returned at every point.
+    ctx : Context, str, or None, optional
+        Backend context specification.
+    check_level : {"none", "cheap", "standard", "strict"}, optional
+        Runtime validation policy for this functional. When omitted, the ambient
+        default (see :func:`spacecore.get_check_level`) is used. Validation
+        policy is a property of the functional, not of the ``Context``.
+
+    Attributes
+    ----------
+    constant : scalar-like
+        The stored value.
+    """
+
+    def __init__(
+        self,
+        dom: Any,
+        constant: Any,
+        ctx: Context | str | None = None,
+        check_level: CheckLevel | bool | None = None,
+    ) -> None:
+        if not is_scalar_like(constant):
+            raise TypeError(f"constant must be scalar-like, got {type(constant).__name__}.")
+        super().__init__(dom, ctx, check_level=check_level)
+        self.constant = constant
+
+    @checked_method(in_space="domain", out_scalar=True)
+    def value(self, x: Any, *args: Any, **kwargs: Any) -> Any:
+        """Return the stored constant."""
+        return self._value_core(x, *args, **kwargs)
+
+    def _value_core(self, x: Any, *args: Any, **kwargs: Any) -> Any:
+        """Check-free constant in the domain dtype (mirrors ``ZeroFunctional``)."""
+        return self.ctx.asarray(self.constant)
+
+    def grad(self, x: Any, *args: Any, **kwargs: Any) -> Any:
+        """Return the domain's zero element (a constant has zero derivative)."""
+        return self.domain.zeros()
+
+    def value_and_grad(self, x: Any, *args: Any, **kwargs: Any) -> tuple[Any, Any]:
+        """Return ``(constant, X.zeros())``."""
+        return self._value_core(x, *args, **kwargs), self.domain.zeros()
+
+    def __eq__(self, other: Any) -> bool:
+        """Return whether another constant functional has the same domain and value."""
+        if not self.same_math(other):
+            return NotImplemented
+        return self.domain == other.domain and scalar_eq(self.constant, other.constant)
+
+    def tree_flatten(self):
+        """Flatten this functional for pytree registration (constant is a traced child)."""
+        return (self.constant,), (self.domain, self.ctx)
+
+    @classmethod
+    def tree_unflatten(cls, aux, children):
+        """Rebuild this functional from pytree data."""
+        dom, ctx = aux
+        (constant,) = children
+        return cls(dom, constant, ctx)
+
+    def _convert(self, new_ctx: Context) -> "ConstantFunctional":
+        """Convert the constant functional to ``new_ctx``."""
+        return ConstantFunctional(self.domain.convert(new_ctx), self.constant, new_ctx)
+
+
+def make_constant_functional(
+    dom: Any,
+    constant: Any,
+    ctx: Context | str | None = None,
+) -> Functional:
+    """
+    Return a locally simplified constant functional on ``dom``.
+
+    A zero constant collapses to :class:`ZeroFunctional`, so the additive
+    identity keeps exactly one representation and the sum/scale canonicalizers
+    continue to recognize it.
+
+    Parameters
+    ----------
+    dom : Space
+        Domain space.
+    constant : scalar-like
+        Value returned at every point.
+    ctx : Context, str, or None, optional
+        Backend context specification.
+
+    Returns
+    -------
+    Functional
+        :class:`ZeroFunctional` for a zero constant, else
+        :class:`ConstantFunctional`.
+    """
+    if not is_scalar_like(constant):
+        raise TypeError(f"constant must be scalar-like, got {type(constant).__name__}.")
+    if scalar_eq(constant, 0):
+        return ZeroFunctional(dom, ctx)
+    return ConstantFunctional(dom, constant, ctx)
+
+
 class ShiftedFunctional(Functional):
     """
     Affine shift ``functional + offset``: value shifted, gradient unchanged.
@@ -384,7 +515,7 @@ class ShiftedFunctional(Functional):
         self.functional = functional.convert(self.ctx)
         self.offset = offset
 
-    @checked_method(in_space="domain")
+    @checked_method(in_space="domain", out_scalar=True)
     def value(self, x: Any, *args: Any, **kwargs: Any) -> Any:
         """Return ``functional.value(x) + offset``."""
         return self._value_core(x, *args, **kwargs)
@@ -451,3 +582,178 @@ def make_shifted_functional(functional: Functional, offset: Any) -> Functional:
     if isinstance(functional, ShiftedFunctional):
         return make_shifted_functional(functional.functional, functional.offset + offset)
     return ShiftedFunctional(functional, offset)
+
+
+class ProductFunctional(Functional):
+    r"""
+    Lazy pointwise product ``(F * G)(x) = F(x) * G(x)`` on a shared domain.
+
+    Deliberately **binary**: the gradient is the two-factor product rule, which
+    does not generalize to an n-ary node without the full Leibniz expansion, and
+    nesting ``(F*G)*H`` expresses the same thing with the same cost.
+
+    The gradient conjugates each cofactor, mirroring
+    :meth:`ScaledFunctional.grad`. Writing :math:`D` for the derivative,
+
+    .. math::
+
+        D(FG)(x)[h] = G(x)\, DF(x)[h] + F(x)\, DG(x)[h],
+
+    and the Riesz gradient is the element pairing to that under the domain inner
+    product. Since the inner product conjugates its *first* argument,
+    :math:`\langle \overline{a} g, h\rangle = a \langle g, h\rangle`, so the
+    coefficients enter conjugated:
+
+    .. math::
+
+        \nabla(FG)(x) = \overline{G(x)}\, \nabla F(x)
+                      + \overline{F(x)}\, \nabla G(x).
+
+    For real-valued factors — the usual case — the conjugations are identities.
+    The two terms are combined through the domain's own ``scale``/``add``, never
+    raw ``*``/``+``, because a domain element may be a pytree.
+
+    Parameters
+    ----------
+    left, right : Functional
+        Factors sharing one domain.
+    check_level : {"none", "cheap", "standard", "strict"}, optional
+        Runtime validation policy for this functional. When omitted, the ambient
+        default (see :func:`spacecore.get_check_level`) is used. Validation
+        policy is a property of the functional, not of the ``Context``.
+
+    Attributes
+    ----------
+    left, right : Functional
+        The two factors, converted into this node's context.
+    """
+
+    def __init__(
+        self,
+        left: Functional,
+        right: Functional,
+        check_level: CheckLevel | bool | None = None,
+    ) -> None:
+        for name, factor in (("left", left), ("right", right)):
+            if not isinstance(factor, Functional):
+                raise TypeError(
+                    f"{name} must be a Functional, got {type(factor).__name__}."
+                )
+        _require_same_domain((left, right), node="ProductFunctional")
+        # Default the policy from the OPERANDS, not from their domain space, so
+        # the result inherits the least-strict operand independently of order
+        # (mirrors SumFunctional).
+        if check_level is None:
+            check_level = minimum_check_level((left.check_level, right.check_level))
+        super().__init__(left.domain, left.ctx, check_level=check_level)
+        self.left = left.convert(self.ctx)
+        self.right = right.convert(self.ctx)
+
+    @property
+    def factors(self) -> tuple[Functional, Functional]:
+        """Return the two factors in order."""
+        return (self.left, self.right)
+
+    @checked_method(in_space="domain", out_scalar=True)
+    def value(self, x: Any, *args: Any, **kwargs: Any) -> Any:
+        """Return ``left.value(x) * right.value(x)``."""
+        return self._value_core(x, *args, **kwargs)
+
+    def _value_core(self, x: Any, *args: Any, **kwargs: Any) -> Any:
+        """Check-free pointwise product of the factor values."""
+        return (
+            self.left._value_core(x, *args, **kwargs)
+            * self.right._value_core(x, *args, **kwargs)
+        )
+
+    def _product_grad(self, lv: Any, lg: Any, rv: Any, rg: Any) -> Any:
+        """Combine factor values/gradients by the product rule, in domain ops."""
+        domain = self.domain
+        conj = self.ops.conj
+        return domain.add(domain.scale(conj(rv), lg), domain.scale(conj(lv), rg))
+
+    def grad(self, x: Any, *args: Any, **kwargs: Any) -> Any:
+        """Return the product-rule Riesz gradient at ``x``.
+
+        Both factors are evaluated through ``value_and_grad`` because the rule
+        needs each factor's *value* as well as its gradient; asking for the
+        gradients alone would evaluate the values a second time.
+        """
+        lv, lg = self.left.value_and_grad(x, *args, **kwargs)
+        rv, rg = self.right.value_and_grad(x, *args, **kwargs)
+        return self._product_grad(lv, lg, rv, rg)
+
+    def value_and_grad(self, x: Any, *args: Any, **kwargs: Any) -> tuple[Any, Any]:
+        """Return ``(value, grad)`` from one fused evaluation per factor."""
+        lv, lg = self.left.value_and_grad(x, *args, **kwargs)
+        rv, rg = self.right.value_and_grad(x, *args, **kwargs)
+        return lv * rv, self._product_grad(lv, lg, rv, rg)
+
+    def __eq__(self, other: Any) -> bool:
+        """Return whether another product has the same ordered factors.
+
+        Ordered, like :class:`SumFunctional`: the operation commutes, but this is
+        structural equality of expression trees, not semantic equivalence.
+        """
+        if not self.same_math(other):
+            return NotImplemented
+        return self.left == other.left and self.right == other.right
+
+    def tree_flatten(self):
+        """Flatten this functional for pytree registration."""
+        return (self.left, self.right), ()
+
+    @classmethod
+    def tree_unflatten(cls, aux, children):
+        """Rebuild this functional from pytree data."""
+        left, right = children
+        return cls(left, right)
+
+    def _convert(self, new_ctx: Context) -> "ProductFunctional":
+        """Convert both factors to ``new_ctx``."""
+        return ProductFunctional(
+            self.left.convert(new_ctx), self.right.convert(new_ctx)
+        )
+
+
+def make_functional_product(left: Functional, right: Functional) -> Functional:
+    """
+    Return a locally simplified pointwise product of two functionals.
+
+    Only *structural* simplifications are attempted — the ones visible from the
+    node types, with no evaluation:
+
+    * a :class:`ZeroFunctional` factor collapses the product to zero (matching
+      how :func:`make_scaled_functional` treats a zero scalar);
+    * a :class:`ConstantFunctional` factor becomes a
+      :class:`ScaledFunctional` on the other factor, since multiplying by a
+      constant *is* scaling.
+
+    There is deliberately no attempt to recognize a functional that merely
+    *happens* to be constant or zero: that is a fact about values, not about the
+    expression, and is not decidable here.
+
+    Parameters
+    ----------
+    left, right : Functional
+        Factors sharing one domain.
+
+    Returns
+    -------
+    Functional
+        Simplified product.
+    """
+    for name, factor in (("left", left), ("right", right)):
+        if not isinstance(factor, Functional):
+            raise TypeError(f"{name} must be a Functional, got {type(factor).__name__}.")
+    # Validate domains BEFORE any collapse, so a mismatch is never swallowed by
+    # the zero/constant shortcuts.
+    _require_same_domain((left, right), node="ProductFunctional")
+
+    if isinstance(left, ZeroFunctional) or isinstance(right, ZeroFunctional):
+        return ZeroFunctional(left.domain, left.ctx)
+    if isinstance(left, ConstantFunctional):
+        return make_scaled_functional(left.constant, right)
+    if isinstance(right, ConstantFunctional):
+        return make_scaled_functional(right.constant, left)
+    return ProductFunctional(left, right)

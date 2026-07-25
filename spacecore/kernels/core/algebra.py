@@ -22,16 +22,11 @@ from typing import Any
 from ._rules import CoreKernelSet, register_core_kernels
 from ..specs._dispatch import dispatch, should_consult_dispatch
 
-# ---------------------------------------------------------------------------
-# Shared rules / helpers
-# ---------------------------------------------------------------------------
-def conjugate_scalar(value: Any) -> Any:
-    """Return the scalar conjugate when the value supports conjugation."""
-    if hasattr(value, "conjugate"):
-        return value.conjugate()
-    if hasattr(value, "conj"):
-        return value.conj()
-    return value
+# Re-exported: the scalar predicates/helpers live together in
+# :mod:`spacecore._lazy_algebra` (stdlib-only, so importable from anywhere),
+# next to ``is_scalar_like`` / ``scalar_eq`` which share their duck-typing
+# assumptions. Kept importable from here for the kernel call sites.
+from ..._lazy_algebra import conjugate_scalar as conjugate_scalar  # noqa: F401
 
 
 def compose_chain(op: Any) -> tuple:

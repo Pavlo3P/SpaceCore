@@ -61,7 +61,7 @@ class TestConstruction:
         space = sc.DenseCoordinateSpace((2,), numpy_ctx)
         # Callable returns a vector, not a scalar.
         f = sc.MatrixFreeLinearFunctional(lambda x: x, space, numpy_ctx)
-        with pytest.raises(ValueError, match="Expected scalar batch output"):
+        with pytest.raises(ValueError, match="Expected scalar output"):
             f.value(numpy_ctx.asarray([1.0, 2.0]))
 
     def test_value_skips_scalar_check_at_none_level(self):
