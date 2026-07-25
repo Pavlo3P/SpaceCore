@@ -1,4 +1,11 @@
-"""Tests for the free-function API in :mod:`spacecore._contextual._state`.
+"""Tests for the free-function API in :mod:`spacecore.contextual._state`.
+
+Book justification: the public free-function API is tested as its own first
+client — defaults that do the right thing and consistent behavior across input
+types (Myers & Stylos, *Improving API Usability*). Because these functions
+mutate a process-wide default context, they use a Fresh Fixture with guaranteed
+teardown so tests stay independent and order-insensitive — the remedy for the
+Erratic Test smell (Meszaros, *xUnit Test Patterns*).
 
 The functions covered:
 
@@ -22,9 +29,10 @@ import pytest
 
 import spacecore as sc
 from spacecore.backend import BackendFamily
-from spacecore._contextual import UnknownBackendError
+from spacecore.contextual import UnknownBackendError
 
 from tests._helpers import has_cupy, has_jax, has_torch
+from spacecore.backend import ops_registry
 
 
 _OPTIONAL_BACKEND_PROBES = {"jax": has_jax, "torch": has_torch, "cupy": has_cupy}
@@ -43,7 +51,7 @@ class TestSetGetContext:
         assert ctx.ops.family == "numpy"
 
     def test_set_context_with_context_object(self, preserve_default_context):
-        target = sc.Context(sc.NumpyOps(), dtype=np.float32, check_level="cheap")
+        target = sc.Context(sc.NumpyOps(), dtype=np.float32)
         sc.set_context(target)
         assert sc.get_context() == target
 
@@ -141,7 +149,7 @@ class TestNormalizeOps:
 # ===========================================================================
 class TestNormalizeContext:
     def test_none_returns_active_default(self, preserve_default_context):
-        explicit = sc.Context(sc.NumpyOps(), dtype=np.float32, check_level="cheap")
+        explicit = sc.Context(sc.NumpyOps(), dtype=np.float32)
         sc.set_context(explicit)
         out = sc.normalize_context(None)
         assert out == explicit
@@ -160,9 +168,12 @@ class TestNormalizeContext:
         out = sc.normalize_context("numpy", dtype=np.float32)
         assert out.dtype == np.dtype(np.float32)
 
-    def test_family_string_with_check_level(self):
-        out = sc.normalize_context("numpy", check_level="strict")
-        assert out.check_level == "strict"
+    def test_family_string_context_leaves_policy_to_the_bound_object(self):
+        """A normalized context carries backend and dtype only; the validation
+        policy is seeded on the object bound to it."""
+        out = sc.normalize_context("numpy")
+        assert not hasattr(out, "check_level")
+        assert sc.DenseCoordinateSpace((2,), out, check_level="strict").check_level == "strict"
 
     def test_rejects_unknown_type(self):
         with pytest.raises(TypeError):
@@ -176,10 +187,6 @@ class TestNormalizeContext:
     def test_warns_when_none_provided_with_dtype_override(self, preserve_default_context):
         with pytest.warns(UserWarning, match="ignored"):
             sc.normalize_context(None, dtype=np.float32)
-
-    def test_rejects_both_check_level_and_enable_checks(self):
-        with pytest.raises(TypeError, match="either check_level or enable_checks"):
-            sc.normalize_context("numpy", check_level="strict", enable_checks=True)
 
 
 # ===========================================================================
@@ -205,19 +212,17 @@ def _make_ephemeral_backend(family_name: str) -> Type[sc.BackendOps]:
 
 class TestRegisterOps:
     def test_register_adds_new_family(self):
-        from spacecore._contextual._state import _state
 
         family = "test_register_adds_new_family_one"
         cls = _make_ephemeral_backend(family)
         try:
             sc.register_ops(cls)
-            assert family in _state().available_ops
-            assert _state().available_ops[family] is cls
+            assert family in ops_registry
+            assert ops_registry.classes()[family] is cls
         finally:
-            _state().available_ops.pop(family, None)
+            ops_registry.unregister(family)
 
     def test_registered_family_is_usable_via_set_context(self, preserve_default_context):
-        from spacecore._contextual._state import _state
 
         family = "test_registered_family_is_usable"
         cls = _make_ephemeral_backend(family)
@@ -226,11 +231,10 @@ class TestRegisterOps:
             sc.set_context(family)
             assert sc.get_context().ops.family == family
         finally:
-            _state().available_ops.pop(family, None)
+            ops_registry.unregister(family)
 
     def test_duplicate_registration_raises_context_conflict_error(self):
-        from spacecore._contextual import ContextConflictError
-        from spacecore._contextual._state import _state
+        from spacecore.contextual import ContextConflictError
 
         family = "test_duplicate_registration_raises"
         cls = _make_ephemeral_backend(family)
@@ -239,7 +243,7 @@ class TestRegisterOps:
             with pytest.raises(ContextConflictError, match="already registered"):
                 sc.register_ops(cls)
         finally:
-            _state().available_ops.pop(family, None)
+            ops_registry.unregister(family)
 
     def test_rejects_non_class_argument(self):
         with pytest.raises(TypeError, match="Expected type"):
@@ -253,7 +257,6 @@ class TestRegisterOps:
             sc.register_ops(NotABackend)  # type: ignore[arg-type]
 
     def test_returns_the_registered_class(self):
-        from spacecore._contextual._state import _state
 
         family = "test_returns_the_registered_class"
         cls = _make_ephemeral_backend(family)
@@ -261,7 +264,7 @@ class TestRegisterOps:
             returned = sc.register_ops(cls)
             assert returned is cls
         finally:
-            _state().available_ops.pop(family, None)
+            ops_registry.unregister(family)
 
 
 # ===========================================================================
@@ -269,26 +272,26 @@ class TestRegisterOps:
 # ===========================================================================
 class TestResolveContextPriority:
     def test_default_used_when_no_inputs(self, preserve_default_context):
-        ctx = sc.Context(sc.NumpyOps(), dtype=np.float32, check_level="cheap")
+        ctx = sc.Context(sc.NumpyOps(), dtype=np.float32)
         sc.set_context(ctx)
         out = sc.resolve_context_priority(None)
         assert out == ctx
 
     def test_explicit_overrides_inferred(self, preserve_default_context):
         sc.set_context(sc.Context(sc.NumpyOps(), dtype=np.float16))
-        inferred = sc.Context(sc.NumpyOps(), dtype=np.float32, check_level="cheap")
-        explicit = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="none")
+        inferred = sc.Context(sc.NumpyOps(), dtype=np.float32)
+        explicit = sc.Context(sc.NumpyOps(), dtype=np.float64)
         X = sc.DenseCoordinateSpace((2,), inferred)
         out = sc.resolve_context_priority(explicit, X)
         assert out == explicit
 
     def test_inferred_used_when_explicit_is_none(self, preserve_default_context):
         sc.set_context(sc.Context(sc.NumpyOps(), dtype=np.float16))
-        inferred = sc.Context(sc.NumpyOps(), dtype=np.float32, check_level="cheap")
+        inferred = sc.Context(sc.NumpyOps(), dtype=np.float32)
         X = sc.DenseCoordinateSpace((2,), inferred)
         out = sc.resolve_context_priority(None, X)
         assert out.dtype == inferred.dtype
-        assert out.check_level == inferred.check_level
+        assert out.ops.family == inferred.ops.family
 
     def test_default_used_when_no_inferred(self, preserve_default_context):
         ctx = sc.Context(sc.NumpyOps(), dtype=np.float32)
@@ -306,13 +309,14 @@ class TestResolveContextPriority:
         out = sc.resolve_context_priority(None, Xa, Xb)
         assert out.dtype == np.dtype(np.float64)
 
-    def test_minimum_check_level_among_inferred_contexts(self, preserve_default_context):
-        strict = sc.Context(sc.NumpyOps(), check_level="strict")
-        cheap = sc.Context(sc.NumpyOps(), check_level="cheap")
-        Xs = sc.DenseCoordinateSpace((2,), strict)
-        Xc = sc.DenseCoordinateSpace((3,), cheap)
-        out = sc.resolve_context_priority(None, Xs, Xc)
-        assert out.check_level == "cheap"
+    def test_minimum_check_level_among_bound_sources(self, preserve_default_context):
+        """The resolved *context* carries no policy; the object built from the
+        sources takes the least expensive level among them."""
+        ctx = sc.Context(sc.NumpyOps())
+        Xs = sc.DenseCoordinateSpace((2,), ctx, check_level="strict")
+        Xc = sc.DenseCoordinateSpace((3,), ctx, check_level="cheap")
+        op = sc.ZeroLinOp(Xs, Xc)
+        assert op.check_level == "cheap"
 
     def test_incompatible_inferred_contexts_raise(self):
         if not has_jax():

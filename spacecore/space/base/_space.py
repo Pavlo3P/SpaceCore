@@ -3,9 +3,9 @@ from __future__ import annotations
 from typing import Any, ClassVar, Literal
 
 from ..._check_policy import CheckLevel, check_level_at_least, normalize_check_level
-from ..._contextual import ContextBound
+from ...contextual import ContextBound
 from ..._repr import field_symbol
-from ...backend import Context
+from ...contextual import Context
 from ..checks import SpaceCheck, SpaceValidationError, _run_checks
 
 
@@ -17,12 +17,21 @@ class Space(ContextBound):
     ----------
     ctx : Context, str, or None, optional
         Context specification used for elements and validation checks.
+    check_level : {"none", "cheap", "standard", "strict"}, optional
+        Runtime validation policy for this object. When omitted, the ambient
+        default (see :func:`spacecore.get_check_level`) is used. Unlike the
+        backend/dtype context, the validation policy is a property of the bound
+        object, not of the :class:`Context`.
     """
 
     checks: ClassVar[tuple[SpaceCheck, ...]] = ()
 
-    def __init__(self, ctx: Context | str | None = None) -> None:
-        super().__init__(ctx)
+    def __init__(
+        self,
+        ctx: Context | str | None = None,
+        check_level: CheckLevel | bool | None = None,
+    ) -> None:
+        super().__init__(ctx, check_level=check_level)
         # Lazy caches. Populated on first call to member_checks() /
         # _checks_for_level() and reused for every subsequent membership
         # validation. Spaces are immutable after construction (`convert`
@@ -43,7 +52,7 @@ class Space(ContextBound):
     def __eq__(self, other: Any) -> bool:
         # Tier 1: backend compatibility (type + ops family + dtype, ignoring
         # check_level). Tier 2/3: per-subclass algebraic comparison.
-        if not self._eq_backend_compatible(other):
+        if not self.same_math(other):
             return NotImplemented
         return self._eq_algebra(other)
 

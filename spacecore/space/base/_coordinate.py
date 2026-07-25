@@ -4,7 +4,8 @@ from abc import abstractmethod
 from math import prod
 from typing import Any, Tuple
 
-from ...backend import Context
+from ..._check_policy import CheckLevel
+from ...contextual import Context
 from ..._repr import shape_descriptor
 from ...types import DenseArray
 from ._vector import VectorSpace
@@ -20,12 +21,22 @@ class CoordinateSpace(VectorSpace):
         Canonical coordinate shape for one element of the space.
     ctx : Context, str, or None, optional
         Context specification used for coordinate arrays.
+    check_level : {"none", "cheap", "standard", "strict"}, optional
+        Runtime validation policy for this object. When omitted, the ambient
+        default (see :func:`spacecore.get_check_level`) is used. Unlike the
+        backend/dtype context, the validation policy is a property of the bound
+        object, not of the :class:`Context`.
     """
 
     shape: Tuple[int, ...]
 
-    def __init__(self, shape: Tuple[int, ...], ctx: Context | str | None = None) -> None:
-        super().__init__(ctx)
+    def __init__(
+        self,
+        shape: Tuple[int, ...],
+        ctx: Context | str | None = None,
+        check_level: CheckLevel | bool | None = None,
+    ) -> None:
+        super().__init__(ctx, check_level=check_level)
         self.shape = tuple(shape)
 
     def _eq_algebra(self, other: Any) -> bool:

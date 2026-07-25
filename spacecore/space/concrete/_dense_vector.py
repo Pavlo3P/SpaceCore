@@ -9,10 +9,11 @@ from ..base import (
     JordanAlgebraSpace,
     StarSpace,
 )
-from ..._check_policy import require_mutually_exclusive
+from ..._check_policy import CheckLevel, require_mutually_exclusive
 from ..._checks import checked_method
-from ..._contextual import normalize_context
-from ...backend import Context, jax_pytree_class
+from ...contextual import normalize_context
+from ...contextual import Context
+from ...backend import PyTreeNode
 from ...types import DenseArray
 from ._dense_coordinate import DenseCoordinateSpace
 
@@ -75,6 +76,11 @@ class DenseVectorSpace(DenseCoordinateSpace, StarSpace):
     geometry : InnerProduct or None, optional
         Inner-product geometry. If omitted, Euclidean coordinate geometry is
         used.
+    check_level : {"none", "cheap", "standard", "strict"}, optional
+        Runtime validation policy for this object. When omitted, the ambient
+        default (see :func:`spacecore.get_check_level`) is used. Unlike the
+        backend/dtype context, the validation policy is a property of the bound
+        object, not of the :class:`Context`.
     """
 
     def __init__(
@@ -82,11 +88,12 @@ class DenseVectorSpace(DenseCoordinateSpace, StarSpace):
         shape: Tuple[int, ...],
         ctx: Context | str | None = None,
         geometry: InnerProduct | None = None,
+        check_level: CheckLevel | bool | None = None,
     ) -> None:
         shape = tuple(shape)
         if len(shape) != 1:
             raise ValueError(f"DenseVectorSpace requires one-dimensional shape, got {shape}.")
-        super().__init__(shape, ctx, geometry=geometry)
+        super().__init__(shape, ctx, geometry=geometry, check_level=check_level)
 
     @checked_method(in_space="self")
     def star(self, x: DenseArray) -> DenseArray:
@@ -97,8 +104,7 @@ class DenseVectorSpace(DenseCoordinateSpace, StarSpace):
         return DenseVectorSpace(self.shape, new_ctx, geometry=self.geometry.convert(new_ctx))
 
 
-@jax_pytree_class
-class ElementwiseJordanSpace(JordanAlgebraSpace, DenseCoordinateSpace, StarSpace):
+class ElementwiseJordanSpace(PyTreeNode, JordanAlgebraSpace, DenseCoordinateSpace, StarSpace):
     """
     Elementwise Jordan algebra for real or complex dense coordinates.
 
@@ -113,6 +119,11 @@ class ElementwiseJordanSpace(JordanAlgebraSpace, DenseCoordinateSpace, StarSpace
         used.
     inner_product : InnerProduct or None, optional
         Alias for ``geometry``.
+    check_level : {"none", "cheap", "standard", "strict"}, optional
+        Runtime validation policy for this object. When omitted, the ambient
+        default (see :func:`spacecore.get_check_level`) is used. Unlike the
+        backend/dtype context, the validation policy is a property of the bound
+        object, not of the :class:`Context`.
     """
 
     def __new__(
@@ -120,6 +131,7 @@ class ElementwiseJordanSpace(JordanAlgebraSpace, DenseCoordinateSpace, StarSpace
         shape: Tuple[int, ...],
         ctx: Context | str | None = None,
         geometry: InnerProduct | None = None,
+        check_level: CheckLevel | bool | None = None,
         *,
         inner_product: InnerProduct | None = None,
     ):
@@ -135,11 +147,12 @@ class ElementwiseJordanSpace(JordanAlgebraSpace, DenseCoordinateSpace, StarSpace
         shape: Tuple[int, ...],
         ctx: Context | str | None = None,
         geometry: InnerProduct | None = None,
+        check_level: CheckLevel | bool | None = None,
         *,
         inner_product: InnerProduct | None = None,
     ) -> None:
         geometry = _resolve_elementwise_geometry(geometry, inner_product)
-        DenseCoordinateSpace.__init__(self, shape, ctx, geometry=geometry)
+        DenseCoordinateSpace.__init__(self, shape, ctx, geometry=geometry, check_level=check_level)
 
     @checked_method(in_space="self")
     def star(self, x: DenseArray) -> DenseArray:
@@ -211,7 +224,6 @@ class ElementwiseJordanSpace(JordanAlgebraSpace, DenseCoordinateSpace, StarSpace
         return cls(shape, ctx, geometry=geometry)
 
 
-@jax_pytree_class
 class EuclideanElementwiseJordanSpace(ElementwiseJordanSpace, EuclideanJordanAlgebraSpace):
     """
     Real elementwise Euclidean Jordan algebra.
@@ -227,6 +239,11 @@ class EuclideanElementwiseJordanSpace(ElementwiseJordanSpace, EuclideanJordanAlg
         with Euclidean coordinate geometry.
     inner_product : InnerProduct or None, optional
         Alias for ``geometry``.
+    check_level : {"none", "cheap", "standard", "strict"}, optional
+        Runtime validation policy for this object. When omitted, the ambient
+        default (see :func:`spacecore.get_check_level`) is used. Unlike the
+        backend/dtype context, the validation policy is a property of the bound
+        object, not of the :class:`Context`.
     """
 
     def __init__(
@@ -234,10 +251,13 @@ class EuclideanElementwiseJordanSpace(ElementwiseJordanSpace, EuclideanJordanAlg
         shape: Tuple[int, ...],
         ctx: Context | str | None = None,
         geometry: InnerProduct | None = None,
+        check_level: CheckLevel | bool | None = None,
         *,
         inner_product: InnerProduct | None = None,
     ) -> None:
         resolved_ctx = normalize_context(ctx)
         geometry = _resolve_elementwise_geometry(geometry, inner_product)
-        DenseCoordinateSpace.__init__(self, shape, resolved_ctx, geometry=geometry)
+        DenseCoordinateSpace.__init__(
+            self, shape, resolved_ctx, geometry=geometry, check_level=check_level
+        )
         _validate_euclidean_elementwise_jordan(self, self.geometry)

@@ -12,33 +12,19 @@ tree/stacked domain, where an element is a pytree).
 """
 from __future__ import annotations
 
-from numbers import Number
 from typing import Any
 
 from ._base import Functional
 from .._checks import checked_method
-from ..backend import Context, jax_pytree_class
-
-
-def is_scalar_like(value: Any) -> bool:
-    """Return whether ``value`` can be used as a scalar multiplier for a functional."""
-    if isinstance(value, Number):
-        return True
-    shape = getattr(value, "shape", None)
-    if shape is not None:
-        return tuple(shape) == ()
-    ndim = getattr(value, "ndim", None)
-    return ndim == 0
-
-
-def _scalar_eq(a: Any, b: Any) -> bool:
-    """Return whether two scalar-likes are equal, NaN-reflexive, as a real ``bool``."""
-    if bool(a == b):
-        return True
-    try:
-        return bool(a != a) and bool(b != b)
-    except Exception:
-        return False
+from .._check_policy import CheckLevel, minimum_check_level
+from ..contextual import Context
+from .._lazy_algebra import (
+    finalize_sum,
+    flatten_sum,
+    fold_scaled,
+    is_scalar_like as is_scalar_like,  # re-exported for functional/_base.py
+    scalar_eq,
+)
 
 
 def _require_same_domain(terms: Any) -> None:
@@ -56,7 +42,6 @@ def _require_same_domain(terms: Any) -> None:
             )
 
 
-@jax_pytree_class
 class ScaledFunctional(Functional):
     """
     Lazy scalar multiple ``scalar * functional``.
@@ -67,14 +52,27 @@ class ScaledFunctional(Functional):
         Scalar coefficient.
     functional : Functional
         Functional to scale.
+    check_level : {"none", "cheap", "standard", "strict"}, optional
+        Runtime validation policy for this functional. When omitted, the ambient
+        default (see :func:`spacecore.get_check_level`) is used. Validation
+        policy is a property of the functional, not of the ``Context``.
     """
 
-    def __init__(self, scalar: Any, functional: Functional) -> None:
+    def __init__(
+        self,
+        scalar: Any,
+        functional: Functional,
+        check_level: CheckLevel | bool | None = None,
+    ) -> None:
         if not isinstance(functional, Functional):
             raise TypeError(f"functional must be a Functional, got {type(functional).__name__}.")
         if not is_scalar_like(scalar):
             raise TypeError(f"scalar must be scalar-like, got {type(scalar).__name__}.")
-        super().__init__(functional.domain, functional.ctx)
+        # Default the policy from the OPERAND, not from its domain space, so the
+        # result inherits the least-strict operand independently of order.
+        if check_level is None:
+            check_level = functional.check_level
+        super().__init__(functional.domain, functional.ctx, check_level=check_level)
         self.scalar = scalar
         self.functional = functional.convert(self.ctx)
 
@@ -106,9 +104,9 @@ class ScaledFunctional(Functional):
 
     def __eq__(self, other: Any) -> bool:
         """Return whether another scaled functional has the same scalar and operand."""
-        if not self._eq_backend_compatible(other):
+        if not self.same_math(other):
             return NotImplemented
-        return _scalar_eq(self.scalar, other.scalar) and self.functional == other.functional
+        return scalar_eq(self.scalar, other.scalar) and self.functional == other.functional
 
     def tree_flatten(self):
         """Flatten this functional for pytree registration (scalar is a traced child)."""
@@ -149,18 +147,19 @@ def make_scaled_functional(scalar: Any, functional: Functional) -> Functional:
         raise TypeError(f"functional must be a Functional, got {type(functional).__name__}.")
     if not is_scalar_like(scalar):
         raise TypeError(f"scalar must be scalar-like, got {type(scalar).__name__}.")
-    if _scalar_eq(scalar, 0):
-        return ZeroFunctional(functional.domain, functional.ctx)
-    if _scalar_eq(scalar, 1):
-        return functional
-    if isinstance(functional, ZeroFunctional):
-        return functional
-    if isinstance(functional, ScaledFunctional):
-        return make_scaled_functional(scalar * functional.scalar, functional.functional)
-    return ScaledFunctional(scalar, functional)
+
+    return fold_scaled(
+        scalar,
+        functional,
+        is_zero=lambda f: isinstance(f, ZeroFunctional),
+        unwrap_scaled=lambda f: (
+            (f.scalar, f.functional) if isinstance(f, ScaledFunctional) else None
+        ),
+        make_zero=lambda: ZeroFunctional(functional.domain, functional.ctx),
+        make_scaled_node=ScaledFunctional,
+    )
 
 
-@jax_pytree_class
 class SumFunctional(Functional):
     """
     Lazy sum ``F_1 + ... + F_n`` of functionals on a common domain.
@@ -169,9 +168,13 @@ class SumFunctional(Functional):
     ----------
     terms : sequence of Functional
         Nonempty sequence of functionals sharing one domain.
+    check_level : {"none", "cheap", "standard", "strict"}, optional
+        Runtime validation policy for this functional. When omitted, the ambient
+        default (see :func:`spacecore.get_check_level`) is used. Validation
+        policy is a property of the functional, not of the ``Context``.
     """
 
-    def __init__(self, terms: Any) -> None:
+    def __init__(self, terms: Any, check_level: CheckLevel | bool | None = None) -> None:
         parts = tuple(terms)
         if not parts:
             raise ValueError(
@@ -181,7 +184,9 @@ class SumFunctional(Functional):
             if not isinstance(term, Functional):
                 raise TypeError(f"operand {i} must be a Functional, got {type(term).__name__}.")
         _require_same_domain(parts)
-        super().__init__(parts[0].domain, parts[0].ctx)
+        if check_level is None:
+            check_level = minimum_check_level(tuple(term.check_level for term in parts))
+        super().__init__(parts[0].domain, parts[0].ctx, check_level=check_level)
         self.terms = tuple(term.convert(self.ctx) for term in parts)
 
     @property
@@ -224,7 +229,7 @@ class SumFunctional(Functional):
 
     def __eq__(self, other: Any) -> bool:
         """Return whether another sum has the same ordered terms."""
-        if not self._eq_backend_compatible(other):
+        if not self.same_math(other):
             return NotImplemented
         if len(self.terms) != len(other.terms):
             return False
@@ -242,19 +247,6 @@ class SumFunctional(Functional):
     def _convert(self, new_ctx: Context) -> "SumFunctional":
         """Convert every term to ``new_ctx``."""
         return SumFunctional(tuple(term.convert(new_ctx) for term in self.terms))
-
-
-def _flatten_functional_sum_terms(terms: Any) -> tuple[Functional, ...]:
-    """Flatten nested :class:`SumFunctional` nodes into a flat term tuple."""
-    flat: list[Functional] = []
-    for i, term in enumerate(terms):
-        if not isinstance(term, Functional):
-            raise TypeError(f"operand {i} must be a Functional, got {type(term).__name__}.")
-        if isinstance(term, SumFunctional):
-            flat.extend(term.terms)
-        else:
-            flat.append(term)
-    return tuple(flat)
 
 
 def make_functional_sum(terms: Any) -> Functional:
@@ -280,19 +272,25 @@ def make_functional_sum(terms: Any) -> Functional:
         raise ValueError(
             "make_functional_sum requires a nonempty sequence of Functional operands."
         )
-    flat = _flatten_functional_sum_terms(terms)
+    for i, term in enumerate(terms):
+        if not isinstance(term, Functional):
+            raise TypeError(f"operand {i} must be a Functional, got {type(term).__name__}.")
+    flat = flatten_sum(
+        terms,
+        is_sum=lambda t: isinstance(t, SumFunctional),
+        parts=lambda t: t.terms,
+    )
     # Validate all terms' domains BEFORE dropping zeros, so a domain mismatch is
     # never swallowed by the single-survivor unwrap or the all-zero collapse.
     _require_same_domain(flat)
-    nonzero = tuple(term for term in flat if not isinstance(term, ZeroFunctional))
-    if not nonzero:
-        return ZeroFunctional(flat[0].domain, flat[0].ctx)
-    if len(nonzero) == 1:
-        return nonzero[0]
-    return SumFunctional(nonzero)
+    return finalize_sum(
+        flat,
+        is_zero=lambda f: isinstance(f, ZeroFunctional),
+        make_zero=lambda: ZeroFunctional(flat[0].domain, flat[0].ctx),
+        make_sum_node=SumFunctional,
+    )
 
 
-@jax_pytree_class
 class ZeroFunctional(Functional):
     """
     The zero functional: value ``0``, gradient the domain's zero element.
@@ -308,8 +306,13 @@ class ZeroFunctional(Functional):
         Backend context specification.
     """
 
-    def __init__(self, dom: Any, ctx: Context | str | None = None) -> None:
-        super().__init__(dom, ctx)
+    def __init__(
+        self,
+        dom: Any,
+        ctx: Context | str | None = None,
+        check_level: CheckLevel | bool | None = None,
+    ) -> None:
+        super().__init__(dom, ctx, check_level=check_level)
 
     @checked_method(in_space="domain")
     def value(self, x: Any, *args: Any, **kwargs: Any) -> Any:
@@ -330,7 +333,7 @@ class ZeroFunctional(Functional):
 
     def __eq__(self, other: Any) -> bool:
         """Return whether another zero functional has the same domain."""
-        if not self._eq_backend_compatible(other):
+        if not self.same_math(other):
             return NotImplemented
         return self.domain == other.domain
 
@@ -349,7 +352,6 @@ class ZeroFunctional(Functional):
         return ZeroFunctional(self.domain.convert(new_ctx), new_ctx)
 
 
-@jax_pytree_class
 class ShiftedFunctional(Functional):
     """
     Affine shift ``functional + offset``: value shifted, gradient unchanged.
@@ -360,14 +362,25 @@ class ShiftedFunctional(Functional):
         Functional to shift.
     offset : scalar-like
         Constant added to the value.
+    check_level : {"none", "cheap", "standard", "strict"}, optional
+        Runtime validation policy for this functional. When omitted, the ambient
+        default (see :func:`spacecore.get_check_level`) is used. Validation
+        policy is a property of the functional, not of the ``Context``.
     """
 
-    def __init__(self, functional: Functional, offset: Any) -> None:
+    def __init__(
+        self,
+        functional: Functional,
+        offset: Any,
+        check_level: CheckLevel | bool | None = None,
+    ) -> None:
         if not isinstance(functional, Functional):
             raise TypeError(f"functional must be a Functional, got {type(functional).__name__}.")
         if not is_scalar_like(offset):
             raise TypeError(f"offset must be scalar-like, got {type(offset).__name__}.")
-        super().__init__(functional.domain, functional.ctx)
+        if check_level is None:
+            check_level = functional.check_level
+        super().__init__(functional.domain, functional.ctx, check_level=check_level)
         self.functional = functional.convert(self.ctx)
         self.offset = offset
 
@@ -391,9 +404,9 @@ class ShiftedFunctional(Functional):
 
     def __eq__(self, other: Any) -> bool:
         """Return whether another shifted functional has the same offset and operand."""
-        if not self._eq_backend_compatible(other):
+        if not self.same_math(other):
             return NotImplemented
-        return _scalar_eq(self.offset, other.offset) and self.functional == other.functional
+        return scalar_eq(self.offset, other.offset) and self.functional == other.functional
 
     def tree_flatten(self):
         """Flatten this functional for pytree registration (offset is a traced child)."""
@@ -433,7 +446,7 @@ def make_shifted_functional(functional: Functional, offset: Any) -> Functional:
         raise TypeError(f"functional must be a Functional, got {type(functional).__name__}.")
     if not is_scalar_like(offset):
         raise TypeError(f"offset must be scalar-like, got {type(offset).__name__}.")
-    if _scalar_eq(offset, 0):
+    if scalar_eq(offset, 0):
         return functional
     if isinstance(functional, ShiftedFunctional):
         return make_shifted_functional(functional.functional, functional.offset + offset)

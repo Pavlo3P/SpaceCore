@@ -14,8 +14,10 @@ FunctionalCase = GeneratedCase[sc.Functional]
 NUMPY_FUNCTIONAL_DTYPES = (np.float64, np.complex128)
 
 
-def _context(dtype: Any, check_level: sc.CheckLevel | str) -> sc.Context:
-    return sc.Context(sc.NumpyOps(), dtype=dtype, check_level=check_level)
+def _context(dtype: Any, check_level: sc.CheckLevel | str | None = None) -> sc.Context:
+    # check_level applies to the constructed objects via an ambient
+    # ``use_check_level`` scope in the case builders, not the Context.
+    return sc.Context(sc.NumpyOps(), dtype=dtype)
 
 
 def _target_dtype(dtype: Any) -> np.dtype[Any]:
@@ -502,20 +504,21 @@ def functional_cases(
     """Generate deterministic scalar-functional cases with direct references."""
     cases = []
     for check_level in check_levels:
-        for dtype in dtypes:
-            for weighted in (False, True):
-                for kind in ("zero", "linear", "quadratic"):
-                    cases.append(
-                        _dense_case(dtype, check_level, kind=kind, weighted=weighted)
-                    )
-            cases.append(_composed_case(dtype, check_level))
-            cases.append(_explicit_composed_case(dtype, check_level))
-            cases.append(_matrix_free_linear_case(dtype, check_level))
-            cases.append(_tree_case(dtype, check_level))
-            cases.extend(_algebra_cases(dtype, check_level))
-        # ADR-019 battery functionals are real-coordinate objectives; generate
-        # them once per check level for float64 when that dtype is requested.
-        if any(np.dtype(d) == np.dtype(np.float64) for d in dtypes):
-            cases.extend(_battery_cases(np.float64, check_level))
-            cases.append(_spectral_case(np.float64, check_level))
+        with sc.use_check_level(check_level):
+            for dtype in dtypes:
+                for weighted in (False, True):
+                    for kind in ("zero", "linear", "quadratic"):
+                        cases.append(
+                            _dense_case(dtype, check_level, kind=kind, weighted=weighted)
+                        )
+                cases.append(_composed_case(dtype, check_level))
+                cases.append(_explicit_composed_case(dtype, check_level))
+                cases.append(_matrix_free_linear_case(dtype, check_level))
+                cases.append(_tree_case(dtype, check_level))
+                cases.extend(_algebra_cases(dtype, check_level))
+            # ADR-019 battery functionals are real-coordinate objectives; generate
+            # them once per check level for float64 when that dtype is requested.
+            if any(np.dtype(d) == np.dtype(np.float64) for d in dtypes):
+                cases.extend(_battery_cases(np.float64, check_level))
+                cases.append(_spectral_case(np.float64, check_level))
     return tuple(cases)

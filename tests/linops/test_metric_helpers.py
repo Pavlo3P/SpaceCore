@@ -92,11 +92,11 @@ class TestRequiresEuclideanOrRiesz:
         class _CustomInnerSpace(sc.DenseCoordinateSpace):
             pass
 
-        ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="none")
-        X = sc.DenseCoordinateSpace((2,), ctx)
+        ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+        X = sc.DenseCoordinateSpace((2,), ctx, check_level="none")
         # Build a space whose geometry advertises non-Euclidean but lacks
         # the inherited Riesz machinery.
-        bad = _CustomInnerSpace((2,), ctx, geometry=_CustomGeometry())
+        bad = _CustomInnerSpace((2,), ctx, geometry=_CustomGeometry(), check_level="none")
         with pytest.raises(TypeError, match="(?i)non-euclidean.*requires Riesz"):
             _requires_euclidean_or_riesz(bad, X, "my_op")
 

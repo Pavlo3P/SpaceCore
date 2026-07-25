@@ -6,7 +6,8 @@ from ._base import Functional
 from ._linear import InnerProductFunctional
 from ._quadratic import LinOpQuadraticForm
 from .._checks import checked_method
-from ..backend import Context, jax_pytree_class
+from .._check_policy import CheckLevel, minimum_check_level
+from ..contextual import Context
 from ..kernels import core_kernels
 from ..linop import LinOp
 
@@ -52,7 +53,6 @@ def make_functional_composed(F: Functional, A: LinOp) -> Functional:
 
 
 @core_kernels("composed-functional")
-@jax_pytree_class
 class ComposedFunctional(Functional):
     """
     Generic pull-back of a functional through a linear operator.
@@ -65,11 +65,22 @@ class ComposedFunctional(Functional):
         Functional defined on ``A.codomain``.
     A : LinOp
         Linear operator whose codomain is ``F.domain``.
+    check_level : {"none", "cheap", "standard", "strict"}, optional
+        Runtime validation policy for this functional. When omitted, the ambient
+        default (see :func:`spacecore.get_check_level`) is used. Validation
+        policy is a property of the functional, not of the ``Context``.
     """
 
-    def __init__(self, F: Functional, A: LinOp) -> None:
+    def __init__(
+        self,
+        F: Functional,
+        A: LinOp,
+        check_level: CheckLevel | bool | None = None,
+    ) -> None:
         _require_composable(F, A)
-        super().__init__(A.domain, A.ctx)
+        if check_level is None:
+            check_level = minimum_check_level((F.check_level, A.check_level))
+        super().__init__(A.domain, A.ctx, check_level=check_level)
         self.F = F.convert(A.ctx)
         self.A = A
 
@@ -92,7 +103,7 @@ class ComposedFunctional(Functional):
 
     def __eq__(self, other: Any) -> bool:
         """Return whether another composed functional has the same operands."""
-        if not self._eq_backend_compatible(other):              # Tier 1: backend
+        if not self.same_math(other):              # Tier 1: backend
             return NotImplemented
         return self.F == other.F and self.A == other.A
 

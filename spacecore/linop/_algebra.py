@@ -1,16 +1,15 @@
 from __future__ import annotations
 
 from math import prod
-from numbers import Number
 from typing import Any, Callable, Sequence, cast
 
 from ._base import LinOp, Domain, Codomain
 from ._metric import _requires_euclidean_or_riesz, metric_rapply, metric_rvapply
+from .._check_policy import CheckLevel, minimum_check_level
 from .._checks import checked_method
-from .._contextual import resolve_context_priority
-from .._contextual._bound import _same_math_context
+from ..contextual import resolve_context_priority
 from .._repr import summarize_value
-from ..backend import Context, jax_pytree_class
+from ..contextual import Context
 from ..kernels import core_kernels
 from ..kernels.core.algebra import (
     batched_zeros as _batched_zeros,
@@ -20,40 +19,25 @@ from ..kernels.core.algebra import (
 )
 
 
-def is_scalar_like(value: Any) -> bool:
-    """Return whether ``value`` can be used as a scalar multiplier for a ``LinOp``."""
-    if isinstance(value, Number):
-        return True
-    shape = getattr(value, "shape", None)
-    if shape is not None:
-        return tuple(shape) == ()
-    ndim = getattr(value, "ndim", None)
-    return ndim == 0
-
-
-def _scalar_eq(a: Any, b: Any) -> bool:
-    """Return whether two scalar-likes are equal, NaN-reflexive.
-
-    Mirrors the ``equal_nan=True`` used for array values: two matching NaN
-    scalars compare equal so a NaN-scaled operator equals itself. Always returns
-    a real Python ``bool`` (a 0-d backend-array ``==`` would otherwise yield
-    ``np.bool_``, which leaks through the ``and`` combinator of any container).
-    """
-    if bool(a == b):
-        return True
-    try:
-        # ``x != x`` is True only for NaN (including a complex value with a NaN
-        # component), so this branch matches NaN against NaN.
-        return bool(a != a) and bool(b != b)
-    except Exception:
-        return False
+from .._lazy_algebra import (
+    finalize_sum,
+    flatten_sum,
+    fold_scaled,
+    is_scalar_like as is_scalar_like,  # re-exported for linop/_base.py
+    scalar_eq,
+)
 
 
 def _require_same_context(ops: Sequence[LinOp]) -> Context:
-    """Return the common context for algebra operands or raise."""
+    """Return the common mathematical context for algebra operands or raise.
+
+    Operands must share a mathematical context (:meth:`Context.same_math`). The
+    surviving ``check_level`` is a property of the resulting bound object and is
+    combined (via the minimum) when the container binds its operands, not here.
+    """
     ctx = ops[0].ctx
     for i, op in enumerate(ops[1:], start=1):
-        if not _same_math_context(ops[0].ctx, op.ctx):
+        if not ctx.same_math(op.ctx):
             raise ValueError(
                 "All LinOp operands in an algebraic expression must have the same ctx; "
                 f"operand 0 has ctx {ctx!r}, operand {i} has ctx {op.ctx!r}."
@@ -69,7 +53,7 @@ def _same_space_for_algebra(left: Any, right: Any) -> bool:
         return False
     if tuple(left.shape) != tuple(right.shape):
         return False
-    if not _same_math_context(left.ctx, right.ctx):
+    if not left.ctx.same_math(right.ctx):
         return False
     try:
         return left.convert(right.ctx) == right
@@ -82,36 +66,6 @@ def _require_linop(op: Any, name: str) -> LinOp:
     if not isinstance(op, LinOp):
         raise TypeError(f"{name} must be a LinOp, got {type(op).__name__}.")
     return op
-
-
-def _scalar_equal(value: Any, target: Any) -> bool:
-    """Return whether two scalar-like values compare equal."""
-    try:
-        return bool(value == target)
-    except Exception:
-        return False
-
-
-def _is_zero_scalar(value: Any) -> bool:
-    """Return whether ``value`` is scalar-like zero."""
-    return _scalar_equal(value, 0)
-
-
-def _is_one_scalar(value: Any) -> bool:
-    """Return whether ``value`` is scalar-like one."""
-    return _scalar_equal(value, 1)
-
-
-def _flatten_sum_terms(ops: Sequence[LinOp]) -> tuple[LinOp, ...]:
-    """Flatten nested lazy sums into a tuple of terms."""
-    terms: list[LinOp] = []
-    for i, op in enumerate(ops):
-        op = _require_linop(op, f"ops[{i}]")
-        if isinstance(op, SumLinOp):
-            terms.extend(_flatten_sum_terms(op.parts))
-        else:
-            terms.append(op)
-    return tuple(terms)
 
 
 def make_sum(ops: Sequence[LinOp]) -> LinOp:
@@ -137,7 +91,11 @@ def make_sum(ops: Sequence[LinOp]) -> LinOp:
     if not ops:
         raise ValueError("make_sum requires a nonempty sequence of LinOp operands.")
 
-    terms = _flatten_sum_terms(ops)
+    terms = flatten_sum(
+        tuple(_require_linop(op, f"ops[{i}]") for i, op in enumerate(ops)),
+        is_sum=lambda t: isinstance(t, SumLinOp),
+        parts=lambda t: t.parts,
+    )
     ctx = _require_same_context(terms)
     domain = terms[0].domain
     codomain = terms[0].codomain
@@ -151,12 +109,12 @@ def make_sum(ops: Sequence[LinOp]) -> LinOp:
                 f"operand {i} maps {op.domain!r} -> {op.codomain!r}."
             )
 
-    nonzero_terms = tuple(op for op in terms if not isinstance(op, ZeroLinOp))
-    if not nonzero_terms:
-        return ZeroLinOp(domain, codomain, ctx)
-    if len(nonzero_terms) == 1:
-        return nonzero_terms[0]
-    return SumLinOp(nonzero_terms)
+    return finalize_sum(
+        terms,
+        is_zero=lambda t: isinstance(t, ZeroLinOp),
+        make_zero=lambda: ZeroLinOp(domain, codomain, ctx),
+        make_sum_node=SumLinOp,
+    )
 
 
 def make_scaled(scalar: Any, op: LinOp) -> LinOp:
@@ -185,15 +143,14 @@ def make_scaled(scalar: Any, op: LinOp) -> LinOp:
     if not is_scalar_like(scalar):
         raise TypeError(f"scalar must be scalar-like, got {type(scalar).__name__}.")
 
-    if _is_zero_scalar(scalar):
-        return ZeroLinOp(op.domain, op.codomain, op.ctx)
-    if _is_one_scalar(scalar):
-        return op
-    if isinstance(op, ZeroLinOp):
-        return op
-    if isinstance(op, ScaledLinOp):
-        return make_scaled(scalar * op.scalar, op.op)
-    return ScaledLinOp(scalar, op)
+    return fold_scaled(
+        scalar,
+        op,
+        is_zero=lambda o: isinstance(o, ZeroLinOp),
+        unwrap_scaled=lambda o: (o.scalar, o.op) if isinstance(o, ScaledLinOp) else None,
+        make_zero=lambda: ZeroLinOp(op.domain, op.codomain, op.ctx),
+        make_scaled_node=ScaledLinOp,
+    )
 
 
 def make_composed(left: LinOp, right: LinOp) -> LinOp:
@@ -240,7 +197,6 @@ def make_composed(left: LinOp, right: LinOp) -> LinOp:
 
 
 @core_kernels("scaled")
-@jax_pytree_class
 class ScaledLinOp(LinOp[Domain, Codomain]):
     r"""
     Lazy scalar multiple of a linear operator.
@@ -261,6 +217,11 @@ class ScaledLinOp(LinOp[Domain, Codomain]):
         Scalar multiplier.
     op : LinOp
         Operator being scaled.
+    check_level : {"none", "cheap", "standard", "strict"}, optional
+        Runtime validation policy for this object. When omitted, the ambient
+        default (see :func:`spacecore.get_check_level`) is used. Unlike the
+        backend/dtype context, the validation policy is a property of the bound
+        object, not of the :class:`Context`.
 
     Attributes
     ----------
@@ -270,11 +231,21 @@ class ScaledLinOp(LinOp[Domain, Codomain]):
         Stored operand.
     """
 
-    def __init__(self, scalar: Any, op: LinOp[Domain, Codomain]) -> None:
+    def __init__(
+        self,
+        scalar: Any,
+        op: LinOp[Domain, Codomain],
+        check_level: CheckLevel | bool | None = None,
+    ) -> None:
         op = _require_linop(op, "op")
         if not is_scalar_like(scalar):
             raise TypeError(f"scalar must be scalar-like, got {type(scalar).__name__}.")
-        super().__init__(op.domain, op.codomain, op.ctx)
+        # Default the policy from the OPERAND, not from its domain/codomain
+        # spaces: an algebra node inherits the least-strict operand so the
+        # result does not depend on operand order.
+        if check_level is None:
+            check_level = op.check_level
+        super().__init__(op.domain, op.codomain, op.ctx, check_level=check_level)
         self.scalar = scalar
         self.op = op
 
@@ -340,10 +311,10 @@ class ScaledLinOp(LinOp[Domain, Codomain]):
 
     def __eq__(self, other: Any) -> bool:
         """Return whether another scaled operator has the same scalar and operand."""
-        if not self._eq_backend_compatible(other):          # Tier 1: backend
+        if not self.same_math(other):          # Tier 1: backend
             return NotImplemented
         # NaN-reflexive, returns a real Python bool (no np.bool_ leak).
-        if not _scalar_eq(self.scalar, other.scalar):       # Tier 3: scalar value
+        if not scalar_eq(self.scalar, other.scalar):       # Tier 3: scalar value
             return False
         return self.op == other.op                          # operand (own gate)
 
@@ -368,7 +339,6 @@ class ScaledLinOp(LinOp[Domain, Codomain]):
 
 
 @core_kernels("sum")
-@jax_pytree_class
 class SumLinOp(LinOp[Domain, Codomain]):
     r"""
     Lazy finite sum of linear operators with common spaces.
@@ -387,6 +357,11 @@ class SumLinOp(LinOp[Domain, Codomain]):
     ops : sequence of LinOp
         Nonempty sequence of operators with common context, domain, and
         codomain.
+    check_level : {"none", "cheap", "standard", "strict"}, optional
+        Runtime validation policy for this object. When omitted, the ambient
+        default (see :func:`spacecore.get_check_level`) is used. Unlike the
+        backend/dtype context, the validation policy is a property of the bound
+        object, not of the :class:`Context`.
 
     Attributes
     ----------
@@ -394,7 +369,11 @@ class SumLinOp(LinOp[Domain, Codomain]):
         Stored operands in the lazy sum.
     """
 
-    def __init__(self, ops: Sequence[LinOp[Domain, Codomain]]) -> None:
+    def __init__(
+        self,
+        ops: Sequence[LinOp[Domain, Codomain]],
+        check_level: CheckLevel | bool | None = None,
+    ) -> None:
         if not ops:
             raise ValueError("SumLinOp requires a nonempty sequence of LinOp operands.")
         parts = tuple(_require_linop(op, f"ops[{i}]") for i, op in enumerate(ops))
@@ -410,7 +389,9 @@ class SumLinOp(LinOp[Domain, Codomain]):
                     f"operand 0 maps {domain!r} -> {codomain!r}, "
                     f"operand {i} maps {op.domain!r} -> {op.codomain!r}."
                 )
-        super().__init__(domain, codomain, ctx)
+        if check_level is None:
+            check_level = minimum_check_level(tuple(op.check_level for op in parts))
+        super().__init__(domain, codomain, ctx, check_level=check_level)
         self.ops_tuple = parts
 
     @property
@@ -489,7 +470,7 @@ class SumLinOp(LinOp[Domain, Codomain]):
 
     def __eq__(self, other: Any) -> bool:
         """Return whether another sum has the same operands, in order."""
-        if not self._eq_backend_compatible(other):              # Tier 1: backend
+        if not self.same_math(other):              # Tier 1: backend
             return NotImplemented
         if len(self.ops_tuple) != len(other.ops_tuple):         # Tier 2: operand count before zip
             return False
@@ -519,7 +500,6 @@ class SumLinOp(LinOp[Domain, Codomain]):
 
 
 @core_kernels("composed")
-@jax_pytree_class
 class ComposedLinOp(LinOp[Domain, Codomain]):
     r"""
     Lazy composition of two linear operators.
@@ -539,6 +519,11 @@ class ComposedLinOp(LinOp[Domain, Codomain]):
         Operator applied second.
     right : LinOp
         Operator applied first.
+    check_level : {"none", "cheap", "standard", "strict"}, optional
+        Runtime validation policy for this object. When omitted, the ambient
+        default (see :func:`spacecore.get_check_level`) is used. Unlike the
+        backend/dtype context, the validation policy is a property of the bound
+        object, not of the :class:`Context`.
 
     Attributes
     ----------
@@ -548,7 +533,12 @@ class ComposedLinOp(LinOp[Domain, Codomain]):
         Right operand.
     """
 
-    def __init__(self, left: LinOp, right: LinOp) -> None:
+    def __init__(
+        self,
+        left: LinOp,
+        right: LinOp,
+        check_level: CheckLevel | bool | None = None,
+    ) -> None:
         left = _require_linop(left, "left")
         right = _require_linop(right, "right")
         _require_same_context((left, right))
@@ -557,7 +547,9 @@ class ComposedLinOp(LinOp[Domain, Codomain]):
                 "ComposedLinOp requires right.codomain == left.domain; "
                 f"got {right.codomain!r} and {left.domain!r}."
             )
-        super().__init__(right.domain, left.codomain, left.ctx)
+        if check_level is None:
+            check_level = minimum_check_level((left.check_level, right.check_level))
+        super().__init__(right.domain, left.codomain, left.ctx, check_level=check_level)
         self.left = left
         self.right = right
         # Fuse the (possibly nested) composition into one flat chain of leaf
@@ -632,7 +624,7 @@ class ComposedLinOp(LinOp[Domain, Codomain]):
 
     def __eq__(self, other: Any) -> bool:
         """Return whether another composition has the same operands, in order."""
-        if not self._eq_backend_compatible(other):              # Tier 1: backend
+        if not self.same_math(other):              # Tier 1: backend
             return NotImplemented
         return self.left == other.left and self.right == other.right
 
@@ -657,7 +649,6 @@ class ComposedLinOp(LinOp[Domain, Codomain]):
 
 
 @core_kernels("zero")
-@jax_pytree_class
 class ZeroLinOp(LinOp[Domain, Codomain]):
     r"""
     Lazy zero map between two spaces.
@@ -678,6 +669,11 @@ class ZeroLinOp(LinOp[Domain, Codomain]):
         Codomain space.
     ctx : Context, str, or None, optional
         Backend context specification. Default is resolved from the spaces.
+    check_level : {"none", "cheap", "standard", "strict"}, optional
+        Runtime validation policy for this object. When omitted, the ambient
+        default (see :func:`spacecore.get_check_level`) is used. Unlike the
+        backend/dtype context, the validation policy is a property of the bound
+        object, not of the :class:`Context`.
     """
 
     def __init__(
@@ -685,8 +681,9 @@ class ZeroLinOp(LinOp[Domain, Codomain]):
         dom: Domain,
         cod: Codomain,
         ctx: Context | str | None = None,
+        check_level: CheckLevel | bool | None = None,
     ) -> None:
-        super().__init__(dom, cod, ctx)
+        super().__init__(dom, cod, ctx, check_level=check_level)
 
     @checked_method(in_space="domain", out_space="codomain")
     def apply(self, x: Any) -> Any:
@@ -731,7 +728,7 @@ class ZeroLinOp(LinOp[Domain, Codomain]):
 
     def __eq__(self, other: Any) -> bool:
         """Return whether another zero map has the same spaces."""
-        if not self._eq_backend_compatible(other):              # Tier 1: backend
+        if not self.same_math(other):              # Tier 1: backend
             return NotImplemented
         return self.domain == other.domain and self.codomain == other.codomain  # Tier 2
 
@@ -753,7 +750,6 @@ class ZeroLinOp(LinOp[Domain, Codomain]):
 
 
 @core_kernels("identity")
-@jax_pytree_class
 class IdentityLinOp(LinOp[Domain, Domain]):
     r"""
     Lazy identity map on a space.
@@ -771,10 +767,20 @@ class IdentityLinOp(LinOp[Domain, Domain]):
         Domain and codomain space.
     ctx : Context, str, or None, optional
         Backend context specification. Default is resolved from ``space``.
+    check_level : {"none", "cheap", "standard", "strict"}, optional
+        Runtime validation policy for this object. When omitted, the ambient
+        default (see :func:`spacecore.get_check_level`) is used. Unlike the
+        backend/dtype context, the validation policy is a property of the bound
+        object, not of the :class:`Context`.
     """
 
-    def __init__(self, space: Domain, ctx: Context | str | None = None) -> None:
-        super().__init__(space, space, ctx)
+    def __init__(
+        self,
+        space: Domain,
+        ctx: Context | str | None = None,
+        check_level: CheckLevel | bool | None = None,
+    ) -> None:
+        super().__init__(space, space, ctx, check_level=check_level)
 
     @checked_method(in_space="domain", out_space="codomain")
     def apply(self, x: Any) -> Any:
@@ -821,7 +827,7 @@ class IdentityLinOp(LinOp[Domain, Domain]):
 
     def __eq__(self, other: Any) -> bool:
         """Return whether another identity map has the same space."""
-        if not self._eq_backend_compatible(other):              # Tier 1: backend
+        if not self.same_math(other):              # Tier 1: backend
             return NotImplemented
         return self.domain == other.domain                      # Tier 2 (square: cod == dom)
 
@@ -848,7 +854,6 @@ class IdentityLinOp(LinOp[Domain, Domain]):
 
 
 @core_kernels("matrixfree")
-@jax_pytree_class
 class MatrixFreeLinOp(LinOp[Domain, Codomain]):
     """
     Linear operator defined by user-supplied forward and reverse callables.
@@ -895,6 +900,11 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
         Optional callable with signature ``rvapply(ys: Any) -> Any`` for
         batched adjoint application. If omitted, backend ``vmap`` fallback is
         used.
+    check_level : {"none", "cheap", "standard", "strict"}, optional
+        Runtime validation policy for this object. When omitted, the ambient
+        default (see :func:`spacecore.get_check_level`) is used. Unlike the
+        backend/dtype context, the validation policy is a property of the bound
+        object, not of the :class:`Context`.
 
     Returns
     -------
@@ -918,6 +928,7 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
         ctx: Context | str | None = None,
         vapply: Callable[[Any], Any] | None = None,
         rvapply: Callable[[Any], Any] | None = None,
+        check_level: CheckLevel | bool | None = None,
     ) -> None:
         """
         Initialize a matrix-free linear operator.
@@ -943,6 +954,9 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
         rvapply:
             Optional callable for batched adjoint application over ``cod``
             batches.
+        check_level:
+            Optional runtime validation policy for this operator. When omitted,
+            the ambient default is used.
 
         Returns
         -------
@@ -958,7 +972,7 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
             raise TypeError(f"vapply must be callable, got {type(vapply).__name__}.")
         if rvapply is not None and not callable(rvapply):
             raise TypeError(f"rvapply must be callable, got {type(rvapply).__name__}.")
-        super().__init__(dom, cod, ctx)
+        super().__init__(dom, cod, ctx, check_level=check_level)
         self.apply_fn = apply
         self.rapply_fn = rapply
         self.vapply_fn = vapply
@@ -1183,7 +1197,7 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
         return DenseLinOp(self.to_dense(), self.domain, self.codomain, self.ctx)
 
     def __eq__(self, other: Any) -> bool:
-        if not self._eq_backend_compatible(other):              # Tier 1: backend
+        if not self.same_math(other):              # Tier 1: backend
             return NotImplemented
         # Tier 2: spaces + callable identity. Extensional equality of callables
         # is undecidable, so 'is' is the only sound comparison.
@@ -1249,7 +1263,6 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
 
 
 @core_kernels("adjoint")
-@jax_pytree_class
 class _AdjointViewLinOp(LinOp[Codomain, Domain]):
     """
     Hermitian-adjoint view of a linear operator.
@@ -1260,11 +1273,27 @@ class _AdjointViewLinOp(LinOp[Codomain, Domain]):
 
     The forward action is ``apply(y) = A.rapply(y)`` for ``y in A.codomain``.
     The reverse action is ``rapply(x) = A.apply(x)`` for ``x in A.domain``.
+
+    Parameters
+    ----------
+    op : LinOp
+        Operator whose adjoint is viewed.
+    check_level : {"none", "cheap", "standard", "strict"}, optional
+        Runtime validation policy for this object. When omitted, the ambient
+        default (see :func:`spacecore.get_check_level`) is used. Unlike the
+        backend/dtype context, the validation policy is a property of the bound
+        object, not of the :class:`Context`.
     """
 
-    def __init__(self, op: LinOp[Domain, Codomain]) -> None:
+    def __init__(
+        self,
+        op: LinOp[Domain, Codomain],
+        check_level: CheckLevel | bool | None = None,
+    ) -> None:
         op = _require_linop(op, "op")
-        super().__init__(op.codomain, op.domain, op.ctx)
+        if check_level is None:
+            check_level = op.check_level
+        super().__init__(op.codomain, op.domain, op.ctx, check_level=check_level)
         self.op = op
 
     @checked_method(in_space="domain", out_space="codomain")
@@ -1302,7 +1331,7 @@ class _AdjointViewLinOp(LinOp[Codomain, Domain]):
         return self.op
 
     def __eq__(self, other: Any) -> bool:
-        if not self._eq_backend_compatible(other):              # Tier 1: backend
+        if not self.same_math(other):              # Tier 1: backend
             return NotImplemented
         return self.op == other.op
 

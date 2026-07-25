@@ -68,7 +68,7 @@ class TestProducedByTreeSpace:
 class TestJaxPytree:
     def test_round_trip(self):
         import jax
-        ctx = sc.Context(sc.JaxOps(), dtype=jax_real_dtype(), check_level="none")
+        ctx = sc.Context(sc.JaxOps(), dtype=jax_real_dtype())
         decomp = sc.TreeSpectralDecomposition(
             eigvals=(ctx.asarray([1.0, 2.0]), ctx.asarray([3.0])),
             frames=(None, None),
@@ -82,9 +82,10 @@ class TestJaxPytree:
     def test_round_trip_preserves_treedef(self):
         import jax
 
-        ctx = sc.Context(sc.JaxOps(), dtype=jax_real_dtype(), check_level="none")
-        leaves = (sc.ElementwiseJordanSpace((2,), ctx), sc.ElementwiseJordanSpace((1,), ctx))
-        space = sc.TreeSpace.from_leaf_spaces(leaves, ctx)
+        ctx = sc.Context(sc.JaxOps(), dtype=jax_real_dtype())
+        leaves = (sc.ElementwiseJordanSpace((2,), ctx, check_level="none"),
+                  sc.ElementwiseJordanSpace((1,), ctx, check_level="none"))
+        space = sc.TreeSpace.from_leaf_spaces(leaves, ctx, check_level="none")
         x = space.element((ctx.asarray([1.0, 2.0]), ctx.asarray([3.0])))
         decomp = space.spectral_decompose(x)
         flat, treedef = jax.tree_util.tree_flatten(decomp)
@@ -214,9 +215,9 @@ class TestStructuredSpectrumEdges:
     def test_structured_spectrum_is_not_a_space_member(self):
         # A Hermitian leaf's spectrum (n,) differs from its element shape (n, n), so
         # the structured spectrum matches the treedef but is NOT a valid member.
-        ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="standard")
+        ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
         leaves = (sc.HermitianSpace(2, ctx=ctx), sc.ElementwiseJordanSpace((2,), ctx))
-        space = sc.TreeSpace.from_template((0, (0,)), leaves, ctx=ctx)
+        space = sc.TreeSpace.from_template((0, (0,)), leaves, ctx=ctx, check_level="standard")
         x = space.unflatten_tree(
             (ctx.asarray([[2.0, 0.0], [0.0, 3.0]]), ctx.asarray([1.0, -1.0]))
         )
@@ -227,9 +228,9 @@ class TestStructuredSpectrumEdges:
 
     def test_complex_hermitian_nested_round_trip(self):
         # Complex eigenvalues/frames survive the structure-preserving round-trip.
-        ctx = sc.Context(sc.NumpyOps(), dtype=np.complex128, check_level="standard")
+        ctx = sc.Context(sc.NumpyOps(), dtype=np.complex128)
         leaves = (sc.HermitianSpace(2, ctx=ctx), sc.ElementwiseJordanSpace((2,), ctx))
-        space = sc.TreeSpace.from_template((0, (0,)), leaves, ctx=ctx)
+        space = sc.TreeSpace.from_template((0, (0,)), leaves, ctx=ctx, check_level="standard")
         herm = ctx.asarray([[2.0, 0.5 + 0.5j], [0.5 - 0.5j, 1.0]])
         x = space.unflatten_tree((herm, ctx.asarray([1.0 + 0j, -2.0 + 0j])))
         decomp = space.spectral_decompose(x)

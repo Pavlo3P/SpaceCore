@@ -122,9 +122,9 @@ class TestConversionInvariants:
     @pytest.mark.skipif(not has_jax(), reason="jax is not installed")
     def test_jax_pytree_revalidates_invariant(self):
         """JAX unflatten with a complex ctx must refuse the Euclidean class."""
-        real_ctx = sc.Context(sc.JaxOps(), dtype=np.float32, check_level="none")
-        complex_ctx = sc.Context(sc.JaxOps(), dtype=np.complex64, check_level="none")
-        space = sc.EuclideanElementwiseJordanSpace((2,), real_ctx)
+        real_ctx = sc.Context(sc.JaxOps(), dtype=np.float32)
+        complex_ctx = sc.Context(sc.JaxOps(), dtype=np.complex64)
+        space = sc.EuclideanElementwiseJordanSpace((2,), real_ctx, check_level="none")
 
         import jax
         leaves, treedef = jax.tree_util.tree_flatten(space)

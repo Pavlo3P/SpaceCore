@@ -88,9 +88,9 @@ def _composed_chain_apply(chain: Any, x: Any) -> Any:
 
 def composed_apply_core(op: Any, x: Any) -> Any:
     chain = op._apply_chain
-    if should_consult_dispatch(op.ctx):
+    if should_consult_dispatch(op):
         return dispatch(
-            _COMPOSED_APPLY_KEY, chain, x, generic=_composed_chain_apply, ctx=op.ctx
+            _COMPOSED_APPLY_KEY, chain, x, generic=_composed_chain_apply, ctx=op
         )
     return _composed_chain_apply(chain, x)
 

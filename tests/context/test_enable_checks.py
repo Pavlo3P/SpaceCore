@@ -1,24 +1,50 @@
+"""Behavioral tests for the deprecated Boolean ``enable_checks`` policy shim.
+
+The Boolean switch no longer appears on any constructor: it survives only as
+:func:`spacecore._check_policy.normalize_check_level`'s ``enable_checks``
+keyword, which maps ``True``/``False`` onto the ``"standard"``/``"none"``
+levels carried by context-bound objects. These tests drive spaces and linear
+operators built at exactly those two mapped levels, so the legacy switch is
+still pinned end-to-end: it must keep selecting an enforcing and a
+non-enforcing policy respectively.
+
+Book justification: a deprecated, rarely-exercised path rots silently, so its
+backward-compatibility behavior is pinned with explicit regression tests
+(Ousterhout, *A Philosophy of Software Design*: rarely-run paths are
+under-tested; Hunt & Thomas, *The Pragmatic Programmer*, tip 94: make preserved
+behavior a lasting test). The rejection cases also check that invalid inputs
+fail with meaningful feedback (Myers & Stylos, *Improving API Usability*: help
+users recognize and recover from errors).
+"""
 import numpy as np
 import pytest
 
 import spacecore as sc
+from spacecore._check_policy import normalize_check_level
 
 from tests._helpers import has_jax, jax_real_dtype
 
 
-def _checked_ctx(dtype=np.float64):
-    return sc.Context(sc.NumpyOps(), dtype=dtype, enable_checks=True)
+CHECKED = normalize_check_level(enable_checks=True)
+UNCHECKED = normalize_check_level(enable_checks=False)
 
 
-def _unchecked_ctx(dtype=np.float64):
-    return sc.Context(sc.NumpyOps(), dtype=dtype, enable_checks=False)
+def _ctx(dtype=np.float64):
+    return sc.Context(sc.NumpyOps(), dtype=dtype)
+
+
+def test_enable_checks_maps_onto_an_enforcing_and_a_skipping_level():
+    assert CHECKED == "standard"
+    assert UNCHECKED == "none"
 
 
 def test_enable_checks_accepts_valid_space_and_linop_inputs():
-    ctx = _checked_ctx()
-    dom = sc.DenseCoordinateSpace((2,), ctx)
-    cod = sc.DenseCoordinateSpace((3,), ctx)
-    op = sc.DenseLinOp(ctx.asarray([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]), dom, cod, ctx)
+    ctx = _ctx()
+    dom = sc.DenseCoordinateSpace((2,), ctx, check_level=CHECKED)
+    cod = sc.DenseCoordinateSpace((3,), ctx, check_level=CHECKED)
+    op = sc.DenseLinOp(
+        ctx.asarray([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]), dom, cod, ctx, check_level=CHECKED
+    )
 
     x = ctx.asarray([7.0, 8.0])
     y = op.apply(x)
@@ -29,16 +55,16 @@ def test_enable_checks_accepts_valid_space_and_linop_inputs():
 
 
 def test_enable_checks_rejects_vector_shape_mismatch():
-    ctx = _checked_ctx(np.float32)
-    space = sc.DenseCoordinateSpace((2,), ctx)
+    ctx = _ctx(np.float32)
+    space = sc.DenseCoordinateSpace((2,), ctx, check_level=CHECKED)
 
     with pytest.raises(TypeError, match=r"Expected shape \(2,\), got \(3,\)"):
         space.check_member(np.asarray([1.0, 2.0, 3.0], dtype=np.float32))
 
 
 def test_enable_checks_rejects_vector_dtype_mismatch():
-    ctx = _checked_ctx(np.float32)
-    space = sc.DenseCoordinateSpace((2,), ctx)
+    ctx = _ctx(np.float32)
+    space = sc.DenseCoordinateSpace((2,), ctx, check_level=CHECKED)
 
     with pytest.raises(TypeError, match=r"Expected dtype float32, got float64"):
         space.check_member(np.asarray([1.0, 2.0], dtype=np.float64))
@@ -46,27 +72,31 @@ def test_enable_checks_rejects_vector_dtype_mismatch():
 
 @pytest.mark.skipif(not has_jax(), reason="jax is not installed")
 def test_enable_checks_rejects_cross_backend_dense_array():
-    np_ctx = _checked_ctx(jax_real_dtype())
-    jx_ctx = sc.Context(sc.JaxOps(), dtype=jax_real_dtype(), enable_checks=True)
-    space = sc.DenseCoordinateSpace((2,), np_ctx)
+    np_ctx = _ctx(jax_real_dtype())
+    jx_ctx = sc.Context(sc.JaxOps(), dtype=jax_real_dtype())
+    space = sc.DenseCoordinateSpace((2,), np_ctx, check_level=CHECKED)
 
     with pytest.raises(TypeError, match="Expected dense array for numpy"):
         space.check_member(jx_ctx.asarray([1.0, 2.0]))
 
 
 def test_enable_checks_rejects_non_hermitian_matrix():
-    ctx = _checked_ctx()
-    space = sc.HermitianSpace(2, ctx=ctx)
+    ctx = _ctx()
+    space = sc.HermitianSpace(2, ctx=ctx, check_level=CHECKED)
 
     with pytest.raises(TypeError, match="not Hermitian"):
         space.check_member(ctx.asarray([[1.0, 2.0], [0.0, 1.0]]))
 
 
 def test_enable_checks_rejects_invalid_tree_structure():
-    ctx = _checked_ctx()
+    ctx = _ctx()
     product = sc.TreeSpace.from_leaf_spaces(
-        (sc.DenseCoordinateSpace((2,), ctx), sc.DenseCoordinateSpace((3,), ctx)),
+        (
+            sc.DenseCoordinateSpace((2,), ctx, check_level=CHECKED),
+            sc.DenseCoordinateSpace((3,), ctx, check_level=CHECKED),
+        ),
         ctx,
+        check_level=CHECKED,
     )
 
     with pytest.raises(TypeError, match="structure mismatch"):
@@ -80,14 +110,18 @@ def test_enable_checks_rejects_invalid_tree_structure():
 
 
 def test_enable_checks_rejects_dense_linop_matrix_and_vector_dimensions():
-    ctx = _checked_ctx()
-    dom = sc.DenseCoordinateSpace((2,), ctx)
-    cod = sc.DenseCoordinateSpace((3,), ctx)
+    ctx = _ctx()
+    dom = sc.DenseCoordinateSpace((2,), ctx, check_level=CHECKED)
+    cod = sc.DenseCoordinateSpace((3,), ctx, check_level=CHECKED)
 
     with pytest.raises(TypeError, match=r"Expected A\.shape == cod\.shape \+ dom\.shape"):
-        sc.DenseLinOp(ctx.asarray([[1.0, 2.0], [3.0, 4.0]]), dom, cod, ctx)
+        sc.DenseLinOp(
+            ctx.asarray([[1.0, 2.0], [3.0, 4.0]]), dom, cod, ctx, check_level=CHECKED
+        )
 
-    op = sc.DenseLinOp(ctx.asarray([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]), dom, cod, ctx)
+    op = sc.DenseLinOp(
+        ctx.asarray([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]), dom, cod, ctx, check_level=CHECKED
+    )
     with pytest.raises(TypeError, match=r"Expected shape \(2,\), got \(3,\)"):
         op.apply(ctx.asarray([1.0, 2.0, 3.0]))
 
@@ -96,12 +130,14 @@ def test_enable_checks_rejects_dense_linop_matrix_and_vector_dimensions():
 
 
 def test_enable_checks_rejects_tree_linop_domain_codomain_mismatch():
-    ctx = _checked_ctx()
-    dom2 = sc.DenseCoordinateSpace((2,), ctx)
-    dom3 = sc.DenseCoordinateSpace((3,), ctx)
-    cod1 = sc.DenseCoordinateSpace((1,), ctx)
-    first = sc.DenseLinOp(ctx.asarray([[1.0, 2.0]]), dom2, cod1, ctx)
-    second = sc.DenseLinOp(ctx.asarray([[1.0, 2.0, 3.0]]), dom3, cod1, ctx)
+    ctx = _ctx()
+    dom2 = sc.DenseCoordinateSpace((2,), ctx, check_level=CHECKED)
+    dom3 = sc.DenseCoordinateSpace((3,), ctx, check_level=CHECKED)
+    cod1 = sc.DenseCoordinateSpace((1,), ctx, check_level=CHECKED)
+    first = sc.DenseLinOp(ctx.asarray([[1.0, 2.0]]), dom2, cod1, ctx, check_level=CHECKED)
+    second = sc.DenseLinOp(
+        ctx.asarray([[1.0, 2.0, 3.0]]), dom3, cod1, ctx, check_level=CHECKED
+    )
 
     with pytest.raises(
         TypeError, match=r"Component op 1 must map dom -> cod\.leaf_spaces\[1\]"
@@ -110,18 +146,18 @@ def test_enable_checks_rejects_tree_linop_domain_codomain_mismatch():
 
 
 def test_enable_checks_rejects_invalid_conversion_target():
-    ctx = _checked_ctx()
-    space = sc.DenseCoordinateSpace((2,), ctx)
+    ctx = _ctx()
+    space = sc.DenseCoordinateSpace((2,), ctx, check_level=CHECKED)
 
     with pytest.raises(TypeError, match="Expected Context, BackendFamily, str, or None"):
         space.convert(object())
 
 
 def test_disabled_checks_skip_space_membership_validations():
-    ctx = _unchecked_ctx()
-    vector = sc.DenseCoordinateSpace((2,), ctx)
-    hermitian = sc.HermitianSpace(2, ctx=ctx)
-    product = sc.TreeSpace.from_leaf_spaces((vector, vector), ctx)
+    ctx = _ctx()
+    vector = sc.DenseCoordinateSpace((2,), ctx, check_level=UNCHECKED)
+    hermitian = sc.HermitianSpace(2, ctx=ctx, check_level=UNCHECKED)
+    product = sc.TreeSpace.from_leaf_spaces((vector, vector), ctx, check_level=UNCHECKED)
 
     vector.check_member(np.asarray([1.0, 2.0, 3.0], dtype=np.float32))
     hermitian.check_member(ctx.asarray([[1.0, 2.0], [0.0, 1.0]]))

@@ -5,12 +5,12 @@ import math
 from typing import Any
 
 from .._base import Domain
-from ...backend import Context, jax_pytree_class
+from ...contextual import Context
+from ..._check_policy import CheckLevel
 from ..._checks import checked_method
 from ._coordinate import _CoordinateFunctional
 
 
-@jax_pytree_class
 class HuberFunctional(_CoordinateFunctional[Domain]):
     r"""
     Separable Huber loss ``F(x) = sum_i h_delta(x_i)``.
@@ -40,8 +40,14 @@ class HuberFunctional(_CoordinateFunctional[Domain]):
     2.625
     """
 
-    def __init__(self, dom: Domain, delta: Any, ctx: Context | str | None = None) -> None:
-        super().__init__(dom, ctx)
+    def __init__(
+        self,
+        dom: Domain,
+        delta: Any,
+        ctx: Context | str | None = None,
+        check_level: CheckLevel | bool | None = None,
+    ) -> None:
+        super().__init__(dom, ctx, check_level=check_level)
         delta = float(delta)
         if not math.isfinite(delta) or delta <= 0.0:
             raise ValueError(f"HuberFunctional requires a finite delta > 0, got {delta}.")

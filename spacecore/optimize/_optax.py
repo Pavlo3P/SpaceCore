@@ -287,8 +287,8 @@ def minimize_optax(
         import optax
         import spacecore as sc
 
-        ctx = sc.Context(sc.JaxOps(), dtype=np.float32, check_level="none")
-        X = sc.DenseCoordinateSpace((2,), ctx)
+        ctx = sc.Context(sc.JaxOps(), dtype=np.float32)
+        X = sc.DenseCoordinateSpace((2,), ctx, check_level="none")
         Q = sc.DenseLinOp(ctx.asarray([[3.0, 0.0], [0.0, 1.0]]), X, X, ctx)
         linear = sc.InnerProductFunctional(ctx.asarray([-3.0, -2.0]), X)
         F = sc.LinOpQuadraticForm(Q, linear)

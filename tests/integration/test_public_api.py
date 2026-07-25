@@ -95,7 +95,11 @@ def test_expected_names_are_exported():
         "expm_multiply",
     }
     if has_jax():
-        expected |= {"JaxOps", "jax_pytree_class"}
+        # ``jax_pytree_class`` was removed from the public API: pytree
+        # registration is no longer a JAX-named decorator but an internal,
+        # backend-neutral registry (``spacecore.backend._container``) that each backend
+        # installs its own tree protocol into.
+        expected |= {"JaxOps"}
     if has_cupy():
         expected |= {"CuPyOps"}
     if has_torch():
@@ -110,9 +114,9 @@ def test_top_level_objects_match_source_modules():
     linop = importlib.import_module("spacecore.linop")
     functional = importlib.import_module("spacecore.functional")
     linalg = importlib.import_module("spacecore.linalg")
-    contextual = importlib.import_module("spacecore._contextual")
+    contextual = importlib.import_module("spacecore.contextual")
 
-    assert sc.Context is backend.Context
+    assert sc.Context is contextual.Context
     assert sc.NumpyOps is backend.NumpyOps
     if has_cupy():
         assert sc.CuPyOps is backend.CuPyOps
@@ -145,4 +149,4 @@ def test_package_version_matches_project_metadata():
     assert metadata["tool"]["setuptools"]["dynamic"]["version"]["attr"] == (
         "spacecore._version.__version__"
     )
-    assert sc.__version__ == "0.4.2"
+    assert sc.__version__ == "0.4.3"

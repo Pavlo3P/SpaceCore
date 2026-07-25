@@ -5,12 +5,12 @@ from typing import Any, cast
 
 from .._base import Domain
 from .._linear import _convert_space_element
-from ...backend import Context, jax_pytree_class
+from ...contextual import Context
+from ..._check_policy import CheckLevel
 from ..._checks import checked_method
 from ._coordinate import _CoordinateFunctional
 
 
-@jax_pytree_class
 class NegativeEntropyFunctional(_CoordinateFunctional[Domain]):
     r"""
     Negative (Shannon) entropy ``F(x) = sum_i x_i log x_i``.
@@ -39,8 +39,13 @@ class NegativeEntropyFunctional(_CoordinateFunctional[Domain]):
     array([1., 1.])
     """
 
-    def __init__(self, dom: Domain, ctx: Context | str | None = None) -> None:
-        super().__init__(dom, ctx)
+    def __init__(
+        self,
+        dom: Domain,
+        ctx: Context | str | None = None,
+        check_level: CheckLevel | bool | None = None,
+    ) -> None:
+        super().__init__(dom, ctx, check_level=check_level)
 
     @checked_method(in_space="domain")
     def value(self, x: Any) -> Any:
@@ -69,7 +74,6 @@ class NegativeEntropyFunctional(_CoordinateFunctional[Domain]):
         return NegativeEntropyFunctional(self.domain.convert(new_ctx), new_ctx)
 
 
-@jax_pytree_class
 class KLDivergenceFunctional(_CoordinateFunctional[Domain]):
     r"""
     Kullback--Leibler divergence to a fixed positive ``target``.
@@ -110,8 +114,9 @@ class KLDivergenceFunctional(_CoordinateFunctional[Domain]):
         target: Any,
         dom: Domain,
         ctx: Context | str | None = None,
+        check_level: CheckLevel | bool | None = None,
     ) -> None:
-        super().__init__(dom, ctx)
+        super().__init__(dom, ctx, check_level=check_level)
         self._target = _convert_space_element(self.domain, target)
         if self._checks_at_least("standard"):
             self.domain._check_member(self._target)

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from spacecore.backend import Context
+from spacecore import Context
 from spacecore.types import DenseArray
 
 from ._arrays import _field, _numpy_dtype

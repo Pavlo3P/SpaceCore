@@ -55,12 +55,14 @@ class TestValidateBlocks:
             )
 
     def test_rejects_blocks_with_different_check_level(self, numpy_ctx):
-        X = sc.DenseCoordinateSpace((2,), numpy_ctx)
-        cheap_ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="cheap")
-        Xc = sc.DenseCoordinateSpace((2,), cheap_ctx)
+        X = sc.DenseCoordinateSpace((2,), numpy_ctx, check_level="standard")
+        Xc = sc.DenseCoordinateSpace((2,), numpy_ctx, check_level="cheap")
         with pytest.raises(ValueError, match="same check policy"):
             _validate_blocks(
-                (sc.IdentityLinOp(X, numpy_ctx), sc.IdentityLinOp(Xc, cheap_ctx)),
+                (
+                    sc.IdentityLinOp(X, numpy_ctx, check_level="standard"),
+                    sc.IdentityLinOp(Xc, numpy_ctx, check_level="cheap"),
+                ),
                 "TestOwner",
             )
 

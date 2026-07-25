@@ -77,6 +77,43 @@ class TorchOps(EagerControlFlowMixin, BackendOps):
     def __init__(self) -> None:
         super().__init__()
 
+    @classmethod
+    def install_pytree_protocol(cls) -> None:
+        """Register SpaceCore containers as Torch pytree nodes.
+
+        Unlike the JAX adapter, this one has real translating to do: Torch's
+        registry expects children as a ``list`` and calls ``unflatten(children,
+        context)``, the reverse of the ``(aux, children)`` order
+        :class:`~spacecore.backend._container.PyTreeNode` defines (which follows
+        JAX). Absorbing that mismatch here is the point of a per-backend adapter
+        — no container class has to know either convention.
+
+        Registering with ``torch.utils._pytree`` also covers
+        ``torch.utils._cxx_pytree`` (the optree-backed implementation selected by
+        ``PYTORCH_USE_CXX_PYTREE=1``): Torch mirrors registrations across the two,
+        so a single call serves both and registering twice would raise.
+
+        ``torch.utils._pytree`` is private API — there is no public alias in
+        Torch 2.x — so this is a deliberate coupling to a Torch internal. It is
+        confined to this adapter, and a breaking change there degrades to a
+        warning from the registry rather than an import failure.
+        """
+        import torch.utils._pytree as torch_pytree
+
+        from .._container import registry
+
+        def registrar(klass: type) -> None:
+            def flatten(obj: Any) -> tuple[list[Any], Any]:
+                children, aux = obj.tree_flatten()
+                return list(children), aux
+
+            def unflatten(children: Any, aux: Any) -> Any:
+                return klass.tree_unflatten(aux, tuple(children))
+
+            torch_pytree.register_pytree_node(klass, flatten, unflatten)
+
+        registry.register_backend("torch", registrar)
+
     @staticmethod
     def _defined_kwargs(**kwargs: Any) -> dict[str, Any]:
         return {key: value for key, value in kwargs.items() if value is not None}

@@ -5,20 +5,22 @@ from abc import abstractmethod
 from functools import cached_property
 from math import prod
 from numbers import Number
-from typing import Any, Generic, Self, TypeVar
+from typing import Any, Generic, TypeVar
 
 from .._batching import _leading_batch_size, _warn_vmap_fallback_once
+from .._check_policy import CheckLevel
 from .._checks import checked_method
+from ..backend import PyTreeNode
 from .._repr import describe_space
 from ..space import CoordinateSpace
-from ..backend import Context
-from .._contextual import ContextBound
+from ..contextual import Context
+from ..contextual import ContextBound
 
 Domain = TypeVar("Domain", bound=CoordinateSpace)
 Codomain = TypeVar("Codomain", bound=CoordinateSpace)
 
 
-class LinOp(ContextBound, Generic[Domain, Codomain]):
+class LinOp(PyTreeNode, ContextBound, Generic[Domain, Codomain]):
     r"""
     Represent a linear map between two spaces.
 
@@ -39,6 +41,11 @@ class LinOp(ContextBound, Generic[Domain, Codomain]):
     ctx : Context, str, or None, optional
         Backend context specification. Default is resolved from ``dom`` and
         ``cod``.
+    check_level : {"none", "cheap", "standard", "strict"}, optional
+        Runtime validation policy for this object. When omitted, the ambient
+        default (see :func:`spacecore.get_check_level`) is used. Unlike the
+        backend/dtype context, the validation policy is a property of the bound
+        object, not of the :class:`Context`.
 
     Attributes
     ----------
@@ -62,8 +69,14 @@ class LinOp(ContextBound, Generic[Domain, Codomain]):
     array([3., 8.])
     """
 
-    def __init__(self, dom: Domain, cod: Codomain, ctx: Context | str | None = None):
-        self.dom, self.cod = self._bind_context(ctx, dom, cod)
+    def __init__(
+        self,
+        dom: Domain,
+        cod: Codomain,
+        ctx: Context | str | None = None,
+        check_level: CheckLevel | bool | None = None,
+    ):
+        self.dom, self.cod = self._bind_context(ctx, dom, cod, check_level=check_level)
 
     @property
     def domain(self) -> Domain:
@@ -358,13 +371,8 @@ class LinOp(ContextBound, Generic[Domain, Codomain]):
         """
         return f"{type(self).__name__}({self._arrow()})"
 
-    @abstractmethod
-    def tree_flatten(self) -> tuple[tuple[Any, ...], Any]:
-        """Flatten this operator for backend pytree registration."""
-        ...
-
-    @classmethod
-    @abstractmethod
-    def tree_unflatten(cls, aux: Any, children: Any) -> Self:
-        """Rebuild this operator from backend pytree data."""
-        ...
+    # tree_flatten / tree_unflatten are inherited from PyTreeNode, which owns the
+    # flatten contract for every SpaceCore container and auto-registers concrete
+    # subclasses with each backend's tree protocol. Every concrete LinOp is a
+    # container, so the capability belongs on this base rather than being
+    # re-declared (and separately registered) per operator.

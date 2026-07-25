@@ -5,6 +5,7 @@ from math import prod
 from typing import Any, cast
 
 from ._base import Codomain, Domain, LinOp
+from .._check_policy import CheckLevel
 from .._checks import checked_method
 from ._metric import _metric_is_hermitian_by_basis, _requires_euclidean_or_riesz
 from ..space import (
@@ -14,14 +15,13 @@ from ..space import (
     WeightedInnerProduct,
 )
 from ..types import DenseArray
-from ..backend import jax_pytree_class, Context
-from .._contextual import resolve_context_priority
+from ..contextual import Context
+from ..contextual import resolve_context_priority
 from ..kernels import core_kernels
 from ..kernels.core.dense import _DenseMode
 
 
 @core_kernels("dense")
-@jax_pytree_class
 class DenseLinOp(LinOp[Domain, Codomain]):
     r"""
     Represent a dense coordinate tensor-backed linear operator.
@@ -48,6 +48,11 @@ class DenseLinOp(LinOp[Domain, Codomain]):
         ``A``.
     ctx : Context, str, or None, optional
         Backend context specification. Default is resolved from the spaces.
+    check_level : {"none", "cheap", "standard", "strict"}, optional
+        Runtime validation policy for this object. When omitted, the ambient
+        default (see :func:`spacecore.get_check_level`) is used. Unlike the
+        backend/dtype context, the validation policy is a property of the bound
+        object, not of the :class:`Context`.
 
     Attributes
     ----------
@@ -71,6 +76,7 @@ class DenseLinOp(LinOp[Domain, Codomain]):
         dom: Domain,
         cod: Codomain | None = None,
         ctx: Context | str | None = None,
+        check_level: CheckLevel | bool | None = None,
     ) -> None:
         ctx = resolve_context_priority(ctx, dom, cod)
         ctx.assert_dense(A)  # Check if A is ndarray of ctx
@@ -81,7 +87,7 @@ class DenseLinOp(LinOp[Domain, Codomain]):
 
         _requires_euclidean_or_riesz(dom, cod, "DenseLinOp")
 
-        super(DenseLinOp, self).__init__(dom, cod, ctx)
+        super(DenseLinOp, self).__init__(dom, cod, ctx, check_level=check_level)
 
         expected = tuple(self.cod.shape) + tuple(self.dom.shape)
         if tuple(A.shape) != expected:
@@ -217,7 +223,7 @@ class DenseLinOp(LinOp[Domain, Codomain]):
 
     def __eq__(self, other: Any) -> bool:
         """Return whether another dense operator has the same spaces and values."""
-        if not self._eq_backend_compatible(other):                  # Tier 1: backend
+        if not self.same_math(other):                  # Tier 1: backend
             return NotImplemented
         if self.dom != other.dom or self.cod != other.cod:          # Tier 2: spaces before allclose
             return False

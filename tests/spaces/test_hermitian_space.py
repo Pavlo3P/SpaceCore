@@ -104,8 +104,8 @@ class TestSpectrum:
         """A·v_i = λ_i·v_i identity. Run at check_level=none to avoid
         the strict Hermitian membership gate on the reconstructed matrix.
         """
-        ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="none")
-        H = sc.HermitianSpace(3, ctx=ctx)
+        ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+        H = sc.HermitianSpace(3, ctx=ctx, check_level="none")
         rng = np.random.default_rng(0)
         A = H.symmetrize(ctx.asarray(rng.standard_normal((3, 3))))
         evals, evecs = H.spectral_decompose(A)
@@ -120,8 +120,8 @@ class TestSpectrum:
         tautology) — this genuinely verifies the reconstruction einsum and
         eigenvector handling.
         """
-        ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="none")
-        H = sc.HermitianSpace(3, ctx=ctx)
+        ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+        H = sc.HermitianSpace(3, ctx=ctx, check_level="none")
         rng = np.random.default_rng(1)
         A = H.symmetrize(ctx.asarray(rng.standard_normal((3, 3))))
         evals, evecs = H.spectral_decompose(A)
@@ -146,8 +146,8 @@ class TestPsdProj:
 
     def test_psd_proj_is_idempotent_on_psd_input(self):
         """psd_proj is a projector — applying it twice equals once."""
-        ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="none")
-        H = sc.HermitianSpace(2, ctx=ctx)
+        ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+        H = sc.HermitianSpace(2, ctx=ctx, check_level="none")
         # SPD input
         M = ctx.asarray([[2.0, 0.5], [0.5, 3.0]])
         A = H.symmetrize(M)

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import abstractmethod
 from numbers import Number
-from typing import TYPE_CHECKING, Any, Generic, Self, TypeVar
+from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
 from .._batching import _leading_batch_size, _warn_vmap_fallback_once
 
@@ -14,9 +14,11 @@ from .._batching import (  # noqa: F401
     _check_scalar_shape,
 )
 from .._checks import checked_method
+from ..backend import PyTreeNode
 from .._repr import describe_space, field_symbol
-from .._contextual import ContextBound
-from ..backend import Context
+from ..contextual import ContextBound
+from ..contextual import Context
+from .._check_policy import CheckLevel
 from ..space import CoordinateSpace
 
 if TYPE_CHECKING:
@@ -26,14 +28,14 @@ if TYPE_CHECKING:
 Domain = TypeVar("Domain", bound=CoordinateSpace)
 
 
-class Functional(ContextBound, Generic[Domain]):
+class Functional(PyTreeNode, ContextBound, Generic[Domain]):
     r"""
     Scalar-valued map on a space.
 
     ``Functional`` represents a map ``F : X -> K`` without assuming any storage
     model. It mirrors the minimal ``LinOp`` contract: the domain is converted
-    into the resolved context, value checks follow ``ctx.check_level``, and
-    batched evaluation is implemented by a backend ``vmap`` fallback.
+    into the resolved context, value checks follow this object's ``check_level``,
+    and batched evaluation is implemented by a backend ``vmap`` fallback.
 
     Parameters
     ----------
@@ -41,6 +43,10 @@ class Functional(ContextBound, Generic[Domain]):
         Domain space ``X``.
     ctx : Context, str, or None, optional
         Backend context specification. Default is resolved from ``dom``.
+    check_level : {"none", "cheap", "standard", "strict"}, optional
+        Runtime validation policy for this functional. When omitted, the ambient
+        default (see :func:`spacecore.get_check_level`) is used. Validation
+        policy is a property of the functional, not of the ``Context``.
 
     Attributes
     ----------
@@ -50,8 +56,13 @@ class Functional(ContextBound, Generic[Domain]):
         Resolved backend context.
     """
 
-    def __init__(self, dom: Domain, ctx: Context | str | None = None) -> None:
-        (self.dom,) = self._bind_context(ctx, dom)
+    def __init__(
+        self,
+        dom: Domain,
+        ctx: Context | str | None = None,
+        check_level: CheckLevel | bool | None = None,
+    ) -> None:
+        (self.dom,) = self._bind_context(ctx, dom, check_level=check_level)
 
     @property
     def domain(self) -> Domain:
@@ -234,13 +245,8 @@ class Functional(ContextBound, Generic[Domain]):
         """Return a bounded ``ClassName(domain → field)`` form for nesting."""
         return f"{type(self).__name__}({self._arrow()})"
 
-    @abstractmethod
-    def tree_flatten(self) -> tuple[tuple[Any, ...], Any]:
-        """Flatten this functional for pytree registration."""
-        ...
-
-    @classmethod
-    @abstractmethod
-    def tree_unflatten(cls, aux: Any, children: Any) -> Self:
-        """Rebuild this functional from pytree data."""
-        ...
+    # tree_flatten / tree_unflatten are inherited from PyTreeNode, which owns the
+    # flatten contract for every SpaceCore container and auto-registers concrete
+    # subclasses with each backend's tree protocol. Every concrete Functional is a
+    # container, so the capability belongs on this base rather than being
+    # re-declared (and separately registered) per functional.

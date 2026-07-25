@@ -10,8 +10,9 @@ from .._batching import (
 )
 from ._linear import LinearFunctional
 from .._checks import checked_method
-from .._contextual import resolve_context_priority
-from ..backend import Context, jax_pytree_class
+from .._check_policy import CheckLevel
+from ..contextual import resolve_context_priority
+from ..contextual import Context
 from ..kernels import core_kernels
 from ..linop import LinOp
 
@@ -44,7 +45,6 @@ class QuadraticForm(Functional[Domain]):
 
 
 @core_kernels("linop-quadratic-form")
-@jax_pytree_class
 class LinOpQuadraticForm(QuadraticForm[Domain]):
     r"""
     Represent a quadratic form backed by a linear operator.
@@ -89,6 +89,7 @@ class LinOpQuadraticForm(QuadraticForm[Domain]):
         linear: LinearFunctional[Domain] | None = None,
         a: Any = 0,
         ctx: Context | str | None = None,
+        check_level: CheckLevel | bool | None = None,
     ) -> None:
         if not isinstance(Q, LinOp):
             raise TypeError(f"Q must be a LinOp, got {type(Q).__name__}.")
@@ -107,7 +108,7 @@ class LinOpQuadraticForm(QuadraticForm[Domain]):
             if linear.domain != Q.domain:
                 raise ValueError("linear.domain must match Q.domain.")
 
-        super().__init__(Q.domain, resolved_ctx)
+        super().__init__(Q.domain, resolved_ctx, check_level=check_level)
         self.Q = Q
         self.linear = linear
         self.a = self.ctx.asarray(a)
@@ -159,7 +160,7 @@ class LinOpQuadraticForm(QuadraticForm[Domain]):
 
     def __eq__(self, other: Any) -> bool:
         """Return whether another quadratic form has the same stored terms."""
-        if not self._eq_backend_compatible(other):              # Tier 1: backend
+        if not self.same_math(other):              # Tier 1: backend
             return NotImplemented
         if self.Q != other.Q:                                   # Tier 2/3: operator (own gate)
             return False

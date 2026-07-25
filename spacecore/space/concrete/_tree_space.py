@@ -5,10 +5,12 @@ from typing import TYPE_CHECKING, Any, Callable, Sequence, cast
 
 import optree
 
-from ..._check_policy import normalize_check_level
+from ..._check_policy import minimum_check_level, normalize_check_level
 from ..._checks import checked_method
-from ..._contextual import resolve_context_priority
-from ...backend import BackendOps, CheckLevel, Context, jax_pytree_class
+from ...contextual import resolve_context_priority
+from ...contextual import Context
+from ...backend import BackendOps, CheckLevel
+from ...backend import PyTreeNode
 from ...types import DenseArray
 from ..base import (
     CoordinateSpace,
@@ -98,16 +100,8 @@ def _format_path(path: tuple[Any, ...]) -> str:
     return result
 
 
-def _context_with_check_level(ctx: Context, check_level: CheckLevel | str | None) -> Context:
-    """Return ``ctx`` with an explicit validation policy when requested."""
-    if check_level is None or ctx.check_level == check_level:
-        return ctx
-    return Context(ctx.ops, dtype=ctx.dtype, check_level=normalize_check_level(check_level))
-
-
-@jax_pytree_class
 @dataclass(frozen=True, eq=False)
-class TreeElement:
+class TreeElement(PyTreeNode):
     r"""
     Bind ordered leaves to a :class:`TreeSpace`.
 
@@ -252,8 +246,7 @@ class _TreeLeafCheck(SpaceCheck):
         return "Invalid TreeSpace leaf."
 
 
-@jax_pytree_class
-class TreeSpace(CoordinateSpace):
+class TreeSpace(PyTreeNode, CoordinateSpace):
     r"""
     Represent a finite direct product as a Python tree.
 
@@ -336,7 +329,6 @@ class TreeSpace(CoordinateSpace):
         if cls is TreeSpace:
             spaces = _validate_leaf_spaces(leaf_spaces)
             resolved_ctx = resolve_context_priority(ctx, *spaces)
-            resolved_ctx = _context_with_check_level(resolved_ctx, check_level)
             converted = tuple(space.convert(resolved_ctx) for space in spaces)
             cls = _TREE_REGISTRY.get(_tree_capabilities(converted), TreeSpace)
         return super(TreeSpace, cls).__new__(cls)
@@ -351,7 +343,6 @@ class TreeSpace(CoordinateSpace):
     ) -> None:
         spaces = _validate_leaf_spaces(leaf_spaces, type(self).__name__)
         resolved_ctx = resolve_context_priority(ctx, *spaces)
-        resolved_ctx = _context_with_check_level(resolved_ctx, check_level)
         treespec = treedef if isinstance(treedef, optree.PyTreeSpec) else optree.tree_structure(treedef)
         if treespec.num_leaves != len(spaces):
             raise ValueError(
@@ -372,6 +363,12 @@ class TreeSpace(CoordinateSpace):
             slice(offsets[index], offsets[index + 1]) for index in range(len(self._dims))
         )
         super(TreeSpace, self).__init__((offsets[-1],), resolved_ctx)
+        if check_level is not None:
+            self._check_level = normalize_check_level(check_level)
+        else:
+            leaf_levels = tuple(space.check_level for space in uniform_spaces)
+            if leaf_levels:
+                self._check_level = minimum_check_level(leaf_levels)
 
     @classmethod
     def from_leaf_spaces(
@@ -711,9 +708,8 @@ class _LeafwiseStarMixin(_LeafwiseHostMixin):
         )
 
 
-@jax_pytree_class
 @dataclass(frozen=True)
-class TreeSpectralDecomposition:
+class TreeSpectralDecomposition(PyTreeNode):
     """
     Store leafwise Jordan spectral data in deterministic leaf order.
 
@@ -986,9 +982,10 @@ _TREE_REGISTRY.update(
     }
 )
 
-for _tree_type in set(_TREE_REGISTRY.values()):
-    jax_pytree_class(_tree_type)
-
+# The capability-dispatch subclasses above register themselves: each derives from
+# ``TreeSpace``, so ``PyTreeNode.__init_subclass__`` fires at class creation. The
+# explicit loop this replaces existed because a *decorator* cannot reach classes
+# built through a dispatch table — inheritance can.
 
 __all__ = [
     "TreeElement",

@@ -44,10 +44,10 @@ class TestIdentityLinOp:
 
     def test_apply_unchecked_returns_literal_input(self, numpy_ctx):
         """With checks disabled, ``apply(x)`` and ``rapply(x)`` return the literal ``x``."""
-        ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="none")
-        X = sc.DenseCoordinateSpace((3,), ctx)
-        op = sc.IdentityLinOp(X, ctx)
-        x = ctx.asarray([1.0, 2.0, 3.0])
+        X = sc.DenseCoordinateSpace((3,), numpy_ctx, check_level="none")
+        op = sc.IdentityLinOp(X, numpy_ctx, check_level="none")
+        x = numpy_ctx.asarray([1.0, 2.0, 3.0])
+        assert op.check_level == "none"
         assert op.apply(x) is x
         # rapply is a distinct code branch; confirm it is also a literal pass-through.
         assert op.rapply(x) is x
@@ -626,7 +626,7 @@ class TestMatrixFreeFromCoordinateAdjoint:
 
     def test_convert_preserves_direct_reverse_without_riesz(self, numpy_ctx):
         """Converting a direct matrix-free op keeps the user's reverse callable as-is."""
-        new_ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="none")
+        new_ctx = sc.Context(sc.NumpyOps(), dtype=np.complex128)
         WeightedVectorSpace = _weighted_space_class()
         domain = WeightedVectorSpace([2.0, 5.0], numpy_ctx)
         codomain = WeightedVectorSpace([3.0, 7.0, 11.0], numpy_ctx)
@@ -645,6 +645,7 @@ class TestMatrixFreeFromCoordinateAdjoint:
 
         op = sc.MatrixFreeLinOp(apply, rapply, domain, codomain, numpy_ctx)
         converted = op.convert(new_ctx)
+        assert converted is not op
         x = new_ctx.asarray([0.25, -1.5])
         y = new_ctx.asarray([2.0, -0.5, 1.25])
 
@@ -654,7 +655,7 @@ class TestMatrixFreeFromCoordinateAdjoint:
 
     def test_convert_preserves_batched_reverse(self, numpy_ctx):
         """``from_coordinate_adjoint`` with a batched coordinate adjoint survives ``convert``."""
-        new_ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="none")
+        new_ctx = sc.Context(sc.NumpyOps(), dtype=np.complex128)
         WeightedVectorSpace = _weighted_space_class()
         domain = WeightedVectorSpace([2.0, 5.0], numpy_ctx)
         codomain = WeightedVectorSpace([3.0, 7.0, 11.0], numpy_ctx)
@@ -674,6 +675,7 @@ class TestMatrixFreeFromCoordinateAdjoint:
             coordinate_rvapply=rvapply,
         )
         converted = op.convert(new_ctx)
+        assert converted is not op
         ys = new_ctx.asarray([[2.0, -0.5, 1.25], [-1.0, 3.0, 0.75]])
         expected = np.stack([to_numpy(converted.rapply(y)) for y in ys], axis=0)
 
@@ -682,7 +684,7 @@ class TestMatrixFreeFromCoordinateAdjoint:
 
     def test_convert_without_rvapply_uses_fallback(self, numpy_ctx):
         """When no batched coordinate adjoint is given, ``rvapply_fn`` stays ``None``."""
-        new_ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="none")
+        new_ctx = sc.Context(sc.NumpyOps(), dtype=np.complex128)
         WeightedVectorSpace = _weighted_space_class()
         domain = WeightedVectorSpace([2.0, 5.0], numpy_ctx)
         codomain = WeightedVectorSpace([3.0, 7.0, 11.0], numpy_ctx)
@@ -691,6 +693,7 @@ class TestMatrixFreeFromCoordinateAdjoint:
             lambda z: matrix @ z, lambda w: matrix.T @ w, domain, codomain, numpy_ctx,
         )
         converted = op.convert(new_ctx)
+        assert converted is not op
         ys = new_ctx.asarray([[2.0, -0.5, 1.25], [-1.0, 3.0, 0.75]])
         expected = np.stack([to_numpy(converted.rapply(y)) for y in ys], axis=0)
 
@@ -704,9 +707,11 @@ class TestMatrixFreeFromCoordinateAdjoint:
 # (folded from test_algebra_linop.py)
 # ===========================================================================
 class TestAlgebraClassHierarchy:
-    def _op(self, ctx):
-        X = sc.DenseCoordinateSpace((2,), ctx)
-        return sc.DenseLinOp(ctx.asarray([[1.0, 2.0], [3.0, 4.0]]), X, X, ctx)
+    def _op(self, ctx, check_level=None):
+        X = sc.DenseCoordinateSpace((2,), ctx, check_level=check_level)
+        return sc.DenseLinOp(
+            ctx.asarray([[1.0, 2.0], [3.0, 4.0]]), X, X, ctx, check_level=check_level,
+        )
 
     def test_no_adjoint_linop_symbol_exported(self):
         """There is no public ``AdjointLinOp``; ``A.H`` returns the private view."""
@@ -732,12 +737,11 @@ class TestAlgebraClassHierarchy:
         assert issubclass(sc.IdentityLinOp, sc.LinOp)
         assert issubclass(sc.MatrixFreeLinOp, sc.LinOp)
 
-    def test_check_policy_mismatch_does_not_block_algebra(self):
+    def test_check_policy_mismatch_does_not_block_algebra(self, numpy_ctx):
         """Operands with differing ``check_level`` still combine (dtype matches)."""
-        checked = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="standard")
-        unchecked = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="none")
-        A = self._op(checked)
-        B = self._op(unchecked)
+        A = self._op(numpy_ctx, check_level="standard")
+        B = self._op(numpy_ctx, check_level="none")
+        assert (A.check_level, B.check_level) == ("standard", "none")
         assert isinstance(A + B, sc.SumLinOp)
         assert isinstance(A @ B, sc.ComposedLinOp)
 
@@ -967,17 +971,19 @@ class TestJaxAlgebra:
 
         from tests._helpers import jax_real_dtype
 
-        ctx = sc.Context(sc.JaxOps(), dtype=jax_real_dtype(), check_level="none")
-        X = sc.DenseCoordinateSpace((2,), ctx)
-        Y = sc.DenseCoordinateSpace((3,), ctx)
-        A = sc.DenseLinOp(
-            ctx.asarray([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]), X, Y, ctx,
-        )
-        B = sc.DenseLinOp(
-            ctx.asarray([[0.5, -1.0], [2.0, 1.0], [-0.5, 3.0]]), X, Y, ctx,
-        )
-        C = sc.DenseLinOp(ctx.asarray([[2.0, -1.0], [0.25, 1.5]]), X, X, ctx)
+        ctx = sc.Context(sc.JaxOps(), dtype=jax_real_dtype())
+        with sc.use_check_level("none"):
+            X = sc.DenseCoordinateSpace((2,), ctx)
+            Y = sc.DenseCoordinateSpace((3,), ctx)
+            A = sc.DenseLinOp(
+                ctx.asarray([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]), X, Y, ctx,
+            )
+            B = sc.DenseLinOp(
+                ctx.asarray([[0.5, -1.0], [2.0, 1.0], [-0.5, 3.0]]), X, Y, ctx,
+            )
+            C = sc.DenseLinOp(ctx.asarray([[2.0, -1.0], [0.25, 1.5]]), X, X, ctx)
         expr = (2 * A + B) @ C
+        assert expr.check_level == "none"
         x = ctx.asarray([1.0, -2.0])
 
         apply_jit = jax.jit(lambda op, z: op.apply(z))

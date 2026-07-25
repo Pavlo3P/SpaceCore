@@ -175,13 +175,12 @@ def _factory(
     chain_depth = int(size_params["chain_depth"])
     rng = _rng(seed)
 
-    # SpaceCore contexts and space — built once per payload.
-    ctx_none = _backend_ctx(backend, check_level="none")
-    ctx_cheap = _backend_ctx(backend, check_level="cheap")
-    np_dtype = _np_dtype(ctx_none)
+    # SpaceCore context and spaces — built once per payload.
+    ctx = _backend_ctx(backend)
+    np_dtype = _np_dtype(ctx)
 
-    space_none = sc.DenseCoordinateSpace((d,), ctx_none)
-    space_cheap = sc.DenseCoordinateSpace((d,), ctx_cheap)
+    space_none = sc.DenseCoordinateSpace((d,), ctx, check_level="none")
+    space_cheap = sc.DenseCoordinateSpace((d,), ctx, check_level="cheap")
 
     # Pre-generate every matrix and vector in NumPy.
     A_np = [
@@ -200,25 +199,21 @@ def _factory(
     y_np = np.asarray(rng.standard_normal(d), dtype=np_dtype)
 
     # Convert per-backend operand arrays once.
-    A_none = [ctx_none.asarray(M) for M in A_np]
-    B_none = [ctx_none.asarray(M) for M in B_np]
-    A_cheap = [ctx_cheap.asarray(M) for M in A_np]
-    B_cheap = [ctx_cheap.asarray(M) for M in B_np]
-    x_none = ctx_none.asarray(x_np)
-    y_none = ctx_none.asarray(y_np)
-    x_cheap = ctx_cheap.asarray(x_np)
-    y_cheap = ctx_cheap.asarray(y_np)
+    A_arr = [ctx.asarray(M) for M in A_np]
+    B_arr = [ctx.asarray(M) for M in B_np]
+    x_arr = ctx.asarray(x_np)
+    y_arr = ctx.asarray(y_np)
 
     # Bare-mode operands — backend-native, no SpaceCore objects.
-    x_bare = _to_backend(backend, x_np, ctx_none)
-    y_bare = _to_backend(backend, y_np, ctx_none)
-    A_dense_bare = _build_dense_matrix(backend, ctx_none, A_np, B_np, alphas)
+    x_bare = _to_backend(backend, x_np, ctx)
+    y_bare = _to_backend(backend, y_np, ctx)
+    A_dense_bare = _build_dense_matrix(backend, ctx, A_np, B_np, alphas)
     A_dense_bare_H = _bare_conj_transpose(backend, A_dense_bare)
     matmul = _bare_matmul(backend)
 
     # SpaceCore expression for the public-API paths.
-    expr_none = _build_sc_expression(ctx_none, space_none, A_none, B_none, alphas)
-    expr_cheap = _build_sc_expression(ctx_cheap, space_cheap, A_cheap, B_cheap, alphas)
+    expr_none = _build_sc_expression(ctx, space_none, A_arr, B_arr, alphas)
+    expr_cheap = _build_sc_expression(ctx, space_cheap, A_arr, B_arr, alphas)
 
     # Lowered path: collapse the expression to a single dense matrix once.
     A_dense_lowered = expr_none.to_dense()
@@ -248,7 +243,7 @@ def _factory(
             "backend": backend,
         }
 
-    # ----- spacecore public (check_level varies via context) -----
+    # ----- spacecore public (check_level varies per object) -----
     def _sc_public_call(expr: sc.LinOp, x_in: Any, y_in: Any) -> dict[str, Any]:
         apply_out = x_in
         rapply_out = y_in
@@ -265,10 +260,10 @@ def _factory(
         }
 
     def sc_public_none_call() -> dict[str, Any]:
-        return _sc_public_call(expr_none, x_none, y_none)
+        return _sc_public_call(expr_none, x_arr, y_arr)
 
     def sc_public_cheap_call() -> dict[str, Any]:
-        return _sc_public_call(expr_cheap, x_cheap, y_cheap)
+        return _sc_public_call(expr_cheap, x_arr, y_arr)
 
     # ----- spacecore lowered: precomputed dense matrix, bare matmuls -----
     def sc_lowered_call() -> dict[str, Any]:

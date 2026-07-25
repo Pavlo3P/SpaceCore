@@ -21,13 +21,13 @@ import math
 from typing import Any, cast
 
 from .._base import Domain
-from ...backend import Context, jax_pytree_class
+from ...contextual import Context
+from ..._check_policy import CheckLevel
 from ...space import JordanAlgebraSpace
 from ..._checks import checked_method
 from ._coordinate import _CoordinateFunctional, lp_coordinate_grad, lp_value
 
 
-@jax_pytree_class
 class SpectralLpNormFunctional(_CoordinateFunctional[Domain]):
     r"""
     Schatten ``p``-norm ``F(X) = (sum_i |lambda_i(X)|^p)^{1/p}`` for ``p >= 1``.
@@ -62,8 +62,14 @@ class SpectralLpNormFunctional(_CoordinateFunctional[Domain]):
     5.0
     """
 
-    def __init__(self, dom: Domain, p: Any, ctx: Context | str | None = None) -> None:
-        super().__init__(dom, ctx)
+    def __init__(
+        self,
+        dom: Domain,
+        p: Any,
+        ctx: Context | str | None = None,
+        check_level: CheckLevel | bool | None = None,
+    ) -> None:
+        super().__init__(dom, ctx, check_level=check_level)
         if not isinstance(self.domain, JordanAlgebraSpace):
             raise TypeError(
                 "SpectralLpNormFunctional requires a Jordan-algebra domain with a "
@@ -104,7 +110,9 @@ class SpectralLpNormFunctional(_CoordinateFunctional[Domain]):
 
 
 def NuclearNormFunctional(
-    dom: Domain, ctx: Context | str | None = None
+    dom: Domain,
+    ctx: Context | str | None = None,
+    check_level: CheckLevel | bool | None = None,
 ) -> "SpectralLpNormFunctional[Domain]":
     r"""
     Nuclear (trace) norm, a thin wrapper for ``SpectralLpNormFunctional(X, 1)``.
@@ -123,4 +131,4 @@ def NuclearNormFunctional(
     SpectralLpNormFunctional
         The ``p = 1`` instance of :class:`SpectralLpNormFunctional`.
     """
-    return SpectralLpNormFunctional(dom, 1.0, ctx)
+    return SpectralLpNormFunctional(dom, 1.0, ctx, check_level=check_level)

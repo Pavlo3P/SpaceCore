@@ -1,4 +1,5 @@
 import warnings
+from contextlib import contextmanager
 
 import numpy as np
 import pytest
@@ -8,14 +9,15 @@ from spacecore.functional import _base as _functional_base
 from tests._helpers import has_jax, jax_real_dtype, to_numpy
 
 
+@contextmanager
 def _numpy_context():
+    yield sc.Context(sc.NumpyOps(), dtype=np.float64)
 
-    return sc.Context(sc.NumpyOps(), dtype=np.float64)
 
-
+@contextmanager
 def _jax_context():
-
-    return sc.Context(sc.JaxOps(), dtype=jax_real_dtype(), check_level="none")
+    with sc.use_check_level("none"):
+        yield sc.Context(sc.JaxOps(), dtype=jax_real_dtype())
 
 
 def _contexts():
@@ -72,25 +74,27 @@ def _assert_gradient_identity(functional, x, v, eps, atol):
 
 @pytest.mark.parametrize("ctx_factory,eps,atol", list(_contexts()))
 def test_linop_quadratic_gradient_identity_on_weighted_space(ctx_factory, eps, atol):
-    ctx = ctx_factory()
-    space = _weighted_space(ctx)
-    Q = sc.DenseLinOp(_self_adjoint_metric_matrix(ctx), space, space, ctx)
-    c = ctx.asarray([0.25, -1.5, 2.0])
-    functional = sc.LinOpQuadraticForm(Q, sc.InnerProductFunctional(c, space, ctx), 1.25, ctx)
-    x = ctx.asarray([0.5, -1.0, 2.0])
-    v = ctx.asarray([1.25, 0.75, -0.5])
+    with ctx_factory() as ctx:
+        space = _weighted_space(ctx)
+        Q = sc.DenseLinOp(_self_adjoint_metric_matrix(ctx), space, space, ctx)
+        c = ctx.asarray([0.25, -1.5, 2.0])
+        functional = sc.LinOpQuadraticForm(
+            Q, sc.InnerProductFunctional(c, space, ctx), 1.25, ctx
+        )
+        x = ctx.asarray([0.5, -1.0, 2.0])
+        v = ctx.asarray([1.25, 0.75, -0.5])
 
     _assert_gradient_identity(functional, x, v, eps, atol)
 
 
 @pytest.mark.parametrize("ctx_factory,eps,atol", list(_contexts()))
 def test_inner_product_functional_gradient_identity_on_weighted_space(ctx_factory, eps, atol):
-    ctx = ctx_factory()
-    space = _weighted_space(ctx)
-    c = ctx.asarray([0.25, -1.5, 2.0])
-    functional = sc.InnerProductFunctional(c, space, ctx)
-    x = ctx.asarray([0.5, -1.0, 2.0])
-    v = ctx.asarray([1.25, 0.75, -0.5])
+    with ctx_factory() as ctx:
+        space = _weighted_space(ctx)
+        c = ctx.asarray([0.25, -1.5, 2.0])
+        functional = sc.InnerProductFunctional(c, space, ctx)
+        x = ctx.asarray([0.5, -1.0, 2.0])
+        v = ctx.asarray([1.25, 0.75, -0.5])
 
     _assert_gradient_identity(functional, x, v, eps, atol)
     np.testing.assert_allclose(to_numpy(functional.grad(x)), to_numpy(c))
@@ -110,16 +114,16 @@ def test_euclidean_quadratic_gradient_behavior_is_unchanged():
 
 @pytest.mark.parametrize("ctx_factory,eps,atol", list(_contexts()))
 def test_inner_product_functional_compose_uses_metric_adjoint_pullback(ctx_factory, eps, atol):
-    ctx = ctx_factory()
-    domain = _weighted_vector_space(ctx, [2.0, 5.0])
-    codomain = _weighted_vector_space(ctx, [3.0, 7.0, 11.0])
-    matrix = ctx.asarray([[1.0, -2.0], [0.5, 3.0], [4.0, -1.0]])
-    A = sc.DenseLinOp(matrix, domain, codomain, ctx)
-    c = ctx.asarray([0.25, -1.5, 2.0])
-    functional = sc.InnerProductFunctional(c, codomain, ctx)
-    composed = functional.compose(A)
-    x = ctx.asarray([0.5, -1.0])
-    v = ctx.asarray([1.25, 0.75])
+    with ctx_factory() as ctx:
+        domain = _weighted_vector_space(ctx, [2.0, 5.0])
+        codomain = _weighted_vector_space(ctx, [3.0, 7.0, 11.0])
+        matrix = ctx.asarray([[1.0, -2.0], [0.5, 3.0], [4.0, -1.0]])
+        A = sc.DenseLinOp(matrix, domain, codomain, ctx)
+        c = ctx.asarray([0.25, -1.5, 2.0])
+        functional = sc.InnerProductFunctional(c, codomain, ctx)
+        composed = functional.compose(A)
+        x = ctx.asarray([0.5, -1.0])
+        v = ctx.asarray([1.25, 0.75])
 
     np.testing.assert_allclose(
         to_numpy(composed.value(x)),
@@ -141,17 +145,17 @@ def test_inner_product_functional_compose_uses_metric_adjoint_pullback(ctx_facto
 def test_inner_product_functional_vectorized_batches_match_elementwise(
     ctx_factory, eps, atol, weighted
 ):
-    ctx = ctx_factory()
-    space = _weighted_space(ctx) if weighted else sc.DenseCoordinateSpace((3,), ctx)
-    c = ctx.asarray([0.25, -1.5, 2.0])
-    functional = sc.InnerProductFunctional(c, space, ctx)
-    xs = ctx.asarray(
-        [
-            [0.5, -1.0, 2.0],
-            [1.25, 0.75, -0.5],
-            [-2.0, 0.25, 1.5],
-        ]
-    )
+    with ctx_factory() as ctx:
+        space = _weighted_space(ctx) if weighted else sc.DenseCoordinateSpace((3,), ctx)
+        c = ctx.asarray([0.25, -1.5, 2.0])
+        functional = sc.InnerProductFunctional(c, space, ctx)
+        xs = ctx.asarray(
+            [
+                [0.5, -1.0, 2.0],
+                [1.25, 0.75, -0.5],
+                [-2.0, 0.25, 1.5],
+            ]
+        )
 
     expected_values = functional.ops.stack(tuple(functional.value(x) for x in xs), axis=0)
     expected_grads = functional.ops.stack(tuple(functional.grad(x) for x in xs), axis=0)
@@ -169,29 +173,29 @@ def test_inner_product_functional_vectorized_batches_match_elementwise(
 def test_linop_quadratic_form_vectorized_batches_match_elementwise(
     ctx_factory, eps, atol, weighted
 ):
-    ctx = ctx_factory()
-    space = _weighted_space(ctx) if weighted else sc.DenseCoordinateSpace((3,), ctx)
-    matrix = (
-        _self_adjoint_metric_matrix(ctx)
-        if weighted
-        else ctx.asarray(
+    with ctx_factory() as ctx:
+        space = _weighted_space(ctx) if weighted else sc.DenseCoordinateSpace((3,), ctx)
+        matrix = (
+            _self_adjoint_metric_matrix(ctx)
+            if weighted
+            else ctx.asarray(
+                [
+                    [4.0, 1.0, -0.5],
+                    [1.0, 6.0, 2.0],
+                    [-0.5, 2.0, 3.0],
+                ]
+            )
+        )
+        Q = sc.DenseLinOp(matrix, space, space, ctx)
+        linear = sc.InnerProductFunctional(ctx.asarray([0.25, -1.5, 2.0]), space, ctx)
+        functional = sc.LinOpQuadraticForm(Q, linear, 1.25, ctx)
+        xs = ctx.asarray(
             [
-                [4.0, 1.0, -0.5],
-                [1.0, 6.0, 2.0],
-                [-0.5, 2.0, 3.0],
+                [0.5, -1.0, 2.0],
+                [1.25, 0.75, -0.5],
+                [-2.0, 0.25, 1.5],
             ]
         )
-    )
-    Q = sc.DenseLinOp(matrix, space, space, ctx)
-    linear = sc.InnerProductFunctional(ctx.asarray([0.25, -1.5, 2.0]), space, ctx)
-    functional = sc.LinOpQuadraticForm(Q, linear, 1.25, ctx)
-    xs = ctx.asarray(
-        [
-            [0.5, -1.0, 2.0],
-            [1.25, 0.75, -0.5],
-            [-2.0, 0.25, 1.5],
-        ]
-    )
 
     expected_values = functional.ops.stack(tuple(functional.value(x) for x in xs), axis=0)
     expected_grads = functional.ops.stack(tuple(functional.grad(x) for x in xs), axis=0)
@@ -206,10 +210,12 @@ def test_linop_quadratic_form_vectorized_batches_match_elementwise(
 
 def test_matrix_free_functional_vvalue_python_loop_warns_once_on_numpy():
     _functional_base._VMAP_FALLBACK_WARNED.clear()
-    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="none")
-    space = sc.DenseCoordinateSpace((2,), ctx)
+    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    space = sc.DenseCoordinateSpace((2,), ctx, check_level="none")
     c = ctx.asarray([1.0, -2.0])
-    functional = sc.MatrixFreeLinearFunctional(lambda x: space.inner(c, x), space, ctx)
+    functional = sc.MatrixFreeLinearFunctional(
+        lambda x: space.inner(c, x), space, ctx, check_level="none"
+    )
     xs = ctx.asarray(np.arange(80.0).reshape(40, 2))
 
     with pytest.warns(RuntimeWarning, match="falls back to a Python loop"):
@@ -221,10 +227,10 @@ def test_matrix_free_functional_vvalue_python_loop_warns_once_on_numpy():
 
 
 def test_vectorized_functionals_do_not_warn_on_numpy():
-    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="none")
-    space = sc.DenseCoordinateSpace((2,), ctx)
+    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    space = sc.DenseCoordinateSpace((2,), ctx, check_level="none")
     c = ctx.asarray([1.0, -2.0])
-    functional = sc.InnerProductFunctional(c, space, ctx)
+    functional = sc.InnerProductFunctional(c, space, ctx, check_level="none")
     xs = ctx.asarray(np.arange(80.0).reshape(40, 2))
 
     with warnings.catch_warnings(record=True) as caught:
@@ -236,10 +242,12 @@ def test_vectorized_functionals_do_not_warn_on_numpy():
 
 @pytest.mark.skipif(not has_jax(), reason="jax is not installed")
 def test_matrix_free_functional_vvalue_does_not_warn_on_native_vmap_backend():
-    ctx = sc.Context(sc.JaxOps(), dtype=jax_real_dtype(), check_level="none")
-    space = sc.DenseCoordinateSpace((2,), ctx)
+    ctx = sc.Context(sc.JaxOps(), dtype=jax_real_dtype())
+    space = sc.DenseCoordinateSpace((2,), ctx, check_level="none")
     c = ctx.asarray([1.0, -2.0])
-    functional = sc.MatrixFreeLinearFunctional(lambda x: space.inner(c, x), space, ctx)
+    functional = sc.MatrixFreeLinearFunctional(
+        lambda x: space.inner(c, x), space, ctx, check_level="none"
+    )
     xs = ctx.asarray(np.arange(80.0).reshape(40, 2))
 
     with warnings.catch_warnings(record=True) as caught:

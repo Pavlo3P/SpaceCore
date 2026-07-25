@@ -5,9 +5,10 @@ from typing import Any, Tuple, Callable, cast
 from ..checks import HermitianCheck, SquareMatrixCheck
 from ..base import EuclideanJordanAlgebraSpace, StarSpace
 from ._dense_coordinate import DenseCoordinateSpace
+from ..._check_policy import CheckLevel
 from ..._checks import checked_method
 from ...types import DenseArray
-from ...backend import Context
+from ...contextual import Context
 
 
 class HermitianSpace(DenseCoordinateSpace, StarSpace, EuclideanJordanAlgebraSpace):
@@ -38,6 +39,11 @@ class HermitianSpace(DenseCoordinateSpace, StarSpace, EuclideanJordanAlgebraSpac
         Whether membership checks enforce Hermitian structure.
     ctx : Context, str, or None, optional
         Backend context specification.
+    check_level : {"none", "cheap", "standard", "strict"}, optional
+        Runtime validation policy for this object. When omitted, the ambient
+        default (see :func:`spacecore.get_check_level`) is used. Unlike the
+        backend/dtype context, the validation policy is a property of the bound
+        object, not of the :class:`Context`.
 
     Attributes
     ----------
@@ -52,12 +58,13 @@ class HermitianSpace(DenseCoordinateSpace, StarSpace, EuclideanJordanAlgebraSpac
         rtol: float = 0.0,
         enforce_herm: bool = True,
         ctx: Context | str | None = None,
+        check_level: CheckLevel | bool | None = None,
     ):
         if n <= 0:
             raise ValueError("n must be positive.")
 
         shape = (n, n)
-        super(HermitianSpace, self).__init__(shape, ctx)
+        super(HermitianSpace, self).__init__(shape, ctx, check_level=check_level)
 
         self.atol = atol
         self.rtol = rtol

@@ -6,7 +6,8 @@ from typing import Any, Callable
 from ._base import Domain, Functional
 from .._batching import _check_scalar_shape, _leading_batch_size
 from .._checks import checked_method
-from ..backend import Context, jax_pytree_class
+from .._check_policy import CheckLevel
+from ..contextual import Context
 from ..kernels import core_kernels
 from ..space import Space, TreeElement, TreeSpace
 
@@ -72,7 +73,6 @@ class LinearFunctional(Functional[Domain]):
 
 
 @core_kernels("inner-product-functional")
-@jax_pytree_class
 class InnerProductFunctional(LinearFunctional[Domain]):
     r"""
     Linear functional represented by a domain element.
@@ -100,8 +100,9 @@ class InnerProductFunctional(LinearFunctional[Domain]):
         c: Any,
         dom: Domain,
         ctx: Context | str | None = None,
+        check_level: CheckLevel | bool | None = None,
     ) -> None:
-        super().__init__(dom, ctx)
+        super().__init__(dom, ctx, check_level=check_level)
         self._c = _convert_space_element(self.domain, c)
         if self._checks_at_least("standard"):
             self.domain._check_member(self._c)
@@ -126,7 +127,7 @@ class InnerProductFunctional(LinearFunctional[Domain]):
 
     def __eq__(self, other: Any) -> bool:
         """Return whether another inner-product functional has the same representer."""
-        if not self._eq_backend_compatible(other):              # Tier 1: backend
+        if not self.same_math(other):              # Tier 1: backend
             return NotImplemented
         if self.domain != other.domain:                         # Tier 2: domain before allclose
             return False
@@ -155,7 +156,6 @@ class InnerProductFunctional(LinearFunctional[Domain]):
 
 
 @core_kernels("matrixfree-linear-functional")
-@jax_pytree_class
 class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
     """
     Linear functional defined by user-supplied evaluation callables.
@@ -190,6 +190,7 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
         dom: Domain,
         ctx: Context | str | None = None,
         vvalue: Callable[[Any], Any] | None = None,
+        check_level: CheckLevel | bool | None = None,
     ) -> None:
         """
         Initialize a matrix-free linear functional.
@@ -218,7 +219,7 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
             raise TypeError(f"value must be callable, got {type(value).__name__}.")
         if vvalue is not None and not callable(vvalue):
             raise TypeError(f"vvalue must be callable, got {type(vvalue).__name__}.")
-        super().__init__(dom, ctx)
+        super().__init__(dom, ctx, check_level=check_level)
         self.value_fn = value
         self.vvalue_fn = vvalue
 
@@ -286,7 +287,7 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
 
     def __eq__(self, other: Any) -> bool:
         """Return whether another matrix-free functional uses the same callables."""
-        if not self._eq_backend_compatible(other):              # Tier 1: backend
+        if not self.same_math(other):              # Tier 1: backend
             return NotImplemented
         if self.domain != other.domain:                         # Tier 2: domain
             return False

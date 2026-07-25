@@ -2,20 +2,9 @@
 
 from ._version import __version__
 
-from .backend import CHECK_LEVELS, CheckLevel, Context, BackendOps, NumpyOps, jax_pytree_class
-
-try:
-    from .backend import JaxOps as JaxOps
-except ImportError:
-    pass
-try:
-    from .backend import CuPyOps as CuPyOps
-except ImportError:
-    pass
-try:
-    from .backend import TorchOps as TorchOps
-except ImportError:
-    pass
+from .contextual import Context
+from .backend import CHECK_LEVELS, CheckLevel, BackendOps, NumpyOps
+from .backend._optional import available_ops as _available_ops
 from .linop import (
     BlockDiagonalLinOp,
     BlockMatrixLinOp,
@@ -116,15 +105,27 @@ from .space import (
 from .types import DenseArray, SparseArray, ArrayLike
 
 from ._checks import checked_method
-from ._contextual import (
+from .contextual import (
     ContextBound,
     set_context,
     get_context,
+    set_check_level,
+    get_check_level,
+    use_check_level,
+    use_context,
     resolve_context_priority,
     register_ops,
     normalize_ops,
     normalize_context,
 )
+
+# Re-export each optional backend whose dependency is importable (JaxOps,
+# CuPyOps, TorchOps). Mirrors the backend package: one loop over the single
+# source of truth in ``backend._optional`` (a missing dependency is skipped, a
+# broken install warns and is skipped) instead of per-backend try/except.
+_optional_ops = _available_ops()
+for _cls in _optional_ops:
+    globals().setdefault(_cls.__name__, _cls)
 
 __all__ = [
     "__version__",
@@ -132,7 +133,6 @@ __all__ = [
     "CheckLevel",
     "CHECK_LEVELS",
     "BackendOps",
-    "jax_pytree_class",
     "NumpyOps",
     "LinOp",
     "ComposedLinOp",
@@ -228,15 +228,14 @@ __all__ = [
     "ContextBound",
     "set_context",
     "get_context",
+    "set_check_level",
+    "get_check_level",
+    "use_check_level",
+    "use_context",
     "resolve_context_priority",
     "register_ops",
     "normalize_ops",
     "normalize_context",
 ]
 
-if "JaxOps" in globals():
-    __all__.append("JaxOps")
-if "TorchOps" in globals():
-    __all__.append("TorchOps")
-if "CuPyOps" in globals():
-    __all__.append("CuPyOps")
+__all__ += [_cls.__name__ for _cls in _optional_ops if _cls.__name__ != "NumpyOps"]

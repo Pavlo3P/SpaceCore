@@ -101,8 +101,9 @@ def test_validation_decisions_unchanged_by_cache():
 
 def test_check_level_none_bypasses_validation():
     """``checked_method`` fast path: ``check_level="none"`` calls method directly."""
-    ctx_none = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="none")
-    space = sc.DenseCoordinateSpace((4,), ctx_none)
+    ctx_none = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    space = sc.DenseCoordinateSpace((4,), ctx_none, check_level="none")
+    assert space.check_level == "none"
     # A shape-wrong element would normally raise — but the fast path skips
     # validation entirely. The actual arithmetic still runs.
     bad = ctx_none.asarray(np.zeros(5))
@@ -114,8 +115,9 @@ def test_check_level_none_bypasses_validation():
 
 def test_check_level_cheap_validates_shape_dtype_backend():
     """At ``cheap`` level, the cached checks still catch shape mismatches."""
-    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="cheap")
-    space = sc.DenseCoordinateSpace((4,), ctx)
+    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    space = sc.DenseCoordinateSpace((4,), ctx, check_level="cheap")
+    assert space.check_level == "cheap"
     bad = ctx.asarray(np.zeros(5))
     with pytest.raises(Exception):
         space.check_member(bad)
@@ -142,16 +144,18 @@ def test_inner_product_space_caches_consistent_under_repeated_ops():
         assert float(space.inner(x, y)) == pytest.approx(expected_inner)
 
 
-def test_check_level_change_via_new_context_uses_fresh_space():
-    """``space.convert(new_ctx)`` produces a fresh-cache space.
+def test_check_level_change_via_new_space_uses_fresh_cache():
+    """A space built at a different ``check_level`` has a fresh cache.
 
-    Spaces are immutable; switching ``check_level`` happens by creating a
-    new context and a new space. The new space has its own cache.
+    Spaces are immutable; ``check_level`` is a property of the space, so
+    switching it happens by constructing a new space. The new space has its
+    own cache.
     """
-    ctx_std = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="standard")
-    ctx_cheap = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="cheap")
-    space_std = sc.DenseCoordinateSpace((4,), ctx_std)
+    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    space_std = sc.DenseCoordinateSpace((4,), ctx, check_level="standard")
     space_std.member_checks()
-    space_cheap = space_std.convert(ctx_cheap)
+    space_cheap = sc.DenseCoordinateSpace((4,), ctx, check_level="cheap")
     assert space_cheap is not space_std
+    assert space_std.check_level == "standard"
+    assert space_cheap.check_level == "cheap"
     assert space_cheap._cached_member_checks is None

@@ -1,20 +1,25 @@
 from __future__ import annotations
 
 from abc import ABC
-from typing import TYPE_CHECKING, Any, Self
+from typing import Any, Self
 
-from .._check_policy import CheckLevel, check_level_at_least, level_to_enabled
+from ..backend import BackendFamily, BackendOps
+from .._check_policy import (
+    CheckLevel,
+    check_level_at_least,
+    level_to_enabled,
+    minimum_check_level,
+    normalize_check_level,
+)
 from .._repr import format_dtype
 from ..types import DType
-from ._state import enforce_convert_policy, normalize_context, resolve_context_priority
-
-if TYPE_CHECKING:
-    from ..backend import BackendFamily, BackendOps, Context
-
-
-def _same_math_context(left: Context, right: Context) -> bool:
-    """Return whether contexts match for algebra, ignoring validation checks."""
-    return left.ops == right.ops and left.dtype == right.dtype
+from ._state import (
+    enforce_convert_policy,
+    get_check_level,
+    normalize_context,
+    resolve_context_priority,
+)
+from ._context import Context
 
 
 class ContextBound(ABC):
@@ -24,30 +29,49 @@ class ContextBound(ABC):
     Parameters
     ----------
     ctx : Context, str, or None, optional
-        Context specification used to resolve backend operations, dtype, and
-        validation policy.
+        Context specification used to resolve backend operations and dtype.
+    check_level : {"none", "cheap", "standard", "strict"}, optional
+        Runtime validation policy for this object. When omitted, the ambient
+        default (see :func:`spacecore.get_check_level`) is used. Unlike the
+        backend/dtype context, the validation policy is a property of the bound
+        object, not of the :class:`Context`.
     """
 
-    def __init__(self, ctx: Context | str | None = None):
+    def __init__(
+        self,
+        ctx: Context | str | None = None,
+        check_level: CheckLevel | bool | None = None,
+    ):
         ctx = normalize_context(ctx)
         self._ctx = ctx
+        self._check_level = (
+            normalize_check_level(check_level) if check_level is not None else get_check_level()
+        )
 
-    def _eq_backend_compatible(self, other: Any) -> bool:
-        """Tier-1 equality gate: same concrete type and same backend.
+    def same_math(self, other: Any) -> bool:
+        """Tier-1 equality gate: same concrete type and same math context.
 
-        "Backend compatibility" means the same backend ops family and the same
-        representation dtype (via :func:`_same_math_context`), deliberately
-        ignoring ``check_level`` (a validation policy, not a mathematical or
-        backend property). This is the mandatory first check in every ``__eq__``:
-        it guarantees any later ``ops.allclose`` runs only on same-backend,
-        same-dtype arrays, and makes cross-backend objects compare unequal.
+        Combines a runtime-type identity check with :meth:`Context.same_math`
+        (equal backend ops and dtype, ignoring ``check_level`` — a validation
+        policy, not a mathematical or backend property). This is the mandatory
+        first check in every ``__eq__``: the type gate guarantees ``other``
+        exposes the same attributes this object's ``__eq__`` will read, and
+        ``same_math`` guarantees any later ``ops.allclose`` runs only on
+        same-backend, same-dtype arrays, making cross-backend objects compare
+        unequal.
 
         Callers that fail this gate should return ``NotImplemented`` so Python
         can try the reflected comparison and fall back to identity symmetrically.
         """
-        return type(self) is type(other) and _same_math_context(self._ctx, other._ctx)
+        return type(self) is type(other) and self._ctx.same_math(other.ctx)
 
-    def _bind_context(self, ctx: Any, *children: Any, sources: tuple[Any, ...] | None = None):
+    def _bind_context(
+        self,
+        ctx: Any,
+        *children: Any,
+        sources: tuple[Any, ...] | None = None,
+        check_level: CheckLevel | bool | None = None,
+    ):
         """Resolve the priority context, store it, and re-bind children onto it.
 
         This factors the context-binding prologue shared by every contextual
@@ -77,8 +101,6 @@ class ContextBound(ABC):
         tuple
             ``children`` converted onto the resolved context, in order.
         """
-        from ..backend import Context
-
         if isinstance(ctx, Context):
             resolved = ctx
         else:
@@ -86,6 +108,11 @@ class ContextBound(ABC):
                 ctx, *(children if sources is None else sources)
             )
         self._ctx = resolved
+        if check_level is not None:
+            self._check_level = normalize_check_level(check_level)
+        else:
+            levels = [c._check_level for c in children if isinstance(c, ContextBound)]
+            self._check_level = minimum_check_level(tuple(levels)) if levels else get_check_level()
         return tuple(child.convert(resolved) for child in children)
 
     @property
@@ -105,8 +132,15 @@ class ContextBound(ABC):
 
     @property
     def check_level(self) -> CheckLevel:
-        """Return this object's runtime validation level."""
-        return self.ctx.check_level
+        """Return this object's runtime validation level.
+
+        The level is stored on the bound object (``_check_level``), seeded at
+        construction. The fallback covers any construction path that assigns
+        ``_ctx`` without going through ``__init__``/``_bind_context``.
+        """
+        if hasattr(self, "_check_level"):
+            return self._check_level
+        return get_check_level()
 
     @property
     def _enable_checks(self) -> bool:
@@ -166,8 +200,15 @@ class ContextBound(ABC):
         raise NotImplementedError()
 
     def convert(self, new_ctx: Context | BackendFamily | str | None = None) -> Self:
-        """Return this object represented in ``new_ctx``."""
+        """Return this object represented in ``new_ctx``.
+
+        The object's ``check_level`` is a property of the object, not of the
+        backend/dtype context, so it is preserved across conversion rather than
+        re-seeded from the ambient default.
+        """
         _, new_ctx = enforce_convert_policy(self, new_ctx)
         if self.ctx == new_ctx:
             return self
-        return self._convert(new_ctx)
+        result = self._convert(new_ctx)
+        result._check_level = self._check_level
+        return result

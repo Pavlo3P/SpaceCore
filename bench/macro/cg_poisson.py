@@ -212,23 +212,21 @@ def _factory(backend: str, device: str, seed: int, size_params: dict[str, Any]) 
     maxiter = int(size_params["maxiter"])
     lambda_ = float(size_params["lambda"])
 
-    # Two contexts, two callables (the runner does NOT switch context).
-    ctx_none = _backend_ctx(backend, check_level="none")
-    ctx_cheap = _backend_ctx(backend, check_level="cheap")
-    np_dtype = _np_dtype(ctx_none)
+    # Two check levels, two callables (the runner does NOT switch context).
+    ctx = _backend_ctx(backend)
+    np_dtype = _np_dtype(ctx)
 
     # Pre-compute the right-hand side once in NumPy, ship to each backend.
     b_np = _make_rhs_np(n, np_dtype)
 
     # SpaceCore space and operator for each check level.
-    space_none = sc.DenseCoordinateSpace((n, n), ctx_none)
-    space_cheap = sc.DenseCoordinateSpace((n, n), ctx_cheap)
+    space_none = sc.DenseCoordinateSpace((n, n), ctx, check_level="none")
+    space_cheap = sc.DenseCoordinateSpace((n, n), ctx, check_level="cheap")
 
     mode_callables: dict[ModeName, Callable[[], Any]] = {}
 
     if backend == "numpy":
-        b_arr_none = ctx_none.asarray(b_np)
-        b_arr_cheap = ctx_cheap.asarray(b_np)
+        b_arr = ctx.asarray(b_np)
 
         def bare_call(b=b_np, lam=lambda_, mi=maxiter):
             return _numpy_cg(lambda u: _numpy_apply(u, lam), b, mi)
@@ -241,13 +239,13 @@ def _factory(backend: str, device: str, seed: int, size_params: dict[str, Any]) 
         apply_none = sc_apply_none_factory()
         apply_cheap = sc_apply_none_factory()
 
-        op_none = sc.MatrixFreeLinOp(apply_none, apply_none, space_none, space_none, ctx_none)
-        op_cheap = sc.MatrixFreeLinOp(apply_cheap, apply_cheap, space_cheap, space_cheap, ctx_cheap)
+        op_none = sc.MatrixFreeLinOp(apply_none, apply_none, space_none, space_none, ctx)
+        op_cheap = sc.MatrixFreeLinOp(apply_cheap, apply_cheap, space_cheap, space_cheap, ctx)
 
-        def sc_none_call(op=op_none, b=b_arr_none, mi=maxiter):
+        def sc_none_call(op=op_none, b=b_arr, mi=maxiter):
             return sc.cg(op, b, maxiter=mi, tol=0.0, atol=0.0)
 
-        def sc_cheap_call(op=op_cheap, b=b_arr_cheap, mi=maxiter):
+        def sc_cheap_call(op=op_cheap, b=b_arr, mi=maxiter):
             return sc.cg(op, b, maxiter=mi, tol=0.0, atol=0.0)
 
         mode_callables["bare"] = bare_call
@@ -261,27 +259,26 @@ def _factory(backend: str, device: str, seed: int, size_params: dict[str, Any]) 
         import jax.numpy as jnp
 
         jax_dtype = jnp.asarray(b_np).dtype
-        jnp.asarray(b_np, dtype=ctx_none.dtype if hasattr(ctx_none, "dtype") else jax_dtype)
-        # Re-cast in the active jax dtype for both contexts.
-        b_arr_none = ctx_none.asarray(b_np)
-        b_arr_cheap = ctx_cheap.asarray(b_np)
+        jnp.asarray(b_np, dtype=ctx.dtype if hasattr(ctx, "dtype") else jax_dtype)
+        # Re-cast in the active jax dtype.
+        b_arr = ctx.asarray(b_np)
 
         apply_jax = _jax_apply_factory(lambda_)
 
-        def bare_call(b=b_arr_none, mi=maxiter):
+        def bare_call(b=b_arr, mi=maxiter):
             return _jax_cg(apply_jax, b, mi)
 
         # SpaceCore public path uses the same eager apply.
-        op_none = sc.MatrixFreeLinOp(apply_jax, apply_jax, space_none, space_none, ctx_none)
+        op_none = sc.MatrixFreeLinOp(apply_jax, apply_jax, space_none, space_none, ctx)
         op_cheap_apply = _jax_apply_factory(lambda_)
         op_cheap = sc.MatrixFreeLinOp(
-            op_cheap_apply, op_cheap_apply, space_cheap, space_cheap, ctx_cheap
+            op_cheap_apply, op_cheap_apply, space_cheap, space_cheap, ctx
         )
 
-        def sc_none_call(op=op_none, b=b_arr_none, mi=maxiter):
+        def sc_none_call(op=op_none, b=b_arr, mi=maxiter):
             return sc.cg(op, b, maxiter=mi, tol=0.0, atol=0.0)
 
-        def sc_cheap_call(op=op_cheap, b=b_arr_cheap, mi=maxiter):
+        def sc_cheap_call(op=op_cheap, b=b_arr, mi=maxiter):
             return sc.cg(op, b, maxiter=mi, tol=0.0, atol=0.0)
 
         # Lowered: jit the apply so each matvec is a fused kernel.
@@ -291,10 +288,10 @@ def _factory(backend: str, device: str, seed: int, size_params: dict[str, Any]) 
         # to time the first call; the runner already separates that. Here we
         # let it count compile cost as compile_time_ns on the lowered mode.
         op_lowered = sc.MatrixFreeLinOp(
-            jit_apply, jit_apply, space_none, space_none, ctx_none
+            jit_apply, jit_apply, space_none, space_none, ctx
         )
 
-        def sc_lowered_call(op=op_lowered, b=b_arr_none, mi=maxiter):
+        def sc_lowered_call(op=op_lowered, b=b_arr, mi=maxiter):
             return sc.cg(op, b, maxiter=mi, tol=0.0, atol=0.0)
 
         mode_callables["bare"] = bare_call
@@ -304,23 +301,22 @@ def _factory(backend: str, device: str, seed: int, size_params: dict[str, Any]) 
 
     elif backend == "torch":
 
-        b_arr_none = ctx_none.asarray(b_np)
-        b_arr_cheap = ctx_cheap.asarray(b_np)
+        b_arr = ctx.asarray(b_np)
 
         bare_apply = _torch_apply_factory(lambda_)
 
-        def bare_call(b=b_arr_none, mi=maxiter):
+        def bare_call(b=b_arr, mi=maxiter):
             return _torch_cg(bare_apply, b, mi)
 
         apply_none = _torch_apply_factory(lambda_)
         apply_cheap = _torch_apply_factory(lambda_)
-        op_none = sc.MatrixFreeLinOp(apply_none, apply_none, space_none, space_none, ctx_none)
-        op_cheap = sc.MatrixFreeLinOp(apply_cheap, apply_cheap, space_cheap, space_cheap, ctx_cheap)
+        op_none = sc.MatrixFreeLinOp(apply_none, apply_none, space_none, space_none, ctx)
+        op_cheap = sc.MatrixFreeLinOp(apply_cheap, apply_cheap, space_cheap, space_cheap, ctx)
 
-        def sc_none_call(op=op_none, b=b_arr_none, mi=maxiter):
+        def sc_none_call(op=op_none, b=b_arr, mi=maxiter):
             return sc.cg(op, b, maxiter=mi, tol=0.0, atol=0.0)
 
-        def sc_cheap_call(op=op_cheap, b=b_arr_cheap, mi=maxiter):
+        def sc_cheap_call(op=op_cheap, b=b_arr, mi=maxiter):
             return sc.cg(op, b, maxiter=mi, tol=0.0, atol=0.0)
 
         mode_callables["bare"] = bare_call

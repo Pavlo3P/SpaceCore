@@ -23,14 +23,15 @@ def _problem(n=16, m=24, lam=1e-2, seed=3):
 
 
 def _spaces(M, x_weights, y_weights):
-    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="standard")
-    X = sc.DenseVectorSpace(
-        (M.shape[1],), ctx, geometry=sc.WeightedInnerProduct(ctx.asarray(x_weights))
-    )
-    Y = sc.DenseVectorSpace(
-        (M.shape[0],), ctx, geometry=sc.WeightedInnerProduct(ctx.asarray(y_weights))
-    )
-    A = sc.DenseLinOp(ctx.asarray(M), X, Y, ctx)
+    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    with sc.use_check_level("standard"):
+        X = sc.DenseVectorSpace(
+            (M.shape[1],), ctx, geometry=sc.WeightedInnerProduct(ctx.asarray(x_weights))
+        )
+        Y = sc.DenseVectorSpace(
+            (M.shape[0],), ctx, geometry=sc.WeightedInnerProduct(ctx.asarray(y_weights))
+        )
+        A = sc.DenseLinOp(ctx.asarray(M), X, Y, ctx)
     return ctx, X, Y, A
 
 

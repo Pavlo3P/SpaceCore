@@ -115,6 +115,7 @@ def main(argv: list[str] | None = None) -> int:
 
     micro_rows = []
     macro_rows = []
+    run_meta = None
     for raw in args.input:
         path = Path(raw)
         if not path.exists():
@@ -125,6 +126,8 @@ def main(argv: list[str] | None = None) -> int:
         except json.JSONDecodeError as err:
             print(f"failed to parse {path}: {err}", file=sys.stderr)
             return 2
+        if run_meta is None and isinstance(payload, dict) and payload.get("meta"):
+            run_meta = payload["meta"]
         kind = _classify_payload(payload)
         if kind == "micro":
             micro_rows.extend(_load_micro(path))
@@ -144,7 +147,7 @@ def main(argv: list[str] | None = None) -> int:
     out_path = render_dashboard(
         micro_rows,
         args.out,
-        macro_results=macro_rows or None,
+        meta=run_meta,
     )
     print(f"wrote {out_path}")
     if args.open:

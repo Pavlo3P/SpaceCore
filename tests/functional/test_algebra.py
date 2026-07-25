@@ -85,10 +85,10 @@ class TestScaled:
     def test_complex_scalar_conjugates_gradient(self):
         # Riesz gradient of a*F is conj(a)*grad(F): the inner product conjugates
         # its first argument, so <grad(aF), h> must recover a * <grad(F), h>.
-        ctx = sc.Context(sc.NumpyOps(), dtype=np.complex128, check_level="standard")
-        X = sc.DenseCoordinateSpace((3,), ctx)
+        ctx = sc.Context(sc.NumpyOps(), dtype=np.complex128)
+        X = sc.DenseCoordinateSpace((3,), ctx, check_level="standard")
         c = ctx.asarray([1 + 1j, 2 - 0.5j, -1 + 0.3j])
-        F = sc.InnerProductFunctional(c, X, ctx)
+        F = sc.InnerProductFunctional(c, X, ctx, check_level="standard")
         a = 2 + 3j
         x = ctx.asarray([0.5 - 1j, 1 + 0j, -2 + 0.5j])
         h = ctx.asarray([1 + 0j, 0 + 1j, 0.5 - 0.5j])

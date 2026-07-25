@@ -12,8 +12,11 @@ from ..base import (
 )
 from ._tree_space import TreeSpace, _space_capabilities
 from ..._checks import checked_method
-from ..._contextual import resolve_context_priority
-from ...backend import BackendOps, Context, jax_pytree_class
+from ..._check_policy import CheckLevel
+from ...contextual import resolve_context_priority
+from ...contextual import Context
+from ...backend import BackendOps
+from ...backend import PyTreeNode
 from ...types import DenseArray
 from ..checks import BackendCheck, DTypeCheck, FieldCheck, ShapeCheck
 
@@ -67,8 +70,7 @@ def _require_base(base: Space, capability: type, owner: str) -> None:
         )
 
 
-@jax_pytree_class
-class StackedSpace(CoordinateSpace):
+class StackedSpace(PyTreeNode, CoordinateSpace):
     """
     Leading-axis copies of a coordinate leaf space.
 
@@ -85,9 +87,20 @@ class StackedSpace(CoordinateSpace):
     ctx : Context, str, or None, optional
         Context specification. If omitted, the context is resolved from
         ``base``.
+    check_level : {"none", "cheap", "standard", "strict"}, optional
+        Runtime validation policy for this object. When omitted, the ambient
+        default (see :func:`spacecore.get_check_level`) is used. Unlike the
+        backend/dtype context, the validation policy is a property of the bound
+        object, not of the :class:`Context`.
     """
 
-    def __new__(cls, base: Space, count: int, ctx: Context | str | None = None):
+    def __new__(
+        cls,
+        base: Space,
+        count: int,
+        ctx: Context | str | None = None,
+        check_level: CheckLevel | bool | None = None,
+    ):
         if cls is StackedSpace:
             base = _validate_stacked_base(base)
             _validate_count(count)
@@ -95,13 +108,21 @@ class StackedSpace(CoordinateSpace):
             cls = _stacked_class_for(_stacked_capabilities(base.convert(resolved_ctx)))
         return super(StackedSpace, cls).__new__(cls)
 
-    def __init__(self, base: Space, count: int, ctx: Context | str | None = None) -> None:
+    def __init__(
+        self,
+        base: Space,
+        count: int,
+        ctx: Context | str | None = None,
+        check_level: CheckLevel | bool | None = None,
+    ) -> None:
         base = _validate_stacked_base(base, type(self).__name__)
         count = _validate_count(count, type(self).__name__)
         ctx = resolve_context_priority(ctx, base)
         self.base = base.convert(ctx)
         self.count = count
-        super().__init__((self.count,) + tuple(self.base.shape), ctx)
+        super().__init__(
+            (self.count,) + tuple(self.base.shape), ctx, check_level=check_level
+        )
 
     def _eq_algebra(self, other: Any) -> bool:
         # Tier 2: count + base. ``base == other.base`` is load-bearing — the
@@ -338,37 +359,33 @@ class _StackedJordanMixin:
         return self.ops.broadcast_to(base.unit(), self.shape)
 
 
-@jax_pytree_class
 class _StackedInnerProductSpace(_StackedInnerProductMixin, StackedSpace, InnerProductSpace):
     """Stacked space whose base supports an inner product."""
 
-    def __init__(self, base, count, ctx=None):
+    def __init__(self, base, count, ctx=None, check_level=None):
         base = _validate_stacked_base(base, type(self).__name__)
         _require_base(base, InnerProductSpace, type(self).__name__)
-        super().__init__(base, count, ctx)
+        super().__init__(base, count, ctx, check_level=check_level)
 
 
-@jax_pytree_class
 class _StackedStarSpace(_StackedStarMixin, StackedSpace, StarSpace):
     """Stacked space whose base supports a star operation."""
 
-    def __init__(self, base, count, ctx=None):
+    def __init__(self, base, count, ctx=None, check_level=None):
         base = _validate_stacked_base(base, type(self).__name__)
         _require_base(base, StarSpace, type(self).__name__)
-        super().__init__(base, count, ctx)
+        super().__init__(base, count, ctx, check_level=check_level)
 
 
-@jax_pytree_class
 class _StackedJordanAlgebraSpace(_StackedJordanMixin, StackedSpace, JordanAlgebraSpace):
     """Stacked space whose base supports Jordan algebra operations."""
 
-    def __init__(self, base, count, ctx=None):
+    def __init__(self, base, count, ctx=None, check_level=None):
         base = _validate_stacked_base(base, type(self).__name__)
         _require_base(base, JordanAlgebraSpace, type(self).__name__)
-        super().__init__(base, count, ctx)
+        super().__init__(base, count, ctx, check_level=check_level)
 
 
-@jax_pytree_class
 class _StackedEuclideanJordanAlgebraSpace(
     _StackedInnerProductMixin,
     _StackedJordanMixin,
@@ -377,14 +394,13 @@ class _StackedEuclideanJordanAlgebraSpace(
 ):
     """Stacked space whose base supports Euclidean Jordan algebra operations."""
 
-    def __init__(self, base, count, ctx=None):
+    def __init__(self, base, count, ctx=None, check_level=None):
         base = _validate_stacked_base(base, type(self).__name__)
         _require_base(base, EuclideanJordanAlgebraSpace, type(self).__name__)
-        super().__init__(base, count, ctx)
+        super().__init__(base, count, ctx, check_level=check_level)
         _require_base(self.base, EuclideanJordanAlgebraSpace, type(self).__name__)
 
 
-@jax_pytree_class
 class _StackedInnerProductStarSpace(
     _StackedInnerProductMixin,
     _StackedStarMixin,
@@ -395,7 +411,6 @@ class _StackedInnerProductStarSpace(
     """Stacked implementation for inner-product plus star capability."""
 
 
-@jax_pytree_class
 class _StackedInnerProductJordanSpace(
     _StackedInnerProductMixin,
     _StackedJordanMixin,
@@ -406,7 +421,6 @@ class _StackedInnerProductJordanSpace(
     """Stacked implementation for inner-product plus Jordan capability."""
 
 
-@jax_pytree_class
 class _StackedStarJordanSpace(
     _StackedStarMixin,
     _StackedJordanMixin,
@@ -417,7 +431,6 @@ class _StackedStarJordanSpace(
     """Stacked implementation for star plus Jordan capability."""
 
 
-@jax_pytree_class
 class _StackedInnerProductStarJordanSpace(
     _StackedInnerProductMixin,
     _StackedStarMixin,
@@ -430,7 +443,6 @@ class _StackedInnerProductStarJordanSpace(
     """Stacked implementation for inner-product, star, and Jordan capability."""
 
 
-@jax_pytree_class
 class _StackedEuclideanJordanStarSpace(
     _StackedStarMixin,
     _StackedEuclideanJordanAlgebraSpace,

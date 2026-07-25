@@ -1,40 +1,54 @@
+"""Behavioral tests for what each ``check_level`` actually enforces.
+
+Drives real spaces, linear operators, functionals, and solvers to pin which
+invariants each level (``none``/``cheap``/``standard``/``strict``) checks or
+skips end-to-end. The level is a property of the context-bound object, so every
+case sets it through the object's ``check_level=`` keyword rather than through
+the :class:`spacecore.Context`.
+
+Book justification: ``check_level`` is a *contract* about which invariants are
+enforced, so it is tested as a contract rather than by inspecting internals
+(Hunt & Thomas, *The Pragmatic Programmer*, tip 37). Strict levels must assert
+states believed impossible while lenient levels must not — assertive
+programming / fail-fast (same source, tips 38-39; Ousterhout, *A Philosophy of
+Software Design*, "when to crash"). Numerical precision is treated as part of
+correctness across levels (Irving et al., *Research Software Engineering with
+Python*).
+"""
 import numpy as np
 import pytest
 
 import spacecore as sc
+from spacecore._check_policy import normalize_check_level
 
 
-def _ctx(level: sc.CheckLevel, dtype=np.float64) -> sc.Context:
-    return sc.Context(sc.NumpyOps(), dtype=dtype, check_level=level)
+def _ctx(dtype=np.float64) -> sc.Context:
+    return sc.Context(sc.NumpyOps(), dtype=dtype)
 
 
 def test_check_level_public_api_and_legacy_mapping():
+    ctx = _ctx()
+
     assert sc.CHECK_LEVELS == ("none", "cheap", "standard", "strict")
-    assert sc.Context(sc.NumpyOps()).check_level == "standard"
-    assert sc.Context(sc.NumpyOps(), check_level="cheap").check_level == "cheap"
-    assert sc.normalize_context("numpy", check_level="strict").check_level == "strict"
+    assert sc.DenseCoordinateSpace((2,), ctx).check_level == "standard"
+    assert sc.DenseCoordinateSpace((2,), ctx, check_level="cheap").check_level == "cheap"
+    assert sc.DenseCoordinateSpace((2,), ctx, check_level="strict").check_level == "strict"
 
+    assert normalize_check_level(enable_checks=True) == "standard"
+    assert normalize_check_level(enable_checks=False) == "none"
     with pytest.warns(DeprecationWarning, match="enable_checks"):
-        checked = sc.Context(sc.NumpyOps(), enable_checks=True)
-    with pytest.warns(DeprecationWarning, match="enable_checks"):
-        unchecked = sc.Context(sc.NumpyOps(), enable_checks=False)
-
-    assert checked.check_level == "standard"
-    assert checked.enable_checks is True
-    assert unchecked.check_level == "none"
-    assert unchecked.enable_checks is False
+        assert normalize_check_level(enable_checks=True, warn_legacy=True) == "standard"
 
     with pytest.raises(TypeError, match="either check_level or enable_checks"):
-        sc.Context(sc.NumpyOps(), enable_checks=True, check_level="strict")
+        normalize_check_level("strict", enable_checks=True)
     with pytest.raises(ValueError, match="Unknown check_level"):
-        sc.Context(sc.NumpyOps(), check_level="fast")
+        normalize_check_level("fast")
 
 
-def test_inferred_context_uses_the_least_expensive_source_level():
-    strict_ctx = _ctx("strict")
-    cheap_ctx = _ctx("cheap")
-    strict_space = sc.DenseCoordinateSpace((1,), strict_ctx)
-    cheap_space = sc.DenseCoordinateSpace((1,), cheap_ctx)
+def test_derived_object_uses_the_least_expensive_source_level():
+    ctx = _ctx()
+    strict_space = sc.DenseCoordinateSpace((1,), ctx, check_level="strict")
+    cheap_space = sc.DenseCoordinateSpace((1,), ctx, check_level="cheap")
 
     product = sc.TreeSpace.from_leaf_spaces((strict_space, cheap_space))
 
@@ -42,9 +56,9 @@ def test_inferred_context_uses_the_least_expensive_source_level():
 
 
 def test_none_skips_optional_space_linop_and_batched_checks():
-    ctx = _ctx("none")
-    space = sc.DenseCoordinateSpace((2,), ctx)
-    identity = sc.IdentityLinOp(space, ctx)
+    ctx = _ctx()
+    space = sc.DenseCoordinateSpace((2,), ctx, check_level="none")
+    identity = sc.IdentityLinOp(space, ctx, check_level="none")
     invalid = ctx.asarray([1.0, 2.0, 3.0])
     invalid_batch = ctx.asarray([[1.0, 2.0, 3.0]])
 
@@ -54,8 +68,8 @@ def test_none_skips_optional_space_linop_and_batched_checks():
 
 
 def test_cheap_checks_shape_dtype_backend_and_tree_structure_only():
-    ctx = _ctx("cheap", np.float32)
-    vector = sc.DenseCoordinateSpace((2,), ctx)
+    ctx = _ctx(np.float32)
+    vector = sc.DenseCoordinateSpace((2,), ctx, check_level="cheap")
 
     with pytest.raises(sc.SpaceValidationError, match="Expected shape"):
         vector.check_member(np.asarray([1.0, 2.0, 3.0], dtype=np.float32))
@@ -71,21 +85,20 @@ def test_cheap_checks_shape_dtype_backend_and_tree_structure_only():
 
 
 def test_standard_adds_recursive_and_hermitian_membership():
-    ctx = _ctx("standard")
-    vector = sc.DenseCoordinateSpace((2,), ctx)
+    ctx = _ctx()
+    vector = sc.DenseCoordinateSpace((2,), ctx, check_level="standard")
     product = sc.TreeSpace.from_leaf_spaces((vector, vector), ctx)
 
     with pytest.raises(sc.SpaceValidationError, match=r"\$\[0\]"):
         product.check_member((ctx.asarray([1.0]), ctx.asarray([2.0, 3.0])))
 
-    hermitian = sc.HermitianSpace(2, ctx=ctx)
+    hermitian = sc.HermitianSpace(2, ctx=ctx, check_level="standard")
     with pytest.raises(sc.SpaceValidationError, match="not Hermitian"):
         hermitian.check_member(ctx.asarray([[1.0, 2.0], [0.0, 1.0]]))
 
-    cheap_ctx = _ctx("cheap")
-    cheap_hermitian = sc.HermitianSpace(2, ctx=cheap_ctx)
-    cheap_product = sc.TreeSpace.from_leaf_spaces((cheap_hermitian,), cheap_ctx)
-    cheap_product.check_member((cheap_ctx.asarray([[1.0, 2.0], [0.0, 1.0]]),))
+    cheap_hermitian = sc.HermitianSpace(2, ctx=ctx, check_level="cheap")
+    cheap_product = sc.TreeSpace.from_leaf_spaces((cheap_hermitian,), ctx)
+    cheap_product.check_member((ctx.asarray([[1.0, 2.0], [0.0, 1.0]]),))
 
     standard_product = sc.TreeSpace.from_leaf_spaces((hermitian,), ctx)
     with pytest.raises(sc.SpaceValidationError, match=r"\$\[0\].*not Hermitian"):
@@ -93,9 +106,9 @@ def test_standard_adds_recursive_and_hermitian_membership():
 
 
 def test_checked_method_and_batched_validation_follow_cheap_policy():
-    ctx = _ctx("cheap")
-    space = sc.DenseCoordinateSpace((2,), ctx)
-    identity = sc.IdentityLinOp(space, ctx)
+    ctx = _ctx()
+    space = sc.DenseCoordinateSpace((2,), ctx, check_level="cheap")
+    identity = sc.IdentityLinOp(space, ctx, check_level="cheap")
 
     with pytest.raises(sc.SpaceValidationError, match="Expected shape"):
         identity.apply(ctx.asarray([1.0, 2.0, 3.0]))
@@ -104,52 +117,58 @@ def test_checked_method_and_batched_validation_follow_cheap_policy():
 
 
 def test_functional_scalar_output_shape_is_standard():
-    cheap_ctx = _ctx("cheap")
-    cheap_space = sc.DenseCoordinateSpace((2,), cheap_ctx)
+    ctx = _ctx()
+    cheap_space = sc.DenseCoordinateSpace((2,), ctx, check_level="cheap")
     cheap_functional = sc.MatrixFreeLinearFunctional(
-        lambda _x: cheap_ctx.asarray([1.0]), cheap_space, cheap_ctx
+        lambda _x: ctx.asarray([1.0]), cheap_space, ctx, check_level="cheap"
     )
-    assert cheap_functional.value(cheap_ctx.asarray([1.0, 2.0])).shape == (1,)
+    assert cheap_functional.value(ctx.asarray([1.0, 2.0])).shape == (1,)
 
-    standard_ctx = _ctx("standard")
-    standard_space = sc.DenseCoordinateSpace((2,), standard_ctx)
+    standard_space = sc.DenseCoordinateSpace((2,), ctx, check_level="standard")
     standard_functional = sc.MatrixFreeLinearFunctional(
-        lambda _x: standard_ctx.asarray([1.0]), standard_space, standard_ctx
+        lambda _x: ctx.asarray([1.0]), standard_space, ctx, check_level="standard"
     )
     with pytest.raises(ValueError, match="scalar batch output"):
-        standard_functional.value(standard_ctx.asarray([1.0, 2.0]))
+        standard_functional.value(ctx.asarray([1.0, 2.0]))
 
 
 def test_strict_matrix_free_adjoint_probe_is_strict_only():
-    standard_ctx = _ctx("standard")
-    standard_space = sc.DenseCoordinateSpace((2,), standard_ctx)
+    ctx = _ctx()
+    standard_space = sc.DenseCoordinateSpace((2,), ctx, check_level="standard")
     sc.MatrixFreeLinOp(
         lambda x: x,
-        lambda y: standard_ctx.asarray([0.0, 0.0]),
+        lambda y: ctx.asarray([0.0, 0.0]),
         standard_space,
         standard_space,
-        standard_ctx,
+        ctx,
+        check_level="standard",
     )
 
-    strict_ctx = _ctx("strict")
-    strict_space = sc.DenseCoordinateSpace((2,), strict_ctx)
+    strict_space = sc.DenseCoordinateSpace((2,), ctx, check_level="strict")
     with pytest.raises(ValueError, match="adjoint consistency check failed"):
         sc.MatrixFreeLinOp(
             lambda x: x,
-            lambda y: strict_ctx.asarray([0.0, 0.0]),
+            lambda y: ctx.asarray([0.0, 0.0]),
             strict_space,
             strict_space,
-            strict_ctx,
+            ctx,
+            check_level="strict",
         )
 
 
 def test_strict_matrix_free_coordinate_adjoint_preserves_non_euclidean_metric():
-    ctx = _ctx("strict")
+    ctx = _ctx()
     domain = sc.DenseCoordinateSpace(
-        (2,), ctx, geometry=sc.WeightedInnerProduct(ctx.asarray([2.0, 3.0]))
+        (2,),
+        ctx,
+        geometry=sc.WeightedInnerProduct(ctx.asarray([2.0, 3.0])),
+        check_level="strict",
     )
     codomain = sc.DenseCoordinateSpace(
-        (2,), ctx, geometry=sc.WeightedInnerProduct(ctx.asarray([5.0, 7.0]))
+        (2,),
+        ctx,
+        geometry=sc.WeightedInnerProduct(ctx.asarray([5.0, 7.0])),
+        check_level="strict",
     )
     op = sc.MatrixFreeLinOp.from_coordinate_adjoint(
         lambda x: x,
@@ -164,24 +183,22 @@ def test_strict_matrix_free_coordinate_adjoint_preserves_non_euclidean_metric():
 
 
 def test_linalg_keeps_square_invariant_and_adds_strict_cg_probe():
-    none_ctx = _ctx("none")
-    domain = sc.DenseCoordinateSpace((2,), none_ctx)
-    codomain = sc.DenseCoordinateSpace((3,), none_ctx)
-    rectangular = sc.ZeroLinOp(domain, codomain, none_ctx)
+    ctx = _ctx()
+    domain = sc.DenseCoordinateSpace((2,), ctx, check_level="none")
+    codomain = sc.DenseCoordinateSpace((3,), ctx, check_level="none")
+    rectangular = sc.ZeroLinOp(domain, codomain, ctx, check_level="none")
     with pytest.raises(ValueError, match="square LinOp"):
-        sc.cg(rectangular, none_ctx.asarray([1.0, 1.0, 1.0]), maxiter=0)
+        sc.cg(rectangular, ctx.asarray([1.0, 1.0, 1.0]), maxiter=0)
 
-    standard_ctx = _ctx("standard")
-    standard_space = sc.DenseCoordinateSpace((2,), standard_ctx)
+    standard_space = sc.DenseCoordinateSpace((2,), ctx, check_level="standard")
     standard_negative = sc.DiagonalLinOp(
-        standard_ctx.asarray([-1.0, -1.0]), standard_space, standard_ctx
+        ctx.asarray([-1.0, -1.0]), standard_space, ctx, check_level="standard"
     )
-    sc.cg(standard_negative, standard_ctx.asarray([1.0, 1.0]), maxiter=0)
+    sc.cg(standard_negative, ctx.asarray([1.0, 1.0]), maxiter=0)
 
-    strict_ctx = _ctx("strict")
-    strict_space = sc.DenseCoordinateSpace((2,), strict_ctx)
+    strict_space = sc.DenseCoordinateSpace((2,), ctx, check_level="strict")
     strict_negative = sc.DiagonalLinOp(
-        strict_ctx.asarray([-1.0, -1.0]), strict_space, strict_ctx
+        ctx.asarray([-1.0, -1.0]), strict_space, ctx, check_level="strict"
     )
     with pytest.raises(ValueError, match="positive curvature"):
-        sc.cg(strict_negative, strict_ctx.asarray([1.0, 1.0]), maxiter=0)
+        sc.cg(strict_negative, ctx.asarray([1.0, 1.0]), maxiter=0)

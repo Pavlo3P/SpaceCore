@@ -144,8 +144,8 @@ def test_bare_inputs_are_backend_native(name, backend):
 def test_none_check_level_skips_membership_checks(monkeypatch):
     import spacecore as sc
 
-    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="none")
-    space = sc.DenseCoordinateSpace((3,), ctx)
+    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    space = sc.DenseCoordinateSpace((3,), ctx, check_level="none")
     monkeypatch.setattr(
         space,
         "_check_member",
@@ -158,8 +158,8 @@ def test_none_check_level_skips_membership_checks(monkeypatch):
 def test_checked_space_methods_match_unchecked_cores():
     import spacecore as sc
 
-    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="cheap")
-    space = sc.DenseCoordinateSpace((3,), ctx)
+    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    space = sc.DenseCoordinateSpace((3,), ctx, check_level="cheap")
     x = ctx.asarray([1.0, 2.0, 3.0])
     y = ctx.asarray([4.0, 5.0, 6.0])
     np.testing.assert_allclose(space.add(x, y), space._add_core(x, y))
@@ -170,8 +170,8 @@ def test_checked_space_methods_match_unchecked_cores():
 def test_checked_dense_linop_methods_match_unchecked_cores():
     import spacecore as sc
 
-    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="cheap")
-    space = sc.DenseCoordinateSpace((2,), ctx)
+    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    space = sc.DenseCoordinateSpace((2,), ctx, check_level="cheap")
     matrix = ctx.asarray([[2.0, 1.0], [0.0, 3.0]])
     op = sc.DenseLinOp(matrix, space, space, ctx)
     x = ctx.asarray([1.0, 2.0])
@@ -554,6 +554,8 @@ def test_run_probes_max_size_can_eliminate_every_case(monkeypatch):
 
 
 def test_run_probes_builds_cases_in_each_declared_check_level(monkeypatch):
+    import spacecore as sc
+
     from bench._operations import _backend_ctx
     from bench._probes import Probe, ProbeCase
     from bench._run import run_probes
@@ -562,7 +564,7 @@ def test_run_probes_builds_cases_in_each_declared_check_level(monkeypatch):
 
     def factory(backend, seed, size):
         ctx = _backend_ctx(backend)
-        built_levels.append(ctx.check_level)
+        built_levels.append(sc.get_check_level())
         x = ctx.asarray([1.0])
         return ProbeCase(
             bare_label="x + x",

@@ -4,6 +4,11 @@ The fixtures here keep tests in this directory from leaking process-wide
 state into one another. The most common leak is :func:`spacecore.set_context`
 mutating the default context; without an explicit reset, a later test sees
 an unexpected default and fails spuriously.
+
+Book justification: ``preserve_default_context`` is a Fresh Fixture with
+automated teardown — the standard remedy for the Erratic Test smell that shared
+process-global state produces, keeping tests independent and order-insensitive
+(Meszaros, *xUnit Test Patterns*).
 """
 from __future__ import annotations
 

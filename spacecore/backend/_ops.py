@@ -59,6 +59,29 @@ class BackendOps(ABC):
         """Whether ``vmap`` is implemented by the backend rather than a Python loop."""
         return False
 
+    @classmethod
+    def install_pytree_protocol(cls) -> None:
+        """Register this backend's tree protocol with the container registry.
+
+        Called once per available backend as it is bound (see
+        :mod:`spacecore.backend`). A backend that implements this teaches its
+        function-transform machinery to see inside SpaceCore containers, so
+        instances can flow through that backend's tracing, batching and
+        differentiation rather than being treated as opaque leaves.
+
+        The default is a no-op, and that is the correct answer for a backend with
+        no transform machinery — NumPy and CuPy have no pytree registry to
+        register with.
+
+        Implementations translate
+        :meth:`~spacecore.backend._container.PyTreeNode.tree_flatten` /
+        ``tree_unflatten`` into whatever shape the backend expects and hand the
+        result to ``spacecore.backend._container.registry.register_backend``. Import the
+        backend's own modules *inside* this method, never at module scope, so an
+        absent or broken dependency cannot break ``import spacecore``.
+        """
+        return
+
     def free_memory_bytes(self) -> int | None:
         """Return currently free device memory in bytes, or ``None`` if unknown.
 

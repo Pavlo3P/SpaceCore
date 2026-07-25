@@ -6,7 +6,7 @@ from typing import Any
 import numpy as np
 import pytest
 
-from spacecore.backend import Context, NumpyOps
+from spacecore import Context, NumpyOps
 
 from ._protocol import GeneratedCase
 
@@ -18,10 +18,8 @@ def _available_case(
     backend: str,
     dtype: Any,
     ops_factory: Callable[[], Any],
-    *,
-    check_level: str,
 ) -> ContextCase:
-    ctx = Context(ops_factory(), dtype=dtype, check_level=check_level)
+    ctx = Context(ops_factory(), dtype=dtype)
     field = "complex" if ctx.ops.is_complex_dtype(ctx.dtype) else "real"
     return GeneratedCase(
         obj=ctx,
@@ -53,7 +51,7 @@ def _dtype_name(dtype: Any) -> str:
     return text.replace(".", "-")
 
 
-def _optional_backend_cases(backend: str, check_level: str) -> tuple[ContextCase, ...]:
+def _optional_backend_cases(backend: str) -> tuple[ContextCase, ...]:
     import spacecore.backend as backend_module
 
     class_name = {"jax": "JaxOps", "torch": "TorchOps", "cupy": "CuPyOps"}[backend]
@@ -72,7 +70,7 @@ def _optional_backend_cases(backend: str, check_level: str) -> tuple[ContextCase
     cases: list[ContextCase] = []
     try:
         for dtype in dtypes:
-            case = _available_case(backend, dtype, ops_type, check_level=check_level)
+            case = _available_case(backend, dtype, ops_type)
             assert case.obj is not None
             case.obj.asarray(np.zeros((1,), dtype=dtype))
             cases.append(case)
@@ -85,16 +83,15 @@ def context_cases(
     *,
     include_optional: bool = True,
     include_unavailable: bool = True,
-    check_level: str = "standard",
 ) -> tuple[ContextCase, ...]:
     """Generate supported backend/dtype contexts with explicit optional-backend skips."""
     cases: list[ContextCase] = [
-        _available_case("numpy", np.float64, NumpyOps, check_level=check_level),
-        _available_case("numpy", np.complex128, NumpyOps, check_level=check_level),
+        _available_case("numpy", np.float64, NumpyOps),
+        _available_case("numpy", np.complex128, NumpyOps),
     ]
     if include_optional:
         for backend in ("jax", "torch", "cupy"):
-            optional = _optional_backend_cases(backend, check_level)
+            optional = _optional_backend_cases(backend)
             if include_unavailable:
                 cases.extend(optional)
             else:
