@@ -164,12 +164,24 @@ def _require_step(t: float, fname: str) -> float:
     return float(t)
 
 
-def prox_l1(v: Any, t: Any, X: Any) -> Any:
+def prox_l1(v: Any, t: Any, X: Any, *, nonneg: bool = False) -> Any:
     r"""
     Proximal operator of ``t * ||.||_1`` in the space metric (soft-threshold).
 
     Returns ``argmin_x  1/2 ||x - v||^2_X + t ||x||_1``, i.e. the metric-aware
     soft-threshold with per-coordinate width ``t / w_i`` on a diagonal metric.
+
+    With ``nonneg=True`` the minimization is additionally constrained to
+    ``x >= 0``, giving ``argmin_{x >= 0} 1/2 ||x - v||^2_X + t ||x||_1``. On the
+    nonnegative orthant ``||x||_1 = sum_i x_i`` is *linear*, so the subproblem
+    ``1/2 w_i (x_i - v_i)^2 + t x_i`` has the one-sided solution
+    ``max(v_i - t / w_i, 0)`` — derived without the sign/absolute-value form of
+    the unconstrained soft-threshold. The two nevertheless agree numerically:
+    clipping the symmetric threshold at zero gives the same result for every
+    ``t >= 0`` (for ``v_i <= 0`` both are ``0``; for ``v_i > 0`` the symmetric
+    form already reduces to ``max(v_i - t / w_i, 0)``). The equality is pinned by
+    a test rather than relied on, since it does not hold for proximal operators
+    in general.
 
     Parameters
     ----------
@@ -179,6 +191,9 @@ def prox_l1(v: Any, t: Any, X: Any) -> Any:
         Nonnegative threshold / step size.
     X : Space
         Ambient inner-product space (Euclidean or diagonal metric).
+    nonneg : bool, optional
+        Constrain the solution to ``x >= 0`` (real spaces only). Default
+        ``False``. With ``t = 0`` this degenerates to :func:`project_nonneg`.
 
     Returns
     -------
@@ -188,10 +203,10 @@ def prox_l1(v: Any, t: Any, X: Any) -> Any:
     t = _require_step(t, "prox_l1")
     v = X.ctx.asarray(v)
     _require_member_shape(X, v, "v", "prox_l1")
-    return generalized_shrinkage(X, c=X.zeros(), x0=v, eps=0.5, lam=t)
+    return generalized_shrinkage(X, c=X.zeros(), x0=v, eps=0.5, lam=t, nonneg=nonneg)
 
 
-def prox_l2sq(v: Any, t: Any, X: Any) -> Any:
+def prox_l2sq(v: Any, t: Any, X: Any, *, nonneg: bool = False) -> Any:
     r"""
     Proximal operator of ``t * (1/2) ||.||_X^2`` (linear shrinkage ``v / (1 + t)``).
 
@@ -201,6 +216,11 @@ def prox_l2sq(v: Any, t: Any, X: Any) -> Any:
     minimizer of ``<-v, x>_X + ((1 + t)/2) ||x||^2_X``, i.e.
     ``generalized_shrinkage`` with ``c = -v``, ``x0 = 0`` and ``eps = (1 + t)/2``.
 
+    With ``nonneg=True`` the minimization is constrained to ``x >= 0``. The
+    objective is separable and strictly convex, so the constrained minimizer is
+    the unconstrained one clipped coordinatewise:
+    ``max(v_i / (1 + t), 0) = max(v_i, 0) / (1 + t)`` since ``1 + t > 0``.
+
     Parameters
     ----------
     v : array-like
@@ -209,6 +229,9 @@ def prox_l2sq(v: Any, t: Any, X: Any) -> Any:
         Nonnegative step size.
     X : Space
         Ambient inner-product space (Euclidean or diagonal metric).
+    nonneg : bool, optional
+        Constrain the solution to ``x >= 0`` (real spaces only). Default
+        ``False``. With ``t = 0`` this degenerates to :func:`project_nonneg`.
 
     Returns
     -------
@@ -218,7 +241,9 @@ def prox_l2sq(v: Any, t: Any, X: Any) -> Any:
     t = _require_step(t, "prox_l2sq")
     v = X.ctx.asarray(v)
     _require_member_shape(X, v, "v", "prox_l2sq")
-    return generalized_shrinkage(X, c=-v, x0=X.zeros(), eps=0.5 * (1.0 + t), lam=0.0)
+    return generalized_shrinkage(
+        X, c=-v, x0=X.zeros(), eps=0.5 * (1.0 + t), lam=0.0, nonneg=nonneg
+    )
 
 
 def project_nonneg(v: Any, X: Any) -> Any:

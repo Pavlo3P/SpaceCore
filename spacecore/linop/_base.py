@@ -129,7 +129,16 @@ class LinOp(PyTreeNode, ContextBound, Generic[Domain, Codomain]):
 
     @abstractmethod
     def rapply(self, y: Any) -> Any:
-        """Apply the adjoint map to an element of ``self.codomain``."""
+        r"""Apply the adjoint map to an element of ``self.codomain``.
+
+        This is the **Hilbert-space adjoint** ``A^#``, defined by
+        ``<Ax, y>_Y = <x, A^# y>_X`` (Dunford-Schwartz, *Linear Operators I*,
+        Definition VI.2.9) -- *not* the Banach adjoint of Definition VI.2.1,
+        which maps ``Y^* -> X^*`` and is the coordinate transpose. The two
+        coincide only when both spaces are Euclidean. See
+        :func:`spacecore.linop._metric.metric_rapply` for the derivation and
+        the full reference block.
+        """
 
     def _apply_core(self, x: Any) -> Any:
         """Apply without adding validation beyond the concrete implementation."""
@@ -152,7 +161,11 @@ class LinOp(PyTreeNode, ContextBound, Generic[Domain, Codomain]):
         return self.apply(x)
 
     def adjoint_apply(self, y: Any) -> Any:
-        """Apply the adjoint of this linear operator to ``y``."""
+        """Apply the adjoint of this linear operator to ``y``.
+
+        Spelled-out alias for :meth:`rapply`; the same Definition VI.2.9
+        adjoint, not a second notion.
+        """
         return self.rapply(y)
 
     def is_hermitian(self) -> bool | None:

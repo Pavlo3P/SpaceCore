@@ -1,6 +1,6 @@
 """Tests for :class:`spacecore.LinOpQuadraticForm`.
 
-Checklist section 7, ``LinOpQuadraticForm``:
+Contract specified here:
 
 * Construction guards: ``Q`` must be a square ``LinOp``, ``linear`` a
   ``LinearFunctional`` on ``Q.domain``, ``a`` scalar, ``Q`` Hermitian.

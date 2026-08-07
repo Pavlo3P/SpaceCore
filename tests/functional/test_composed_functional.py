@@ -1,6 +1,6 @@
 """Tests for :class:`spacecore.ComposedFunctional` and ``make_functional_composed``.
 
-Checklist section 7, ``ComposedFunctional`` / ``make_functional_composed``:
+Contract specified here:
 
 * ``make_functional_composed`` specializes by type:
   ``InnerProductFunctional ∘ A`` -> ``InnerProductFunctional``,

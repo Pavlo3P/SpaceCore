@@ -430,7 +430,7 @@ def _algebra_case(
     gradient: np.ndarray,
     id_stub: str,
 ) -> FunctionalCase:
-    """Build a euclidean case for a lazy functional-algebra node (W4).
+    """Build a euclidean case for a lazy functional-algebra node.
 
     ``build(base, domain, ctx)`` returns the algebra functional wrapping the
     linear ``base`` (whose Riesz gradient is its representer). Euclidean geometry
@@ -463,7 +463,7 @@ def _algebra_case(
 def _algebra_cases(dtype: Any, check_level: sc.CheckLevel | str) -> tuple[FunctionalCase, ...]:
     """Generated cases for the functional-algebra nodes.
 
-    Covers Scaled/Sum/Shifted/Zero (W4) plus the multiplicative nodes
+    Covers Scaled/Sum/Shifted/Zero plus the multiplicative nodes
     Constant/Product.
     """
     c2 = np.asarray([0.5, -0.25, 1.0], dtype=dtype)

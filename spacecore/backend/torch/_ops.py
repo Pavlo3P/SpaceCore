@@ -499,7 +499,10 @@ class TorchOps(EagerControlFlowMixin, BackendOps):
             raise TypeError("eigh requires a dense array; sparse input is not supported.")
         kwargs = {} if backend_kwargs is None else dict(backend_kwargs)
         kwargs.update(self._defined_kwargs(out=out))
-        return self.torch.linalg.eigh(x, UPLO=UPLO, **kwargs)
+        eigenvalues, eigenvectors = self.torch.linalg.eigh(x, UPLO=UPLO, **kwargs)
+        # Same ordering/gauge normalization as the neutral method: Torch's raw
+        # complex Hermitian eigenvectors come back as -1 times NumPy's and JAX's.
+        return self._order_eigenpairs(eigenvalues, eigenvectors)
 
     def norm(
         self,
@@ -519,6 +522,14 @@ class TorchOps(EagerControlFlowMixin, BackendOps):
             dtype=self.sanitize_dtype(dtype) if dtype is not None else None,
             out=out,
         )
+
+    def diagonal(self, x: DenseArray) -> DenseArray:
+        # torch.diagonal spells the axes dim1/dim2; same trailing-two-axes
+        # convention as the neutral method.
+        return self.torch.diagonal(x, dim1=-2, dim2=-1)
+
+    def _take_along_axis(self, x: DenseArray, indices: DenseArray, axis: int) -> DenseArray:
+        return self.torch.take_along_dim(x, indices, dim=axis)
 
     def solve(
         self,
@@ -544,7 +555,8 @@ class TorchOps(EagerControlFlowMixin, BackendOps):
     ) -> tuple[DenseArray, DenseArray, DenseArray]:
         kwargs = {} if backend_kwargs is None else dict(backend_kwargs)
         kwargs.update(self._defined_kwargs(driver=driver, out=out))
-        return self.torch.linalg.svd(A, full_matrices=full_matrices, **kwargs)
+        U, s, Vh = self.torch.linalg.svd(A, full_matrices=full_matrices, **kwargs)
+        return self._order_svd(U, s, Vh)
 
     def cholesky(
         self,

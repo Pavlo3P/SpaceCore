@@ -58,11 +58,19 @@ class CoordinateSpace(VectorSpace):
 
     @abstractmethod
     def flatten(self, x: Any) -> DenseArray:
-        """Return a dense one-dimensional coordinate vector."""
+        """Return a dense one-dimensional coordinate vector, in **C order**.
+
+        C order (row-major, last axis varying fastest) is SpaceCore's declared
+        vec convention on every backend -- see the flattening-order note in
+        :mod:`spacecore.backend._ops`. It is what makes ``to_matrix`` and
+        ``flatten`` compose: ``to_matrix() @ flatten(x) == flatten(A.apply(x))``
+        holds only for a consistent choice, and the Kronecker identities in
+        ``kernels/`` assume this one.
+        """
 
     @abstractmethod
     def unflatten(self, v: DenseArray) -> Any:
-        """Inverse of flatten."""
+        """Inverse of flatten, in the same C order."""
 
     def flatten_batch(self, xs: Any) -> DenseArray:
         """Flatten a leading-axis batch of space elements to shape ``(N, size)``."""

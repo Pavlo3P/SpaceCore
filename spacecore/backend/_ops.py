@@ -320,6 +320,29 @@ class BackendOps(ABC):
             return axis
         return tuple(axis)
 
+    def _as_array(self, x: Any) -> DenseArray:
+        """Return ``x`` as a backend array, promoting a host scalar to 0-d.
+
+        SpaceCore's convention is that every array-valued method returns a
+        backend *array*, never a host scalar. NumPy (and CuPy) reductions
+        return ``np.float64``-style scalars for which :meth:`is_array` is
+        False and :meth:`get_dtype` raises; JAX and Torch already return 0-d
+        arrays. Wrapping here makes the four backends agree.
+
+        The ``is_array`` guard keeps this free on backends that never produce
+        host scalars, and keeps JAX tracers (which are ``jax.Array``
+        instances) untouched, so the call is safe inside ``jit``.
+        """
+        return x if self.is_array(x) else self.xp.asarray(x)
+
+    def _take_along_axis(self, x: DenseArray, indices: DenseArray, axis: int) -> DenseArray:
+        """Gather along ``axis`` using per-position ``indices``.
+
+        Used by the spectral-ordering normalization. Torch spells this
+        ``take_along_dim`` and overrides this method.
+        """
+        return self.xp.take_along_axis(x, indices, axis=axis)
+
     def _permute_dims(self, x: DenseArray, axes: Sequence[int]) -> DenseArray:
         axes = tuple(axes)
         if hasattr(self.xp, "permute_dims"):
@@ -536,14 +559,30 @@ class BackendOps(ABC):
         """Create an identity-like matrix (delegates to xp.eye)."""
         return self.xp.eye(n, m, dtype=self._dtype_arg(dtype))
 
+    # -- Flattening order --------------------------------------------------
+    #
+    # SpaceCore flattens in **C order** (row-major: the last axis varies
+    # fastest), on every backend, always. This is the vec convention that the
+    # coordinate layer is built on -- ``CoordinateSpace.flatten``,
+    # ``LinOp.to_matrix``, and the Kronecker identities in ``kernels/`` all
+    # assume it, and vec(A x) = (I ⊗ A) vec(x) rather than (Aᵀ ⊗ I) is exactly
+    # this choice. It is a *declared* convention rather than a forwarded
+    # ``order=`` argument because Torch has no Fortran-order reshape at all:
+    # offering the parameter would mean offering it on three backends of four.
+    #
+    # The order is over *index* positions, not memory layout, so it is
+    # unaffected by whether the input is C-contiguous, Fortran-contiguous, or
+    # a non-contiguous view -- a transposed array flattens by its logical
+    # index order, not its buffer.
+
     def ravel(self, x: DenseArray) -> DenseArray:
-        """Flatten x to one dimension."""
+        """Flatten x to one dimension in C order (last axis varies fastest)."""
         if hasattr(self.xp, "ravel"):
             return self.xp.ravel(x)
         return self.reshape(x, (-1,))
 
     def reshape(self, x: DenseArray, shape: Tuple[int, ...] | int) -> DenseArray:
-        """Reshape x (delegates to xp.reshape)."""
+        """Reshape x in C order (delegates to xp.reshape; see the note above)."""
         shape_arg = (shape,) if isinstance(shape, int) else shape
         return self.xp.reshape(x, shape_arg)
 
@@ -823,12 +862,14 @@ class BackendOps(ABC):
         keepdims: bool = False,
         dtype: DType | None = None,
     ) -> DenseArray:
-        """Sum over given axes (delegates to xp.sum)."""
-        return self.xp.sum(
-            x,
-            axis=self._to_axis_tuple(axis),
-            dtype=self._dtype_arg(dtype),
-            keepdims=keepdims,
+        """Sum over given axes (delegates to xp.sum). Returns a 0-d array when total."""
+        return self._as_array(
+            self.xp.sum(
+                x,
+                axis=self._to_axis_tuple(axis),
+                dtype=self._dtype_arg(dtype),
+                keepdims=keepdims,
+            )
         )
 
     def mean(
@@ -837,8 +878,8 @@ class BackendOps(ABC):
         axis: int | Sequence[int] | None = None,
         keepdims: bool = False,
     ) -> DenseArray:
-        """Mean over given axes (delegates to xp.mean)."""
-        return self.xp.mean(x, axis=self._to_axis_tuple(axis), keepdims=keepdims)
+        """Mean over given axes (delegates to xp.mean). Returns a 0-d array when total."""
+        return self._as_array(self.xp.mean(x, axis=self._to_axis_tuple(axis), keepdims=keepdims))
 
     def min(
         self,
@@ -846,8 +887,8 @@ class BackendOps(ABC):
         axis: int | Sequence[int] | None = None,
         keepdims: bool = False,
     ) -> DenseArray:
-        """Minimum over given axes (delegates to xp.min)."""
-        return self.xp.min(x, axis=self._to_axis_tuple(axis), keepdims=keepdims)
+        """Minimum over given axes (delegates to xp.min). Returns a 0-d array when total."""
+        return self._as_array(self.xp.min(x, axis=self._to_axis_tuple(axis), keepdims=keepdims))
 
     def max(
         self,
@@ -855,8 +896,8 @@ class BackendOps(ABC):
         axis: int | Sequence[int] | None = None,
         keepdims: bool = False,
     ) -> DenseArray:
-        """Maximum over given axes (delegates to xp.max)."""
-        return self.xp.max(x, axis=self._to_axis_tuple(axis), keepdims=keepdims)
+        """Maximum over given axes (delegates to xp.max). Returns a 0-d array when total."""
+        return self._as_array(self.xp.max(x, axis=self._to_axis_tuple(axis), keepdims=keepdims))
 
     def prod(
         self,
@@ -865,47 +906,54 @@ class BackendOps(ABC):
         keepdims: bool = False,
         dtype: DType | None = None,
     ) -> DenseArray:
-        """Product over given axes (delegates to xp.prod)."""
-        return self.xp.prod(
-            x,
-            axis=self._to_axis_tuple(axis),
-            dtype=self._dtype_arg(dtype),
-            keepdims=keepdims,
+        """Product over given axes (delegates to xp.prod). Returns a 0-d array when total."""
+        return self._as_array(
+            self.xp.prod(
+                x,
+                axis=self._to_axis_tuple(axis),
+                dtype=self._dtype_arg(dtype),
+                keepdims=keepdims,
+            )
         )
 
     def trace(self, x: DenseArray) -> DenseArray:
-        """Trace of a matrix (delegates to xp.trace when available)."""
-        if hasattr(self.xp, "trace"):
-            return self.xp.trace(x)
-        return self.sum(self.diagonal(x))
+        """Trace over the **trailing two axes**; batched input traces each matrix.
+
+        Deliberately *not* ``xp.trace(x)``: NumPy and JAX default to
+        ``axis1=0, axis2=1``, which on a ``(batch, n, n)`` stack traces across
+        the batch axis and silently returns a length-``n`` vector, while
+        ``torch.trace`` rejects anything but a 2-D input. SpaceCore's batched
+        convention is leading batch axes, so the trailing two are the matrix.
+        """
+        return self.sum(self.diagonal(x), axis=-1)
 
     def argsort(self, x: DenseArray, axis: int = -1) -> DenseArray:
         """Return indices that sort ``x`` along an axis."""
-        return self.xp.argsort(x, axis=axis)
+        return self._as_array(self.xp.argsort(x, axis=axis))
 
     def sort(self, x: DenseArray, axis: int = -1) -> DenseArray:
         """Sort x along an axis (delegates to xp.sort)."""
-        return self.xp.sort(x, axis=axis)
+        return self._as_array(self.xp.sort(x, axis=axis))
 
     def argmin(self, x: DenseArray, axis: int | None = None, keepdims: bool = False) -> DenseArray:
-        """Return indices of minima along an axis."""
-        return self.xp.argmin(x, axis=axis, keepdims=keepdims)
+        """Return indices of minima along an axis. Returns a 0-d array when total."""
+        return self._as_array(self.xp.argmin(x, axis=axis, keepdims=keepdims))
 
     def argmax(self, x: DenseArray, axis: int | None = None, keepdims: bool = False) -> DenseArray:
-        """Return indices of maxima along an axis."""
-        return self.xp.argmax(x, axis=axis, keepdims=keepdims)
+        """Return indices of maxima along an axis. Returns a 0-d array when total."""
+        return self._as_array(self.xp.argmax(x, axis=axis, keepdims=keepdims))
 
     def vdot(self, x: DenseArray, y: DenseArray) -> DenseArray:
         """Return ``sum(conj(x) * y)`` over flattened inputs.
 
         Matches NumPy, JAX, and Torch ``vdot`` semantics. ``DenseLinOp.rapply``
-        relies on this convention for complex inputs.
+        relies on this convention for complex inputs. Returns a 0-d array.
         """
         x_flat = self.ravel(x)
         y_flat = self.ravel(y)
         if hasattr(self.xp, "vdot"):
-            return self.xp.vdot(x_flat, y_flat)
-        return self.xp.vecdot(x_flat, y_flat)
+            return self._as_array(self.xp.vdot(x_flat, y_flat))
+        return self._as_array(self.xp.vecdot(x_flat, y_flat))
 
     def matmul(
         self,
@@ -924,15 +972,74 @@ class BackendOps(ABC):
         """Einstein summation (delegates to xp.einsum)."""
         return self.xp.einsum(subscripts, *operands)
 
+    # -- Spectral presentation conventions ---------------------------------
+    #
+    # A decomposition is determined only up to a choice of ordering and, for
+    # each vector, a sign (real) or unit phase (complex). Four backends are
+    # free to make those choices differently -- and do: Torch returns complex
+    # Hermitian eigenvectors that are -1 times NumPy's and JAX's. SpaceCore
+    # therefore *declares* the presentation and normalizes to it here rather
+    # than inheriting whatever the underlying library returned:
+    #
+    #   * eigenvalues ascending, singular values descending;
+    #   * each eigenvector / singular vector scaled so that its entry of
+    #     largest magnitude is real and positive.
+    #
+    # NOT normalized, and not normalizable: the basis of a degenerate
+    # eigenspace (multiplicity > 1) is arbitrary, so callers must not depend
+    # on it. Ties in "entry of largest magnitude" are broken by first
+    # occurrence, which all backends agree on.
+    #
+    # Everything below is pure array arithmetic -- no data-dependent Python
+    # branch, no host sync -- so it stays safe under jit, vmap and compile.
+    # Cost is O(n^2) on top of an O(n^3) decomposition.
+
+    def _column_phase(self, vectors: DenseArray) -> DenseArray:
+        """Unit phase of each column's largest-magnitude entry, shaped ``(..., 1, k)``."""
+        magnitude = self.abs(vectors)
+        pivot_row = self.xp.argmax(magnitude, axis=-2)
+        pivot_row = self.expand_dims(pivot_row, -2)
+        rows = self.reshape(self.arange(self.shape(vectors)[-2]), (-1, 1))
+        selector = self.astype(rows == pivot_row, self.get_dtype(vectors))
+        pivot = self.sum(vectors * selector, axis=-2, keepdims=True)
+        scale = self.abs(pivot)
+        # A unit-norm vector cannot be all zeros; the guard only keeps the
+        # division defined for degenerate inputs rather than changing a result.
+        safe_scale = self.where(scale > 0, scale, self.ones_like(scale))
+        return self.where(scale > 0, pivot / safe_scale, self.ones_like(pivot))
+
+    def _gauge_columns(self, vectors: DenseArray) -> DenseArray:
+        """Scale each column so its largest-magnitude entry is real positive."""
+        return vectors / self._column_phase(vectors)
+
+    def _order_eigenpairs(
+        self,
+        eigenvalues: DenseArray,
+        eigenvectors: DenseArray,
+    ) -> tuple[DenseArray, DenseArray]:
+        """Sort eigenpairs ascending by eigenvalue and gauge the eigenvectors."""
+        order = self.xp.argsort(self.real(eigenvalues), axis=-1)
+        eigenvalues = self._take_along_axis(eigenvalues, order, -1)
+        eigenvectors = self._take_along_axis(eigenvectors, self.expand_dims(order, -2), -1)
+        return eigenvalues, self._gauge_columns(eigenvectors)
+
     def eigh(
         self,
         x: DenseArray,
         backend_kwargs: dict[str, Any] | None = None,
     ) -> tuple[DenseArray, DenseArray]:
-        """Eigenpairs of a Hermitian dense matrix (delegates to xp.linalg.eigh)."""
+        """Eigenpairs of a Hermitian dense matrix, in SpaceCore's presentation.
+
+        Eigenvalues ascending; each eigenvector scaled so its largest-magnitude
+        entry is real and positive. See the conventions note above -- this is
+        deliberately not raw ``xp.linalg.eigh`` output.
+        """
         if self.is_sparse(x):
             raise TypeError("eigh requires a dense array; sparse input is not supported.")
-        return self.xp.linalg.eigh(x, **({} if backend_kwargs is None else backend_kwargs))
+        eigenvalues, eigenvectors = self.xp.linalg.eigh(
+            x, **({} if backend_kwargs is None else backend_kwargs)
+        )
+        return self._order_eigenpairs(eigenvalues, eigenvectors)
 
     def norm(
         self,
@@ -941,8 +1048,8 @@ class BackendOps(ABC):
         axis: int | Sequence[int] | None = None,
         keepdims: bool = False,
     ) -> DenseArray:
-        """Vector or matrix norm (delegates to xp.linalg.norm)."""
-        return self.xp.linalg.norm(x, ord=ord, axis=axis, keepdims=keepdims)
+        """Vector or matrix norm (delegates to xp.linalg.norm). Returns a 0-d array when total."""
+        return self._as_array(self.xp.linalg.norm(x, ord=ord, axis=axis, keepdims=keepdims))
 
     def solve(
         self,
@@ -958,8 +1065,11 @@ class BackendOps(ABC):
         A: DenseArray,
         backend_kwargs: dict[str, Any] | None = None,
     ) -> DenseArray:
-        """Eigenvalues of a Hermitian dense matrix (delegates to xp.linalg.eigvalsh)."""
-        return self.xp.linalg.eigvalsh(A, **({} if backend_kwargs is None else backend_kwargs))
+        """Eigenvalues of a Hermitian dense matrix, ascending (SpaceCore convention)."""
+        eigenvalues = self.xp.linalg.eigvalsh(
+            A, **({} if backend_kwargs is None else backend_kwargs)
+        )
+        return self.sort(self.real(eigenvalues), axis=-1)
 
     def svd(
         self,
@@ -967,12 +1077,47 @@ class BackendOps(ABC):
         full_matrices: bool = True,
         backend_kwargs: dict[str, Any] | None = None,
     ) -> tuple[DenseArray, DenseArray, DenseArray]:
-        """Singular value decomposition (delegates to xp.linalg.svd)."""
-        return self.xp.linalg.svd(
+        """Singular value decomposition, in SpaceCore's presentation.
+
+        Singular values descending; each of the leading ``k = min(m, n)``
+        columns of ``U`` scaled so its largest-magnitude entry is real and
+        positive, with the compensating phase applied to the matching row of
+        ``Vh`` so that ``U @ diag(s) @ Vh`` still reconstructs ``A`` exactly.
+
+        With ``full_matrices=True`` the trailing columns of ``U`` (and rows of
+        ``Vh``) span a null space whose basis is arbitrary and backend-specific
+        -- they are left untouched, and are not comparable across backends.
+        Pass ``full_matrices=False`` when you need agreement.
+        """
+        U, s, Vh = self.xp.linalg.svd(
             A,
             full_matrices=full_matrices,
             **({} if backend_kwargs is None else backend_kwargs),
         )
+        return self._order_svd(U, s, Vh)
+
+    def _order_svd(
+        self,
+        U: DenseArray,
+        s: DenseArray,
+        Vh: DenseArray,
+    ) -> tuple[DenseArray, DenseArray, DenseArray]:
+        """Sort singular triples descending and gauge them, preserving ``U s Vh``."""
+        k = self.shape(s)[-1]
+        order = self.xp.argsort(-s, axis=-1)
+        s = self._take_along_axis(s, order, -1)
+
+        column_order = self.expand_dims(order, -2)
+        U_main = self._take_along_axis(U[..., :, :k], column_order, -1)
+        Vh_main = self._take_along_axis(Vh[..., :k, :], self.expand_dims(order, -1), -2)
+
+        phase = self._column_phase(U_main)
+        U_main = U_main / phase
+        Vh_main = Vh_main * self.swapaxes(phase, -1, -2)
+
+        U = self.concatenate([U_main, U[..., :, k:]], axis=-1)
+        Vh = self.concatenate([Vh_main, Vh[..., k:, :]], axis=-2)
+        return U, s, Vh
 
     def cholesky(
         self,
@@ -1041,8 +1186,13 @@ class BackendOps(ABC):
         return self.xp.diag(x)
 
     def diagonal(self, x: DenseArray) -> DenseArray:
-        """Return the main diagonal of x (delegates to xp.diagonal)."""
-        return self.xp.diagonal(x)
+        """Return the main diagonal over the **trailing two axes**.
+
+        Same correction as :meth:`trace`: the array libraries default to
+        ``axis1=0, axis2=1``, which on a ``(batch, n, n)`` stack diagonalizes
+        across the batch axis. Identical to the library default for 2-D input.
+        """
+        return self.xp.diagonal(x, axis1=-2, axis2=-1)
 
     def tril(self, x: DenseArray) -> DenseArray:
         """Lower triangle of x (delegates to xp.tril)."""

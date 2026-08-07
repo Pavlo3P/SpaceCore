@@ -1,6 +1,6 @@
 """Tests for :class:`spacecore.MatrixFreeLinearFunctional`.
 
-Checklist section 7, ``MatrixFreeLinearFunctional``:
+Contract specified here:
 
 * The supplied ``value`` callable is used verbatim.
 * ``representer`` raises ``NotImplementedError`` (no stored dual vector).

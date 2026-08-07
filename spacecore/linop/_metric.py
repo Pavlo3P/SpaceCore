@@ -94,13 +94,6 @@ def metric_rapply(domain, codomain, euclidean_rapply, y):
 
     Getting this wrong is silent: a coordinate transpose satisfies the identity on
     every Euclidean space, so only a non-Euclidean test can detect it.
-
-    References
-    ----------
-    .. [Conway] J. B. Conway, *A Course in Functional Analysis*, 2nd ed.,
-       Springer, 1990, II.2.2/II.2.4 — existence and uniqueness of the adjoint
-       from the Riesz representation theorem. The formula here is that
-       existence proof made computational: ``R`` is the Riesz isomorphism.
     """
     if domain.is_euclidean and codomain.is_euclidean:
         return euclidean_rapply(y)

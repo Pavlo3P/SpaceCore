@@ -1,4 +1,11 @@
-"""Functional algebra: scalar multiples and sums (0.4.2 W4, mirrors LinOp algebra)."""
+"""Functional algebra: scalar multiples, sums, shifts, constants and products.
+
+Per-node behavior for the lazy combinators in ``spacecore.functional._algebra``
+and the operator overloads that build them. The *shared* container contract
+(pytree round-trip, equality, repr, ``value_and_grad``) is specified once for
+every functional in ``test_functional_contract.py``; the guard clauses live in
+``test_functional_guards.py``. Mirrors ``linop/_algebra.py`` where they overlap.
+"""
 from __future__ import annotations
 
 import numpy as np

@@ -1,6 +1,6 @@
 """Tests for :class:`spacecore.Functional` — the scalar-map base.
 
-Checklist section 7, ``Functional`` base:
+Contract specified here:
 
 * ``domain`` property returns the context-converted domain.
 * ``value(x)`` / ``__call__(x)`` alias.
