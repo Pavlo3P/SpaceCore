@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.coverage
+.coverage.*
+build/
+dist/
+docs/_build/
+docs/source/_build/
+.venv*/
+.DS_Store
