@@ -4,7 +4,7 @@ import pytest
 
 from spacecore import Context, NumpyOps, DenseCoordinateSpace
 from spacecore._batching import _batched_inner
-from spacecore._errors import CapabilityError
+from spacecore import CapabilityError
 from spacecore.linop import IdentityLinOp, MatrixFreeLinOp, ZeroLinOp
 from spacecore.linop._algebra import _same_space_for_algebra
 from spacecore.linop._metric import _metric_is_hermitian_by_basis, metric_rapply
@@ -205,3 +205,13 @@ def test_registry_key_strips_non_dispatch_capabilities():
     assert registry_key(caps) == caps - _NON_DISPATCH_CAPABILITIES
     # Dispatch still reaches the inner-product specialization rather than the base.
     assert isinstance(leaf.stacked(3), InnerProductSpace)
+
+
+def test_capability_error_is_public():
+    """Callers catch it, so it is exported rather than reached through a private module."""
+    import spacecore
+    import spacecore.space
+
+    assert spacecore.CapabilityError is CapabilityError
+    assert spacecore.space.CapabilityError is CapabilityError
+    assert "CapabilityError" in spacecore.__all__
