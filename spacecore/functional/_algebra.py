@@ -178,7 +178,7 @@ def make_scaled_functional(scalar: Any, functional: Functional) -> Functional:
 
 class SumFunctional(Functional):
     """
-    Lazy sum ``F_1 + ... + F_n`` of functionals on a common domain.
+    Lazy sum of finitely many functionals on a common domain.
 
     Parameters
     ----------
@@ -320,6 +320,9 @@ class ZeroFunctional(Functional):
         Domain space.
     ctx : Context, str, or None, optional
         Backend context specification.
+    check_level : {{"none", "cheap", "standard", "strict"}}, optional
+        Runtime validation policy for this object. When omitted, the ambient
+        default (see :func:`spacecore.get_check_level`) is used.
     """
 
     def __init__(

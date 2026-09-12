@@ -68,7 +68,7 @@ def discover_entry_point_ops() -> list[type[BackendOps]]:
 
 
 def _backend_absent(exc: ModuleNotFoundError, dep: str) -> bool:
-    """True iff the failure is the backend dependency itself being missing."""
+    """Return True iff the failure is the backend dependency itself being missing."""
     return exc.name == dep
 
 

@@ -27,6 +27,9 @@ class SquaredL2NormFunctional(_CoordinateFunctional[Domain]):
         Domain space ``X``.
     ctx : Context, str, or None, optional
         Backend context specification. Default is resolved from ``dom``.
+    check_level : {{"none", "cheap", "standard", "strict"}}, optional
+        Runtime validation policy for this object. When omitted, the ambient
+        default (see :func:`spacecore.get_check_level`) is used.
 
     Examples
     --------
@@ -90,6 +93,9 @@ class LpNormFunctional(_CoordinateFunctional[Domain]):
         Norm order; must be finite and ``>= 1``.
     ctx : Context, str, or None, optional
         Backend context specification. Default is resolved from ``dom``.
+    check_level : {{"none", "cheap", "standard", "strict"}}, optional
+        Runtime validation policy for this object. When omitted, the ambient
+        default (see :func:`spacecore.get_check_level`) is used.
 
     Notes
     -----
@@ -160,6 +166,9 @@ def L1NormFunctional(
         Domain space ``X``.
     ctx : Context, str, or None, optional
         Backend context specification. Default is resolved from ``dom``.
+    check_level : {"none", "cheap", "standard", "strict"}, optional
+        Runtime validation policy for the returned functional. When omitted, the
+        ambient default (see :func:`spacecore.get_check_level`) is used.
 
     Returns
     -------

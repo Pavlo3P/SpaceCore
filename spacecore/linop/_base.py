@@ -32,24 +32,11 @@ class LinOp(PyTreeNode, ContextBound, Generic[Domain, Codomain]):
     :math:`x \in X` and :math:`y \in Y`. For complex operators this is the
     conjugate adjoint.
 
-    This is the **Hilbert-space adjoint**, defined by the pairing of each space's
-    own inner product — *not* the coordinate transpose, and not the Banach
-    (dual-space) adjoint. On a non-Euclidean geometry the two differ: see
+    This is the **Hilbert-space adjoint** [Conway]_, defined by the pairing of
+    each space's own inner product — *not* the coordinate transpose, and not the
+    Banach (dual-space) adjoint. On a non-Euclidean geometry the two differ: see
     :func:`~spacecore.linop._metric.metric_rapply` for the
     :math:`R_X^{-1} A^\dagger R_Y` formula that realizes it.
-
-    References
-    ----------
-    .. [Conway] J. B. Conway, *A Course in Functional Analysis*, 2nd ed.,
-       Springer, 1990, II.2.4: for ``A`` in ``B(H,K)`` there is a **unique**
-       ``A*`` in ``B(K,H)`` with ``<Ah,k> = <h,A*k>``; existence rests on the
-       Riesz representation theorem (I.3.4), which is why a metric-aware adjoint
-       needs the Riesz maps. Theorem II.2.6 gives the algebra this class and
-       ``linop/_algebra.py`` implement:
-       ``(aA + B)* = conj(a) A* + B*``, ``(AB)* = B* A*`` (**order reverses**),
-       ``A** = A``. II.2.2 is the uniqueness statement behind "the" adjoint.
-       Conway II.3 (``def-adjoint-banach``) is the *different*, dual-space
-       adjoint — not what SpaceCore means by ``rapply``.
 
     Parameters
     ----------
@@ -74,6 +61,19 @@ class LinOp(PyTreeNode, ContextBound, Generic[Domain, Codomain]):
         Codomain space converted to ``ctx``.
     ctx : Context
         Resolved backend context.
+
+    References
+    ----------
+    .. [Conway] J. B. Conway, *A Course in Functional Analysis*, 2nd ed.,
+       Springer, 1990, II.2.4: for ``A`` in ``B(H,K)`` there is a **unique**
+       ``A*`` in ``B(K,H)`` with ``<Ah,k> = <h,A*k>``; existence rests on the
+       Riesz representation theorem (I.3.4), which is why a metric-aware adjoint
+       needs the Riesz maps. Theorem II.2.6 gives the algebra this class and
+       ``linop/_algebra.py`` implement:
+       ``(aA + B)* = conj(a) A* + B*``, ``(AB)* = B* A*`` (**order reverses**),
+       ``A** = A``. II.2.2 is the uniqueness statement behind "the" adjoint.
+       Conway II.3 (``def-adjoint-banach``) is the *different*, dual-space
+       adjoint — not what SpaceCore means by ``rapply``.
 
     Examples
     --------

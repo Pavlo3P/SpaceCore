@@ -43,26 +43,53 @@ def set_context(
 
 
 def get_check_level() -> CheckLevel:
-    """Return the ambient default validation level applied to new bound objects."""
+    """
+    Return the ambient default validation level applied to new bound objects.
+
+    Returns
+    -------
+    CheckLevel
+        The level that seeds a context-bound object constructed without an
+        explicit ``check_level``: the scoped override installed for this thread
+        or task if there is one, otherwise the process-wide baseline.
+    """
     return _state().get_check_level()
 
 
 def set_check_level(level: CheckLevel | bool | None) -> None:
-    """Set the ambient default validation level applied to new bound objects.
+    """
+    Set the ambient default validation level applied to new bound objects.
 
     ``check_level`` is a property of the context-bound object (space, operator,
     functional), not of the :class:`Context`. This sets the process-wide default
     that seeds a new object when it is constructed without an explicit level.
+
+    Parameters
+    ----------
+    level : {"none", "cheap", "standard", "strict"} or None
+        New process-wide baseline. ``None`` restores the built-in default.
     """
     _state().set_check_level(level)
 
 
 @contextmanager
 def use_check_level(level: CheckLevel | bool | None):
-    """Temporarily override the ambient default validation level within a ``with`` block.
+    """
+    Temporarily override the ambient default validation level within a ``with`` block.
 
     Scoped to the current thread / async task; see :func:`use_context` for the
     scoping rules and the thread-pool caveat.
+
+    Parameters
+    ----------
+    level : {"none", "cheap", "standard", "strict"} or None
+        Level to install for the duration of the block. ``None`` leaves the
+        ambient default in place.
+
+    Yields
+    ------
+    CheckLevel
+        The resolved level in effect inside the block.
     """
     with _state().scoped_check_level(level) as resolved:
         yield resolved
@@ -73,7 +100,8 @@ def use_context(
     ctx: Context | BackendFamily | str | None = None,
     dtype: Any = None,
 ):
-    """Temporarily override the default context within a ``with`` block.
+    """
+    Temporarily override the default context within a ``with`` block.
 
     Yields the resolved :class:`Context` and unwinds on exit, so the override is
     exception-safe and never leaks — the dependency-injection-friendly counterpart
@@ -84,6 +112,21 @@ def use_context(
     visible only to the **current thread and async task**. Each ``asyncio`` task
     receives its own copy of the ambient context at creation, so interleaved
     coroutines cannot clobber one another's override.
+
+    Parameters
+    ----------
+    ctx : Context, BackendFamily, str, or None, optional
+        Context to install for the duration of the block, or a backend family
+        name (for example ``"numpy"`` or ``"jax"``) to resolve into one. ``None``
+        keeps the active context and only applies ``dtype``.
+    dtype : dtype-like, optional
+        Representation dtype for the scoped context. ``None`` keeps the dtype of
+        the context being overridden.
+
+    Yields
+    ------
+    Context
+        The resolved context in effect inside the block.
 
     Notes
     -----

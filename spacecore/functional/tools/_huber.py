@@ -28,6 +28,18 @@ class HuberFunctional(_CoordinateFunctional[Domain]):
     when transcribing a prox or a smoothing constant from either source — the two
     differ by exactly one factor of ``delta``.
 
+    Parameters
+    ----------
+    dom : Space
+        Domain space ``X``.
+    delta : float
+        Transition threshold; must be finite and ``> 0``.
+    ctx : Context, str, or None, optional
+        Backend context specification. Default is resolved from ``dom``.
+    check_level : {{"none", "cheap", "standard", "strict"}}, optional
+        Runtime validation policy for this object. When omitted, the ambient
+        default (see :func:`spacecore.get_check_level`) is used.
+
     References
     ----------
     .. [Huber1964] P. J. Huber, "Robust estimation of a location parameter",
@@ -37,15 +49,6 @@ class HuberFunctional(_CoordinateFunctional[Domain]):
        Example 6.54 (the Huber function as the Moreau envelope of the norm),
        Example 6.62 (its smoothness: gradient ``1/mu``-Lipschitz) and
        Example 6.66 (prox of the Huber function).
-
-    Parameters
-    ----------
-    dom : Space
-        Domain space ``X``.
-    delta : float
-        Transition threshold; must be finite and ``> 0``.
-    ctx : Context, str, or None, optional
-        Backend context specification. Default is resolved from ``dom``.
 
     Examples
     --------

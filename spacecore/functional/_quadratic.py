@@ -27,6 +27,9 @@ class QuadraticForm(Functional[Domain]):
         Domain space.
     ctx : Context, str, or None, optional
         Backend context specification. Default is resolved from ``dom``.
+    check_level : {{"none", "cheap", "standard", "strict"}}, optional
+        Runtime validation policy for this object. When omitted, the ambient
+        default (see :func:`spacecore.get_check_level`) is used.
     """
 
     def hess_apply(self, x: Any) -> Any:
@@ -72,6 +75,9 @@ class LinOpQuadraticForm(QuadraticForm[Domain]):
     ctx : Context, str, or None, optional
         Backend context specification. Default is resolved from ``Q`` and
         ``linear``.
+    check_level : {{"none", "cheap", "standard", "strict"}}, optional
+        Runtime validation policy for this object. When omitted, the ambient
+        default (see :func:`spacecore.get_check_level`) is used.
 
     Attributes
     ----------

@@ -124,8 +124,10 @@ class Contextual:
 
     @property
     def default_ctx(self) -> Context:
-        """Active default context: the scoped override if one is installed here,
-        otherwise the process-wide baseline.
+        """Return the active default context.
+
+        This is the scoped override if one is installed here, otherwise the
+        process-wide baseline.
 
         Every internal resolution path (:meth:`normalize_context` with ``None``,
         :meth:`resolve_context_priority`, :meth:`infer_context`) reads through this

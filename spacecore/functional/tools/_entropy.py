@@ -45,6 +45,9 @@ class NegativeEntropyFunctional(_CoordinateFunctional[Domain]):
         Domain space ``X``.
     ctx : Context, str, or None, optional
         Backend context specification. Default is resolved from ``dom``.
+    check_level : {{"none", "cheap", "standard", "strict"}}, optional
+        Runtime validation policy for this object. When omitted, the ambient
+        default (see :func:`spacecore.get_check_level`) is used.
 
     Examples
     --------
@@ -115,6 +118,9 @@ class KLDivergenceFunctional(_CoordinateFunctional[Domain]):
         bare element does not carry its space.
     ctx : Context, str, or None, optional
         Backend context specification. Default is resolved from ``dom``.
+    check_level : {{"none", "cheap", "standard", "strict"}}, optional
+        Runtime validation policy for this object. When omitted, the ambient
+        default (see :func:`spacecore.get_check_level`) is used.
 
     Examples
     --------

@@ -1,3 +1,13 @@
+"""Backend/dtype context, context-bound objects, and ambient context state.
+
+This package is the public home of :class:`Context` (which backend ops and
+dtype a value is expressed in) and :class:`ContextBound` (the mixin every
+space, operator, and functional derives from). Validation policy lives on the
+bound object as ``check_level``, not on the context; the module-level
+``get_check_level`` / ``set_check_level`` / ``use_check_level`` helpers seed
+and scope that default.
+"""
+
 from ._context import Context
 from ._bound import ContextBound as ContextBound
 from ._state import (

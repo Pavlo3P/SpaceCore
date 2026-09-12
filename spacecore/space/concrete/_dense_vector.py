@@ -117,13 +117,13 @@ class ElementwiseJordanSpace(PyTreeNode, JordanAlgebraSpace, DenseCoordinateSpac
     geometry : InnerProduct or None, optional
         Inner-product geometry. If omitted, Euclidean coordinate geometry is
         used.
-    inner_product : InnerProduct or None, optional
-        Alias for ``geometry``.
     check_level : {"none", "cheap", "standard", "strict"}, optional
         Runtime validation policy for this object. When omitted, the ambient
         default (see :func:`spacecore.get_check_level`) is used. Unlike the
         backend/dtype context, the validation policy is a property of the bound
         object, not of the :class:`Context`.
+    inner_product : InnerProduct or None, optional
+        Alias for ``geometry``.
     """
 
     def __new__(
@@ -237,13 +237,13 @@ class EuclideanElementwiseJordanSpace(ElementwiseJordanSpace, EuclideanJordanAlg
     geometry : InnerProduct or None, optional
         Inner-product geometry. This class is selected only for real contexts
         with Euclidean coordinate geometry.
-    inner_product : InnerProduct or None, optional
-        Alias for ``geometry``.
     check_level : {"none", "cheap", "standard", "strict"}, optional
         Runtime validation policy for this object. When omitted, the ambient
         default (see :func:`spacecore.get_check_level`) is used. Unlike the
         backend/dtype context, the validation policy is a property of the bound
         object, not of the :class:`Context`.
+    inner_product : InnerProduct or None, optional
+        Alias for ``geometry``.
     """
 
     def __init__(

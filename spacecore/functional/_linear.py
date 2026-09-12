@@ -43,6 +43,9 @@ class LinearFunctional(Functional[Domain]):
         Domain space.
     ctx : Context, str, or None, optional
         Backend context specification. Default is resolved from ``dom``.
+    check_level : {{"none", "cheap", "standard", "strict"}}, optional
+        Runtime validation policy for this object. When omitted, the ambient
+        default (see :func:`spacecore.get_check_level`) is used.
     """
 
     @property
@@ -88,6 +91,9 @@ class InnerProductFunctional(LinearFunctional[Domain]):
         Domain space.
     ctx : Context, str, or None, optional
         Backend context specification. Default is resolved from ``dom``.
+    check_level : {{"none", "cheap", "standard", "strict"}}, optional
+        Runtime validation policy for this object. When omitted, the ambient
+        default (see :func:`spacecore.get_check_level`) is used.
 
     Attributes
     ----------
@@ -173,6 +179,9 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
     vvalue : callable or None, optional
         Optional callable with signature ``vvalue(xs: Any) -> Any`` for batched
         evaluation. If omitted, backend ``vmap`` fallback is used.
+    check_level : {{"none", "cheap", "standard", "strict"}}, optional
+        Runtime validation policy for this object. When omitted, the ambient
+        default (see :func:`spacecore.get_check_level`) is used.
 
     Returns
     -------

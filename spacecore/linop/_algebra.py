@@ -907,6 +907,11 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
         Optional callable with signature ``rvapply(ys: Any) -> Any`` for
         batched adjoint application. If omitted, backend ``vmap`` fallback is
         used.
+    check_level : {"none", "cheap", "standard", "strict"}, optional
+        Runtime validation policy for this object. When omitted, the ambient
+        default (see :func:`spacecore.get_check_level`) is used. Unlike the
+        backend/dtype context, the validation policy is a property of the bound
+        object, not of the :class:`Context`.
     euclidean_adjoint : bool, optional
         How ``rapply`` is interpreted. Omitted or ``False`` (the default): the
         callable **is** the metric adjoint and is stored verbatim -- the design
@@ -923,11 +928,6 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
         already carries the geometry and silences the advisory -- the
         distinction drawn is between "never considered" and "considered and
         declared".
-    check_level : {"none", "cheap", "standard", "strict"}, optional
-        Runtime validation policy for this object. When omitted, the ambient
-        default (see :func:`spacecore.get_check_level`) is used. Unlike the
-        backend/dtype context, the validation policy is a property of the bound
-        object, not of the :class:`Context`.
 
     Returns
     -------

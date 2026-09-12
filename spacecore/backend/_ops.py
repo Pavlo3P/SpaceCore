@@ -995,7 +995,7 @@ class BackendOps(ABC):
     # Cost is O(n^2) on top of an O(n^3) decomposition.
 
     def _column_phase(self, vectors: DenseArray) -> DenseArray:
-        """Unit phase of each column's largest-magnitude entry, shaped ``(..., 1, k)``."""
+        """Return the unit phase of each column's largest entry, shaped ``(..., 1, k)``."""
         magnitude = self.abs(vectors)
         pivot_row = self.xp.argmax(magnitude, axis=-2)
         pivot_row = self.expand_dims(pivot_row, -2)

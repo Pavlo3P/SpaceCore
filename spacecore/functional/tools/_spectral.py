@@ -48,7 +48,8 @@ from ._norms import LpNormFunctional
 
 
 def eigenvalue_space(dom: Any, check_level: CheckLevel | bool | None = None) -> Any:
-    r"""Return the real coordinate space the spectrum of ``dom`` lives in.
+    r"""
+    Return the real coordinate space the spectrum of ``dom`` lives in.
 
     The spectrum of a Jordan-algebra element is a real vector of length equal to
     the algebra's rank, regardless of whether the element itself is stored with
@@ -83,7 +84,8 @@ def eigenvalue_space(dom: Any, check_level: CheckLevel | bool | None = None) -> 
 
 
 class SpectralFunctional(_CoordinateFunctional[Domain]):
-    r"""Lift a **symmetric** coordinate functional onto a Jordan spectrum.
+    r"""
+    Lift a **symmetric** coordinate functional onto a Jordan spectrum.
 
     Given ``f`` on :math:`\mathbb{R}^r` and a Jordan space of rank :math:`r`,
     this is the spectral function :math:`F(X) = f(\lambda(X))`. By Lewis's
@@ -209,7 +211,8 @@ def spectralize(
     ctx: Context | str | None = None,
     check_level: CheckLevel | bool | None = None,
 ) -> "SpectralFunctional[Domain]":
-    r"""Build the spectral counterpart of a coordinate functional.
+    r"""
+    Build the spectral counterpart of a coordinate functional.
 
     Constructs the eigenvalue space for ``dom``, hands it to ``make_base``, and
     wraps the result — so a caller never has to derive the rank or build the

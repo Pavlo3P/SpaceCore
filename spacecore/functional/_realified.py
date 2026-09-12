@@ -1,4 +1,4 @@
-"""Real-coordinate view of a complex-domain functional.
+r"""Real-coordinate view of a complex-domain functional.
 
 Optimizers and line searches that assume a real vector space cannot consume a
 functional whose domain is complex — ``spacecore.optimize`` flattens to real
@@ -13,8 +13,8 @@ so writing ``v = a + i b`` gives
 
 .. math::
 
-    \\partial F/\\partial a = \\operatorname{Re} g_v, \\qquad
-    \\partial F/\\partial b = \\operatorname{Im} g_v,
+    \partial F/\partial a = \operatorname{Re} g_v, \qquad
+    \partial F/\partial b = \operatorname{Im} g_v,
 
 where ``g_v = flatten(X.riesz(g))`` is the *coordinate* gradient. The real
 gradient is therefore exactly the stacked pair — no Wirtinger calculus at the
@@ -67,7 +67,8 @@ from ._base import Functional
 
 
 class RealifiedFunctional(Functional):
-    r"""View of a complex-domain functional over stacked real coordinates.
+    r"""
+    View of a complex-domain functional over stacked real coordinates.
 
     For a base functional :math:`F` on a coordinate space :math:`X` with complex
     flattened coordinates :math:`v \in \mathbb{C}^m`, this functional acts on
@@ -213,7 +214,8 @@ class RealifiedFunctional(Functional):
 
 
 def realify(F: Functional) -> Functional:
-    """Return ``F`` unchanged on a real domain, realified on a complex one.
+    """
+    Return ``F`` unchanged on a real domain, realified on a complex one.
 
     The idempotent entry point: calling it on an already-real functional is a
     no-op rather than an error, so a caller preparing an objective for a
