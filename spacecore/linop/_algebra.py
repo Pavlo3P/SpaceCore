@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import warnings
-from math import prod
 from typing import Any, Callable, Sequence, cast
 
 from ._base import LinOp, Domain, Codomain
 from ._metric import _requires_euclidean_or_riesz, metric_rapply, metric_rvapply
 from .._check_policy import CheckLevel, minimum_check_level
 from .._checks import checked_method
+from ..space.base import InnerProductSpace
+from ..space._capabilities import _CAP_BATCH, _CAP_COORDINATE, probe_element, require
 from .._repr import summarize_value
 from ..contextual import Context
 from ..kernels import core_kernels
@@ -57,8 +58,6 @@ def _same_space_for_algebra(left: Any, right: Any) -> bool:
     if left == right:
         return True
     if type(left) is not type(right):
-        return False
-    if tuple(left.shape) != tuple(right.shape):
         return False
     if not left.ctx.same_math(right.ctx):
         return False
@@ -269,10 +268,14 @@ class ScaledLinOp(LinOp[Domain, Codomain]):
     @checked_method(in_space="domain", out_space="codomain", in_batched=True, out_batched=True)
     def vapply(self, xs: Any) -> Any:
         """Return ``scalar * op.vapply(xs)``."""
+        require(self.domain, _CAP_BATCH, "ScaledLinOp.vapply")
+        require(self.codomain, _CAP_BATCH, "ScaledLinOp.vapply")
         return self._vapply_core(xs)
 
     def rvapply(self, ys: Any) -> Any:
         """Return ``conj(scalar) * op.rvapply(ys)``."""
+        require(self.domain, _CAP_BATCH, "ScaledLinOp.rvapply")
+        require(self.codomain, _CAP_BATCH, "ScaledLinOp.rvapply")
         xs = self.op.rvapply(ys)
         return self.domain.scale_batch(_conjugate_scalar(self.scalar), xs)
 
@@ -419,11 +422,15 @@ class SumLinOp(LinOp[Domain, Codomain]):
     @checked_method(in_space="domain", out_space="codomain", in_batched=True, out_batched=True)
     def vapply(self, xs: Any) -> Any:
         """Return ``sum_i ops[i].vapply(xs)``."""
+        require(self.domain, _CAP_BATCH, "SumLinOp.vapply")
+        require(self.codomain, _CAP_BATCH, "SumLinOp.vapply")
         return self._vapply_core(xs)
 
     @checked_method(in_space="codomain", out_space="domain", in_batched=True, out_batched=True)
     def rvapply(self, ys: Any) -> Any:
         """Return ``sum_i ops[i].rvapply(ys)``."""
+        require(self.domain, _CAP_BATCH, "SumLinOp.rvapply")
+        require(self.codomain, _CAP_BATCH, "SumLinOp.rvapply")
         add_batch = self.domain.add_batch
         acc = self.ops_tuple[0].rvapply(ys)
         for op in self.ops_tuple[1:]:
@@ -578,10 +585,14 @@ class ComposedLinOp(LinOp[Domain, Codomain]):
     @checked_method(in_space="domain", out_space="codomain", in_batched=True, out_batched=True)
     def vapply(self, xs: Any) -> Any:
         """Return ``left.vapply(right.vapply(xs))``."""
+        require(self.domain, _CAP_BATCH, "ComposedLinOp.vapply")
+        require(self.codomain, _CAP_BATCH, "ComposedLinOp.vapply")
         return self._vapply_core(xs)
 
     def rvapply(self, zs: Any) -> Any:
         """Return ``right.rvapply(left.rvapply(zs))``."""
+        require(self.domain, _CAP_BATCH, "ComposedLinOp.rvapply")
+        require(self.codomain, _CAP_BATCH, "ComposedLinOp.rvapply")
         return self.right.rvapply(self.left.rvapply(zs))
 
     def fuse(self, *, materialize: bool = False) -> LinOp:
@@ -705,11 +716,15 @@ class ZeroLinOp(LinOp[Domain, Codomain]):
     @checked_method(in_space="domain", in_batched=True)
     def vapply(self, xs: Any) -> Any:
         """Return the batched zero element of the codomain."""
+        require(self.domain, _CAP_BATCH, "ZeroLinOp.vapply")
+        require(self.codomain, _CAP_BATCH, "ZeroLinOp.vapply")
         return self._vapply_core(xs)
 
     @checked_method(in_space="codomain", in_batched=True)
     def rvapply(self, ys: Any) -> Any:
         """Return the batched zero element of the domain."""
+        require(self.domain, _CAP_BATCH, "ZeroLinOp.rvapply")
+        require(self.codomain, _CAP_BATCH, "ZeroLinOp.rvapply")
         return _batched_zeros(self.domain, _leading_shape(self.codomain, ys))
 
     def to_dense(self) -> Any:
@@ -718,6 +733,8 @@ class ZeroLinOp(LinOp[Domain, Codomain]):
 
         The returned array has shape ``self.codomain.shape + self.domain.shape``.
         """
+        require(self.domain, _CAP_COORDINATE, "ZeroLinOp.to_dense")
+        require(self.codomain, _CAP_COORDINATE, "ZeroLinOp.to_dense")
         return self.ops.zeros(
             tuple(self.codomain.shape) + tuple(self.domain.shape), dtype=self.dtype
         )
@@ -802,11 +819,15 @@ class IdentityLinOp(LinOp[Domain, Domain]):
     @checked_method(in_space="domain", in_batched=True)
     def vapply(self, xs: Any) -> Any:
         """Return ``xs`` after batched domain validation."""
+        require(self.domain, _CAP_BATCH, "IdentityLinOp.vapply")
+        require(self.codomain, _CAP_BATCH, "IdentityLinOp.vapply")
         return xs
 
     @checked_method(in_space="codomain", in_batched=True)
     def rvapply(self, xs: Any) -> Any:
         """Return ``xs`` after batched codomain validation."""
+        require(self.domain, _CAP_BATCH, "IdentityLinOp.rvapply")
+        require(self.codomain, _CAP_BATCH, "IdentityLinOp.rvapply")
         return xs
 
     def to_dense(self) -> Any:
@@ -815,6 +836,8 @@ class IdentityLinOp(LinOp[Domain, Domain]):
 
         The returned array has shape ``self.codomain.shape + self.domain.shape``.
         """
+        require(self.domain, _CAP_COORDINATE, "IdentityLinOp.to_dense")
+        require(self.codomain, _CAP_COORDINATE, "IdentityLinOp.to_dense")
         size = 1
         for dim in self.domain.shape:
             size *= dim
@@ -999,7 +1022,12 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
             raise TypeError(f"rvapply must be callable, got {type(rvapply).__name__}.")
         super().__init__(dom, cod, ctx, check_level=check_level)
 
-        non_euclidean = not (self.domain.is_euclidean and self.codomain.is_euclidean)
+        has_inner = all(
+            isinstance(space, InnerProductSpace) for space in (self.domain, self.codomain)
+        )
+        non_euclidean = has_inner and not (
+            self.domain.is_euclidean and self.codomain.is_euclidean
+        )
         if euclidean_adjoint is True:
             # The caller supplied the *coordinate* adjoint A^dagger; wrap it into
             # the metric adjoint R_X^-1 A^dagger R_Y once, here.
@@ -1062,20 +1090,21 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
 
     def _check_adjoint_consistency(self) -> None:
         """Probe the declared adjoint identity on deterministic space elements."""
-        if not all(hasattr(space, "inner") for space in (self.domain, self.codomain)):
+        if not all(
+            isinstance(space, InnerProductSpace)
+            for space in (self.domain, self.codomain)
+        ):
             return
 
-        def probe(space: Any) -> Any:
-            if hasattr(space, "ones"):
-                return space.ones()
-            if hasattr(space, "unflatten") and hasattr(space, "shape"):
-                flat = self.ops.ones((prod(space.shape),), dtype=self.dtype)
-                return space.unflatten(flat)
-            raise TypeError(f"{type(space).__name__} cannot build a strict probe element.")
+        x = probe_element(self.domain, self.ops, self.dtype)
+        y = probe_element(self.codomain, self.ops, self.dtype)
+        if x is None or y is None:
+            # Neither coordinates nor ``ones``: the space cannot build a non-zero
+            # element, so there is nothing to probe with. Construction-time
+            # geometry warnings still apply.
+            return
 
         try:
-            x = probe(self.domain)
-            y = probe(self.codomain)
             ax = self.apply_fn(x)
             ahy = self.rapply_fn(y)
             self.codomain._check_member(ax)
@@ -1204,6 +1233,8 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
         Any
             Element of ``self.domain`` returned by ``rapply_fn``.
         """
+        require(self.domain, InnerProductSpace, "MatrixFreeLinOp.rapply")
+        require(self.codomain, InnerProductSpace, "MatrixFreeLinOp.rapply")
         return self._rapply_core(y)
 
     @checked_method(in_space="domain", out_space="codomain", in_batched=True, out_batched=True)
@@ -1222,6 +1253,8 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
             Batched element of ``self.codomain`` produced by ``vapply_fn`` or
             by the fallback batching implementation.
         """
+        require(self.domain, _CAP_BATCH, "MatrixFreeLinOp.vapply")
+        require(self.codomain, _CAP_BATCH, "MatrixFreeLinOp.vapply")
         if self.vapply_fn is None:
             return super().vapply(xs)
         return self.vapply_fn(xs)
@@ -1242,6 +1275,8 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
             Batched element of ``self.domain`` produced by ``rvapply_fn`` or by
             the fallback batching implementation.
         """
+        require(self.domain, _CAP_BATCH, "MatrixFreeLinOp.rvapply")
+        require(self.codomain, _CAP_BATCH, "MatrixFreeLinOp.rvapply")
         if self.rvapply_fn is None:
             return super().rvapply(ys)
         return self.rvapply_fn(ys)
@@ -1379,10 +1414,14 @@ class _AdjointViewLinOp(LinOp[Codomain, Domain]):
 
     def vapply(self, ys: Any) -> Any:
         """Return ``op.rvapply(ys)`` over a batch."""
+        require(self.domain, _CAP_BATCH, "_AdjointViewLinOp.vapply")
+        require(self.codomain, _CAP_BATCH, "_AdjointViewLinOp.vapply")
         return self.op.rvapply(ys)
 
     def rvapply(self, xs: Any) -> Any:
         """Return ``op.vapply(xs)`` over a batch."""
+        require(self.domain, _CAP_BATCH, "_AdjointViewLinOp.rvapply")
+        require(self.codomain, _CAP_BATCH, "_AdjointViewLinOp.rvapply")
         return self.op.vapply(xs)
 
     def fuse(self, *, materialize: bool = False) -> LinOp:

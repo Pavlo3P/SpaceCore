@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import warnings
 
-from ..space.base import InnerProduct, InnerProductSpace
+from ..space.base import CoordinateSpace, InnerProduct, InnerProductSpace
+from ..space._capabilities import require
 
 
 _METRIC_BATCH_FALLBACK_ERRORS = (TypeError, ValueError, NotImplementedError)
@@ -50,6 +51,8 @@ def _requires_euclidean_or_riesz(dom, cod, opname: str) -> None:
 
 def _metric_is_hermitian_by_basis(op) -> bool | None:
     """Check self-adjointness by comparing forward and adjoint basis actions."""
+    if not isinstance(op.domain, CoordinateSpace):
+        return None
     if op.domain != op.codomain:
         return False
     if op.domain.size > _METRIC_HERMITIAN_BASIS_CHECK_MAX_SIZE:
@@ -95,6 +98,8 @@ def metric_rapply(domain, codomain, euclidean_rapply, y):
     Getting this wrong is silent: a coordinate transpose satisfies the identity on
     every Euclidean space, so only a non-Euclidean test can detect it.
     """
+    require(domain, InnerProductSpace, "metric_rapply")
+    require(codomain, InnerProductSpace, "metric_rapply")
     if domain.is_euclidean and codomain.is_euclidean:
         return euclidean_rapply(y)
     return domain.riesz_inverse(euclidean_rapply(codomain.riesz(y)))

@@ -7,6 +7,40 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **`LinOp` endpoints are bound to `VectorSpace`** rather than `CoordinateSpace`.
+  A linear operator needs only `zeros`/`add`/`scale` from its endpoints;
+  coordinates are a representation, not part of the contract. Operators can now
+  be defined over any vector space, including one with no `shape`, `size`,
+  `flatten` or `stacked`. Concrete operators are unaffected — `SparseLinOp` and
+  `DiagonalLinOp` declare `LinOp[CoordinateSpace, CoordinateSpace]` themselves.
+
+  `VectorSpace` and not `InnerProductSpace`: the two are siblings, so binding to
+  the latter would have *narrowed* the accepted set and dropped bare `TreeSpace`
+  and `StackedSpace`.
+
+- **Operations that need more than a vector space now say so.** Materialization
+  (`to_dense`, `to_matrix`, `fuse`, basis probes) requires coordinates, batching
+  (`vapply`, `rvapply`) requires the batched coordinate surface, and `rapply`
+  requires an inner product for its metric-adjoint contract. Each raises
+  `CapabilityError` naming the operation and the missing capability, where
+  previously an unsupported endpoint surfaced as an `AttributeError`.
+
+- `MatrixFreeLinOp`'s strict adjoint-consistency probe no longer requires
+  coordinates. It builds its probe element from the space's own `ones` when one
+  exists, so a non-coordinate space is checked too, and is skipped only when no
+  non-zero element can be built at all.
+
+- Operator endpoint compatibility no longer compares `shape`. Type identity,
+  context agreement and convert-equality already decide it, and
+  `CoordinateSpace` equality compares shape.
+
+### Added
+
+- `CapabilityError`, exported from `spacecore` and `spacecore.space`, raised when
+  a space lacks a capability the requested operation needs.
+
 ## [0.4.3] — 2026-09-12
 
 ### Removed

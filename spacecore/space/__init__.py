@@ -1,5 +1,6 @@
 """Vector space abstractions, concrete spaces, and validation checks."""
 
+from .._errors import CapabilityError
 from .checks import (
     BackendCheck,
     DTypeCheck,
@@ -59,6 +60,7 @@ __all__ = [
     "TreeSpectralDecomposition",
     "Space",
     "SpaceCheck",
+    "CapabilityError",
     "SpaceValidationError",
     "SquareMatrixCheck",
     "VectorSpace",

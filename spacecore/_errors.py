@@ -27,3 +27,7 @@ class ContextConflictError(ContextError):
 
 class UnknownBackendError(ContextError):
     """No backend is registered under the requested family name."""
+
+
+class CapabilityError(TypeError):
+    """A space lacks a capability the requested operation needs."""
