@@ -10,6 +10,7 @@ from typing import Any, Generic, TypeVar
 from .._batching import _leading_batch_size, _warn_vmap_fallback_once
 from .._check_policy import CheckLevel
 from .._checks import checked_method
+from ..space._capabilities import _CAP_BATCH, _CAP_COORDINATE, require
 from ..backend import PyTreeNode
 from .._repr import describe_space
 from ..space import CoordinateSpace
@@ -183,12 +184,16 @@ class LinOp(PyTreeNode, ContextBound, Generic[Domain, Codomain]):
     @checked_method(in_space="domain", in_batched=True)
     def vapply(self, xs: Any) -> Any:
         """Apply over a leading batch axis. Input must have shape ``(N,) + domain.shape``; use ``moveaxis`` for other layouts."""
+        require(self.domain, _CAP_BATCH, "LinOp.vapply")
+        require(self.codomain, _CAP_BATCH, "LinOp.vapply")
         _warn_vmap_fallback_once(self, "vapply", _leading_batch_size(self.domain, xs))
         return self.ops.vmap(self.apply, in_axes=0, out_axes=0)(xs)
 
     @checked_method(in_space="codomain", in_batched=True)
     def rvapply(self, ys: Any) -> Any:
         """Apply the adjoint over a leading batch axis. Input must have shape ``(N,) + codomain.shape``; use ``moveaxis`` for other layouts."""
+        require(self.domain, _CAP_BATCH, "LinOp.rvapply")
+        require(self.codomain, _CAP_BATCH, "LinOp.rvapply")
         _warn_vmap_fallback_once(self, "rvapply", _leading_batch_size(self.codomain, ys))
         return self.ops.vmap(self.rapply, in_axes=0, out_axes=0)(ys)
 
@@ -327,6 +332,8 @@ class LinOp(PyTreeNode, ContextBound, Generic[Domain, Codomain]):
         that already store a dense or sparse matrix should override this method
         for efficiency.
         """
+        require(self.domain, _CAP_COORDINATE, "LinOp.to_dense")
+        require(self.codomain, _CAP_COORDINATE, "LinOp.to_dense")
         return self.ops.reshape(
             self.to_matrix(), tuple(self.codomain.shape) + tuple(self.domain.shape)
         )
@@ -346,6 +353,8 @@ class LinOp(PyTreeNode, ContextBound, Generic[Domain, Codomain]):
         for small/testing use; concrete storage-backed subclasses should
         override it when they can expose a matrix directly.
         """
+        require(self.domain, _CAP_COORDINATE, "LinOp.to_matrix")
+        require(self.codomain, _CAP_COORDINATE, "LinOp.to_matrix")
         domain_size = prod(self.domain.shape)
         codomain_size = prod(self.codomain.shape)
         eye = self.ops.eye(domain_size, dtype=self.dtype)

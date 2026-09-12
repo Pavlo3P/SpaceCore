@@ -4,6 +4,7 @@ import warnings
 from typing import Any
 
 from .space.checks import _run_checks
+from .space._capabilities import _CAP_BATCH, _CAP_INNER, require
 
 # Shared batched-evaluation helpers used by both LinOp and Functional. They live
 # here (rather than in functional/_base) so the linop and functional batched
@@ -59,6 +60,8 @@ def _warn_vmap_fallback_once(obj: Any, method: str, batch_size: int) -> None:
 
 def _batched_inner(space: Any, xs: Any, ys: Any) -> Any:
     """Return ``space.inner(xs[i], ys[i])`` for a leading-axis batch."""
+    require(space, _CAP_BATCH, "_batched_inner")
+    require(space, _CAP_INNER, "_batched_inner")
     xs_flat = space.flatten_batch(xs)
     ys_dual = ys if space.is_euclidean else space.riesz(ys)
     ys_flat = space.flatten_batch(ys_dual)
