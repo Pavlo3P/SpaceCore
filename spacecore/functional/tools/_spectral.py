@@ -143,7 +143,7 @@ class SpectralFunctional(_CoordinateFunctional[Domain]):
         ctx: Context | str | None = None,
         check_level: CheckLevel | bool | None = None,
     ) -> None:
-        super().__init__(dom, ctx, check_level=check_level)
+        super().__init__(dom, ctx, check_level=check_level, cod=base.codomain)
         domain = cast(Any, self.domain)
         if not isinstance(domain, JordanAlgebraSpace):
             raise TypeError(
@@ -170,7 +170,7 @@ class SpectralFunctional(_CoordinateFunctional[Domain]):
             )
         self.base = base
 
-    @checked_method(in_space="domain", out_scalar=True)
+    @checked_method(in_space="domain", out_space="codomain")
     def value(self, x: Any) -> Any:
         """Return ``f(lambda(x))``."""
         return self.base.value(cast(Any, self.domain).spectrum(x))

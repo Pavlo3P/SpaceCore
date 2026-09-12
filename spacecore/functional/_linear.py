@@ -3,6 +3,7 @@ from __future__ import annotations
 from abc import abstractmethod
 from typing import Any, Callable
 
+from ..space import Field
 from ._base import Domain, Functional
 from .._batching import _check_scalar_shape
 from .._checks import checked_method
@@ -118,7 +119,7 @@ class InnerProductFunctional(LinearFunctional[Domain]):
         """Stored domain element ``c`` defining ``ell_c(x) = <c, x>``."""
         return self._c
 
-    @checked_method(in_space="domain", out_scalar=True)
+    @checked_method(in_space="domain", out_space="codomain")
     def value(self, x: Any) -> Any:
         """Return ``domain.inner(representer, x)``."""
         return self._value_core(x)
@@ -183,6 +184,10 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
         Runtime validation policy for this object. When omitted, the ambient
         default (see :func:`spacecore.get_check_level`) is used.
 
+    cod : Field or None, optional
+        Scalar codomain, independent of the domain's coefficient field.
+        Defaults to ``dom.scalars``.
+
     Returns
     -------
     MatrixFreeLinearFunctional
@@ -197,6 +202,8 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
         ctx: Context | str | None = None,
         vvalue: Callable[[Any], Any] | None = None,
         check_level: CheckLevel | bool | None = None,
+        *,
+        cod: Field | None = None,
     ) -> None:
         """
         Initialize a matrix-free linear functional.
@@ -225,7 +232,7 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
             raise TypeError(f"value must be callable, got {type(value).__name__}.")
         if vvalue is not None and not callable(vvalue):
             raise TypeError(f"vvalue must be callable, got {type(vvalue).__name__}.")
-        super().__init__(dom, ctx, check_level=check_level)
+        super().__init__(dom, ctx, check_level=check_level, cod=cod)
         self.value_fn = value
         self.vvalue_fn = vvalue
 
@@ -245,7 +252,7 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
         """
         raise NotImplementedError(f"{type(self).__name__} does not store a Riesz representer.")
 
-    @checked_method(in_space="domain", out_scalar=True)
+    @checked_method(in_space="domain", out_space="codomain")
     def value(self, x: Any) -> Any:
         """
         Evaluate the scalar functional.
@@ -298,7 +305,7 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
         """Return whether another matrix-free functional uses the same callables."""
         if not self.same_math(other):              # Tier 1: backend
             return NotImplemented
-        if self.domain != other.domain:                         # Tier 2: domain
+        if self.domain != other.domain or self.codomain != other.codomain:  # Tier 2: endpoints
             return False
         # Callable identity: extensional equality of callables is undecidable.
         return self.value_fn is other.value_fn and self.vvalue_fn is other.vvalue_fn
@@ -306,14 +313,14 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
     def tree_flatten(self):
         """Flatten this functional for pytree registration."""
         children = ()
-        aux = (self.value_fn, self.domain, self.ctx, self.vvalue_fn)
+        aux = (self.value_fn, self.domain, self.ctx, self.vvalue_fn, self.codomain, self.check_level)
         return children, aux
 
     @classmethod
     def tree_unflatten(cls, aux, children):
         """Rebuild this functional from pytree data."""
-        value_fn, domain, ctx, vvalue_fn = aux
-        return cls(value_fn, domain, ctx, vvalue_fn)
+        value_fn, domain, ctx, vvalue_fn, cod, check_level = aux
+        return cls(value_fn, domain, ctx, vvalue_fn, check_level=check_level, cod=cod)
 
     def _convert(self, new_ctx: Context) -> MatrixFreeLinearFunctional:
         """
@@ -335,4 +342,6 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
             self.domain.convert(new_ctx),
             new_ctx,
             self.vvalue_fn,
+            check_level=self.check_level,
+            cod=self.codomain,
         )

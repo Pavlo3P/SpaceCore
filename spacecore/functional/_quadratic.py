@@ -127,7 +127,7 @@ class LinOpQuadraticForm(QuadraticForm[Domain]):
         if result is False:
             raise ValueError("LinOpQuadraticForm requires Q to be Hermitian/self-adjoint.")
 
-    @checked_method(in_space="domain", out_scalar=True)
+    @checked_method(in_space="domain", out_space="codomain")
     def value(self, x: Any) -> Any:
         """Return ``1/2 * <x, Qx> + linear(x) + a``."""
         return self._value_core(x)

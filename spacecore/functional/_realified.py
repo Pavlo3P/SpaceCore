@@ -142,7 +142,7 @@ class RealifiedFunctional(Functional):
         dom = DenseCoordinateSpace(
             (2 * X.size,), real_ctx, check_level=X.check_level
         )
-        super().__init__(dom, real_ctx, check_level=X.check_level)
+        super().__init__(dom, real_ctx, check_level=X.check_level, cod=base.codomain)
         self.base = base
         self.complex_space = X
 
@@ -161,7 +161,7 @@ class RealifiedFunctional(Functional):
     # Output-only: the input is validated by ``base.value`` against the *complex*
     # domain after ``from_real``, so an ``in_space`` here would check ``w``
     # against the wrong space.
-    @checked_method(out_scalar=True)
+    @checked_method(out_space="codomain")
     def value(self, w: Any, *args: Any, **kwargs: Any) -> Any:
         """Return ``base.value`` at the complex element ``w`` encodes."""
         return self.base.value(self.from_real(w), *args, **kwargs)

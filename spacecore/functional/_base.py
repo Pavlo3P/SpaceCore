@@ -15,11 +15,11 @@ from .._batching import (  # noqa: F401
 )
 from .._checks import checked_method
 from ..backend import PyTreeNode
-from .._repr import describe_space, field_symbol
+from .._repr import describe_space
 from ..contextual import ContextBound
-from ..contextual import Context
+from ..contextual import Context, resolve_context_priority
 from .._check_policy import CheckLevel
-from ..space import CoordinateSpace
+from ..space import CoordinateSpace, Field
 
 if TYPE_CHECKING:
     from ..linop import LinOp
@@ -48,6 +48,10 @@ class Functional(PyTreeNode, ContextBound, Generic[Domain]):
         default (see :func:`spacecore.get_check_level`) is used. Validation
         policy is a property of the functional, not of the ``Context``.
 
+    cod : Field or None, optional
+        Scalar codomain, defaulting to the converted domain's ``scalars``.
+        Its real or complex field is independent of the domain storage dtype.
+
     Attributes
     ----------
     dom : Space
@@ -61,8 +65,24 @@ class Functional(PyTreeNode, ContextBound, Generic[Domain]):
         dom: Domain,
         ctx: Context | str | None = None,
         check_level: CheckLevel | bool | None = None,
+        *,
+        cod: Field | None = None,
     ) -> None:
-        (self.dom,) = self._bind_context(ctx, dom, check_level=check_level)
+        resolved = resolve_context_priority(ctx, dom)
+        dom = dom.convert(resolved)
+        if cod is None:
+            cod = dom.scalars
+        if not isinstance(cod, Field):
+            raise TypeError("Functional codomain must be a Field.")
+        self.dom, self.cod = self._bind_context(resolved, dom, cod, check_level=check_level)
+        # Output checks follow the functional's policy, even when its domain
+        # or explicitly supplied field uses a different validation level.
+        self.cod = self.cod._with_check_level(self.check_level)
+
+    @property
+    def codomain(self) -> Field:
+        """The independently bound scalar field of this functional's values."""
+        return self.cod
 
     @property
     def domain(self) -> Domain:
@@ -253,11 +273,7 @@ class Functional(PyTreeNode, ContextBound, Generic[Domain]):
 
     def _arrow(self) -> str:
         """Return the ``domain → scalar-field`` descriptor for this functional."""
-        try:
-            codomain = field_symbol(self.dom.field)
-        except Exception:
-            codomain = "?"
-        return f"{describe_space(self.dom)} → {codomain}"
+        return f"{describe_space(self.dom)} → {describe_space(self.cod)}"
 
     def _repr_body(self) -> str:
         return self._arrow()

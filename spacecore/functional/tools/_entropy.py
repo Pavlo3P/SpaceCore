@@ -70,7 +70,7 @@ class NegativeEntropyFunctional(_CoordinateFunctional[Domain]):
     ) -> None:
         super().__init__(dom, ctx, check_level=check_level)
 
-    @checked_method(in_space="domain", out_scalar=True)
+    @checked_method(in_space="domain", out_space="codomain")
     def value(self, x: Any) -> Any:
         """Return ``sum_i x_i log x_i`` with ``0 log 0 = 0``."""
         o = self.ops
@@ -152,7 +152,7 @@ class KLDivergenceFunctional(_CoordinateFunctional[Domain]):
         """Stored reference element ``t``."""
         return self._target
 
-    @checked_method(in_space="domain", out_scalar=True)
+    @checked_method(in_space="domain", out_space="codomain")
     def value(self, x: Any) -> Any:
         """Return ``sum_i x_i log(x_i / t_i)`` with ``0 log 0 = 0``."""
         o = self.ops

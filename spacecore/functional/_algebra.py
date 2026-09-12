@@ -24,6 +24,7 @@ from __future__ import annotations
 from typing import Any
 
 from ._base import Functional
+from ..space import Field
 from .._checks import checked_method
 from .._check_policy import CheckLevel, minimum_check_level
 from ..contextual import Context
@@ -88,11 +89,12 @@ class ScaledFunctional(Functional):
         # result inherits the least-strict operand independently of order.
         if check_level is None:
             check_level = functional.check_level
-        super().__init__(functional.domain, functional.ctx, check_level=check_level)
+        super().__init__(functional.domain, functional.ctx, check_level=check_level,
+                         cod=functional.codomain)
         self.scalar = scalar
         self.functional = functional.convert(self.ctx)
 
-    @checked_method(in_space="domain", out_scalar=True)
+    @checked_method(in_space="domain", out_space="codomain")
     def value(self, x: Any, *args: Any, **kwargs: Any) -> Any:
         """Return ``scalar * functional.value(x)``."""
         return self._value_core(x, *args, **kwargs)
@@ -171,7 +173,7 @@ def make_scaled_functional(scalar: Any, functional: Functional) -> Functional:
         unwrap_scaled=lambda f: (
             (f.scalar, f.functional) if isinstance(f, ScaledFunctional) else None
         ),
-        make_zero=lambda: ZeroFunctional(functional.domain, functional.ctx),
+        make_zero=lambda: ZeroFunctional(functional.domain, functional.ctx, cod=functional.codomain),
         make_scaled_node=ScaledFunctional,
     )
 
@@ -202,7 +204,8 @@ class SumFunctional(Functional):
         _require_same_domain(parts)
         if check_level is None:
             check_level = minimum_check_level(tuple(term.check_level for term in parts))
-        super().__init__(parts[0].domain, parts[0].ctx, check_level=check_level)
+        super().__init__(parts[0].domain, parts[0].ctx, check_level=check_level,
+                         cod=parts[0].codomain)
         self.terms = tuple(term.convert(self.ctx) for term in parts)
 
     @property
@@ -210,7 +213,7 @@ class SumFunctional(Functional):
         """Return the summed terms in order."""
         return self.terms
 
-    @checked_method(in_space="domain", out_scalar=True)
+    @checked_method(in_space="domain", out_space="codomain")
     def value(self, x: Any, *args: Any, **kwargs: Any) -> Any:
         """Return the sum of the term values at ``x``."""
         return self._value_core(x, *args, **kwargs)
@@ -302,7 +305,7 @@ def make_functional_sum(terms: Any) -> Functional:
     return finalize_sum(
         flat,
         is_zero=lambda f: isinstance(f, ZeroFunctional),
-        make_zero=lambda: ZeroFunctional(flat[0].domain, flat[0].ctx),
+        make_zero=lambda: ZeroFunctional(flat[0].domain, flat[0].ctx, cod=flat[0].codomain),
         make_sum_node=SumFunctional,
     )
 
@@ -330,17 +333,19 @@ class ZeroFunctional(Functional):
         dom: Any,
         ctx: Context | str | None = None,
         check_level: CheckLevel | bool | None = None,
+        *,
+        cod: Field | None = None,
     ) -> None:
-        super().__init__(dom, ctx, check_level=check_level)
+        super().__init__(dom, ctx, check_level=check_level, cod=cod)
 
-    @checked_method(in_space="domain", out_scalar=True)
+    @checked_method(in_space="domain", out_space="codomain")
     def value(self, x: Any, *args: Any, **kwargs: Any) -> Any:
         """Return the scalar zero."""
         return self._value_core(x, *args, **kwargs)
 
     def _value_core(self, x: Any, *args: Any, **kwargs: Any) -> Any:
-        """Check-free scalar zero in the domain dtype."""
-        return self.ctx.asarray(0.0)
+        """Check-free scalar zero in the codomain dtype."""
+        return self.codomain.ctx.asarray(0.0)
 
     def grad(self, x: Any, *args: Any, **kwargs: Any) -> Any:
         """Return the domain's zero element."""
@@ -354,21 +359,22 @@ class ZeroFunctional(Functional):
         """Return whether another zero functional has the same domain."""
         if not self.same_math(other):
             return NotImplemented
-        return self.domain == other.domain
+        return self.domain == other.domain and self.codomain == other.codomain
 
     def tree_flatten(self):
         """Flatten this functional for pytree registration."""
-        return (), (self.domain, self.ctx)
+        return (), (self.domain, self.ctx, self.codomain, self.check_level)
 
     @classmethod
     def tree_unflatten(cls, aux, children):
         """Rebuild this functional from pytree data."""
-        dom, ctx = aux
-        return cls(dom, ctx)
+        dom, ctx, cod, check_level = aux
+        return cls(dom, ctx, check_level=check_level, cod=cod)
 
     def _convert(self, new_ctx: Context) -> "ZeroFunctional":
         """Convert the zero functional to ``new_ctx``."""
-        return ZeroFunctional(self.domain.convert(new_ctx), new_ctx)
+        return ZeroFunctional(self.domain.convert(new_ctx), new_ctx,
+                              check_level=self.check_level, cod=self.codomain)
 
 
 class ConstantFunctional(Functional):
@@ -407,20 +413,22 @@ class ConstantFunctional(Functional):
         constant: Any,
         ctx: Context | str | None = None,
         check_level: CheckLevel | bool | None = None,
+        *,
+        cod: Field | None = None,
     ) -> None:
         if not is_scalar_like(constant):
             raise TypeError(f"constant must be scalar-like, got {type(constant).__name__}.")
-        super().__init__(dom, ctx, check_level=check_level)
+        super().__init__(dom, ctx, check_level=check_level, cod=cod)
         self.constant = constant
 
-    @checked_method(in_space="domain", out_scalar=True)
+    @checked_method(in_space="domain", out_space="codomain")
     def value(self, x: Any, *args: Any, **kwargs: Any) -> Any:
         """Return the stored constant."""
         return self._value_core(x, *args, **kwargs)
 
     def _value_core(self, x: Any, *args: Any, **kwargs: Any) -> Any:
-        """Check-free constant in the domain dtype (mirrors ``ZeroFunctional``)."""
-        return self.ctx.asarray(self.constant)
+        """Check-free constant in the codomain dtype (mirrors ``ZeroFunctional``)."""
+        return self.codomain.ctx.asarray(self.constant)
 
     def grad(self, x: Any, *args: Any, **kwargs: Any) -> Any:
         """Return the domain's zero element (a constant has zero derivative)."""
@@ -434,22 +442,23 @@ class ConstantFunctional(Functional):
         """Return whether another constant functional has the same domain and value."""
         if not self.same_math(other):
             return NotImplemented
-        return self.domain == other.domain and scalar_eq(self.constant, other.constant)
+        return self.domain == other.domain and self.codomain == other.codomain and scalar_eq(self.constant, other.constant)
 
     def tree_flatten(self):
         """Flatten this functional for pytree registration (constant is a traced child)."""
-        return (self.constant,), (self.domain, self.ctx)
+        return (self.constant,), (self.domain, self.ctx, self.codomain, self.check_level)
 
     @classmethod
     def tree_unflatten(cls, aux, children):
         """Rebuild this functional from pytree data."""
-        dom, ctx = aux
+        dom, ctx, cod, check_level = aux
         (constant,) = children
-        return cls(dom, constant, ctx)
+        return cls(dom, constant, ctx, check_level=check_level, cod=cod)
 
     def _convert(self, new_ctx: Context) -> "ConstantFunctional":
         """Convert the constant functional to ``new_ctx``."""
-        return ConstantFunctional(self.domain.convert(new_ctx), self.constant, new_ctx)
+        return ConstantFunctional(self.domain.convert(new_ctx), self.constant, new_ctx,
+                                  check_level=self.check_level, cod=self.codomain)
 
 
 def make_constant_functional(
@@ -514,11 +523,12 @@ class ShiftedFunctional(Functional):
             raise TypeError(f"offset must be scalar-like, got {type(offset).__name__}.")
         if check_level is None:
             check_level = functional.check_level
-        super().__init__(functional.domain, functional.ctx, check_level=check_level)
+        super().__init__(functional.domain, functional.ctx, check_level=check_level,
+                         cod=functional.codomain)
         self.functional = functional.convert(self.ctx)
         self.offset = offset
 
-    @checked_method(in_space="domain", out_scalar=True)
+    @checked_method(in_space="domain", out_space="codomain")
     def value(self, x: Any, *args: Any, **kwargs: Any) -> Any:
         """Return ``functional.value(x) + offset``."""
         return self._value_core(x, *args, **kwargs)
@@ -648,7 +658,7 @@ class ProductFunctional(Functional):
         # (mirrors SumFunctional).
         if check_level is None:
             check_level = minimum_check_level((left.check_level, right.check_level))
-        super().__init__(left.domain, left.ctx, check_level=check_level)
+        super().__init__(left.domain, left.ctx, check_level=check_level, cod=left.codomain)
         self.left = left.convert(self.ctx)
         self.right = right.convert(self.ctx)
 
@@ -657,7 +667,7 @@ class ProductFunctional(Functional):
         """Return the two factors in order."""
         return (self.left, self.right)
 
-    @checked_method(in_space="domain", out_scalar=True)
+    @checked_method(in_space="domain", out_space="codomain")
     def value(self, x: Any, *args: Any, **kwargs: Any) -> Any:
         """Return ``left.value(x) * right.value(x)``."""
         return self._value_core(x, *args, **kwargs)
@@ -754,7 +764,7 @@ def make_functional_product(left: Functional, right: Functional) -> Functional:
     _require_same_domain((left, right), node="ProductFunctional")
 
     if isinstance(left, ZeroFunctional) or isinstance(right, ZeroFunctional):
-        return ZeroFunctional(left.domain, left.ctx)
+        return ZeroFunctional(left.domain, left.ctx, cod=left.codomain)
     if isinstance(left, ConstantFunctional):
         return make_scaled_functional(left.constant, right)
     if isinstance(right, ConstantFunctional):

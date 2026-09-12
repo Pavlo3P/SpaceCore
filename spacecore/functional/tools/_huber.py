@@ -74,7 +74,7 @@ class HuberFunctional(_CoordinateFunctional[Domain]):
             raise ValueError(f"HuberFunctional requires a finite delta > 0, got {delta}.")
         self.delta = delta
 
-    @checked_method(in_space="domain", out_scalar=True)
+    @checked_method(in_space="domain", out_space="codomain")
     def value(self, x: Any) -> Any:
         """Return ``sum_i h_delta(x_i)``."""
         o = self.ops
