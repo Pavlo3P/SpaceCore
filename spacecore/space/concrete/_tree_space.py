@@ -26,11 +26,11 @@ from ._dense_vector import (
     _validate_euclidean_elementwise_jordan,
 )
 
-CapabilitySet = frozenset[type]
-_CAP_INNER = InnerProductSpace
-_CAP_STAR = StarSpace
-_CAP_JORDAN = JordanAlgebraSpace
-_CAP_EUCLIDEAN_JORDAN = EuclideanJordanAlgebraSpace
+from .._capabilities import (
+    CapabilitySet, _CAP_INNER, _CAP_STAR, _CAP_JORDAN, registry_key,
+    _CAP_EUCLIDEAN_JORDAN, _space_capabilities,
+)
+
 _TREE_REGISTRY: dict[CapabilitySet, type[TreeSpace]] = {}
 
 
@@ -63,26 +63,13 @@ def _validate_leaf_spaces(
     return spaces
 
 
-def _space_capabilities(space: Space) -> CapabilitySet:
-    """Return structural capabilities advertised by one leaf space."""
-    capabilities: set[type] = set()
-    if isinstance(space, InnerProductSpace):
-        capabilities.add(_CAP_INNER)
-    if isinstance(space, StarSpace):
-        capabilities.add(_CAP_STAR)
-    if isinstance(space, JordanAlgebraSpace):
-        capabilities.add(_CAP_JORDAN)
-    if isinstance(space, EuclideanJordanAlgebraSpace):
-        if isinstance(space, EuclideanElementwiseJordanSpace):
-            _validate_euclidean_elementwise_jordan(space, space.geometry)
-        capabilities.add(_CAP_EUCLIDEAN_JORDAN)
-    return frozenset(capabilities)
-
-
 def _tree_capabilities(spaces: Sequence[Space]) -> CapabilitySet:
     """Return capabilities shared by every tree leaf."""
     if not spaces:
         return frozenset()
+    for space in spaces:
+        if isinstance(space, EuclideanElementwiseJordanSpace):
+            _validate_euclidean_elementwise_jordan(space, space.geometry)
     shared = set(_space_capabilities(spaces[0]))
     for space in spaces[1:]:
         shared.intersection_update(_space_capabilities(space))
@@ -330,7 +317,7 @@ class TreeSpace(PyTreeNode, CoordinateSpace):
             spaces = _validate_leaf_spaces(leaf_spaces)
             resolved_ctx = resolve_context_priority(ctx, *spaces)
             converted = tuple(space.convert(resolved_ctx) for space in spaces)
-            cls = _TREE_REGISTRY.get(_tree_capabilities(converted), TreeSpace)
+            cls = _TREE_REGISTRY.get(registry_key(_tree_capabilities(converted)), TreeSpace)
         return super(TreeSpace, cls).__new__(cls)
 
     def __init__(
@@ -964,7 +951,7 @@ class _TreeEuclideanJordanStarSpace(
 
 
 _TREE_REGISTRY.update(
-    {
+    {registry_key(_caps): _cls for _caps, _cls in {
         frozenset(): TreeSpace,
         frozenset({_CAP_INNER}): TreeInnerProductSpace,
         frozenset({_CAP_STAR}): _TreeStarSpace,
@@ -979,7 +966,7 @@ _TREE_REGISTRY.update(
         frozenset(
             {_CAP_INNER, _CAP_STAR, _CAP_JORDAN, _CAP_EUCLIDEAN_JORDAN}
         ): _TreeEuclideanJordanStarSpace,
-    }
+    }.items()}
 )
 
 # The capability-dispatch subclasses above register themselves: each derives from

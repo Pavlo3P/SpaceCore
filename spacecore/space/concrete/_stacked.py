@@ -10,7 +10,12 @@ from ..base import (
     Space,
     StarSpace,
 )
-from ._tree_space import TreeSpace, _space_capabilities
+from ._tree_space import TreeSpace
+from ._dense_vector import EuclideanElementwiseJordanSpace, _validate_euclidean_elementwise_jordan
+from .._capabilities import (
+    _CAP_INNER, _CAP_STAR, _CAP_JORDAN,
+    _CAP_EUCLIDEAN_JORDAN, _space_capabilities, registry_key,
+)
 from ..._checks import checked_method
 from ..._check_policy import CheckLevel
 from ...contextual import resolve_context_priority
@@ -21,11 +26,6 @@ from ...types import DenseArray
 from ..checks import BackendCheck, DTypeCheck, FieldCheck, ShapeCheck
 
 _STACKED_FALLBACK_ERRORS = (TypeError, ValueError, AttributeError, IndexError)
-
-_CAP_INNER = InnerProductSpace
-_CAP_STAR = StarSpace
-_CAP_JORDAN = JordanAlgebraSpace
-_CAP_EUCLIDEAN_JORDAN = EuclideanJordanAlgebraSpace
 
 _STACKED_REGISTRY: dict[frozenset[type], type[StackedSpace]] = {}
 
@@ -54,12 +54,14 @@ def _validate_count(count: int, owner: str = "StackedSpace") -> int:
 
 def _stacked_capabilities(base: Space) -> frozenset[type]:
     """Return capabilities copied from the stacked base space."""
+    if isinstance(base, EuclideanElementwiseJordanSpace):
+        _validate_euclidean_elementwise_jordan(base, base.geometry)
     return _space_capabilities(base)
 
 
 def _stacked_class_for(capabilities: frozenset[type]) -> type[StackedSpace]:
     """Return the deterministic concrete class for a stacked capability set."""
-    return _STACKED_REGISTRY.get(capabilities, StackedSpace)
+    return _STACKED_REGISTRY.get(registry_key(capabilities), StackedSpace)
 
 
 def _require_base(base: Space, capability: type, owner: str) -> None:
@@ -452,7 +454,7 @@ class _StackedEuclideanJordanStarSpace(
 
 
 _STACKED_REGISTRY.update(
-    {
+    {registry_key(_caps): _cls for _caps, _cls in {
         frozenset(): StackedSpace,
         frozenset({_CAP_INNER}): _StackedInnerProductSpace,
         frozenset({_CAP_STAR}): _StackedStarSpace,
@@ -467,7 +469,7 @@ _STACKED_REGISTRY.update(
         frozenset(
             {_CAP_INNER, _CAP_STAR, _CAP_JORDAN, _CAP_EUCLIDEAN_JORDAN}
         ): _StackedEuclideanJordanStarSpace,
-    }
+    }.items()}
 )
 
 
