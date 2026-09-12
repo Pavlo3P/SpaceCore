@@ -17,7 +17,9 @@ Plus additional Context-API surface area not in the original checklist:
 
 7. ``assert_dense`` / ``assert_sparse`` gates.
 8. ``convert`` dispatch (dense → ``asarray``, sparse → ``assparse``).
-9. ``check_level`` normalization and the deprecated ``enable_checks`` alias.
+9. Validation policy is *not* a context property: ``check_level`` is carried by
+   the context-bound object, and the deprecated ``enable_checks`` Boolean
+   survives only as the ``normalize_check_level`` shim.
 
 Generic per-op behavior lives in :mod:`tests.backend.test_operations`;
 this module pins the ``Context`` API only.
@@ -29,6 +31,7 @@ import pytest
 import scipy.sparse as sps
 
 import spacecore as sc
+from spacecore._check_policy import level_to_enabled, normalize_check_level
 
 from tests._helpers import has_cupy, has_jax, has_torch, to_numpy
 from tests.backend._conformance import (
@@ -150,15 +153,15 @@ class TestConstruction:
 # 2. Equality and hash
 # ===========================================================================
 class TestEqualityAndHash:
-    def test_equality_same_family_same_dtype(self):
-        a = sc.Context(sc.NumpyOps(), dtype=np.float64)
-        b = sc.Context(sc.NumpyOps(), dtype=np.float64)
-        assert a == b
+    """Cross-backend equality only.
 
-    def test_inequality_different_dtype(self):
-        a = sc.Context(sc.NumpyOps(), dtype=np.float32)
-        b = sc.Context(sc.NumpyOps(), dtype=np.float64)
-        assert a != b
+    The full value-object equality/hash contract — reflexivity, symmetry,
+    transitivity, hash-consistency, frozen-immutability, dict-key usability,
+    and foreign-type inequality — lives in
+    ``tests/context/test_context_contracts.py`` (via ``assert_equality_contract``).
+    This keeps only the one case that requires a *real* second backend, which
+    the synthetic single-backend contract test cannot exercise.
+    """
 
     def test_inequality_different_family(self):
         if not has_jax():
@@ -168,30 +171,6 @@ class TestEqualityAndHash:
         a = sc.Context(sc.NumpyOps(), dtype=dt)
         b = sc.Context(sc.JaxOps(), dtype=dt)
         assert a != b
-
-    def test_inequality_different_check_level(self):
-        a = sc.Context(sc.NumpyOps(), check_level="standard")
-        b = sc.Context(sc.NumpyOps(), check_level="none")
-        assert a != b
-
-    def test_inequality_against_non_context(self):
-        ctx = sc.Context(sc.NumpyOps())
-        assert ctx != "Context"
-        assert ctx != sc.NumpyOps()
-        assert (ctx == 42) is False
-
-    def test_hashable_and_dict_keyable(self):
-        a = sc.Context(sc.NumpyOps(), dtype=np.float64)
-        b = sc.Context(sc.NumpyOps(), dtype=np.float64)
-        table = {a: "first"}
-        table[b] = "second"
-        assert table[a] == "second"
-        assert len(table) == 1
-
-    def test_is_frozen(self):
-        ctx = sc.Context(sc.NumpyOps())
-        with pytest.raises((AttributeError, Exception)):
-            ctx.dtype = np.float32  # type: ignore[misc]
 
 
 # ===========================================================================
@@ -346,12 +325,13 @@ class TestAssparse:
 # 6. Repr stability
 # ===========================================================================
 class TestRepr:
-    def test_repr_includes_family_dtype_check_level(self):
-        ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="standard")
+    def test_repr_includes_family_and_dtype_only(self):
+        ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
         r = repr(ctx)
         assert "Context(" in r
         assert "NumpyOps" in r
-        assert "check_level='standard'" in r
+        assert "float64" in r
+        assert "check_level" not in r
 
     def test_repr_is_deterministic(self):
         a = repr(sc.Context(sc.NumpyOps(), dtype=np.float64))
@@ -409,27 +389,32 @@ class TestConvertDispatch:
             ctx.convert([1.0, 2.0])
 
 
-# ---- 9. check_level normalization + enable_checks deprecation alias -------
+# ---- 9. check_level lives on the bound object, not on the Context ---------
 class TestCheckLevel:
+    def test_context_carries_no_validation_policy(self):
+        ctx = sc.Context(sc.NumpyOps())
+        assert not hasattr(ctx, "check_level")
+        assert not hasattr(ctx, "enable_checks")
+
     def test_default_check_level_is_standard(self):
         ctx = sc.Context(sc.NumpyOps())
-        assert ctx.check_level == "standard"
+        assert sc.DenseCoordinateSpace((2,), ctx).check_level == "standard"
 
     @pytest.mark.parametrize("level", ["none", "cheap", "standard", "strict"])
     def test_explicit_check_level(self, level):
-        ctx = sc.Context(sc.NumpyOps(), check_level=level)
-        assert ctx.check_level == level
+        ctx = sc.Context(sc.NumpyOps())
+        assert sc.DenseCoordinateSpace((2,), ctx, check_level=level).check_level == level
 
     def test_enable_checks_true_maps_to_standard(self):
         with pytest.warns(DeprecationWarning):
-            ctx = sc.Context(sc.NumpyOps(), enable_checks=True)
-        assert ctx.check_level == "standard"
+            level = normalize_check_level(enable_checks=True, warn_legacy=True)
+        assert level == "standard"
 
     def test_enable_checks_false_maps_to_none(self):
         with pytest.warns(DeprecationWarning):
-            ctx = sc.Context(sc.NumpyOps(), enable_checks=False)
-        assert ctx.check_level == "none"
+            level = normalize_check_level(enable_checks=False, warn_legacy=True)
+        assert level == "none"
 
-    def test_enable_checks_property_is_legacy_view(self):
-        assert sc.Context(sc.NumpyOps(), check_level="none").enable_checks is False
-        assert sc.Context(sc.NumpyOps(), check_level="standard").enable_checks is True
+    def test_enable_checks_is_the_legacy_view_of_a_level(self):
+        assert level_to_enabled("none") is False
+        assert level_to_enabled("standard") is True

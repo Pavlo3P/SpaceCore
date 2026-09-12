@@ -5,7 +5,7 @@ from typing import Any, Literal
 
 import numpy as np
 
-from spacecore.backend import Context
+from spacecore import Context
 from spacecore.types import DenseArray
 
 from ._protocol import GeneratedCase

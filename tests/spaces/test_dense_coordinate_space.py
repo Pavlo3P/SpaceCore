@@ -182,7 +182,7 @@ class TestConvert:
             pytest.skip("jax not installed")
         dt = jax_real_dtype()
         src = sc.Context(sc.NumpyOps(), dtype=dt)
-        dst = sc.Context(sc.JaxOps(), dtype=dt, check_level="none")
+        dst = sc.Context(sc.JaxOps(), dtype=dt)
         space = sc.DenseCoordinateSpace((2, 3), src)
         out = space.convert(dst)
         assert out.ctx == dst

@@ -19,7 +19,8 @@ from tests._helpers import to_numpy
 
 
 def _ctx(dtype=np.float64, check_level="standard"):
-    return sc.Context(sc.NumpyOps(), dtype=dtype, check_level=check_level)
+    sc.set_check_level(check_level)
+    return sc.Context(sc.NumpyOps(), dtype=dtype)
 
 
 # ===========================================================================

@@ -58,8 +58,8 @@ class TestSpectralRoundTrip:
 
     def test_hermitian_spectral_decompose_round_trip(self):
         """Reconstruction from spectrum is bit-inexact; run at check_level=none."""
-        ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="none")
-        space = sc.HermitianSpace(3, ctx=ctx)
+        ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+        space = sc.HermitianSpace(3, ctx=ctx, check_level="none")
         rng = np.random.default_rng(0)
         M = ctx.asarray(rng.standard_normal((3, 3)))
         H = space.symmetrize(M)
@@ -90,8 +90,8 @@ class TestSpectralApply:
         symmetric, so the strict Hermitian membership gate would refuse it; run
         with check_level=none.
         """
-        ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="none")
-        space = sc.HermitianSpace(2, ctx=ctx)
+        ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+        space = sc.HermitianSpace(2, ctx=ctx, check_level="none")
         H = space.symmetrize(ctx.asarray([[2.0, 0.5], [0.5, 1.0]]))
         applied = space.spectral_apply(H, lambda t: ctx.ops.exp(t))
         expected = scipy.linalg.expm(to_numpy(H))

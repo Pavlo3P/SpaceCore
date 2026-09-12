@@ -5,20 +5,22 @@ from abc import abstractmethod
 from functools import cached_property
 from math import prod
 from numbers import Number
-from typing import Any, Generic, Self, TypeVar
+from typing import Any, Generic, TypeVar
 
 from .._batching import _leading_batch_size, _warn_vmap_fallback_once
+from .._check_policy import CheckLevel
 from .._checks import checked_method
+from ..backend import PyTreeNode
 from .._repr import describe_space
 from ..space import CoordinateSpace
-from ..backend import Context
-from .._contextual import ContextBound
+from ..contextual import Context
+from ..contextual import ContextBound
 
 Domain = TypeVar("Domain", bound=CoordinateSpace)
 Codomain = TypeVar("Codomain", bound=CoordinateSpace)
 
 
-class LinOp(ContextBound, Generic[Domain, Codomain]):
+class LinOp(PyTreeNode, ContextBound, Generic[Domain, Codomain]):
     r"""
     Represent a linear map between two spaces.
 
@@ -30,6 +32,12 @@ class LinOp(ContextBound, Generic[Domain, Codomain]):
     :math:`x \in X` and :math:`y \in Y`. For complex operators this is the
     conjugate adjoint.
 
+    This is the **Hilbert-space adjoint** [Conway]_, defined by the pairing of
+    each space's own inner product — *not* the coordinate transpose, and not the
+    Banach (dual-space) adjoint. On a non-Euclidean geometry the two differ: see
+    :func:`~spacecore.linop._metric.metric_rapply` for the
+    :math:`R_X^{-1} A^\dagger R_Y` formula that realizes it.
+
     Parameters
     ----------
     dom : Space
@@ -39,6 +47,11 @@ class LinOp(ContextBound, Generic[Domain, Codomain]):
     ctx : Context, str, or None, optional
         Backend context specification. Default is resolved from ``dom`` and
         ``cod``.
+    check_level : {"none", "cheap", "standard", "strict"}, optional
+        Runtime validation policy for this object. When omitted, the ambient
+        default (see :func:`spacecore.get_check_level`) is used. Unlike the
+        backend/dtype context, the validation policy is a property of the bound
+        object, not of the :class:`Context`.
 
     Attributes
     ----------
@@ -48,6 +61,19 @@ class LinOp(ContextBound, Generic[Domain, Codomain]):
         Codomain space converted to ``ctx``.
     ctx : Context
         Resolved backend context.
+
+    References
+    ----------
+    .. [Conway] J. B. Conway, *A Course in Functional Analysis*, 2nd ed.,
+       Springer, 1990, II.2.4: for ``A`` in ``B(H,K)`` there is a **unique**
+       ``A*`` in ``B(K,H)`` with ``<Ah,k> = <h,A*k>``; existence rests on the
+       Riesz representation theorem (I.3.4), which is why a metric-aware adjoint
+       needs the Riesz maps. Theorem II.2.6 gives the algebra this class and
+       ``linop/_algebra.py`` implement:
+       ``(aA + B)* = conj(a) A* + B*``, ``(AB)* = B* A*`` (**order reverses**),
+       ``A** = A``. II.2.2 is the uniqueness statement behind "the" adjoint.
+       Conway II.3 (``def-adjoint-banach``) is the *different*, dual-space
+       adjoint — not what SpaceCore means by ``rapply``.
 
     Examples
     --------
@@ -62,8 +88,14 @@ class LinOp(ContextBound, Generic[Domain, Codomain]):
     array([3., 8.])
     """
 
-    def __init__(self, dom: Domain, cod: Codomain, ctx: Context | str | None = None):
-        self.dom, self.cod = self._bind_context(ctx, dom, cod)
+    def __init__(
+        self,
+        dom: Domain,
+        cod: Codomain,
+        ctx: Context | str | None = None,
+        check_level: CheckLevel | bool | None = None,
+    ):
+        self.dom, self.cod = self._bind_context(ctx, dom, cod, check_level=check_level)
 
     @property
     def domain(self) -> Domain:
@@ -97,7 +129,16 @@ class LinOp(ContextBound, Generic[Domain, Codomain]):
 
     @abstractmethod
     def rapply(self, y: Any) -> Any:
-        """Apply the adjoint map to an element of ``self.codomain``."""
+        r"""Apply the adjoint map to an element of ``self.codomain``.
+
+        This is the **Hilbert-space adjoint** ``A^#``, defined by
+        ``<Ax, y>_Y = <x, A^# y>_X`` (Dunford-Schwartz, *Linear Operators I*,
+        Definition VI.2.9) -- *not* the Banach adjoint of Definition VI.2.1,
+        which maps ``Y^* -> X^*`` and is the coordinate transpose. The two
+        coincide only when both spaces are Euclidean. See
+        :func:`spacecore.linop._metric.metric_rapply` for the derivation and
+        the full reference block.
+        """
 
     def _apply_core(self, x: Any) -> Any:
         """Apply without adding validation beyond the concrete implementation."""
@@ -120,7 +161,11 @@ class LinOp(ContextBound, Generic[Domain, Codomain]):
         return self.apply(x)
 
     def adjoint_apply(self, y: Any) -> Any:
-        """Apply the adjoint of this linear operator to ``y``."""
+        """Apply the adjoint of this linear operator to ``y``.
+
+        Spelled-out alias for :meth:`rapply`; the same Definition VI.2.9
+        adjoint, not a second notion.
+        """
         return self.rapply(y)
 
     def is_hermitian(self) -> bool | None:
@@ -358,13 +403,8 @@ class LinOp(ContextBound, Generic[Domain, Codomain]):
         """
         return f"{type(self).__name__}({self._arrow()})"
 
-    @abstractmethod
-    def tree_flatten(self) -> tuple[tuple[Any, ...], Any]:
-        """Flatten this operator for backend pytree registration."""
-        ...
-
-    @classmethod
-    @abstractmethod
-    def tree_unflatten(cls, aux: Any, children: Any) -> Self:
-        """Rebuild this operator from backend pytree data."""
-        ...
+    # tree_flatten / tree_unflatten are inherited from PyTreeNode, which owns the
+    # flatten contract for every SpaceCore container and auto-registers concrete
+    # subclasses with each backend's tree protocol. Every concrete LinOp is a
+    # container, so the capability belongs on this base rather than being
+    # re-declared (and separately registered) per operator.

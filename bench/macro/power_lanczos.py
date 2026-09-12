@@ -30,7 +30,7 @@ Both benchmarks emit four run modes:
 The operator is built once per ``(backend, size, seed)`` triple in the
 factory body. Timed callables only invoke the solver — they do not
 allocate the potential or convert dtypes. For the JAX paths, the public
-context is built with the matching ``check_level`` so the runner
+space is built with the matching ``check_level`` so the runner
 honours the cheap-check overhead.
 """
 from __future__ import annotations
@@ -284,7 +284,7 @@ def _bare_lanczos(
 
 def _build_sc_callable_power(
     backend: str,
-    ctx_check: str,
+    check_level: str,
     v_np: np.ndarray,
     d: int,
     K: int,
@@ -292,8 +292,8 @@ def _build_sc_callable_power(
     jit: bool,
 ) -> Callable[[], Any]:
     """Build the SpaceCore power-iteration callable for one check level."""
-    ctx = _backend_ctx(backend, check_level=ctx_check)
-    space = sc.DenseCoordinateSpace((d,), ctx)
+    ctx = _backend_ctx(backend)
+    space = sc.DenseCoordinateSpace((d,), ctx, check_level=check_level)
     v_ctx = ctx.asarray(v_np)
     x0_ctx = ctx.asarray(x0_np)
 
@@ -321,7 +321,7 @@ def _build_sc_callable_power(
 
 def _build_sc_callable_lanczos(
     backend: str,
-    ctx_check: str,
+    check_level: str,
     v_np: np.ndarray,
     d: int,
     K: int,
@@ -329,8 +329,8 @@ def _build_sc_callable_lanczos(
     jit: bool,
 ) -> Callable[[], Any]:
     """Build the SpaceCore lanczos_smallest callable for one check level."""
-    ctx = _backend_ctx(backend, check_level=ctx_check)
-    space = sc.DenseCoordinateSpace((d,), ctx)
+    ctx = _backend_ctx(backend)
+    space = sc.DenseCoordinateSpace((d,), ctx, check_level=check_level)
     v_ctx = ctx.asarray(v_np)
     x0_ctx = ctx.asarray(x0_np)
 
@@ -386,9 +386,9 @@ def _factory_power(
     d = int(size_params["d"])
     K = int(size_params["K"])
 
-    # Use the public-none context to derive a canonical dtype for the
-    # operator data; the cheap-checked context shares the same dtype.
-    base_ctx = _backend_ctx(backend, check_level="none")
+    # Derive a canonical dtype for the operator data; both check levels
+    # share the same context and dtype.
+    base_ctx = _backend_ctx(backend)
     np_dtype = _np_dtype(base_ctx)
 
     v_np = _make_potential(d, seed, np_dtype)
@@ -450,7 +450,7 @@ def _factory_lanczos(
     d = int(size_params["d"])
     K = int(size_params["K"])
 
-    base_ctx = _backend_ctx(backend, check_level="none")
+    base_ctx = _backend_ctx(backend)
     np_dtype = _np_dtype(base_ctx)
 
     v_np = _make_potential(d, seed, np_dtype)

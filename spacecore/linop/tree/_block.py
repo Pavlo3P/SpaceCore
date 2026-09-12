@@ -9,8 +9,8 @@ from ._base import TreeLinOp
 from .._algebra import _same_space_for_algebra
 from .._base import LinOp
 from ..._checks import checked_method
-from ..._contextual._bound import _same_math_context
-from ...backend import Context, jax_pytree_class
+from ...contextual import Context
+from ..._check_policy import CheckLevel
 from ...kernels import CachedStackParts, dispatch, should_consult_dispatch
 from ...space import TreeSpace
 
@@ -61,7 +61,7 @@ def _validate_blocks(blocks: Sequence[Any], owner: str) -> tuple[LinOp, ...]:
 
     first = validated[0]
     for index, block in enumerate(validated[1:], start=1):
-        if not _same_math_context(first.ctx, block.ctx):
+        if not first.ctx.same_math(block.ctx):
             raise ValueError(
                 f"All {owner} blocks must have the same mathematical context; "
                 f"block 0 has {first.ctx!r}, block {index} has {block.ctx!r}."
@@ -85,7 +85,6 @@ def _sum_values(space: Any, values: Sequence[Any], *, batched: bool) -> Any:
     return result
 
 
-@jax_pytree_class
 class BlockDiagonalLinOp(TreeLinOp[TreeSpace, TreeSpace]):
     r"""
     Represent independent blocks over a finite direct-product tree.
@@ -108,6 +107,10 @@ class BlockDiagonalLinOp(TreeLinOp[TreeSpace, TreeSpace]):
         Block operators for the legacy form; inferred from ``blocks`` otherwise.
     ctx : Context, str, or None, optional
         Backend context specification. Default is resolved from the blocks.
+    check_level : {"none", "cheap", "standard", "strict"}, optional
+        Runtime validation policy for this operator. When omitted, the ambient
+        default (see :func:`spacecore.get_check_level`) is used. Validation
+        policy is a property of the operator, not of the ``Context``.
 
     Notes
     -----
@@ -122,6 +125,7 @@ class BlockDiagonalLinOp(TreeLinOp[TreeSpace, TreeSpace]):
         cod: TreeSpace | None = None,
         parts: Sequence[LinOp] | None = None,
         ctx: Context | str | None = None,
+        check_level: CheckLevel | bool | None = None,
     ) -> None:
         if isinstance(blocks, TreeSpace):
             dom = blocks
@@ -141,7 +145,7 @@ class BlockDiagonalLinOp(TreeLinOp[TreeSpace, TreeSpace]):
             dom = TreeSpace(treedef, tuple(block.domain for block in block_parts), ctx=ctx)
             cod = TreeSpace(treedef, tuple(block.codomain for block in block_parts), ctx=ctx)
 
-        super().__init__(dom, cod, block_parts, ctx)
+        super().__init__(dom, cod, block_parts, ctx, check_level=check_level)
         # ADR-022: carry the per-accessor stacked-block-matrix memo on the parts
         # so the uniform-dense batched fold (block_batched) stacks once and reuses
         # across applies. Built lazily on first optimized use, NumPy-only; dropped
@@ -168,13 +172,13 @@ class BlockDiagonalLinOp(TreeLinOp[TreeSpace, TreeSpace]):
 
     def _apply_unchecked(self, x: Any) -> Any:
         x_parts = self.dom._components(x)
-        if should_consult_dispatch(self.ctx):
+        if should_consult_dispatch(self):
             y_parts = dispatch(
                 _BLOCK_DIAGONAL_APPLY_KEY,
                 self.parts,
                 x_parts,
                 generic=_block_diagonal_apply,
-                ctx=self.ctx,
+                ctx=self,
             )
         else:
             y_parts = _block_diagonal_apply(self.parts, x_parts)
@@ -187,13 +191,13 @@ class BlockDiagonalLinOp(TreeLinOp[TreeSpace, TreeSpace]):
 
     def _rapply_unchecked(self, y: Any) -> Any:
         y_parts = self.cod._components(y)
-        if should_consult_dispatch(self.ctx):
+        if should_consult_dispatch(self):
             x_parts = dispatch(
                 _BLOCK_DIAGONAL_RAPPLY_KEY,
                 self.parts,
                 y_parts,
                 generic=_block_diagonal_rapply,
-                ctx=self.ctx,
+                ctx=self,
             )
         else:
             x_parts = _block_diagonal_rapply(self.parts, y_parts)
@@ -208,13 +212,13 @@ class BlockDiagonalLinOp(TreeLinOp[TreeSpace, TreeSpace]):
 
     def _vapply_unchecked(self, x: Any) -> Any:
         x_parts = self.dom._components(x)
-        if should_consult_dispatch(self.ctx):
+        if should_consult_dispatch(self):
             y_parts = dispatch(
                 _BLOCK_DIAGONAL_VAPPLY_KEY,
                 self.parts,
                 x_parts,
                 generic=_block_diagonal_vapply,
-                ctx=self.ctx,
+                ctx=self,
             )
         else:
             y_parts = _block_diagonal_vapply(self.parts, x_parts)
@@ -229,13 +233,13 @@ class BlockDiagonalLinOp(TreeLinOp[TreeSpace, TreeSpace]):
 
     def _rvapply_unchecked(self, y: Any) -> Any:
         y_parts = self.cod._components(y)
-        if should_consult_dispatch(self.ctx):
+        if should_consult_dispatch(self):
             x_parts = dispatch(
                 _BLOCK_DIAGONAL_RVAPPLY_KEY,
                 self.parts,
                 y_parts,
                 generic=_block_diagonal_rvapply,
-                ctx=self.ctx,
+                ctx=self,
             )
         else:
             x_parts = _block_diagonal_rvapply(self.parts, y_parts)
@@ -280,7 +284,6 @@ class BlockDiagonalLinOp(TreeLinOp[TreeSpace, TreeSpace]):
         )
 
 
-@jax_pytree_class
 class BlockMatrixLinOp(TreeLinOp[TreeSpace, TreeSpace]):
     r"""
     Represent a rectangular matrix of blocks over direct products.
@@ -296,9 +299,17 @@ class BlockMatrixLinOp(TreeLinOp[TreeSpace, TreeSpace]):
         Nonempty rectangular block matrix. Blocks in one row must have
         compatible codomains, and blocks in one column must have compatible
         domains.
+    check_level : {"none", "cheap", "standard", "strict"}, optional
+        Runtime validation policy for this operator. When omitted, the ambient
+        default (see :func:`spacecore.get_check_level`) is used. Validation
+        policy is a property of the operator, not of the ``Context``.
     """
 
-    def __init__(self, block_rows: Sequence[Sequence[LinOp]]) -> None:
+    def __init__(
+        self,
+        block_rows: Sequence[Sequence[LinOp]],
+        check_level: CheckLevel | bool | None = None,
+    ) -> None:
         if not isinstance(block_rows, Sequence) or isinstance(block_rows, (str, bytes)):
             raise TypeError("BlockMatrixLinOp block_rows must be a sequence of rows.")
         rows = tuple(block_rows)
@@ -354,7 +365,7 @@ class BlockMatrixLinOp(TreeLinOp[TreeSpace, TreeSpace]):
         cod = TreeSpace.from_leaf_spaces(tuple(row[0].codomain for row in normalized_rows), ctx)
         self._row_count = len(normalized_rows)
         self._column_count = column_count
-        super().__init__(dom, cod, flat_blocks, ctx)
+        super().__init__(dom, cod, flat_blocks, ctx, check_level=check_level)
         self.block_rows = tuple(
             self.parts[index * column_count : (index + 1) * column_count]
             for index in range(self._row_count)

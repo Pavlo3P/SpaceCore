@@ -268,7 +268,7 @@ class TestWeightedFusedMode:
 
     def test_fused_mode_recomputed_after_convert(self, numpy_ctx):
         # Source: legacy test_adjoint_identity.py
-        new_ctx = sc.Context(sc.NumpyOps(), dtype=np.float32, check_level="none")
+        new_ctx = sc.Context(sc.NumpyOps(), dtype=np.float32)
         domain = sc.DenseCoordinateSpace(
             (2,), numpy_ctx, geometry=sc.WeightedInnerProduct(numpy_ctx.asarray([2.0, 5.0]))
         )
@@ -487,11 +487,12 @@ class TestPytree:
 class TestBatched:
     def test_fast_path_vapply_rvapply_without_checks(self):
         # Source: legacy test_batched_lifting.py
-        ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="none")
-        dom = sc.DenseCoordinateSpace((2,), ctx)
-        cod = sc.DenseCoordinateSpace((3,), ctx)
+        ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+        dom = sc.DenseCoordinateSpace((2,), ctx, check_level="none")
+        cod = sc.DenseCoordinateSpace((3,), ctx, check_level="none")
         matrix = ctx.asarray(_MATRIX)
-        op = sc.DenseLinOp(matrix, dom, cod, ctx)
+        op = sc.DenseLinOp(matrix, dom, cod, ctx, check_level="none")
+        assert op.check_level == "none"
         xs = ctx.asarray([[7.0, 8.0], [1.0, -1.0], [0.5, 2.0]])
         ys = ctx.asarray([[1.0, -1.0, 2.0], [0.0, 3.0, -2.0]])
 

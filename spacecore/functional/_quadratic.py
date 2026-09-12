@@ -10,8 +10,9 @@ from .._batching import (
 )
 from ._linear import LinearFunctional
 from .._checks import checked_method
-from .._contextual import resolve_context_priority
-from ..backend import Context, jax_pytree_class
+from .._check_policy import CheckLevel
+from ..contextual import resolve_context_priority
+from ..contextual import Context
 from ..kernels import core_kernels
 from ..linop import LinOp
 
@@ -26,6 +27,9 @@ class QuadraticForm(Functional[Domain]):
         Domain space.
     ctx : Context, str, or None, optional
         Backend context specification. Default is resolved from ``dom``.
+    check_level : {{"none", "cheap", "standard", "strict"}}, optional
+        Runtime validation policy for this object. When omitted, the ambient
+        default (see :func:`spacecore.get_check_level`) is used.
     """
 
     def hess_apply(self, x: Any) -> Any:
@@ -44,7 +48,6 @@ class QuadraticForm(Functional[Domain]):
 
 
 @core_kernels("linop-quadratic-form")
-@jax_pytree_class
 class LinOpQuadraticForm(QuadraticForm[Domain]):
     r"""
     Represent a quadratic form backed by a linear operator.
@@ -72,6 +75,9 @@ class LinOpQuadraticForm(QuadraticForm[Domain]):
     ctx : Context, str, or None, optional
         Backend context specification. Default is resolved from ``Q`` and
         ``linear``.
+    check_level : {{"none", "cheap", "standard", "strict"}}, optional
+        Runtime validation policy for this object. When omitted, the ambient
+        default (see :func:`spacecore.get_check_level`) is used.
 
     Attributes
     ----------
@@ -89,6 +95,7 @@ class LinOpQuadraticForm(QuadraticForm[Domain]):
         linear: LinearFunctional[Domain] | None = None,
         a: Any = 0,
         ctx: Context | str | None = None,
+        check_level: CheckLevel | bool | None = None,
     ) -> None:
         if not isinstance(Q, LinOp):
             raise TypeError(f"Q must be a LinOp, got {type(Q).__name__}.")
@@ -107,7 +114,7 @@ class LinOpQuadraticForm(QuadraticForm[Domain]):
             if linear.domain != Q.domain:
                 raise ValueError("linear.domain must match Q.domain.")
 
-        super().__init__(Q.domain, resolved_ctx)
+        super().__init__(Q.domain, resolved_ctx, check_level=check_level)
         self.Q = Q
         self.linear = linear
         self.a = self.ctx.asarray(a)
@@ -120,7 +127,7 @@ class LinOpQuadraticForm(QuadraticForm[Domain]):
         if result is False:
             raise ValueError("LinOpQuadraticForm requires Q to be Hermitian/self-adjoint.")
 
-    @checked_method(in_space="domain")
+    @checked_method(in_space="domain", out_scalar=True)
     def value(self, x: Any) -> Any:
         """Return ``1/2 * <x, Qx> + linear(x) + a``."""
         return self._value_core(x)
@@ -144,13 +151,10 @@ class LinOpQuadraticForm(QuadraticForm[Domain]):
         """Return the Hessian action ``Q x`` under the Hermitian assumption."""
         return self.Q.apply(x)
 
-    @checked_method(in_space="domain", in_batched=True)
+    @checked_method(in_space="domain", in_batched=True, out_batched_scalar=True)
     def vvalue(self, xs: Any) -> Any:
         """Evaluate the quadratic objective over a leading batch axis."""
-        values = self._vvalue_core(xs)
-        if self._checks_at_least("standard"):
-            _check_scalar_shape(values, (_leading_batch_size(self.domain, xs),))
-        return values
+        return self._vvalue_core(xs)
 
     @checked_method(in_space="domain", out_space="domain", in_batched=True, out_batched=True)
     def vgrad(self, xs: Any) -> Any:
@@ -159,7 +163,7 @@ class LinOpQuadraticForm(QuadraticForm[Domain]):
 
     def __eq__(self, other: Any) -> bool:
         """Return whether another quadratic form has the same stored terms."""
-        if not self._eq_backend_compatible(other):              # Tier 1: backend
+        if not self.same_math(other):              # Tier 1: backend
             return NotImplemented
         if self.Q != other.Q:                                   # Tier 2/3: operator (own gate)
             return False

@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import warnings
+
 from functools import cached_property
 from math import prod
 from typing import Any, cast
 
 from ._base import Codomain, Domain, LinOp
+from .._check_policy import CheckLevel
 from .._checks import checked_method
 from ._metric import _metric_is_hermitian_by_basis, _requires_euclidean_or_riesz
 from ..space import (
@@ -14,14 +17,13 @@ from ..space import (
     WeightedInnerProduct,
 )
 from ..types import DenseArray
-from ..backend import jax_pytree_class, Context
-from .._contextual import resolve_context_priority
+from ..contextual import Context
+from ..contextual import resolve_context_priority
 from ..kernels import core_kernels
 from ..kernels.core.dense import _DenseMode
 
 
 @core_kernels("dense")
-@jax_pytree_class
 class DenseLinOp(LinOp[Domain, Codomain]):
     r"""
     Represent a dense coordinate tensor-backed linear operator.
@@ -45,9 +47,26 @@ class DenseLinOp(LinOp[Domain, Codomain]):
         Domain space.
     cod : Space or None, optional
         Codomain space. If omitted, it is inferred from the leading axes of
-        ``A``.
+        ``A`` — as a **Euclidean** :class:`DenseCoordinateSpace`. Only the
+        *shape* is inferred, never the geometry.
+
+        .. warning::
+
+           On a non-Euclidean domain this is almost certainly not the operator
+           you meant. ``DenseLinOp(M, X)`` with square ``M`` and weighted ``X``
+           builds ``X -> Y_euclidean``, **not** an endomorphism of ``X``: the
+           adjoint is then ``R_X^{-1} M^T`` rather than ``R_X^{-1} M^T R_X``, and
+           ``is_hermitian()`` reports ``False`` for a matrix that is self-adjoint
+           with respect to ``X``. Pass ``cod=X`` explicitly. Note the asymmetry
+           with :class:`~spacecore.DiagonalLinOp` and
+           :class:`~spacecore.IdentityLinOp`, which do reuse the given space.
     ctx : Context, str, or None, optional
         Backend context specification. Default is resolved from the spaces.
+    check_level : {"none", "cheap", "standard", "strict"}, optional
+        Runtime validation policy for this object. When omitted, the ambient
+        default (see :func:`spacecore.get_check_level`) is used. Unlike the
+        backend/dtype context, the validation policy is a property of the bound
+        object, not of the :class:`Context`.
 
     Attributes
     ----------
@@ -71,6 +90,7 @@ class DenseLinOp(LinOp[Domain, Codomain]):
         dom: Domain,
         cod: Codomain | None = None,
         ctx: Context | str | None = None,
+        check_level: CheckLevel | bool | None = None,
     ) -> None:
         ctx = resolve_context_priority(ctx, dom, cod)
         ctx.assert_dense(A)  # Check if A is ndarray of ctx
@@ -78,10 +98,26 @@ class DenseLinOp(LinOp[Domain, Codomain]):
         if cod is None:
             cod_shape_len = len(A.shape) - len(dom.shape)
             cod = cast(Codomain, DenseCoordinateSpace(tuple(A.shape[:cod_shape_len]), ctx))
+            if not dom.is_euclidean:
+                # Only the shape is inferable from ``A``; the geometry is not. On a
+                # non-Euclidean domain the Euclidean default is very often not what
+                # the caller meant -- ``DenseLinOp(M, X)`` with square ``M`` reads as
+                # an endomorphism of ``X`` but is not one, which changes the adjoint
+                # and makes ``is_hermitian`` report False for a self-adjoint matrix.
+                # Silent when the domain is Euclidean, where the default is right.
+                warnings.warn(
+                    "DenseLinOp inferred a EUCLIDEAN codomain from the shape of `A`, but "
+                    "the domain geometry is non-Euclidean. The operator therefore maps "
+                    "X -> (Euclidean space), not X -> X, so its adjoint is "
+                    "R_X^-1 A^dagger rather than R_X^-1 A^dagger R_X. Pass `cod=` "
+                    "explicitly to state the codomain geometry you intend.",
+                    UserWarning,
+                    stacklevel=2,
+                )
 
         _requires_euclidean_or_riesz(dom, cod, "DenseLinOp")
 
-        super(DenseLinOp, self).__init__(dom, cod, ctx)
+        super(DenseLinOp, self).__init__(dom, cod, ctx, check_level=check_level)
 
         expected = tuple(self.cod.shape) + tuple(self.dom.shape)
         if tuple(A.shape) != expected:
@@ -217,7 +253,7 @@ class DenseLinOp(LinOp[Domain, Codomain]):
 
     def __eq__(self, other: Any) -> bool:
         """Return whether another dense operator has the same spaces and values."""
-        if not self._eq_backend_compatible(other):                  # Tier 1: backend
+        if not self.same_math(other):                  # Tier 1: backend
             return NotImplemented
         if self.dom != other.dom or self.cod != other.cod:          # Tier 2: spaces before allclose
             return False

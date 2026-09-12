@@ -1,5 +1,13 @@
 """Tests for :mod:`spacecore._check_policy` pure helper functions.
 
+Book justification: these are pure functions, pinned directly against their
+contract rather than only through ``Context`` (Hunt & Thomas, *The Pragmatic
+Programmer*, tip 37). The ordering and ``>=`` relations are covered as
+exhaustive Parameterized truth tables to avoid Conditional Test Logic and
+Assertion Roulette (Meszaros, *xUnit Test Patterns*); normalization that
+resolves rather than raises reflects "define errors out of existence"
+(Ousterhout, *A Philosophy of Software Design*).
+
 These functions back the public ``check_level`` policy but are otherwise only
 exercised transitively through :class:`spacecore.Context`. This module unit
 tests them directly.

@@ -268,7 +268,7 @@ class TestRunChecksOrdering:
 
     def test_below_minimum_level_check_is_skipped(self):
         """A check whose ``minimum_level`` exceeds the active level is skipped."""
-        ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="cheap")
+        ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
 
         @dataclass(frozen=True)
         class _StrictOnlyAlwaysFail(sc.SpaceCheck):
@@ -286,7 +286,8 @@ class TestRunChecksOrdering:
             def _local_checks(self):
                 return (_StrictOnlyAlwaysFail(),)
 
-        space = _SpaceWithStrictCheck((2,), ctx)
+        space = _SpaceWithStrictCheck((2,), ctx, check_level="cheap")
+        assert space.check_level == "cheap"
         # check_level=cheap < strict ⇒ the strict-only check is skipped.
         _run_checks(space, ctx.asarray([1.0, 2.0]), allow_leading=False)
 
@@ -363,12 +364,13 @@ class TestCheckComposition:
             space.check_member(numpy_ctx.asarray([3.0]))
 
     def test_disabled_context_skips_local_checks(self):
-        ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="none")
+        ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
 
         class _AlwaysRejecting(sc.DenseCoordinateSpace):
             checks = (_RejectFirstEntryCheck("child_reject", 0.0),)
 
-        space = _AlwaysRejecting((1,), ctx)
+        space = _AlwaysRejecting((1,), ctx, check_level="none")
+        assert space.check_level == "none"
         # check_level=none silences class-level checks too.
         space.check_member(ctx.asarray([0.0]))
 

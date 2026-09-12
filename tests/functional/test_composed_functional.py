@@ -1,6 +1,6 @@
 """Tests for :class:`spacecore.ComposedFunctional` and ``make_functional_composed``.
 
-Checklist section 7, ``ComposedFunctional`` / ``make_functional_composed``:
+Contract specified here:
 
 * ``make_functional_composed`` specializes by type:
   ``InnerProductFunctional ∘ A`` -> ``InnerProductFunctional``,
@@ -181,6 +181,172 @@ class TestComposedFunctional:
         x = numpy_ctx.asarray([3.0, 4.0])
         # F(A x) = sum((2*3, -1*4)^2) = 36 + 16 = 52.
         np.testing.assert_allclose(to_numpy(converted.value(x)), 52.0)
+
+
+# ===========================================================================
+# Chain rule: grad(F o A)(x) = A^#(grad F(A x))
+# ===========================================================================
+def _weighted(ctx, weights):
+    return sc.DenseCoordinateSpace(
+        (3,), ctx, geometry=sc.WeightedInnerProduct(ctx.asarray(np.asarray(weights)))
+    )
+
+
+_M = np.array([[1.0, 2.0, 0.0], [0.0, 1.0, 3.0], [2.0, 0.0, 1.0]])
+
+
+class TestChainRuleGradient:
+    """``ComposedFunctional`` had no gradient at all; it raised ``NotImplementedError``.
+
+    The load-bearing case is **different** non-Euclidean metrics on domain and
+    codomain: there the metric adjoint ``rapply`` differs from the coordinate
+    adjoint, so a Euclidean-only test would certify nothing. ``rapply`` *is*
+    ``A^#``, so no extra Riesz map belongs in the chain rule — applying one
+    would count the geometry twice.
+    """
+
+    def _setup(self, ctx, weighted):
+        if weighted:
+            X, Y = _weighted(ctx, [2.0, 5.0, 11.0]), _weighted(ctx, [3.0, 1.0, 7.0])
+        else:
+            X = Y = sc.DenseCoordinateSpace((3,), ctx)
+        A = sc.DenseLinOp(ctx.asarray(_M), X, Y, ctx)
+        return X, Y, A, sc.SquaredL2NormFunctional(Y)
+
+    @pytest.mark.parametrize("weighted", [False, True], ids=["euclidean", "weighted"])
+    def test_matches_the_explicit_formula(self, numpy_ctx, weighted):
+        X, Y, A, F = self._setup(numpy_ctx, weighted)
+        G = sc.ComposedFunctional(F, A)
+        x = numpy_ctx.asarray([1.0, 2.0, -1.0])
+        np.testing.assert_allclose(
+            to_numpy(G.grad(x)), to_numpy(A.rapply(F.grad(A.apply(x))))
+        )
+
+    @pytest.mark.parametrize("weighted", [False, True], ids=["euclidean", "weighted"])
+    def test_satisfies_the_riesz_defining_property(self, numpy_ctx, weighted):
+        """``<grad G(x), h>_X == DG(x)[h]`` — the gradient's actual definition."""
+        X, Y, A, F = self._setup(numpy_ctx, weighted)
+        G = sc.ComposedFunctional(F, A)
+        x = numpy_ctx.asarray([1.0, 2.0, -1.0])
+        h = numpy_ctx.asarray([0.5, -1.0, 2.0])
+        eps = 1e-6
+        directional = (
+            float(G.value(X.axpy(eps, h, x))) - float(G.value(X.axpy(-eps, h, x)))
+        ) / (2.0 * eps)
+        np.testing.assert_allclose(
+            to_numpy(X.inner(G.grad(x), h)), directional, rtol=1e-6, atol=1e-6
+        )
+
+    def test_metric_case_rejects_the_coordinate_adjoint(self, numpy_ctx):
+        """Without this the weighted test above could pass a wrong implementation."""
+        X, Y, A, F = self._setup(numpy_ctx, weighted=True)
+        G = sc.ComposedFunctional(F, A)
+        x = numpy_ctx.asarray([1.0, 2.0, -1.0])
+        coordinate_answer = _M.T @ to_numpy(F.grad(A.apply(x)))
+        assert not np.allclose(to_numpy(G.grad(x)), coordinate_answer)
+
+    def test_agrees_with_the_specialized_pullback(self, numpy_ctx):
+        """Cross-check against a path that was already correct.
+
+        ``make_functional_composed`` rewrites ``<c, ·> o A`` to
+        ``<A^# c, ·>`` without ever building a ``ComposedFunctional``. Forcing
+        the generic node on the same operands must give the same gradient.
+        """
+        X, Y = _weighted(numpy_ctx, [2.0, 5.0, 11.0]), _weighted(numpy_ctx, [3.0, 1.0, 7.0])
+        A = sc.DenseLinOp(numpy_ctx.asarray(_M), X, Y, numpy_ctx)
+        c = numpy_ctx.asarray([1.0, 0.5, -2.0])
+        F = sc.InnerProductFunctional(c, Y, numpy_ctx)
+
+        specialized = make_functional_composed(F, A)
+        assert not isinstance(specialized, sc.ComposedFunctional)
+        generic = sc.ComposedFunctional(F, A)
+        x = numpy_ctx.asarray([1.0, 2.0, -1.0])
+        np.testing.assert_allclose(to_numpy(generic.grad(x)), to_numpy(specialized.grad(x)))
+
+    def test_value_and_grad_is_consistent(self, numpy_ctx):
+        X, Y, A, F = self._setup(numpy_ctx, weighted=True)
+        G = sc.ComposedFunctional(F, A)
+        x = numpy_ctx.asarray([1.0, 2.0, -1.0])
+        value, gradient = G.value_and_grad(x)
+        np.testing.assert_allclose(to_numpy(value), to_numpy(G.value(x)))
+        np.testing.assert_allclose(to_numpy(gradient), to_numpy(G.grad(x)))
+
+    def test_value_and_grad_applies_the_operator_once(self, numpy_ctx):
+        """The point of the fused path: the base default would apply ``A`` twice."""
+        X, Y, A, F = self._setup(numpy_ctx, weighted=False)
+        calls = []
+        counting = sc.MatrixFreeLinOp(
+            lambda v: calls.append("apply") or A.apply(v),
+            lambda v: A.rapply(v),
+            X, Y, numpy_ctx,
+        )
+        sc.ComposedFunctional(F, counting).value_and_grad(numpy_ctx.asarray([1.0, 2.0, -1.0]))
+        assert calls == ["apply"]
+
+    def test_batched_gradient(self, numpy_ctx):
+        X, Y, A, F = self._setup(numpy_ctx, weighted=True)
+        G = sc.ComposedFunctional(F, A)
+        xs = numpy_ctx.asarray([[1.0, 2.0, -1.0], [0.5, -1.0, 2.0]])
+        np.testing.assert_allclose(
+            to_numpy(G.vgrad(xs)),
+            np.stack([to_numpy(G.grad(numpy_ctx.asarray(row))) for row in to_numpy(xs)]),
+        )
+
+    def test_propagates_missing_inner_gradient(self, numpy_ctx):
+        """A composition is differentiable only if its inner functional is."""
+        X = sc.DenseCoordinateSpace((3,), numpy_ctx)
+        A = sc.DenseLinOp(numpy_ctx.asarray(_M), X, X, numpy_ctx)
+        G = sc.ComposedFunctional(_SumSquares(X, numpy_ctx), A)
+        with pytest.raises(NotImplementedError, match="grad"):
+            G.grad(numpy_ctx.asarray([1.0, 2.0, -1.0]))
+
+
+class TestChainRuleComplex:
+    """Complex domains, where the conjugation in ``rapply`` has to be right."""
+
+    def _spaces(self):
+        ctx = sc.Context(sc.NumpyOps(), dtype=np.complex128)
+        X = _weighted(ctx, [2.0, 5.0, 11.0])
+        Y = _weighted(ctx, [3.0, 1.0, 7.0])
+        A = sc.DenseLinOp(
+            ctx.asarray(np.array([[1 + 1j, 2, 0], [0, 1, 3 - 2j], [2, 0, 1j]])), X, Y, ctx
+        )
+        return ctx, X, Y, A
+
+    def test_holomorphic_functional_satisfies_the_plain_identity(self):
+        """A complex-*linear* inner: ``<grad G, h> == DG[h]`` exactly."""
+        ctx, X, Y, A = self._spaces()
+        c = ctx.asarray([1 + 1j, 2 - 0.5j, -1 + 0.3j])
+        G = sc.ComposedFunctional(sc.InnerProductFunctional(c, Y, ctx), A)
+        x = ctx.asarray([1 + 0j, 2 - 1j, -1 + 2j])
+        h = ctx.asarray([0.5 + 1j, -1 + 0j, 2 + 0j])
+        eps = 1e-6
+        directional = (
+            complex(G.value(X.axpy(eps, h, x))) - complex(G.value(X.axpy(-eps, h, x)))
+        ) / (2.0 * eps)
+        np.testing.assert_allclose(
+            complex(X.inner(G.grad(x), h)), directional, rtol=1e-6, atol=1e-6
+        )
+        # ...and equals the adjoint pull-back of the representer.
+        np.testing.assert_allclose(to_numpy(G.grad(x)), to_numpy(A.H.apply(c)))
+
+    def test_real_valued_functional_uses_the_real_part_convention(self):
+        """``1/2||y||^2`` is real-valued on a complex space, hence not holomorphic.
+
+        The library's convention there is ``Re<grad, h> == DF[h]`` (CR calculus);
+        that already holds for the inner functional, and composition preserves it.
+        """
+        ctx, X, Y, A = self._spaces()
+        G = sc.ComposedFunctional(sc.SquaredL2NormFunctional(Y), A)
+        x = ctx.asarray([1 + 0j, 2 - 1j, -1 + 2j])
+        h = ctx.asarray([0.5 + 1j, -1 + 0j, 2 + 0j])
+        eps = 1e-6
+        directional = (
+            complex(G.value(X.axpy(eps, h, x))) - complex(G.value(X.axpy(-eps, h, x)))
+        ) / (2.0 * eps)
+        np.testing.assert_allclose(
+            complex(X.inner(G.grad(x), h)).real, directional.real, rtol=1e-6, atol=1e-6
+        )
 
 
 # ===========================================================================

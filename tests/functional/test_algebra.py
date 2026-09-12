@@ -1,4 +1,11 @@
-"""Functional algebra: scalar multiples and sums (0.4.2 W4, mirrors LinOp algebra)."""
+"""Functional algebra: scalar multiples, sums, shifts, constants and products.
+
+Per-node behavior for the lazy combinators in ``spacecore.functional._algebra``
+and the operator overloads that build them. The *shared* container contract
+(pytree round-trip, equality, repr, ``value_and_grad``) is specified once for
+every functional in ``test_functional_contract.py``; the guard clauses live in
+``test_functional_guards.py``. Mirrors ``linop/_algebra.py`` where they overlap.
+"""
 from __future__ import annotations
 
 import numpy as np
@@ -73,7 +80,10 @@ class TestScaled:
     def test_non_scalar_returns_notimplemented(self, numpy_ctx):
         _, F, _ = _dense(numpy_ctx)
         assert F.__mul__("x") is NotImplemented
-        assert F.__mul__(F) is NotImplemented  # a functional is not a scalar multiplier
+        # A Functional operand is *not* rejected — it builds a pointwise product
+        # (see TestProduct). Only operands that are neither scalar-like nor
+        # Functional defer to the reflected operation.
+        assert F.__mul__(object()) is NotImplemented
 
     def test_type_and_scalar_guards(self, numpy_ctx):
         _, F, _ = _dense(numpy_ctx)
@@ -85,10 +95,10 @@ class TestScaled:
     def test_complex_scalar_conjugates_gradient(self):
         # Riesz gradient of a*F is conj(a)*grad(F): the inner product conjugates
         # its first argument, so <grad(aF), h> must recover a * <grad(F), h>.
-        ctx = sc.Context(sc.NumpyOps(), dtype=np.complex128, check_level="standard")
-        X = sc.DenseCoordinateSpace((3,), ctx)
+        ctx = sc.Context(sc.NumpyOps(), dtype=np.complex128)
+        X = sc.DenseCoordinateSpace((3,), ctx, check_level="standard")
         c = ctx.asarray([1 + 1j, 2 - 0.5j, -1 + 0.3j])
-        F = sc.InnerProductFunctional(c, X, ctx)
+        F = sc.InnerProductFunctional(c, X, ctx, check_level="standard")
         a = 2 + 3j
         x = ctx.asarray([0.5 - 1j, 1 + 0j, -2 + 0.5j])
         h = ctx.asarray([1 + 0j, 0 + 1j, 0.5 - 0.5j])
@@ -274,6 +284,175 @@ class TestZero:
         for obj, cls in [(F + 3.0, sc.ShiftedFunctional), (sc.ZeroFunctional(X, numpy_ctx), sc.ZeroFunctional)]:
             children, aux = obj.tree_flatten()
             assert cls.tree_unflatten(aux, children) == obj
+
+
+# ===========================================================================
+# ConstantFunctional (the scalar embedding) + factory zero collapse
+# ===========================================================================
+class TestConstant:
+    def test_value_is_the_constant_everywhere(self, numpy_ctx):
+        X, _, x = _dense(numpy_ctx)
+        C = sc.ConstantFunctional(X, 2.5, numpy_ctx)
+        np.testing.assert_allclose(to_numpy(C.value(x)), 2.5)
+        np.testing.assert_allclose(
+            to_numpy(C.value(numpy_ctx.asarray([9.0, 9.0, 9.0]))), 2.5
+        )
+
+    def test_gradient_is_zero(self, numpy_ctx):
+        X, _, x = _dense(numpy_ctx)
+        C = sc.ConstantFunctional(X, 2.5, numpy_ctx)
+        np.testing.assert_allclose(to_numpy(C.grad(x)), 0.0)
+        v, g = C.value_and_grad(x)
+        np.testing.assert_allclose(to_numpy(v), 2.5)
+        np.testing.assert_allclose(to_numpy(g), 0.0)
+
+    def test_factory_collapses_zero_to_zero_functional(self, numpy_ctx):
+        """The additive identity keeps a single representation."""
+        X, _, _ = _dense(numpy_ctx)
+        assert isinstance(sc.make_constant_functional(X, 0.0, numpy_ctx), sc.ZeroFunctional)
+        assert isinstance(
+            sc.make_constant_functional(X, 2.5, numpy_ctx), sc.ConstantFunctional
+        )
+
+    def test_rejects_non_scalar(self, numpy_ctx):
+        X, _, _ = _dense(numpy_ctx)
+        with pytest.raises(TypeError, match="scalar-like"):
+            sc.ConstantFunctional(X, "nope", numpy_ctx)
+
+    def test_equality_and_pytree_round_trip(self, numpy_ctx):
+        X, _, _ = _dense(numpy_ctx)
+        C = sc.ConstantFunctional(X, 2.5, numpy_ctx)
+        assert C == sc.ConstantFunctional(X, 2.5, numpy_ctx)
+        assert C != sc.ConstantFunctional(X, 3.5, numpy_ctx)
+        children, aux = C.tree_flatten()
+        assert sc.ConstantFunctional.tree_unflatten(aux, children) == C
+
+
+# ===========================================================================
+# ProductFunctional (pointwise product) + product-rule gradient
+# ===========================================================================
+class TestProduct:
+    def test_value_is_the_pointwise_product(self, numpy_ctx):
+        X, F, x = _dense(numpy_ctx)
+        G = F * F
+        assert isinstance(G, sc.ProductFunctional)
+        np.testing.assert_allclose(
+            to_numpy(G.value(x)), to_numpy(F.value(x)) ** 2
+        )
+
+    def test_gradient_follows_the_product_rule(self, numpy_ctx):
+        """``grad(F·F) = 2 F(x) grad F(x)`` for a real-valued ``F``."""
+        X, F, x = _dense(numpy_ctx)
+        expected = 2.0 * to_numpy(F.value(x)) * to_numpy(F.grad(x))
+        np.testing.assert_allclose(to_numpy((F * F).grad(x)), expected)
+
+    def test_value_and_grad_matches_separate_calls(self, numpy_ctx):
+        X, F, x = _dense(numpy_ctx)
+        P = F * F
+        v, g = P.value_and_grad(x)
+        np.testing.assert_allclose(to_numpy(v), to_numpy(P.value(x)))
+        np.testing.assert_allclose(to_numpy(g), to_numpy(P.grad(x)))
+
+    def test_gradient_matches_finite_differences(self, numpy_ctx):
+        """Independent check of the product rule on two *different* factors."""
+        X, F, x = _dense(numpy_ctx)
+        G = sc.InnerProductFunctional(numpy_ctx.asarray([1.0, 0.5, -2.0]), X, numpy_ctx)
+        P = F * G
+        direction = numpy_ctx.asarray([0.25, -0.5, 0.75])
+        eps = 1e-6
+        finite_difference = (
+            P.value(X.axpy(eps, direction, x)) - P.value(X.axpy(-eps, direction, x))
+        ) / (2.0 * eps)
+        np.testing.assert_allclose(
+            to_numpy(X.inner(P.grad(x), direction)),
+            to_numpy(finite_difference),
+            rtol=1e-7,
+            atol=1e-7,
+        )
+
+    def test_tree_domain_gradient_uses_domain_ops(self, numpy_ctx):
+        """On a pytree domain the product rule must go through ``X.scale``/``X.add``.
+
+        A raw ``*``/``+`` on the gradients would fail here, where an element is a
+        tuple of leaves rather than an array.
+        """
+        X, F, x = _tree(numpy_ctx)
+        np.testing.assert_allclose(
+            to_numpy(X.flatten((F * F).grad(x))),
+            2.0 * to_numpy(F.value(x)) * to_numpy(X.flatten(F.grad(x))),
+        )
+
+    def test_constant_factor_folds_to_a_scaled_functional(self, numpy_ctx):
+        """Multiplying by a constant *is* scaling — the product node is not built."""
+        X, F, x = _dense(numpy_ctx)
+        C = sc.ConstantFunctional(X, 3.0, numpy_ctx)
+        for product in (C * F, F * C):
+            assert isinstance(product, sc.ScaledFunctional)
+            np.testing.assert_allclose(
+                to_numpy(product.value(x)), 3.0 * to_numpy(F.value(x))
+            )
+
+    def test_zero_factor_collapses_to_zero(self, numpy_ctx):
+        X, F, _ = _dense(numpy_ctx)
+        Z = sc.ZeroFunctional(X, numpy_ctx)
+        assert isinstance(F * Z, sc.ZeroFunctional)
+        assert isinstance(Z * F, sc.ZeroFunctional)
+
+    def test_no_value_based_simplification(self, numpy_ctx):
+        """A functional that merely *happens* to be constant is not recognized.
+
+        Canonicalization is structural: it reads node types, never values.
+        """
+        X, F, _ = _dense(numpy_ctx)
+        constant_valued = sc.InnerProductFunctional(
+            numpy_ctx.asarray([0.0, 0.0, 0.0]), X, numpy_ctx
+        )
+        assert isinstance(F * constant_valued, sc.ProductFunctional)
+
+    def test_domain_mismatch_raises(self, numpy_ctx):
+        X, F, _ = _dense(numpy_ctx)
+        other = sc.ZeroFunctional(sc.DenseCoordinateSpace((2,), numpy_ctx), numpy_ctx)
+        with pytest.raises(ValueError, match="same domain"):
+            sc.make_functional_product(F, other)
+
+    def test_type_guard(self, numpy_ctx):
+        _, F, _ = _dense(numpy_ctx)
+        with pytest.raises(TypeError, match="Functional"):
+            sc.ProductFunctional(F, "nope")
+
+    def test_equality_is_structural_and_ordered(self, numpy_ctx):
+        X, F, _ = _dense(numpy_ctx)
+        G = sc.InnerProductFunctional(numpy_ctx.asarray([1.0, 0.5, -2.0]), X, numpy_ctx)
+        assert (F * G) == (F * G)
+        # Multiplication commutes, but this is expression-tree equality.
+        assert (F * G) != (G * F)
+
+    def test_pytree_round_trip(self, numpy_ctx):
+        X, F, _ = _dense(numpy_ctx)
+        G = sc.InnerProductFunctional(numpy_ctx.asarray([1.0, 0.5, -2.0]), X, numpy_ctx)
+        P = F * G
+        children, aux = P.tree_flatten()
+        assert sc.ProductFunctional.tree_unflatten(aux, children) == P
+
+    def test_complex_factors_conjugate_the_cofactor(self):
+        """Riesz convention: coefficients enter conjugated, as in ``ScaledFunctional``.
+
+        With ``F = <a,·>`` and ``G = <b,·>``, ``<grad(FG)(x), h>`` must recover
+        ``G(x)<a,h> + F(x)<b,h>``.
+        """
+        ctx = sc.Context(sc.NumpyOps(), dtype=np.complex128)
+        X = sc.DenseCoordinateSpace((3,), ctx, check_level="standard")
+        a = ctx.asarray([1 + 1j, 2 - 0.5j, -1 + 0.3j])
+        b = ctx.asarray([0.5 - 1j, 1 + 0j, 0.25 + 0.75j])
+        x = ctx.asarray([0.5 + 0.25j, -1.0 + 0.75j, 2.0 - 0.5j])
+        h = ctx.asarray([1.0 + 0j, -0.5 + 0.25j, 0.75 - 1j])
+
+        F = sc.InnerProductFunctional(a, X, ctx)
+        G = sc.InnerProductFunctional(b, X, ctx)
+        expected = G.value(x) * X.inner(a, h) + F.value(x) * X.inner(b, h)
+        np.testing.assert_allclose(
+            to_numpy(X.inner((F * G).grad(x), h)), to_numpy(expected)
+        )
 
 
 # ===========================================================================

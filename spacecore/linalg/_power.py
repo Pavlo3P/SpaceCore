@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any, NamedTuple, cast
 
-from ..backend import Context
+from ..contextual import Context
 from ..functional import QuadraticForm
 from ..linop import LinOp
 from ..space import Space

@@ -14,6 +14,9 @@ class StarSpace(Space):
     ----------
     ctx : Context, str, or None, optional
         Context specification used for elements and validation checks.
+    check_level : {{"none", "cheap", "standard", "strict"}}, optional
+        Runtime validation policy for this object. When omitted, the ambient
+        default (see :func:`spacecore.get_check_level`) is used.
     """
 
     @abstractmethod

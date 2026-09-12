@@ -163,24 +163,30 @@ class TestStrictCGPreconditions:
         return sc.DenseLinOp(ctx.asarray(matrix), space, space, ctx)
 
     def test_noop_when_not_strict(self):
-        ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="standard")
-        op = self._dense(ctx, np.asarray([[1.0, 2.0], [0.0, 3.0]]))  # non-Hermitian
+        ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+        with sc.use_check_level("standard"):
+            op = self._dense(ctx, np.asarray([[1.0, 2.0], [0.0, 3.0]]))  # non-Hermitian
         _utils.require_strict_cg_preconditions(op)  # no raise: not strict
 
     def test_strict_accepts_spd(self):
-        ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="strict")
-        op = self._dense(ctx, np.asarray([[4.0, 1.0], [1.0, 3.0]]))
+        ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+        with sc.use_check_level("strict"):
+            op = self._dense(ctx, np.asarray([[4.0, 1.0], [1.0, 3.0]]))
         _utils.require_strict_cg_preconditions(op)  # no raise
 
     def test_strict_rejects_non_hermitian(self):
-        ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="strict")
-        op = self._dense(ctx, np.asarray([[1.0, 2.0], [0.0, 3.0]]))
+        ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+        with sc.use_check_level("strict"):
+            op = self._dense(ctx, np.asarray([[1.0, 2.0], [0.0, 3.0]]))
         with pytest.raises(ValueError, match="Hermitian"):
             _utils.require_strict_cg_preconditions(op)
 
     def test_strict_rejects_nonpositive_curvature(self):
-        ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="strict")
+        ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
         # Hermitian but indefinite: probe vector lands on zero curvature.
-        op = sc.DiagonalLinOp(ctx.asarray([1.0, -1.0]), sc.DenseCoordinateSpace((2,), ctx), ctx)
+        with sc.use_check_level("strict"):
+            op = sc.DiagonalLinOp(
+                ctx.asarray([1.0, -1.0]), sc.DenseCoordinateSpace((2,), ctx), ctx
+            )
         with pytest.raises(ValueError, match="positive curvature"):
             _utils.require_strict_cg_preconditions(op)

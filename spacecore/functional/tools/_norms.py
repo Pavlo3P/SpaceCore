@@ -5,12 +5,12 @@ import math
 from typing import Any, cast
 
 from .._base import Domain
-from ...backend import Context, jax_pytree_class
+from ...contextual import Context
+from ..._check_policy import CheckLevel
 from ..._checks import checked_method
 from ._coordinate import _CoordinateFunctional, _inner_core, lp_coordinate_grad, lp_value
 
 
-@jax_pytree_class
 class SquaredL2NormFunctional(_CoordinateFunctional[Domain]):
     r"""
     Half the squared space norm ``F(x) = 1/2 ||x||_X^2 = 1/2 <x, x>_X``.
@@ -27,6 +27,9 @@ class SquaredL2NormFunctional(_CoordinateFunctional[Domain]):
         Domain space ``X``.
     ctx : Context, str, or None, optional
         Backend context specification. Default is resolved from ``dom``.
+    check_level : {{"none", "cheap", "standard", "strict"}}, optional
+        Runtime validation policy for this object. When omitted, the ambient
+        default (see :func:`spacecore.get_check_level`) is used.
 
     Examples
     --------
@@ -41,10 +44,15 @@ class SquaredL2NormFunctional(_CoordinateFunctional[Domain]):
     array([3., 4.])
     """
 
-    def __init__(self, dom: Domain, ctx: Context | str | None = None) -> None:
-        super().__init__(dom, ctx)
+    def __init__(
+        self,
+        dom: Domain,
+        ctx: Context | str | None = None,
+        check_level: CheckLevel | bool | None = None,
+    ) -> None:
+        super().__init__(dom, ctx, check_level=check_level)
 
-    @checked_method(in_space="domain")
+    @checked_method(in_space="domain", out_scalar=True)
     def value(self, x: Any) -> Any:
         """Return ``1/2 <x, x>_X`` as a real scalar."""
         return 0.5 * self.ops.real(_inner_core(self.domain, x, x))
@@ -73,7 +81,6 @@ class SquaredL2NormFunctional(_CoordinateFunctional[Domain]):
         return SquaredL2NormFunctional(self.domain.convert(new_ctx), new_ctx)
 
 
-@jax_pytree_class
 class LpNormFunctional(_CoordinateFunctional[Domain]):
     r"""
     Coordinate ``p``-norm ``F(x) = (sum_i |x_i|^p)^{1/p}`` for ``p >= 1``.
@@ -86,6 +93,9 @@ class LpNormFunctional(_CoordinateFunctional[Domain]):
         Norm order; must be finite and ``>= 1``.
     ctx : Context, str, or None, optional
         Backend context specification. Default is resolved from ``dom``.
+    check_level : {{"none", "cheap", "standard", "strict"}}, optional
+        Runtime validation policy for this object. When omitted, the ambient
+        default (see :func:`spacecore.get_check_level`) is used.
 
     Notes
     -----
@@ -105,14 +115,20 @@ class LpNormFunctional(_CoordinateFunctional[Domain]):
     6.0
     """
 
-    def __init__(self, dom: Domain, p: Any, ctx: Context | str | None = None) -> None:
-        super().__init__(dom, ctx)
+    def __init__(
+        self,
+        dom: Domain,
+        p: Any,
+        ctx: Context | str | None = None,
+        check_level: CheckLevel | bool | None = None,
+    ) -> None:
+        super().__init__(dom, ctx, check_level=check_level)
         p = float(p)
         if not math.isfinite(p) or p < 1.0:
             raise ValueError(f"LpNormFunctional requires a finite p >= 1, got {p}.")
         self.p = p
 
-    @checked_method(in_space="domain")
+    @checked_method(in_space="domain", out_scalar=True)
     def value(self, x: Any) -> Any:
         """Return ``(sum_i |x_i|^p)^{1/p}``."""
         return lp_value(self.ops, x, self.p)
@@ -137,7 +153,9 @@ class LpNormFunctional(_CoordinateFunctional[Domain]):
 
 
 def L1NormFunctional(
-    dom: Domain, ctx: Context | str | None = None
+    dom: Domain,
+    ctx: Context | str | None = None,
+    check_level: CheckLevel | bool | None = None,
 ) -> "LpNormFunctional[Domain]":
     r"""
     Coordinate 1-norm ``||x||_1`` -- a thin wrapper for ``LpNormFunctional(X, 1)``.
@@ -148,10 +166,13 @@ def L1NormFunctional(
         Domain space ``X``.
     ctx : Context, str, or None, optional
         Backend context specification. Default is resolved from ``dom``.
+    check_level : {"none", "cheap", "standard", "strict"}, optional
+        Runtime validation policy for the returned functional. When omitted, the
+        ambient default (see :func:`spacecore.get_check_level`) is used.
 
     Returns
     -------
     LpNormFunctional
         The ``p = 1`` instance of :class:`LpNormFunctional`.
     """
-    return LpNormFunctional(dom, 1.0, ctx)
+    return LpNormFunctional(dom, 1.0, ctx, check_level=check_level)

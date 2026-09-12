@@ -5,7 +5,7 @@ from typing import Any, Literal
 
 import numpy as np
 
-from spacecore.backend import Context
+from spacecore import Context
 from spacecore.space import DenseCoordinateSpace, TreeSpace
 
 from ._arrays import dense_array_case

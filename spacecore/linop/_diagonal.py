@@ -6,8 +6,9 @@ from typing import Any, cast
 
 from ._base import LinOp
 from ._metric import _metric_is_hermitian_by_basis, _requires_euclidean_or_riesz
+from .._check_policy import CheckLevel
 from .._checks import checked_method
-from ..backend import Context, jax_pytree_class
+from ..contextual import Context
 from ..space import (
     CoordinateSpace,
     DenseCoordinateSpace,
@@ -16,13 +17,12 @@ from ..space import (
     WeightedInnerProduct,
 )
 from ..types import DenseArray
-from .._contextual import resolve_context_priority
+from ..contextual import resolve_context_priority
 from ..kernels import core_kernels
 from ..kernels.core.diagonal import _DiagonalMode
 
 
 @core_kernels("diagonal")
-@jax_pytree_class
 class DiagonalLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
     r"""
     Represent a coordinatewise diagonal linear operator.
@@ -41,6 +41,11 @@ class DiagonalLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
         ``diagonal.shape``.
     ctx : Context, str, or None, optional
         Backend context specification. Default is resolved from ``space``.
+    check_level : {"none", "cheap", "standard", "strict"}, optional
+        Runtime validation policy for this object. When omitted, the ambient
+        default (see :func:`spacecore.get_check_level`) is used. Unlike the
+        backend/dtype context, the validation policy is a property of the bound
+        object, not of the :class:`Context`.
 
     Attributes
     ----------
@@ -63,13 +68,14 @@ class DiagonalLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
         diagonal: DenseArray,
         space: CoordinateSpace | None = None,
         ctx: Context | str | None = None,
+        check_level: CheckLevel | bool | None = None,
     ) -> None:
         ctx = resolve_context_priority(ctx, space)
         ctx.assert_dense(diagonal)
         if space is None:
             space = DenseCoordinateSpace(tuple(diagonal.shape), ctx)
         _requires_euclidean_or_riesz(space, space, "DiagonalLinOp")
-        super().__init__(space, space, ctx)
+        super().__init__(space, space, ctx, check_level=check_level)
         expected = tuple(self.domain.shape)
         if tuple(diagonal.shape) != expected:
             raise TypeError(
@@ -149,7 +155,7 @@ class DiagonalLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
 
     def __eq__(self, other: Any) -> bool:
         """Return whether another diagonal operator has the same space and values."""
-        if not self._eq_backend_compatible(other):                  # Tier 1: backend
+        if not self.same_math(other):                  # Tier 1: backend
             return NotImplemented
         if self.domain != other.domain:                             # Tier 2: space before allclose
             return False

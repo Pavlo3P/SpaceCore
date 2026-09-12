@@ -52,25 +52,25 @@ def benchmark_check_level(check_level: str):
     """Build probe contexts with one explicit benchmark check level."""
     token = _ACTIVE_CHECK_LEVEL.set(check_level)
     try:
-        yield
+        with sc.use_check_level(check_level):
+            yield
     finally:
         _ACTIVE_CHECK_LEVEL.reset(token)
 
 
-def _backend_ctx(backend: str, *, check_level: str | None = None) -> sc.Context:
+def _backend_ctx(backend: str) -> sc.Context:
     """Build a SpaceCore ``Context`` for the requested backend."""
-    check_level = check_level or _ACTIVE_CHECK_LEVEL.get()
     if backend == "numpy":
-        return sc.Context(sc.NumpyOps(), dtype=np.float64, check_level=check_level)
+        return sc.Context(sc.NumpyOps(), dtype=np.float64)
     if backend == "jax":
         from tests._helpers import jax_real_dtype
 
-        return sc.Context(sc.JaxOps(), dtype=jax_real_dtype(), check_level=check_level)
+        return sc.Context(sc.JaxOps(), dtype=jax_real_dtype())
     if backend == "torch":
         from tests._helpers import torch_real_dtype
 
         td = torch_real_dtype()
-        return sc.Context(sc.TorchOps(), dtype=td, check_level=check_level)
+        return sc.Context(sc.TorchOps(), dtype=td)
     raise ValueError(f"unknown backend {backend!r}")
 
 
@@ -119,9 +119,8 @@ def _make_space_add(backend: str, seed: int, size: int) -> ProbeCase:
     ctx = _backend_ctx(backend)
     space, x, x_np = _dense_vector(ctx, size, seed)
     _, y, y_np = _dense_vector(ctx, size, seed + 100)
-    unchecked_ctx = _backend_ctx(backend, check_level="none")
-    unchecked_space = sc.DenseCoordinateSpace((size,), unchecked_ctx)
-    ux, uy = unchecked_ctx.asarray(x_np), unchecked_ctx.asarray(y_np)
+    unchecked_space = sc.DenseCoordinateSpace((size,), ctx, check_level="none")
+    ux, uy = ctx.asarray(x_np), ctx.asarray(y_np)
     return ProbeCase(
         bare_label=f"{backend}: x + y",
         sc_label="DenseCoordinateSpace.add",
@@ -137,9 +136,8 @@ def _make_space_scale(backend: str, seed: int, size: int) -> ProbeCase:
     ctx = _backend_ctx(backend)
     space, x, x_np = _dense_vector(ctx, size, seed)
     alpha = float(_rng(seed + 1).standard_normal())
-    unchecked_ctx = _backend_ctx(backend, check_level="none")
-    unchecked_space = sc.DenseCoordinateSpace((size,), unchecked_ctx)
-    ux = unchecked_ctx.asarray(x_np)
+    unchecked_space = sc.DenseCoordinateSpace((size,), ctx, check_level="none")
+    ux = ctx.asarray(x_np)
     return ProbeCase(
         bare_label=f"{backend}: alpha * x",
         sc_label="DenseCoordinateSpace.scale",
@@ -155,9 +153,8 @@ def _make_space_inner(backend: str, seed: int, size: int) -> ProbeCase:
     ctx = _backend_ctx(backend)
     space, x, x_np = _dense_vector(ctx, size, seed)
     _, y, y_np = _dense_vector(ctx, size, seed + 100)
-    unchecked_ctx = _backend_ctx(backend, check_level="none")
-    unchecked_space = sc.DenseCoordinateSpace((size,), unchecked_ctx)
-    ux, uy = unchecked_ctx.asarray(x_np), unchecked_ctx.asarray(y_np)
+    unchecked_space = sc.DenseCoordinateSpace((size,), ctx, check_level="none")
+    ux, uy = ctx.asarray(x_np), ctx.asarray(y_np)
     return ProbeCase(
         bare_label=f"{backend}: vdot(x, y)",
         sc_label="DenseCoordinateSpace.inner",
@@ -172,9 +169,8 @@ def _make_space_inner(backend: str, seed: int, size: int) -> ProbeCase:
 def _make_space_norm(backend: str, seed: int, size: int) -> ProbeCase:
     ctx = _backend_ctx(backend)
     space, x, x_np = _dense_vector(ctx, size, seed)
-    unchecked_ctx = _backend_ctx(backend, check_level="none")
-    unchecked_space = sc.DenseCoordinateSpace((size,), unchecked_ctx)
-    ux = unchecked_ctx.asarray(x_np)
+    unchecked_space = sc.DenseCoordinateSpace((size,), ctx, check_level="none")
+    ux = ctx.asarray(x_np)
     return ProbeCase(
         bare_label=f"{backend}: linalg.norm(x)",
         sc_label="DenseCoordinateSpace.norm",
@@ -227,10 +223,9 @@ def _make_dense_apply(backend: str, seed: int, size: int) -> ProbeCase:
     a, a_np = _dense_matrix(ctx, size, seed)
     _, x, x_np = _dense_vector(ctx, size, seed + 7)
     op = sc.DenseLinOp(a, space, space, ctx)
-    unchecked_ctx = _backend_ctx(backend, check_level="none")
-    unchecked_space = sc.DenseCoordinateSpace((size,), unchecked_ctx)
-    ua, ux = unchecked_ctx.asarray(a_np), unchecked_ctx.asarray(x_np)
-    unchecked_op = sc.DenseLinOp(ua, unchecked_space, unchecked_space, unchecked_ctx)
+    unchecked_space = sc.DenseCoordinateSpace((size,), ctx, check_level="none")
+    ua, ux = ctx.asarray(a_np), ctx.asarray(x_np)
+    unchecked_op = sc.DenseLinOp(ua, unchecked_space, unchecked_space, ctx)
     return ProbeCase(
         bare_label=f"{backend}: A @ x",
         sc_label="DenseLinOp.apply",
@@ -248,10 +243,9 @@ def _make_dense_rapply(backend: str, seed: int, size: int) -> ProbeCase:
     a, a_np = _dense_matrix(ctx, size, seed)
     _, y, y_np = _dense_vector(ctx, size, seed + 8)
     op = sc.DenseLinOp(a, space, space, ctx)
-    unchecked_ctx = _backend_ctx(backend, check_level="none")
-    unchecked_space = sc.DenseCoordinateSpace((size,), unchecked_ctx)
-    ua, uy = unchecked_ctx.asarray(a_np), unchecked_ctx.asarray(y_np)
-    unchecked_op = sc.DenseLinOp(ua, unchecked_space, unchecked_space, unchecked_ctx)
+    unchecked_space = sc.DenseCoordinateSpace((size,), ctx, check_level="none")
+    ua, uy = ctx.asarray(a_np), ctx.asarray(y_np)
+    unchecked_op = sc.DenseLinOp(ua, unchecked_space, unchecked_space, ctx)
     return ProbeCase(
         bare_label=f"{backend}: A.T.conj() @ y",
         sc_label="DenseLinOp.rapply",
@@ -271,10 +265,9 @@ def _make_dense_vapply(backend: str, seed: int, size: int) -> ProbeCase:
     xs_np = np.asarray(rng.standard_normal((8, size)), dtype=_np_dtype(ctx))
     xs = ctx.asarray(xs_np)
     op = sc.DenseLinOp(a, space, space, ctx)
-    unchecked_ctx = _backend_ctx(backend, check_level="none")
-    unchecked_space = sc.DenseCoordinateSpace((size,), unchecked_ctx)
-    ua, uxs = unchecked_ctx.asarray(a_np), unchecked_ctx.asarray(xs_np)
-    unchecked_op = sc.DenseLinOp(ua, unchecked_space, unchecked_space, unchecked_ctx)
+    unchecked_space = sc.DenseCoordinateSpace((size,), ctx, check_level="none")
+    ua, uxs = ctx.asarray(a_np), ctx.asarray(xs_np)
+    unchecked_op = sc.DenseLinOp(ua, unchecked_space, unchecked_space, ctx)
     return ProbeCase(
         bare_label=f"{backend}: xs @ A.T",
         sc_label="DenseLinOp.vapply",
@@ -1078,9 +1071,7 @@ def _make_matrix_free_diagonal_rapply(backend: str, seed: int, size: int) -> Pro
 
 def _make_matrix_free_fft_apply(backend: str, seed: int, size: int) -> ProbeCase:
     # FFT operators here use a complex context so apply/rapply round-trip works.
-    ctx = sc.Context(
-        sc.NumpyOps(), dtype=np.complex128, check_level=_ACTIVE_CHECK_LEVEL.get()
-    )
+    ctx = sc.Context(sc.NumpyOps(), dtype=np.complex128)
     space = sc.DenseCoordinateSpace((size,), ctx)
     rng = _rng(seed)
     x_np = np.asarray(rng.standard_normal(size), dtype=np.complex128)
@@ -1410,9 +1401,7 @@ def _make_dense_apply_device(backend: str, device: str, seed: int, size: int) ->
         # correctness gate keeps a float32-width tolerance for MPS.
         import torch
 
-        ctx = sc.Context(
-            sc.TorchOps(), dtype=torch.float32, check_level=_ACTIVE_CHECK_LEVEL.get()
-        )
+        ctx = sc.Context(sc.TorchOps(), dtype=torch.float32)
     else:
         ctx = _backend_ctx(backend)
     space = sc.DenseCoordinateSpace((size,), ctx)

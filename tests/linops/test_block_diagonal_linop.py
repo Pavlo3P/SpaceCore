@@ -350,8 +350,7 @@ class TestAlgebraAndValidation:
 
         with pytest.raises(TypeError, match="every block"):
             sc.BlockDiagonalLinOp((block, object()))
-        other_ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="cheap")
-        other_x = sc.DenseCoordinateSpace((1,), other_ctx)
+        other_x = sc.DenseCoordinateSpace((1,), numpy_ctx, check_level="cheap")
         other = sc.IdentityLinOp(other_x)
         with pytest.raises(ValueError, match="check policy"):
             sc.BlockDiagonalLinOp((block, other))
@@ -363,12 +362,14 @@ class TestAlgebraAndValidation:
 
     def test_batch_checks_reject_wrong_tuple_layout(self):
         # Folded from tests/linops/test_tree_linop_batching.py.
-        ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="standard")
-        x1, x2 = sc.DenseCoordinateSpace((2,), ctx), sc.DenseCoordinateSpace((1,), ctx)
-        y1, y2 = sc.DenseCoordinateSpace((1,), ctx), sc.DenseCoordinateSpace((2,), ctx)
-        A1 = sc.DenseLinOp(ctx.asarray([[1.0, 2.0]]), x1, y1, ctx)
-        A2 = sc.DenseLinOp(ctx.asarray([[3.0], [-1.0]]), x2, y2, ctx)
+        ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+        with sc.use_check_level("standard"):
+            x1, x2 = sc.DenseCoordinateSpace((2,), ctx), sc.DenseCoordinateSpace((1,), ctx)
+            y1, y2 = sc.DenseCoordinateSpace((1,), ctx), sc.DenseCoordinateSpace((2,), ctx)
+            A1 = sc.DenseLinOp(ctx.asarray([[1.0, 2.0]]), x1, y1, ctx)
+            A2 = sc.DenseLinOp(ctx.asarray([[3.0], [-1.0]]), x2, y2, ctx)
         op = sc.BlockDiagonalLinOp.from_operators((A1, A2))
+        assert op.check_level == "standard"
 
         with pytest.raises(ValueError, match="structure"):
             op.vapply((ctx.asarray([[1.0, 2.0], [-1.0, 0.5]]),))

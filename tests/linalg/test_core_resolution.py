@@ -15,7 +15,8 @@ from spacecore.linalg._utils import resolve_apply, resolve_core
 
 
 def make_ctx():
-    return sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="standard")
+    sc.set_check_level("standard")
+    return sc.Context(sc.NumpyOps(), dtype=np.float64)
 
 
 class _WeightedSpace(sc.DenseCoordinateSpace):

@@ -20,6 +20,69 @@ Base and composition
 * ``ComposedFunctional`` represents pullback ``f o A`` for a linear operator ``A``.
 * ``make_functional_composed`` constructs the same pullback with simplifications.
 
+Algebra
+-------
+
+Lazy nodes for combining functionals. The operator overloads on ``Functional``
+(``a * F``, ``F + G``, ``F - G``, ``-F``, ``F * G``) delegate to the ``make_*``
+factories, which apply local, *structural* canonicalization — they read node
+types, never values.
+
+.. autosummary::
+   :nosignatures:
+
+   spacecore.functional.ScaledFunctional
+   spacecore.functional.SumFunctional
+   spacecore.functional.ShiftedFunctional
+   spacecore.functional.ZeroFunctional
+   spacecore.functional.ConstantFunctional
+   spacecore.functional.ProductFunctional
+   spacecore.functional.make_scaled_functional
+   spacecore.functional.make_functional_sum
+   spacecore.functional.make_shifted_functional
+   spacecore.functional.make_constant_functional
+   spacecore.functional.make_functional_product
+
+* ``ScaledFunctional`` is ``a * F``; the Riesz gradient scales by ``conj(a)``.
+* ``SumFunctional`` is ``F_1 + ... + F_n`` on a shared domain.
+* ``ShiftedFunctional`` is the affine shift ``F + c`` (gradient unchanged).
+* ``ZeroFunctional`` is the additive identity, recognized by the canonicalizers.
+* ``ConstantFunctional`` is ``x -> c``, the embedding of a scalar into the
+  algebra; ``make_constant_functional`` collapses ``c = 0`` to ``ZeroFunctional``.
+* ``ProductFunctional`` is the pointwise product ``F(x) * G(x)``, with the
+  product-rule Riesz gradient
+  :math:`\overline{G(x)}\, \nabla F(x) + \overline{F(x)}\, \nabla G(x)`. Because
+  functionals are scalar-valued, scaling is the constant-factor case of a
+  product: ``make_functional_product`` folds a ``ConstantFunctional`` factor back
+  into a ``ScaledFunctional``, and a ``ZeroFunctional`` factor to zero.
+
+Operator families (``F · A``)
+-----------------------------
+
+.. autosummary::
+   :nosignatures:
+
+   spacecore.OperatorFamily
+   spacecore.FunctionalScaledOperator
+   spacecore.make_functional_scaled_operator
+
+``F * A`` for a ``Functional`` and a ``LinOp`` is the functional-weighted map
+:math:`m(x) = F(x)\,Ax`. This is **not** linear — both the scale and the
+direction move with ``x`` — so it is *not* a ``LinOp``; it is an
+``OperatorFamily``, a point-indexed family :math:`x \mapsto A_x`.
+
+Each point carries two different linear operators, and they are not the same:
+
+* ``m.at(x)`` — the **frozen member** ``F(x) · A``, an ordinary ``LinOp`` that
+  composes, sums, and has an adjoint. Freezing the point is what recovers
+  linearity.
+* ``m.linearize_at(x)`` — the **derivative** :math:`Dm(x)`, for Newton-type
+  steps. They coincide only when ``F`` is constant; otherwise they differ by a
+  rank-one term.
+
+A ``ConstantFunctional`` weight collapses to an ordinary ``ScaledLinOp``, so the
+linear case is never forced through the non-linear type.
+
 Linear functionals
 ------------------
 
@@ -59,8 +122,12 @@ metric (Riesz) gradients under the domain geometry.
    spacecore.functional.SquaredL2NormFunctional
    spacecore.functional.LpNormFunctional
    spacecore.functional.L1NormFunctional
-   spacecore.functional.SpectralLpNormFunctional
+   spacecore.functional.SpectralFunctional
+   spacecore.functional.spectralize
+   spacecore.functional.eigenvalue_space
    spacecore.functional.NuclearNormFunctional
+   spacecore.functional.RealifiedFunctional
+   spacecore.functional.realify
    spacecore.functional.NegativeEntropyFunctional
    spacecore.functional.KLDivergenceFunctional
    spacecore.functional.HuberFunctional
@@ -68,8 +135,14 @@ metric (Riesz) gradients under the domain geometry.
 * ``least_squares`` builds the ``scale ||A x - b||^2`` objective as a ``LinOpQuadraticForm``.
 * ``SquaredL2NormFunctional`` is ``1/2 ||x||_X^2`` (gradient ``x``, clean shrinkage prox).
 * ``LpNormFunctional`` / ``L1NormFunctional`` are coordinate ``p``-norms.
-* ``SpectralLpNormFunctional`` / ``NuclearNormFunctional`` are the Schatten ``p``-norm
-  and nuclear norm of a Jordan spectrum (e.g. Hermitian eigenvalues).
+* ``SpectralFunctional`` / ``spectralize`` lift **any** symmetric coordinate
+  functional onto a Jordan spectrum (Lewis): the Schatten ``p``-norm is
+  ``spectralize(X, lambda s: LpNormFunctional(s, p))``, the von Neumann entropy
+  is ``spectralize(X, NegativeEntropyFunctional)``. ``eigenvalue_space`` builds
+  the real space the spectrum lives in.
+* ``NuclearNormFunctional`` is the named Schatten-1 case.
+* ``RealifiedFunctional`` / ``realify`` present a complex-domain functional over
+  stacked real coordinates, for real-only optimizers.
 * ``NegativeEntropyFunctional`` and ``KLDivergenceFunctional`` are the entropy objectives.
 * ``HuberFunctional`` is the separable Huber loss.
 
@@ -137,10 +210,19 @@ Autodoc
 
 .. autofunction:: spacecore.functional.L1NormFunctional
 
-.. autoclass:: spacecore.functional.SpectralLpNormFunctional
+.. autoclass:: spacecore.functional.SpectralFunctional
    :members:
 
+.. autofunction:: spacecore.functional.spectralize
+
+.. autofunction:: spacecore.functional.eigenvalue_space
+
 .. autofunction:: spacecore.functional.NuclearNormFunctional
+
+.. autoclass:: spacecore.functional.RealifiedFunctional
+   :members:
+
+.. autofunction:: spacecore.functional.realify
 
 .. autoclass:: spacecore.functional.NegativeEntropyFunctional
    :members:

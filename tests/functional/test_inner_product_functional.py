@@ -1,6 +1,6 @@
 """Tests for :class:`spacecore.InnerProductFunctional`.
 
-Checklist section 7, ``InnerProductFunctional``:
+Contract specified here:
 
 * ``value(x) == domain.inner(representer, x)`` (Euclidean and weighted).
 * ``representer`` property returns the stored, context-converted element.

@@ -7,7 +7,7 @@ subclasses of :class:`~spacecore.LinOp`, :class:`~spacecore.Space`, and
 ``type(case.obj)`` for at least one generated case drawn from the case-factory
 registry.
 
-Checklist section 11:
+Contract specified here:
 - Every concrete public ``LinOp`` subclass is produced by ``linop_cases()``.
 - Every concrete public ``Space`` subclass is produced by one of the space case
   factories (dense, vector, inner-product, tree, jordan, mixed).

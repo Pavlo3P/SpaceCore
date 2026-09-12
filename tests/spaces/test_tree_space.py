@@ -269,8 +269,10 @@ class TestCheck:
             tree.check(invalid)
 
     def test_check_skipped_when_check_level_none(self, numpy_ctx):
-        none_ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="none")
-        tree = sc.TreeSpace(_nested_template(), _three_spaces(none_ctx), ctx=none_ctx)
+        none_ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+        with sc.use_check_level("none"):
+            tree = sc.TreeSpace(_nested_template(), _three_spaces(none_ctx), ctx=none_ctx)
+        assert tree.check_level == "none"
         leaves = list(tree.element(_nested_value(none_ctx)).leaves)
         leaves[2] = none_ctx.asarray([1.0, 2.0])  # wrong shape
         # No raise — checks are disabled.
@@ -457,8 +459,9 @@ class TestInnerProduct:
 class TestJaxPytree:
     def test_tree_space_round_trip(self):
         import jax
-        ctx = sc.Context(sc.JaxOps(), dtype=jax_real_dtype(), check_level="none")
-        tree = sc.TreeSpace(_nested_template(), _three_spaces(ctx), ctx=ctx)
+        ctx = sc.Context(sc.JaxOps(), dtype=jax_real_dtype())
+        with sc.use_check_level("none"):
+            tree = sc.TreeSpace(_nested_template(), _three_spaces(ctx), ctx=ctx)
         leaves, treedef = jax.tree_util.tree_flatten(tree)
         rebuilt = jax.tree_util.tree_unflatten(treedef, leaves)
         assert leaves == []
@@ -467,8 +470,9 @@ class TestJaxPytree:
 
     def test_tree_element_round_trip(self):
         import jax
-        ctx = sc.Context(sc.JaxOps(), dtype=jax_real_dtype(), check_level="none")
-        tree = sc.TreeSpace(_nested_template(), _three_spaces(ctx), ctx=ctx)
+        ctx = sc.Context(sc.JaxOps(), dtype=jax_real_dtype())
+        with sc.use_check_level("none"):
+            tree = sc.TreeSpace(_nested_template(), _three_spaces(ctx), ctx=ctx)
         element = tree.element(_nested_value(ctx))
         leaves, treedef = jax.tree_util.tree_flatten(element)
         rebuilt = jax.tree_util.tree_unflatten(treedef, leaves)
@@ -478,11 +482,11 @@ class TestJaxPytree:
 
     def test_named_tuple_structure_preserved_through_jax(self):
         import jax
-        ctx = sc.Context(sc.JaxOps(), dtype=jax_real_dtype(), check_level="none")
+        ctx = sc.Context(sc.JaxOps(), dtype=jax_real_dtype())
         template = _State(ctx.asarray([1.0, 2.0]), ctx.asarray([3.0, 4.0, 5.0]))
-        leaves = (sc.DenseCoordinateSpace((2,), ctx),
-                  sc.DenseCoordinateSpace((3,), ctx))
-        tree = sc.TreeSpace.from_template(template, leaves, ctx=ctx)
+        leaves = (sc.DenseCoordinateSpace((2,), ctx, check_level="none"),
+                  sc.DenseCoordinateSpace((3,), ctx, check_level="none"))
+        tree = sc.TreeSpace.from_template(template, leaves, ctx=ctx, check_level="none")
         flat, treedef = jax.tree_util.tree_flatten(tree)
         rebuilt = jax.tree_util.tree_unflatten(treedef, flat)
         assert rebuilt == tree

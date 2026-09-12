@@ -117,8 +117,8 @@ def test_generated_dense_coordinate_conversion_preserves_structure(case):
     [(np.float32, "real"), (np.float64, "real"), (np.complex64, "complex"), (np.complex128, "complex")],
 )
 def test_generated_dense_coordinate_field_and_exact_dtype_are_distinct(dtype, field):
-    ctx = sc.Context(sc.NumpyOps(), dtype=dtype, check_level="cheap")
-    space = sc.DenseCoordinateSpace((2,), ctx)
+    ctx = sc.Context(sc.NumpyOps(), dtype=dtype)
+    space = sc.DenseCoordinateSpace((2,), ctx, check_level="cheap")
 
     assert space.field == field
     if field == "real":

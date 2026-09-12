@@ -70,7 +70,8 @@ def patched_registry(monkeypatch):
 
 @pytest.fixture
 def strict_ctx():
-    return sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="strict")
+    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    return sc.DenseCoordinateSpace((2,), ctx, check_level="strict")
 
 
 # ---------------------------------------------------------------------------
@@ -321,6 +322,53 @@ class TestStrictImpliesVerify:
         K.set_dispatch_mode("off")  # strict still forces verify
         with pytest.raises(DispatchVerificationError):
             K.dispatch("k", 1, generic=lambda *a: ("good", a), ctx=strict_ctx)
+
+
+class TestCallSitesPassTheBoundOperand:
+    """Wired call sites must hand the dispatcher the context-*bound* operand.
+
+    ``_is_strict`` reads ``check_level``, which lives on the bound object and not
+    on :class:`Context`. A call site passing ``self.ctx`` therefore disables the
+    ADR-014 strict rule *silently*: no error, no warning, optimized kernels just
+    stop being cross-checked exactly when the strictest policy was requested.
+    The unit tests above cannot catch that — they call ``effective_mode``
+    directly with a correct argument — so this pins the production wiring.
+    """
+
+    def test_composed_apply_passes_an_object_carrying_check_level(self, monkeypatch):
+        # Patch at the use site: algebra.py binds the name at import time, so
+        # patching the package attribute would not reach it.
+        import spacecore.kernels.core.algebra as core_algebra
+
+        seen = []
+        monkeypatch.setattr(
+            core_algebra,
+            "should_consult_dispatch",
+            lambda ctx=None: (seen.append(ctx), False)[1],
+        )
+        ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+        with sc.use_check_level("strict"):
+            X = sc.DenseCoordinateSpace((3,), ctx)
+            A = sc.DenseLinOp(np.eye(3), X, X, ctx)
+        (A @ A).apply(np.ones(3))
+
+        assert seen, "composed apply never consulted the dispatcher"
+        assert all(getattr(o, "check_level", None) == "strict" for o in seen)
+
+    def test_strict_operator_reaches_verify_mode_end_to_end(self):
+        ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+        with sc.use_check_level("strict"):
+            X = sc.DenseCoordinateSpace((3,), ctx)
+            strict_op = sc.DenseLinOp(np.eye(3), X, X, ctx)
+        with sc.use_check_level("standard"):
+            Y = sc.DenseCoordinateSpace((3,), ctx)
+            plain_op = sc.DenseLinOp(np.eye(3), Y, Y, ctx)
+
+        K.set_dispatch_mode("off")
+        assert K.effective_mode(strict_op) == "verify"
+        assert K.effective_mode(plain_op) == "off"
+        # The context alone must NOT satisfy the strict rule — that is the bug.
+        assert K.effective_mode(strict_op.ctx) == "off"
 
 
 # ---------------------------------------------------------------------------

@@ -157,17 +157,13 @@ class TestJaxVectorized:
     def test_jax_vectorized_checks_work_eager_and_jit_with_checks_disabled(self):
         import jax
 
-        eager_ctx = sc.Context(
-            sc.JaxOps(), dtype=jax_complex_dtype(), check_level="standard"
-        )
-        eager_space = sc.HermitianSpace(2, ctx=eager_ctx)
+        eager_ctx = sc.Context(sc.JaxOps(), dtype=jax_complex_dtype())
+        eager_space = sc.HermitianSpace(2, ctx=eager_ctx, check_level="standard")
         x = eager_ctx.asarray(np.broadcast_to(np.eye(2), (4, 2, 2)).copy())
         _check_batched(eager_space, x)
 
-        jit_ctx = sc.Context(
-            sc.JaxOps(), dtype=jax_real_dtype(), check_level="none"
-        )
-        jit_space = sc.DenseCoordinateSpace((2,), ctx=jit_ctx)
+        jit_ctx = sc.Context(sc.JaxOps(), dtype=jax_real_dtype())
+        jit_space = sc.DenseCoordinateSpace((2,), ctx=jit_ctx, check_level="none")
 
         @jax.jit
         def add_batch(xs):

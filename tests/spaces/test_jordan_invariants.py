@@ -19,7 +19,7 @@ CASES = jordan_space_cases()
 
 
 def _numpy_ctx(dtype=np.float64):
-    return sc.Context(sc.NumpyOps(), dtype=dtype, check_level="none")
+    return sc.Context(sc.NumpyOps(), dtype=dtype)
 
 
 # ===========================================================================
@@ -94,7 +94,7 @@ def test_trace_inner_oracle(case):
 # ===========================================================================
 def test_hermitian_trace_determinant_preserve_batch_axis():
     ctx = _numpy_ctx()
-    X = sc.HermitianSpace(3, ctx=ctx)
+    X = sc.HermitianSpace(3, ctx=ctx, check_level="none")
     rng = np.random.default_rng(0)
     A = rng.standard_normal((4, 3, 3))
     A = 0.5 * (A + np.swapaxes(A, -1, -2))  # symmetric batch
@@ -111,7 +111,7 @@ def test_hermitian_trace_determinant_preserve_batch_axis():
 
 def test_elementwise_multidim_reduces_all_element_axes():
     ctx = _numpy_ctx()
-    X = sc.ElementwiseJordanSpace((2, 3), ctx)  # matrix-shaped elementwise algebra
+    X = sc.ElementwiseJordanSpace((2, 3), ctx, check_level="none")  # matrix-shaped elementwise algebra
     rng = np.random.default_rng(1)
     A = rng.standard_normal((2, 3))
     arr = ctx.asarray(A)
@@ -134,8 +134,8 @@ def test_elementwise_multidim_reduces_all_element_axes():
 # ===========================================================================
 def test_stacked_is_direct_sum_of_copies():
     ctx = _numpy_ctx()
-    base = sc.HermitianSpace(2, ctx=ctx)
-    X = sc.StackedSpace(base, 3, ctx)
+    base = sc.HermitianSpace(2, ctx=ctx, check_level="none")
+    X = sc.StackedSpace(base, 3, ctx, check_level="none")
     rng = np.random.default_rng(2)
     copies = []
     for _ in range(3):
@@ -163,7 +163,7 @@ def test_stacked_trace_determinant_preserve_batch_axis():
     # A batch of stacked elements (B, count, n, n) must reduce only the copy axis,
     # yielding (B,) — the stacked reduction must not collapse the leading batch axis.
     ctx = _numpy_ctx()
-    X = sc.StackedSpace(sc.HermitianSpace(2, ctx=ctx), 3, ctx)
+    X = sc.StackedSpace(sc.HermitianSpace(2, ctx=ctx, check_level="none"), 3, ctx, check_level="none")
     rng = np.random.default_rng(4)
     A = rng.standard_normal((4, 3, 2, 2))
     A = 0.5 * (A + np.swapaxes(A, -1, -2))

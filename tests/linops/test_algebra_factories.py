@@ -2,8 +2,8 @@
 
 Checklist item 3:
 
-* Private scalar helpers — ``is_scalar_like``, ``_conjugate_scalar``,
-  ``_scalar_equal``, ``_is_zero_scalar``, ``_is_one_scalar`` truth tables.
+* Scalar helpers — ``is_scalar_like``, ``_conjugate_scalar``, and the shared
+  NaN-reflexive ``scalar_eq`` (in :mod:`spacecore._lazy_algebra`) truth tables.
 * ``make_sum`` — non-empty requirement, flattens nested ``SumLinOp``, drops
   ``ZeroLinOp`` terms, returns ``ZeroLinOp`` for all-zero, returns the
   single survivor when one term remains, raises on mismatched
@@ -19,11 +19,10 @@ import numpy as np
 import pytest
 
 import spacecore as sc
+from spacecore._lazy_algebra import is_recognizably_nonreal, scalar_eq
+from tests._helpers import has_jax
 from spacecore.linop._algebra import (
     _conjugate_scalar,
-    _is_one_scalar,
-    _is_zero_scalar,
-    _scalar_equal,
     is_scalar_like,
     make_composed,
     make_scaled,
@@ -60,47 +59,95 @@ class TestConjugateScalar:
         assert _conjugate_scalar(np.complex128(1 + 1j)) == np.complex128(1 - 1j)
 
 
-class TestScalarEqual:
-    @pytest.mark.parametrize("value, target, expected", [
+class TestScalarEq:
+    """The shared NaN-reflexive ``scalar_eq`` that folds the old zero/one helpers.
+
+    The zero/one canonicalization in ``make_scaled`` now routes through
+    ``scalar_eq(scalar, 0)`` / ``scalar_eq(scalar, 1)``; ``scalar_eq`` is
+    NaN-reflexive so a NaN-scaled node equals itself.
+    """
+
+    @pytest.mark.parametrize("a, b, expected", [
         (0, 0, True),
         (0.0, 0, True),
         (1, 1, True),
         (2, 1, False),
         (np.float64(0.0), 0, True),
+        (np.float64(1.0), 1, True),
+        (float("nan"), float("nan"), True),   # NaN-reflexive
+        (float("nan"), 0.0, False),
     ])
-    def test_truth_table(self, value, target, expected):
-        assert _scalar_equal(value, target) is expected
+    def test_truth_table(self, a, b, expected):
+        assert scalar_eq(a, b) is expected
 
-    def test_returns_false_on_exception(self):
-        """``_scalar_equal`` swallows exceptions and returns False."""
+    def test_returns_false_when_undecidable(self):
+        """A ``TypeError`` means "no concrete verdict", reported as False.
+
+        This is the abstract/traced-scalar case: nothing about the value is
+        knowable, so ``scalar_eq`` answers "not recognizably equal" and the
+        caller skips the simplification.
+        """
+        class _Undecidable:
+            def __eq__(self, other):
+                raise TypeError("no concrete value")
+
+        assert scalar_eq(_Undecidable(), 0) is False
+
+    def test_propagates_a_broken_eq(self):
+        """A non-``TypeError`` means the operand's ``__eq__`` is broken, and propagates.
+
+        Every exception used to be swallowed into ``False``, which hid real
+        defects behind a silently disabled canonicalization.
+        """
         class _Bad:
             def __eq__(self, other):
                 raise RuntimeError("boom")
 
-        assert _scalar_equal(_Bad(), 0) is False
+        with pytest.raises(RuntimeError, match="boom"):
+            scalar_eq(_Bad(), 0)
 
 
-class TestIsZeroScalar:
+class TestIsRecognizablyNonreal:
+    """Only a *provably* non-real scalar is reported; undecidable answers False."""
+
     @pytest.mark.parametrize("value, expected", [
-        (0, True),
-        (0.0, True),
         (1, False),
-        (np.float64(0.0), True),
+        (1.5, False),
+        (1 + 2j, True),
+        (1j, True),
+        (np.float64(2.0), False),
+        (np.complex128(2 + 3j), True),
+        (np.complex128(2 + 0j), False),   # complex dtype, real value
+        (float("nan"), False),            # NaN makes `!=` uninformative
     ])
     def test_truth_table(self, value, expected):
-        assert _is_zero_scalar(value) is expected
+        assert is_recognizably_nonreal(value) is expected
 
 
-class TestIsOneScalar:
-    @pytest.mark.parametrize("value, expected", [
-        (1, True),
-        (1.0, True),
-        (0, False),
-        (2, False),
-        (np.float64(1.0), True),
-    ])
-    def test_truth_table(self, value, expected):
-        assert _is_one_scalar(value) is expected
+class TestScalarPredicatesUnderTracing:
+    """Under ``jax.jit`` a traced coefficient is undecidable, never a false verdict.
+
+    Folding is skipped rather than misapplied: the expression tree stays larger
+    than a concrete one, but every node is correct — and a real scaling of a
+    real-scalar-field space is never spuriously rejected.
+    """
+
+    def test_traced_scalar_is_undecidable(self):
+        if not has_jax():
+            pytest.skip("jax is not installed")
+        import jax
+        import jax.numpy as jnp
+
+        verdicts = []
+
+        def probe(t):
+            verdicts.append(
+                (scalar_eq(t, 0), scalar_eq(t, 1), is_recognizably_nonreal(t))
+            )
+            return t
+
+        jax.jit(probe)(jnp.asarray(1.0))
+        assert verdicts == [(False, False, False)]
 
 
 # ===========================================================================
@@ -292,16 +339,18 @@ class TestContextMismatch:
 
         (Folded from test_algebra.py::test_factories_ignore_enable_checks_when_context_dtype_matches.)
         """
-        checked = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="standard")
-        unchecked = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="none")
-        X_checked = sc.DenseCoordinateSpace((2,), checked)
-        X_unchecked = sc.DenseCoordinateSpace((2,), unchecked)
+        ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+        X_checked = sc.DenseCoordinateSpace((2,), ctx, check_level="standard")
+        X_unchecked = sc.DenseCoordinateSpace((2,), ctx, check_level="none")
         A = sc.DenseLinOp(
-            checked.asarray([[1.0, 0.0], [0.0, 1.0]]), X_checked, X_checked, checked,
+            ctx.asarray([[1.0, 0.0], [0.0, 1.0]]),
+            X_checked, X_checked, ctx, check_level="standard",
         )
         B = sc.DenseLinOp(
-            unchecked.asarray([[2.0, 0.0], [0.0, 3.0]]), X_unchecked, X_unchecked, unchecked,
+            ctx.asarray([[2.0, 0.0], [0.0, 3.0]]),
+            X_unchecked, X_unchecked, ctx, check_level="none",
         )
+        assert (A.check_level, B.check_level) == ("standard", "none")
         assert isinstance(make_sum((A, B)), sc.SumLinOp)
         assert isinstance(make_composed(A, B), sc.ComposedLinOp)
 

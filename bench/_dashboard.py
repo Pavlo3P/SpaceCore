@@ -56,7 +56,7 @@ import json
 import webbrowser
 from pathlib import Path
 from statistics import median
-from typing import Iterable
+from typing import Any, Iterable
 
 from ._io import _metadata
 from ._probes import ProbeResult
@@ -173,6 +173,7 @@ def render_dashboard(
     results: Iterable[ProbeResult],
     out_path: str | Path,
     baseline: Iterable[ProbeResult] | None = None,
+    meta: dict[str, Any] | None = None,
 ) -> Path:
     """Render an interactive HTML dashboard for a bench run.
 
@@ -213,7 +214,11 @@ def render_dashboard(
     )
 
     summary = _summary(rows)
-    meta = _metadata()
+    # Prefer the metadata recorded in the source artifact (the machine that
+    # *ran* the benchmark); fall back to this machine only when the artifact
+    # carried none. Rendering on a different host must not overwrite the
+    # processor/platform/versions of the run.
+    meta = meta or _metadata()
     overall = _build_overall(results, diagnoses)
 
     backends = sorted({r["backend"] for r in rows})

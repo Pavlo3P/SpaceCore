@@ -39,7 +39,8 @@ _RECT = np.array(
 
 
 def _ctx(check_level: str):
-    return sc.Context(sc.NumpyOps(), dtype=np.float64, check_level=check_level)
+    sc.set_check_level(check_level)
+    return sc.Context(sc.NumpyOps(), dtype=np.float64)
 
 
 # ===========================================================================

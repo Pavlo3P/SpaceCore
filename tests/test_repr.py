@@ -404,7 +404,7 @@ class TestInvariants:
 # Cross-backend consistency (Goal #5)
 # ===========================================================================
 def _maybe_ctx(family, dtype):
-    from spacecore._contextual._state import normalize_context
+    from spacecore.contextual._state import normalize_context
 
     try:
         return normalize_context(family, dtype=dtype)
