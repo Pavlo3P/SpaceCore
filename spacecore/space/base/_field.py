@@ -31,11 +31,20 @@ class ScalarShapeCheck(SpaceCheck):
 
 
 class Field(InnerProductSpace):
-    """Euclidean scalar field with no coordinate or batching capability.
+    """
+    Euclidean scalar field with no coordinate or batching capability.
 
     Field membership checks scalar shape at standard and strict levels.
     Its context records the representation of coefficients, independently of
     the storage dtype of a vector space using those coefficients.
+
+    Parameters
+    ----------
+    ctx : Context, str, or None, optional
+        Backend context specification. Default is the ambient context.
+    check_level : {"none", "cheap", "standard", "strict"}, optional
+        Runtime validation policy for this space. When omitted, the ambient
+        default (see :func:`spacecore.get_check_level`) is used.
     """
 
     checks = (ScalarShapeCheck(),)
@@ -76,7 +85,17 @@ class Field(InnerProductSpace):
 
 
 class RealField(Field):
-    """Real scalars, represented in a real floating dtype."""
+    """
+    Real scalars, represented in a real floating dtype.
+
+    Parameters
+    ----------
+    ctx : Context, str, or None, optional
+        Backend context specification. Default is the ambient context.
+    check_level : {"none", "cheap", "standard", "strict"}, optional
+        Runtime validation policy for this space. When omitted, the ambient
+        default (see :func:`spacecore.get_check_level`) is used.
+    """
 
     declared_scalar_field = "real"
 
@@ -86,7 +105,17 @@ class RealField(Field):
 
 
 class ComplexField(Field):
-    """Complex scalars; explicit contexts must use complex floating storage."""
+    """
+    Complex scalars; explicit contexts must use complex floating storage.
+
+    Parameters
+    ----------
+    ctx : Context, str, or None, optional
+        Backend context specification. Default is the ambient context.
+    check_level : {"none", "cheap", "standard", "strict"}, optional
+        Runtime validation policy for this space. When omitted, the ambient
+        default (see :func:`spacecore.get_check_level`) is used.
+    """
 
     declared_scalar_field = "complex"
 

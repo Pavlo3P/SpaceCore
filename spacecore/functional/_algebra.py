@@ -326,6 +326,9 @@ class ZeroFunctional(Functional):
     check_level : {{"none", "cheap", "standard", "strict"}}, optional
         Runtime validation policy for this object. When omitted, the ambient
         default (see :func:`spacecore.get_check_level`) is used.
+    cod : Field or None, optional
+        Scalar codomain, defaulting to the domain's ``scalars``. Its real or
+        complex field is independent of the domain's storage dtype.
     """
 
     def __init__(
@@ -400,6 +403,9 @@ class ConstantFunctional(Functional):
         Runtime validation policy for this functional. When omitted, the ambient
         default (see :func:`spacecore.get_check_level`) is used. Validation
         policy is a property of the functional, not of the ``Context``.
+    cod : Field or None, optional
+        Scalar codomain, defaulting to the domain's ``scalars``. Its real or
+        complex field is independent of the domain's storage dtype.
 
     Attributes
     ----------

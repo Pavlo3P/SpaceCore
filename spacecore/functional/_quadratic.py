@@ -30,6 +30,9 @@ class QuadraticForm(Functional[Domain]):
     check_level : {{"none", "cheap", "standard", "strict"}}, optional
         Runtime validation policy for this object. When omitted, the ambient
         default (see :func:`spacecore.get_check_level`) is used.
+    cod : Field or None, optional
+        Scalar codomain, defaulting to the domain's ``scalars``. Its real or
+        complex field is independent of the domain's storage dtype.
     """
 
     def hess_apply(self, x: Any) -> Any:

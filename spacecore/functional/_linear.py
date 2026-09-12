@@ -35,7 +35,7 @@ def _convert_space_element(space: Space, value: Any) -> Any:
 
 @core_kernels("functional-linear")
 class LinearFunctional(Functional[Domain]):
-    r"""
+    """
     Represent a linear scalar-valued map.
 
     Parameters
@@ -47,6 +47,9 @@ class LinearFunctional(Functional[Domain]):
     check_level : {{"none", "cheap", "standard", "strict"}}, optional
         Runtime validation policy for this object. When omitted, the ambient
         default (see :func:`spacecore.get_check_level`) is used.
+    cod : Field or None, optional
+        Scalar codomain, defaulting to the domain's ``scalars``. Its real or
+        complex field is independent of the domain's storage dtype.
     """
 
     @property
