@@ -13,7 +13,7 @@ from .._checks import checked_method
 from ..space._capabilities import _CAP_BATCH, _CAP_COORDINATE, require
 from ..backend import PyTreeNode
 from .._repr import describe_space
-from ..space import VectorSpace
+from ..space import VectorSpace, Field
 from ..contextual import Context
 from ..contextual import ContextBound
 
@@ -96,6 +96,11 @@ class LinOp(PyTreeNode, ContextBound, Generic[Domain, Codomain]):
         ctx: Context | str | None = None,
         check_level: CheckLevel | bool | None = None,
     ):
+        if isinstance(cod, Field):
+            raise TypeError(
+                "LinOp codomain cannot be a Field (ADR-010); use Functional "
+                "for scalar-valued maps and Riesz gradients."
+            )
         self.dom, self.cod = self._bind_context(ctx, dom, cod, check_level=check_level)
 
     @property

@@ -30,6 +30,9 @@ class QuadraticForm(Functional[Domain]):
     check_level : {{"none", "cheap", "standard", "strict"}}, optional
         Runtime validation policy for this object. When omitted, the ambient
         default (see :func:`spacecore.get_check_level`) is used.
+    cod : Field or None, optional
+        Scalar codomain, defaulting to the domain's ``scalars``. Its real or
+        complex field is independent of the domain's storage dtype.
     """
 
     def hess_apply(self, x: Any) -> Any:
@@ -127,7 +130,7 @@ class LinOpQuadraticForm(QuadraticForm[Domain]):
         if result is False:
             raise ValueError("LinOpQuadraticForm requires Q to be Hermitian/self-adjoint.")
 
-    @checked_method(in_space="domain", out_scalar=True)
+    @checked_method(in_space="domain", out_space="codomain")
     def value(self, x: Any) -> Any:
         """Return ``1/2 * <x, Qx> + linear(x) + a``."""
         return self._value_core(x)

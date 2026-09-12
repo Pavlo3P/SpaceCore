@@ -33,6 +33,10 @@ class Space(ContextBound):
         check_level: CheckLevel | bool | None = None,
     ) -> None:
         super().__init__(ctx, check_level=check_level)
+        if not self.ops.xp.isdtype(self.dtype, ("real floating", "complex floating")):
+            raise TypeError("Spaces require floating storage, not integer or Boolean dtype.")
+        if self.scalar_field == "complex" and not self.ops.is_complex_dtype(self.dtype):
+            raise TypeError("A complex scalar field requires complex floating storage.")
         # Lazy caches. Populated on first call to member_checks() /
         # _checks_for_level() and reused for every subsequent membership
         # validation. Spaces are immutable after construction (`convert`
@@ -76,6 +80,20 @@ class Space(ContextBound):
         of the structure the space enforces, not of how elements are stored.
         """
         return self.declared_scalar_field or self.field
+
+    @property
+    def scalars(self):
+        """Return the coefficient field on this backend without changing storage.
+
+        Real coefficients over complex storage use the corresponding real
+        precision; entry and coefficient fields remain separate properties.
+        """
+        from ._field import RealField, ComplexField
+
+        if self.scalar_field == "real":
+            ctx = Context(self.ops, self.ops.real_dtype(self.dtype))
+            return RealField(ctx, check_level=self.check_level)
+        return ComplexField(self.ctx, check_level=self.check_level)
 
     def _check_scalar(self, a: Any) -> None:
         """Raise if ``a`` is not an admissible multiplier for this space."""

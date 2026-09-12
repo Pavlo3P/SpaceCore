@@ -52,7 +52,7 @@ class SquaredL2NormFunctional(_CoordinateFunctional[Domain]):
     ) -> None:
         super().__init__(dom, ctx, check_level=check_level)
 
-    @checked_method(in_space="domain", out_scalar=True)
+    @checked_method(in_space="domain", out_space="codomain")
     def value(self, x: Any) -> Any:
         """Return ``1/2 <x, x>_X`` as a real scalar."""
         return 0.5 * self.ops.real(_inner_core(self.domain, x, x))
@@ -128,7 +128,7 @@ class LpNormFunctional(_CoordinateFunctional[Domain]):
             raise ValueError(f"LpNormFunctional requires a finite p >= 1, got {p}.")
         self.p = p
 
-    @checked_method(in_space="domain", out_scalar=True)
+    @checked_method(in_space="domain", out_space="codomain")
     def value(self, x: Any) -> Any:
         """Return ``(sum_i |x_i|^p)^{1/p}``."""
         return lp_value(self.ops, x, self.p)

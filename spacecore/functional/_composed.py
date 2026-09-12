@@ -80,11 +80,11 @@ class ComposedFunctional(Functional):
         _require_composable(F, A)
         if check_level is None:
             check_level = minimum_check_level((F.check_level, A.check_level))
-        super().__init__(A.domain, A.ctx, check_level=check_level)
+        super().__init__(A.domain, A.ctx, check_level=check_level, cod=F.codomain)
         self.F = F.convert(A.ctx)
         self.A = A
 
-    @checked_method(in_space="domain", out_scalar=True)
+    @checked_method(in_space="domain", out_space="codomain")
     def value(self, x: Any) -> Any:
         """
         Evaluate ``F(A x)``.

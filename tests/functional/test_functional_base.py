@@ -284,7 +284,7 @@ class TestCheckScalarShape:
 
 
 # ===========================================================================
-# Functional codomain contract: out_scalar / out_batched_scalar
+# Functional codomain and exact batched scalar contracts
 # ===========================================================================
 class _NonScalar(sc.Functional):
     """Violates the ``F : X -> K`` contract by returning its input."""
@@ -308,12 +308,7 @@ class _NonScalar(sc.Functional):
 
 
 class TestScalarOutputContract:
-    """``out_scalar`` is the codomain check ``out_space`` cannot express.
-
-    A ``Functional``'s codomain is the scalar field, reported only as a string
-    via ``domain.field`` — there is no ``Space`` object to bind ``out_space`` to,
-    which is why the output side went unchecked while every input was validated.
-    """
+    """A Field codomain validates scalar outputs through ordinary space checks."""
 
     def _domain(self, ctx, check_level=None):
         return sc.DenseCoordinateSpace((2,), ctx, check_level=check_level)
@@ -366,10 +361,6 @@ class TestScalarOutputContract:
 
 class TestCheckedMethodScalarFlags:
     """Guards on the decorator itself."""
-
-    def test_flags_are_mutually_exclusive(self):
-        with pytest.raises(TypeError):
-            checked_method(in_space="domain", out_scalar=True, out_batched_scalar=True)
 
     def test_batched_scalar_requires_in_space(self):
         with pytest.raises(TypeError, match="requires in_space"):

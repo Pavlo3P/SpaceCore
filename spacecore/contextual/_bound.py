@@ -115,6 +115,19 @@ class ContextBound(ABC):
             self._check_level = minimum_check_level(tuple(levels)) if levels else get_check_level()
         return tuple(child.convert(resolved) for child in children)
 
+    def _with_check_level(self, level: CheckLevel | bool) -> Self:
+        """Return a copy of this object validating at ``level``.
+
+        Routes through the subclass's own :meth:`_convert` rather than calling
+        ``type(self)(...)``, so a subclass whose constructor takes more than a
+        context keeps working — ``_convert`` is the extension point that already
+        has to know how to rebuild it. Mirrors :meth:`convert`, which likewise
+        assigns ``_check_level`` onto a freshly built object.
+        """
+        result = self._convert(self.ctx)
+        result._check_level = normalize_check_level(level)
+        return result
+
     @property
     def ops(self) -> BackendOps:
         """Return backend operations associated with this object's context."""
