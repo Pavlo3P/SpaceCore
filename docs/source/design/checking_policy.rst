@@ -1,18 +1,23 @@
 Checking policy
 ===============
 
-SpaceCore uses ``Context.check_level`` as its public runtime-validation policy.
-The public type is ``spacecore.CheckLevel``, a literal type with four ordered
-values: ``"none"``, ``"cheap"``, ``"standard"``, and ``"strict"``. A literal
-keeps context construction simple and makes invalid spellings visible to static
+SpaceCore uses ``ContextBound.check_level`` as its public runtime-validation
+policy. The public type is ``spacecore.CheckLevel``, a literal type with four
+ordered values: ``"none"``, ``"cheap"``, ``"standard"``, and ``"strict"``. A
+literal keeps construction simple and makes invalid spellings visible to static
 type checkers without introducing a separate policy object.
+
+The level belongs to the *bound object* — space, operator, functional — and not
+to the :class:`~spacecore.Context`. A context fixes backend ops and dtype; two
+objects sharing both may still need different strictness, so the policy is set
+per object, with an ambient default for objects that do not name one.
 
 .. code-block:: python
 
    import spacecore as sc
 
-   ctx = sc.Context(sc.NumpyOps(), dtype="float64", check_level="standard")
-   X = sc.DenseCoordinateSpace((3,), ctx=ctx)
+   ctx = sc.Context(sc.NumpyOps(), dtype="float64")
+   X = sc.DenseCoordinateSpace((3,), ctx=ctx, check_level="standard")
 
    x = X.ctx.asarray([1.0, 2.0, 3.0])
    X.check_member(x)
@@ -53,9 +58,11 @@ Choosing a level
 * Performance-sensitive trusted code: use ``"cheap"`` or ``"none"``.
 * User-facing libraries: usually use ``"standard"``.
 
-The process-wide default context remains ``"none"`` for compatibility. A
-direct ``Context(...)`` defaults to ``"standard"``, matching the previous
-direct-constructor default.
+An object constructed without an explicit ``check_level`` takes the ambient
+default, read with :func:`spacecore.get_check_level`. Move that default
+process-wide with :func:`spacecore.set_check_level`, or for a block with
+:func:`spacecore.use_check_level`, which is scoped to the current thread or
+async task.
 
 Where checks run
 ----------------
@@ -71,25 +78,26 @@ When a context is inferred from several source objects, SpaceCore selects the
 least expensive source level. For example, combining ``"strict"`` and
 ``"cheap"`` contexts produces a ``"cheap"`` inferred policy.
 
-Migration from ``enable_checks``
---------------------------------
+Migration from context-carried levels
+-------------------------------------
 
-``enable_checks`` remains as a deprecated compatibility keyword:
-
-* ``enable_checks=True`` maps to ``check_level="standard"``;
-* ``enable_checks=False`` maps to ``check_level="none"``;
-* passing both keywords raises ``TypeError``.
+Before 0.4.3 the level rode on the ``Context``, and the long-deprecated
+``enable_checks=`` Boolean was still accepted there. Both are gone: ``Context``
+is now exactly ``(ops, dtype)``, and passing either keyword to it raises
+``TypeError``.
 
 .. code-block:: python
 
-   # New spelling
-   ctx = sc.Context(sc.NumpyOps(), check_level="standard")
+   # 0.4.3 and later: the level is set on the object
+   ctx = sc.Context(sc.NumpyOps())
+   X = sc.DenseCoordinateSpace((3,), ctx=ctx, check_level="standard")
 
-   # Deprecated equivalent
-   legacy_ctx = sc.Context(sc.NumpyOps(), enable_checks=True)
+   # ...or moved for everything constructed in a block
+   with sc.use_check_level("strict"):
+       Y = sc.DenseCoordinateSpace((3,), ctx=ctx)
 
-``ctx.enable_checks`` remains a deprecated Boolean view and is true for
-``cheap``, ``standard``, and ``strict`` contexts.
+The level is always one of the four literals; the Boolean spelling is not
+accepted in its place. Read an object's level back from ``obj.check_level``.
 
 Implementation convention
 -------------------------

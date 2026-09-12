@@ -7,115 +7,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Added
-
-- **`ProductFunctional` and `make_functional_product`** — the functional algebra
-  becomes multiplicative. `F * G` is the pointwise product `F(x) * G(x)` on a
-  shared domain, with the product-rule Riesz gradient
-
-  ```
-  grad(F·G)(x) = conj(G(x))·grad F(x) + conj(F(x))·grad G(x)
-  ```
-
-  combined through the domain's own `scale`/`add` (a domain element may be a
-  pytree), and a `value_and_grad` that evaluates each factor once. Deliberately
-  **binary**: the product rule is a two-factor law, and `(F*G)*H` expresses the
-  n-ary case at the same cost. The conjugations are identities for the usual
-  real-valued factors.
-- **`ConstantFunctional` and `make_constant_functional`** — the constant map
-  `x -> c`, with zero gradient. This is the embedding of a scalar into the
-  functional algebra, previously unrepresentable: the algebra had a zero element
-  and an affine shift but no constant node. `make_constant_functional` collapses
-  `c = 0` to `ZeroFunctional` so the additive identity keeps one representation.
-- **`spacecore.opfamily`: `OperatorFamily`, `FunctionalScaledOperator`,
-  `make_functional_scaled_operator`** — `F * A` for a `Functional` and a `LinOp`
-  is the functional-weighted map `m(x) = F(x) A x`. That map is **not linear**
-  (both the scale and the direction move with `x`), so it is deliberately *not* a
-  `LinOp`; it is a point-indexed *family* `x -> A_x`, of which a `LinOp` is the
-  constant case. Freezing the point recovers linearity, and each point carries
-  two different operators:
-
-  - `m.at(x)` — the frozen member `F(x) · A`, an ordinary `ScaledLinOp` that
-    composes, sums and has an adjoint;
-  - `m.linearize_at(x)` — the derivative `Dm(x)[h] = <grad F(x), h>·Ax + F(x)·A h`,
-    with metric adjoint `<Ax, w>_Y·grad F(x) + conj(F(x))·A^# w`, for Newton-type
-    steps.
-
-  They differ by exactly a rank-one term and coincide only when `F` is constant.
-  A `ConstantFunctional` weight collapses to a plain `ScaledLinOp`, so the linear
-  case is never forced through the non-linear type. The module is top-level
-  because it depends on both `linop` and `functional`, and neither depends on it.
-- **`checked_method(out_scalar=True)` / `out_batched_scalar=True`** — the codomain
-  check for a `Functional`. `out_space=` names an attribute holding a `Space`, and
-  a functional's codomain is the scalar *field*, reported only as a string, so the
-  decorator that guards every `LinOp` output had nothing to bind to and the check
-  was hand-written per subclass. `out_scalar` asserts `shape == ()`;
-  `out_batched_scalar` asserts `(N,)` with `N` read from the input named by
-  `in_space`, which it therefore requires.
-- **`Space.scalar_field`, `Space.declared_scalar_field`, `Space.check_scalar`** —
-  the field of scalars a space is closed under, *declared* rather than inferred
-  from the dtype. It defaults to `field`; `HermitianSpace` declares `"real"`,
-  because complex Hermitian matrices have complex entries but form a **real**
-  vector space (`i·H` is anti-Hermitian).
-
-### Changed
-
-- **`Functional.__mul__` / `__rmul__` now dispatch on the operand type.** A scalar
-  still gives `ScaledFunctional`; a `Functional` now gives the pointwise product
-  and a `LinOp` the functional-weighted family. Previously both returned
-  `NotImplemented`, so `F * G` and `F * A` raised `TypeError`. Operands that are
-  neither scalar-like nor `Functional` nor `LinOp` still defer to the reflected
-  operation.
-- **Functional outputs are checked as scalars at `standard` and above.** 17
-  `value` and 3 `vvalue` implementations carry the new decorator flags, replacing
-  four hand-written `_checks_at_least("standard")` / `_check_scalar_shape` bodies
-  with one implementation. The level matches what those call sites already used —
-  `cheap` deliberately does not run it. Cost is ~0.5 µs per `value` call, and
-  nothing at `check_level="none"`, which still short-circuits before any check.
-  `MatrixFreeLinearFunctional.vvalue` keeps its own check: it permits several
-  leading batch axes, which is broader than the single-axis contract `vvalue`
-  documents. `RealifiedFunctional.value` is checked on its output only — its input
-  is validated against the *complex* domain by the inner functional.
-- **`_check_scalar_shape` distinguishes single from batched output** in its error
-  message ("Expected scalar output" vs "Expected scalar batch output"). It said
-  "batch" unconditionally, which was harmless while it guarded four batched paths
-  and misleading now that it guards ~20 mostly single-element ones.
-- **`HermitianSpace.scale` / `scale_batch` reject a non-real multiplier**
-  (breaking, at `standard` and above). `scale(1j, H)` returned a skew-Hermitian
-  array still typed as an element of `Herm(n)`; the error surfaced at some later
-  membership check, or never at `check_level="none"`. Only a *provably* non-real
-  multiplier is refused, so a traced scalar under `jax.jit` still passes. `field`
-  remains dtype-derived and still drives equality and repr: a real-dtype and a
-  complex-dtype `Herm(n)` are genuinely different spaces.
-
-### Fixed
-
-- **`ComposedFunctional` now has a gradient.** `F.compose(A).grad(x)` raised
-  `NotImplementedError`: the node implemented `value` but not the chain rule,
-  though `LinOp.rapply` already provides the metric adjoint it needs. Added
-  `grad`, a fused `value_and_grad`, and a batched `vgrad`, with cores registered
-  in the `composed-functional` kernel set:
-
-  ```
-  grad(F o A)(x) = A^#(grad F(A x))
-  ```
-
-  `rapply` **is** `A^#` (ADR-009), so no Riesz map is applied on top of it —
-  that would count the geometry twice — and no explicit conjugation appears,
-  because the adjoint identity absorbs it. `value_and_grad` applies `A` once and
-  shares the image, where the inherited default applied it twice. The typed
-  specializations in `make_functional_composed` (`InnerProductFunctional`,
-  `LinOpQuadraticForm`) were unaffected, and are used as a cross-check on the
-  generic node.
-- **`scalar_eq` no longer swallows every exception.** It wrapped its comparison in
-  a bare `except Exception: return False`, so a raising `__eq__` was silently
-  reported as inequality. Narrowed to `TypeError` — the base class of JAX's
-  `TracerBoolConversionError` and of any "cannot reduce to a concrete bool"
-  failure — which keeps the intended verdict for an abstract scalar (undecidable,
-  so canonicalization is skipped and the expression tree stays unfolded but
-  correct) while letting a genuinely broken `__eq__` propagate.
-
-## [0.4.3] — 2026-07-25
+## [0.4.3] — 2026-09-12
 
 ### Removed
 
@@ -177,6 +69,55 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   call site is not portable: NumPy promotes `float32` against a Python complex to
   `complex128`, while JAX and Torch give `complex64`.
 
+- **`ProductFunctional` and `make_functional_product`** — the functional algebra
+  becomes multiplicative. `F * G` is the pointwise product `F(x) * G(x)` on a
+  shared domain, with the product-rule Riesz gradient
+
+  ```
+  grad(F·G)(x) = conj(G(x))·grad F(x) + conj(F(x))·grad G(x)
+  ```
+
+  combined through the domain's own `scale`/`add` (a domain element may be a
+  pytree), and a `value_and_grad` that evaluates each factor once. Deliberately
+  **binary**: the product rule is a two-factor law, and `(F*G)*H` expresses the
+  n-ary case at the same cost. The conjugations are identities for the usual
+  real-valued factors.
+- **`ConstantFunctional` and `make_constant_functional`** — the constant map
+  `x -> c`, with zero gradient. This is the embedding of a scalar into the
+  functional algebra, previously unrepresentable: the algebra had a zero element
+  and an affine shift but no constant node. `make_constant_functional` collapses
+  `c = 0` to `ZeroFunctional` so the additive identity keeps one representation.
+- **`spacecore.opfamily`: `OperatorFamily`, `FunctionalScaledOperator`,
+  `make_functional_scaled_operator`** — `F * A` for a `Functional` and a `LinOp`
+  is the functional-weighted map `m(x) = F(x) A x`. That map is **not linear**
+  (both the scale and the direction move with `x`), so it is deliberately *not* a
+  `LinOp`; it is a point-indexed *family* `x -> A_x`, of which a `LinOp` is the
+  constant case. Freezing the point recovers linearity, and each point carries
+  two different operators:
+
+  - `m.at(x)` — the frozen member `F(x) · A`, an ordinary `ScaledLinOp` that
+    composes, sums and has an adjoint;
+  - `m.linearize_at(x)` — the derivative `Dm(x)[h] = <grad F(x), h>·Ax + F(x)·A h`,
+    with metric adjoint `<Ax, w>_Y·grad F(x) + conj(F(x))·A^# w`, for Newton-type
+    steps.
+
+  They differ by exactly a rank-one term and coincide only when `F` is constant.
+  A `ConstantFunctional` weight collapses to a plain `ScaledLinOp`, so the linear
+  case is never forced through the non-linear type. The module is top-level
+  because it depends on both `linop` and `functional`, and neither depends on it.
+- **`checked_method(out_scalar=True)` / `out_batched_scalar=True`** — the codomain
+  check for a `Functional`. `out_space=` names an attribute holding a `Space`, and
+  a functional's codomain is the scalar *field*, reported only as a string, so the
+  decorator that guards every `LinOp` output had nothing to bind to and the check
+  was hand-written per subclass. `out_scalar` asserts `shape == ()`;
+  `out_batched_scalar` asserts `(N,)` with `N` read from the input named by
+  `in_space`, which it therefore requires.
+- **`Space.scalar_field`, `Space.declared_scalar_field`, `Space.check_scalar`** —
+  the field of scalars a space is closed under, *declared* rather than inferred
+  from the dtype. It defaults to `field`; `HermitianSpace` declares `"real"`,
+  because complex Hermitian matrices have complex entries but form a **real**
+  vector space (`i·H` is anti-Hermitian).
+
 ### Changed
 
 - **`check_level` is a property of the bound object, not of `Context`** (breaking).
@@ -199,6 +140,34 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   metadata; it ran three times per `import spacecore`. A tuple because the cached
   value is shared.
 
+- **`Functional.__mul__` / `__rmul__` now dispatch on the operand type.** A scalar
+  still gives `ScaledFunctional`; a `Functional` now gives the pointwise product
+  and a `LinOp` the functional-weighted family. Previously both returned
+  `NotImplemented`, so `F * G` and `F * A` raised `TypeError`. Operands that are
+  neither scalar-like nor `Functional` nor `LinOp` still defer to the reflected
+  operation.
+- **Functional outputs are checked as scalars at `standard` and above.** 17
+  `value` and 3 `vvalue` implementations carry the new decorator flags, replacing
+  four hand-written `_checks_at_least("standard")` / `_check_scalar_shape` bodies
+  with one implementation. The level matches what those call sites already used —
+  `cheap` deliberately does not run it. Cost is ~0.5 µs per `value` call, and
+  nothing at `check_level="none"`, which still short-circuits before any check.
+  `MatrixFreeLinearFunctional.vvalue` keeps its own check: it permits several
+  leading batch axes, which is broader than the single-axis contract `vvalue`
+  documents. `RealifiedFunctional.value` is checked on its output only — its input
+  is validated against the *complex* domain by the inner functional.
+- **`_check_scalar_shape` distinguishes single from batched output** in its error
+  message ("Expected scalar output" vs "Expected scalar batch output"). It said
+  "batch" unconditionally, which was harmless while it guarded four batched paths
+  and misleading now that it guards ~20 mostly single-element ones.
+- **`HermitianSpace.scale` / `scale_batch` reject a non-real multiplier**
+  (breaking, at `standard` and above). `scale(1j, H)` returned a skew-Hermitian
+  array still typed as an element of `Herm(n)`; the error surfaced at some later
+  membership check, or never at `check_level="none"`. Only a *provably* non-real
+  multiplier is refused, so a traced scalar under `jax.jit` still passes. `field`
+  remains dtype-derived and still drives equality and repr: a real-dtype and a
+  complex-dtype `Herm(n)` are genuinely different spaces.
+
 ### Fixed
 
 - **A present-but-broken optional backend no longer aborts `import spacecore`.**
@@ -208,6 +177,31 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   `jax` — propagated out of the import. Discovery is now the only path into a
   backend package, and it warns and skips instead.
 - **One broken backend now warns once, not once per discovery call.**
+
+- **`ComposedFunctional` now has a gradient.** `F.compose(A).grad(x)` raised
+  `NotImplementedError`: the node implemented `value` but not the chain rule,
+  though `LinOp.rapply` already provides the metric adjoint it needs. Added
+  `grad`, a fused `value_and_grad`, and a batched `vgrad`, with cores registered
+  in the `composed-functional` kernel set:
+
+  ```
+  grad(F o A)(x) = A^#(grad F(A x))
+  ```
+
+  `rapply` **is** `A^#` (ADR-009), so no Riesz map is applied on top of it —
+  that would count the geometry twice — and no explicit conjugation appears,
+  because the adjoint identity absorbs it. `value_and_grad` applies `A` once and
+  shares the image, where the inherited default applied it twice. The typed
+  specializations in `make_functional_composed` (`InnerProductFunctional`,
+  `LinOpQuadraticForm`) were unaffected, and are used as a cross-check on the
+  generic node.
+- **`scalar_eq` no longer swallows every exception.** It wrapped its comparison in
+  a bare `except Exception: return False`, so a raising `__eq__` was silently
+  reported as inequality. Narrowed to `TypeError` — the base class of JAX's
+  `TracerBoolConversionError` and of any "cannot reduce to a concrete bool"
+  failure — which keeps the intended verdict for an abstract scalar (undecidable,
+  so canonicalization is skipped and the expression tree stays unfolded but
+  correct) while letting a genuinely broken `__eq__` propagate.
 
 ## [0.4.2] — 2026-07-01
 
