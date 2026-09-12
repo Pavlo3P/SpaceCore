@@ -13,12 +13,12 @@ from .._checks import checked_method
 from ..space._capabilities import _CAP_BATCH, _CAP_COORDINATE, require
 from ..backend import PyTreeNode
 from .._repr import describe_space
-from ..space import CoordinateSpace
+from ..space import VectorSpace
 from ..contextual import Context
 from ..contextual import ContextBound
 
-Domain = TypeVar("Domain", bound=CoordinateSpace)
-Codomain = TypeVar("Codomain", bound=CoordinateSpace)
+Domain = TypeVar("Domain", bound=VectorSpace)
+Codomain = TypeVar("Codomain", bound=VectorSpace)
 
 
 class LinOp(PyTreeNode, ContextBound, Generic[Domain, Codomain]):
