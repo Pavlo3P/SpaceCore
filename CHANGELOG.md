@@ -9,6 +9,18 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- Functionals now expose a `Field` codomain, defaulting to `domain.scalars`,
+  and validate scalar output through ordinary space membership. Explicit field
+  codomains can differ from the domain's coefficient field; exact batched
+  scalar checks remain unchanged.
+- `LinOp` rejects a `Field` codomain at construction, preserving the separate
+  functional and Riesz-gradient contract from ADR-010.
+- **Spaces reject integer/Boolean storage and complex coefficients over real
+  storage at construction** (breaking). The guard lives on `Space.__init__`, so
+  it applies to every space rather than only the field-backed numerical ones. A
+  space over an integer or Boolean dtype now raises; represent such data in a
+  floating dtype, or model it outside the vector-space hierarchy.
+
 - **`LinOp` endpoints are bound to `VectorSpace`** rather than `CoordinateSpace`.
   A linear operator needs only `zeros`/`add`/`scale` from its endpoints;
   coordinates are a representation, not part of the contract. Operators can now
@@ -37,6 +49,11 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   `CoordinateSpace` equality compares shape.
 
 ### Added
+
+- Public `Field`, `RealField`, and `ComplexField` scalar spaces with Euclidean
+  geometry, and `Space.scalars` for accessing the coefficient field on the
+  same backend. Real coefficients over complex storage use the corresponding
+  real dtype without changing the owning space's context.
 
 - `CapabilityError`, exported from `spacecore` and `spacecore.space`, raised when
   a space lacks a capability the requested operation needs.

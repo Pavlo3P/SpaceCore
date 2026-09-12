@@ -10,11 +10,22 @@ Functionals are scalar-valued maps on spaces. They share context and validation 
 
 ## Current design
 
-`Functional` owns one domain space and a context. Subclasses implement `value(x)`. `vvalue(xs)` evaluates over a leading batch axis through backend `vmap` unless overridden. `LinearFunctional` adds a Riesz-gradient contract through `representer`, `grad`, and `vgrad`. `InnerProductFunctional` stores a representer and evaluates `<c, x>`. `MatrixFreeLinearFunctional` trusts user evaluation callables and has no stored representer. `QuadraticForm` defines optional `grad`, `vgrad`, and `hess_apply`; `LinOpQuadraticForm` stores a Hermitian operator, optional linear term, and scalar offset. Pull-backs are built by composing with a LinOp and have specializations for inner-product and quadratic functionals.
+`Functional` owns a domain space, a scalar `Field` codomain, and a context. The codomain defaults to `domain.scalars`; an explicit `cod=` may independently select a real or complex field. Subclasses implement `value(x)`. `vvalue(xs)` evaluates over a leading batch axis through backend `vmap` unless overridden. `LinearFunctional` adds a Riesz-gradient contract through `representer`, `grad`, and `vgrad`. `InnerProductFunctional` stores a representer and evaluates `<c, x>`. `MatrixFreeLinearFunctional` trusts user evaluation callables and has no stored representer. `QuadraticForm` defines optional `grad`, `vgrad`, and `hess_apply`; `LinOpQuadraticForm` stores a Hermitian operator, optional linear term, and scalar offset. Pull-backs are built by composing with a LinOp and have specializations for inner-product and quadratic functionals.
 
 ## Decision
 
-A functional is not a LinOp with a one-dimensional codomain. It owns a domain and scalar-valued evaluation, and gradients are space elements with respect to the domain geometry when implemented.
+A functional is not a LinOp with a one-dimensional codomain. It owns a domain, a `Field` codomain and scalar-valued evaluation, and gradients are space elements with respect to the domain geometry when implemented.
+
+`Field` inherits `InnerProductSpace` (and therefore `VectorSpace`), but not
+`CoordinateSpace`. Since `LinOp` now accepts `VectorSpace` endpoints, the type
+bound alone cannot maintain this separation. `LinOp.__init__` explicitly rejects
+a `Field` codomain with an error citing ADR-010. Use a `Functional` for that map.
+
+Scalar output validation uses `out_space="codomain"` and the field's
+`ScalarShapeCheck`, active only at `standard` and `strict`. Exact batch output
+validation deliberately retains `out_batched_scalar`: ordinary batched space
+membership cannot require exactly `(N,)`. The matrix-free explicit batch
+callback retains its existing check of all leading axes (ADR-006).
 
 ## Rationale
 
@@ -30,7 +41,8 @@ New functionals must validate domain inputs and scalar output shape when checks 
 
 ## Contributor invariants
 
-- `value` returns a scalar-like backend value, not an element of a codomain space.
+- `value` returns a scalar-like backend value in its `Field` codomain.
+- Codomain conversion and pytree reconstruction preserve the mathematical field; a complex codomain must not promote a real domain to complex storage.
 - `grad` returns a domain element when implemented.
 - Matrix-free functionals do not imply a stored representer.
 - Functional composition requires `A.codomain == F.domain`.
