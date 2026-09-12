@@ -5,9 +5,10 @@ from typing import Any, Tuple, Callable, cast
 from ..checks import HermitianCheck, SquareMatrixCheck
 from ..base import EuclideanJordanAlgebraSpace, StarSpace
 from ._dense_coordinate import DenseCoordinateSpace
+from ..._check_policy import CheckLevel
 from ..._checks import checked_method
 from ...types import DenseArray
-from ...backend import Context
+from ...contextual import Context
 
 
 class HermitianSpace(DenseCoordinateSpace, StarSpace, EuclideanJordanAlgebraSpace):
@@ -38,12 +39,22 @@ class HermitianSpace(DenseCoordinateSpace, StarSpace, EuclideanJordanAlgebraSpac
         Whether membership checks enforce Hermitian structure.
     ctx : Context, str, or None, optional
         Backend context specification.
+    check_level : {"none", "cheap", "standard", "strict"}, optional
+        Runtime validation policy for this object. When omitted, the ambient
+        default (see :func:`spacecore.get_check_level`) is used. Unlike the
+        backend/dtype context, the validation policy is a property of the bound
+        object, not of the :class:`Context`.
 
     Attributes
     ----------
     n : int
         Matrix dimension.
     """
+
+    # Hermitian matrices with complex entries form a *real* vector space of
+    # dimension n^2 -- their complex span is all of Mat(n, C). The dtype says
+    # "complex" (correctly, about the entries); the scalars are real either way.
+    declared_scalar_field = "real"
 
     def __init__(
         self,
@@ -52,12 +63,13 @@ class HermitianSpace(DenseCoordinateSpace, StarSpace, EuclideanJordanAlgebraSpac
         rtol: float = 0.0,
         enforce_herm: bool = True,
         ctx: Context | str | None = None,
+        check_level: CheckLevel | bool | None = None,
     ):
         if n <= 0:
             raise ValueError("n must be positive.")
 
         shape = (n, n)
-        super(HermitianSpace, self).__init__(shape, ctx)
+        super(HermitianSpace, self).__init__(shape, ctx, check_level=check_level)
 
         self.atol = atol
         self.rtol = rtol
@@ -88,6 +100,30 @@ class HermitianSpace(DenseCoordinateSpace, StarSpace, EuclideanJordanAlgebraSpac
                 enforce=self.enforce_herm,
             ),
         )
+
+    @checked_method(in_space="self", arg_positions=(1,))
+    def scale(self, a: Any, x: DenseArray) -> DenseArray:
+        """Return ``a * x``, rejecting a multiplier that would leave the space.
+
+        Hermitian matrices are closed under **real** scaling only: for Hermitian
+        ``H``, ``(aH)* = conj(a) H``, which equals ``aH`` exactly when ``a`` is
+        real, and ``i H`` is anti-Hermitian. The inherited
+        :meth:`~spacecore.space.DenseCoordinateSpace.scale` validates only its
+        *input*, so without this override ``scale(1j, H)`` would return a
+        skew-Hermitian array still typed as an element of ``Herm(n)`` and the
+        error would surface at some unrelated later membership check — or never,
+        at ``check_level="none"``.
+
+        Only a *provably* non-real multiplier is rejected, so a traced scalar
+        under ``jax.jit`` passes through unchanged.
+        """
+        self.check_scalar(a)
+        return self._scale_core(a, x)
+
+    def scale_batch(self, a: Any, x: DenseArray) -> DenseArray:
+        """Return the leading-axis batch scalar product, with the same guard as :meth:`scale`."""
+        self.check_scalar(a)
+        return super().scale_batch(a, x)
 
     def is_hermitian(self, x: DenseArray) -> bool:
         """Return whether ``x`` satisfies this space's Hermitian check."""

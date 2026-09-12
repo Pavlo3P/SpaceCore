@@ -1,5 +1,13 @@
 """Tests for :func:`spacecore.checked_method`.
 
+Book justification: validation paths run rarely and are easy to leave
+under-tested, so each is exercised explicitly (Ousterhout, *A Philosophy of
+Software Design*: exceptions add rarely-run paths that must still be tested).
+The decorator is driven through a recording Test Double so the wrapper is
+isolated from any real receiver (Meszaros, *xUnit Test Patterns*), and the
+metadata-preservation cases pin an API-consistency contract (Myers & Stylos,
+*Improving API Usability*).
+
 The decorator wraps a method so that selected positional arguments are
 validated against an input space and the return value against an output
 space, gated by the receiver's ``check_level`` policy.
@@ -101,10 +109,10 @@ class _BatchedDemo:
     """Receiver using real spaces so the ``_check_batched`` branch fires."""
 
     def __init__(self, check_level="cheap"):
-        ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level=check_level)
+        ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
         self.ctx = ctx
-        self.dom = sc.DenseCoordinateSpace((3,), ctx)
-        self.cod = sc.DenseCoordinateSpace((3,), ctx)
+        self.dom = sc.DenseCoordinateSpace((3,), ctx, check_level=check_level)
+        self.cod = sc.DenseCoordinateSpace((3,), ctx, check_level=check_level)
         # The decorator reads ``self.check_level`` for gating.
         self.check_level = check_level
         self.out_result = ctx.asarray([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])

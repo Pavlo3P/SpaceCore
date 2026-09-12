@@ -14,8 +14,11 @@ LinOpCase = GeneratedCase[sc.LinOp]
 NUMPY_LINOP_DTYPES = (np.float64, np.complex128)
 
 
-def _context(dtype: Any, check_level: sc.CheckLevel | str) -> sc.Context:
-    return sc.Context(sc.NumpyOps(), dtype=dtype, check_level=check_level)
+def _context(dtype: Any, check_level: sc.CheckLevel | str | None = None) -> sc.Context:
+    # check_level is a property of the bound object; it is applied to the
+    # constructed cases via an ambient ``use_check_level`` scope in the builders,
+    # not carried on the Context.
+    return sc.Context(sc.NumpyOps(), dtype=dtype)
 
 
 def _numpy_dtype(ctx: sc.Context) -> np.dtype[Any]:
@@ -30,7 +33,7 @@ def _target_context(ctx: sc.Context) -> sc.Context | None:
         return None
     dtype = np.dtype(ctx.dtype)
     target = np.complex64 if np.issubdtype(dtype, np.complexfloating) else np.float32
-    return sc.Context(sc.NumpyOps(), dtype=target, check_level=ctx.check_level)
+    return sc.Context(sc.NumpyOps(), dtype=target)
 
 
 def _array(ctx: sc.Context, values: Any) -> Any:
@@ -530,20 +533,21 @@ def linop_cases(
     """Generate all concrete public LinOp families with direct references."""
     cases = []
     for check_level in check_levels:
-        for dtype in dtypes:
-            ctx = _context(dtype, check_level)
-            cases.extend(
-                (
-                    dense_linop_case(ctx),
-                    sparse_linop_case(ctx),
-                    diagonal_linop_case(ctx),
-                    matrix_free_linop_case(ctx),
+        with sc.use_check_level(check_level):
+            for dtype in dtypes:
+                ctx = _context(dtype)
+                cases.extend(
+                    (
+                        dense_linop_case(ctx),
+                        sparse_linop_case(ctx),
+                        diagonal_linop_case(ctx),
+                        matrix_free_linop_case(ctx),
+                    )
                 )
-            )
-            cases.extend(_coordinate_algebra_cases(ctx))
-            cases.extend(tree_linop_cases(ctx))
-            if include_weighted:
-                cases.append(dense_linop_case(ctx, weighted=True))
+                cases.extend(_coordinate_algebra_cases(ctx))
+                cases.extend(tree_linop_cases(ctx))
+                if include_weighted:
+                    cases.append(dense_linop_case(ctx, weighted=True))
     return tuple(cases)
 
 

@@ -7,7 +7,8 @@ from .._base import LinOp, Domain
 from ..._checks import checked_method
 from ...kernels import CachedStackParts, dispatch, should_consult_dispatch
 from ...space import DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace, TreeSpace
-from ...backend import jax_pytree_class, Context
+from ...contextual import Context
+from ..._check_policy import CheckLevel
 
 # ADR-016 dispatch call site: a StackedLinOp applies one shared input through
 # every component. The per-component loop is the ``generic`` fallback; the
@@ -22,7 +23,6 @@ def _stacked_apply(parts: Any, x: Any) -> tuple[Any, ...]:
     return tuple(p._apply_core(x) for p in parts)
 
 
-@jax_pytree_class
 class StackedLinOp(TreeLinOp[Domain, TreeSpace]):
     r"""
     Represent operators from one domain as a tree-valued map.
@@ -41,6 +41,10 @@ class StackedLinOp(TreeLinOp[Domain, TreeSpace]):
         Operators from ``dom`` to each component of ``cod``.
     ctx : Context, str, or None, optional
         Backend context specification.
+    check_level : {"none", "cheap", "standard", "strict"}, optional
+        Runtime validation policy for this operator. When omitted, the ambient
+        default (see :func:`spacecore.get_check_level`) is used. Validation
+        policy is a property of the operator, not of the ``Context``.
     """
 
     def __init__(
@@ -49,8 +53,9 @@ class StackedLinOp(TreeLinOp[Domain, TreeSpace]):
         cod: TreeSpace,
         parts: Sequence[LinOp],
         ctx: Context | str | None = None,
+        check_level: CheckLevel | bool | None = None,
     ) -> None:
-        super().__init__(dom, cod, parts, ctx)
+        super().__init__(dom, cod, parts, ctx, check_level=check_level)
         # ADR-022: memoize the stacked component matrices for the stacked.apply
         # broadcast fold (built once on first optimized use, NumPy-only).
         self.parts = CachedStackParts(self.parts)
@@ -98,13 +103,13 @@ class StackedLinOp(TreeLinOp[Domain, TreeSpace]):
 
     def _apply_unchecked(self, x: Any) -> Any:
         """Apply component operators without checks and rebuild codomain representation."""
-        if should_consult_dispatch(self.ctx):
+        if should_consult_dispatch(self):
             y_parts = dispatch(
                 _STACKED_APPLY_KEY,
                 self.parts,
                 x,
                 generic=_stacked_apply,
-                ctx=self.ctx,
+                ctx=self,
             )
         elif self._num_parts == 2:
             y_parts = (self._apply_parts[0](x), self._apply_parts[1](x))

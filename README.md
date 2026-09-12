@@ -180,7 +180,8 @@ level) adds named constructors over that machinery, with no new core types:
 `least_squares` for `½‖Ax−b‖²`, coordinate norms (`SquaredL2NormFunctional`,
 `LpNormFunctional`, `L1NormFunctional`), `NegativeEntropyFunctional`,
 `KLDivergenceFunctional`, `HuberFunctional`, the spectral
-`SpectralLpNormFunctional`/`NuclearNormFunctional`, and the metric-aware
+`NuclearNormFunctional` (and `spectralize` / `SpectralFunctional` to lift any
+coordinate functional to a spectral one), and the metric-aware
 proximal primitive `generalized_shrinkage` with the wrappers `prox_l1`,
 `prox_l2sq`, and `project_nonneg`. Each objective's gradient is the metric
 (Riesz) gradient under the domain geometry, and the proximal step is taken in
@@ -214,21 +215,29 @@ and [deviation catalog](https://pavlo3p.github.io/SpaceCore/design/backend_devia
 
 ## Validation Policy
 
-A `Context` carries a `check_level` that determines how aggressively spaces,
-operators, functionals, and solver preconditions validate their inputs. The
-ordered levels are `CHECK_LEVELS = ("none", "cheap", "standard", "strict")`:
-`cheap` covers shape/dtype/backend/tree-structure, `standard` adds membership
-and Hermitian checks, and `strict` adds bounded expensive probes. Checks are
-opt-in per context, so hot paths can run unvalidated while development and tests
-run strict.
+Every context-bound object — space, operator, functional — carries a
+`check_level` that determines how aggressively it validates its inputs, together
+with solver preconditions. The ordered levels are
+`CHECK_LEVELS = ("none", "cheap", "standard", "strict")`: `cheap` covers
+shape/dtype/backend/tree-structure, `standard` adds membership and Hermitian
+checks, and `strict` adds bounded expensive probes. Checks are opt-in per
+object, so hot paths can run unvalidated while development and tests run strict.
+
+The level is a property of the bound object rather than of the `Context`: a
+context fixes backend ops and dtype, while two objects sharing that backend and
+dtype may legitimately validate at different strictness. Pass `check_level=` to
+a constructor, or move the ambient default with `sc.set_check_level(...)` /
+`sc.use_check_level(...)`.
 
 ```python
 import numpy as np
 import spacecore as sc
 
-ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="standard")
-X = sc.DenseCoordinateSpace((2,), ctx)
-A = sc.DenseLinOp(ctx.asarray([[2.0, 0.0], [0.0, 3.0]]), X, X, ctx)
+ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+X = sc.DenseCoordinateSpace((2,), ctx, check_level="standard")
+A = sc.DenseLinOp(
+    ctx.asarray([[2.0, 0.0], [0.0, 3.0]]), X, X, ctx, check_level="standard"
+)
 
 try:
     A.apply(ctx.asarray([1.0, 2.0, 3.0]))  # wrong shape

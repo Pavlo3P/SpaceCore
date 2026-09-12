@@ -22,8 +22,8 @@ import spacecore as sc
 class _FiniteSetSpace(sc.Space):
     """Minimal concrete ``Space`` for the base-class contract tests."""
 
-    def __init__(self, values: set[Any], ctx=None) -> None:
-        super().__init__(ctx)
+    def __init__(self, values: set[Any], ctx=None, check_level=None) -> None:
+        super().__init__(ctx, check_level=check_level)
         self.values = values
 
     def _check_member(self, x: Any) -> None:
@@ -61,21 +61,21 @@ class TestField:
 # ===========================================================================
 class TestCheckMember:
     def test_none_skips_membership(self):
-        ctx = sc.Context(sc.NumpyOps(), check_level="none")
-        space = _FiniteSetSpace({"a", "b"}, ctx)
+        ctx = sc.Context(sc.NumpyOps())
+        space = _FiniteSetSpace({"a", "b"}, ctx, check_level="none")
         # "c" is not a member but ``none`` skips ``_check_member``.
         space.check_member("c")
 
     def test_membership_runs_at_standard(self):
-        ctx = sc.Context(sc.NumpyOps(), check_level="standard")
-        space = _FiniteSetSpace({"a", "b"}, ctx)
+        ctx = sc.Context(sc.NumpyOps())
+        space = _FiniteSetSpace({"a", "b"}, ctx, check_level="standard")
         space.check_member("a")
         with pytest.raises(ValueError, match="not a member"):
             space.check_member("c")
 
     def test_membership_runs_at_strict(self):
-        ctx = sc.Context(sc.NumpyOps(), check_level="strict")
-        space = _FiniteSetSpace({"a", "b"}, ctx)
+        ctx = sc.Context(sc.NumpyOps())
+        space = _FiniteSetSpace({"a", "b"}, ctx, check_level="strict")
         with pytest.raises(ValueError, match="not a member"):
             space.check_member("c")
 
@@ -104,7 +104,7 @@ class TestConvert:
         assert roundtrip.values == space.values
 
     def test_convert_accepts_family_string(self):
-        space = _FiniteSetSpace({"a"}, sc.Context(sc.NumpyOps(), check_level="strict"))
+        space = _FiniteSetSpace({"a"}, sc.Context(sc.NumpyOps()), check_level="strict")
         out = space.convert("numpy")
         # 'numpy' resolves through normalize_context; default check_level differs.
         assert isinstance(out, _FiniteSetSpace)

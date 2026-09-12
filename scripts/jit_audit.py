@@ -16,7 +16,7 @@ def _ctx():
     import spacecore as sc
 
     dtype = np.float64 if jax.config.read("jax_enable_x64") else np.float32
-    return sc.Context(sc.JaxOps(), dtype=dtype, enable_checks=False)
+    return sc.Context(sc.JaxOps(), dtype=dtype)
 
 
 def _spd_operator(n: int):
@@ -124,6 +124,12 @@ def main() -> None:
     args = _parse_args()
     if args.log_compiles:
         jax.config.update("jax_log_compiles", True)
+
+    # Validation policy lives on context-bound objects, not on the Context, so
+    # the audit lowers the ambient default instead of disabling checks per
+    # object: argument validation would otherwise add non-traced Python work
+    # that muddies the retrace counts this script measures.
+    sc.set_check_level("none")
 
     A2 = _spd_operator(2)
     A3 = _spd_operator(3)

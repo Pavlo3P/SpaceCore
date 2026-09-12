@@ -1,16 +1,36 @@
-"""Entropy objectives: negative entropy and KL divergence (ADR-019)."""
+"""Entropy objectives: negative entropy and KL divergence (ADR-019).
+
+References
+----------
+.. [Beck] A. Beck, *First-Order Methods in Optimization*, MOS-SIAM, 2017.
+   **§4.4.10** (a worked section, p. 97, not a numbered example) gives the
+   conjugate of the negative entropy over the unit simplex — the log-sum-exp
+   function of §4.4.11; Example 5.27 gives its ``1``-strong convexity over the
+   simplex w.r.t. the ``l_1`` norm — the property that makes it the standard
+   mirror-descent kernel (Example 9.10, entropic mirror descent / the
+   multiplicative-weights update).
+.. [Lifted] Composed with a Jordan spectrum via
+   :func:`~spacecore.spectralize`, the negative entropy becomes the **von Neumann
+   entropy** ``S(rho) = -tr(rho log rho)``; see Aubrun & Szarek, *Alice and Bob
+   Meet Banach*, AMS, 2017, **§1.3.3**, eq. (1.36) for the definition and
+   **Proposition 1.19(i)** for concavity of ``S`` — equivalently convexity of the
+   negative entropy — whose proof uses concavity of ``x -> -x log x`` together
+   with Klein's lemma. The majorization machinery it sits on is §1.3.1,
+   **Proposition 1.12** (``x < y`` iff ``x`` is a convex combination of
+   coordinate permutations of ``y`` iff ``y = Bx`` for a bistochastic ``B``).
+"""
 from __future__ import annotations
 
 from typing import Any, cast
 
 from .._base import Domain
 from .._linear import _convert_space_element
-from ...backend import Context, jax_pytree_class
+from ...contextual import Context
+from ..._check_policy import CheckLevel
 from ..._checks import checked_method
 from ._coordinate import _CoordinateFunctional
 
 
-@jax_pytree_class
 class NegativeEntropyFunctional(_CoordinateFunctional[Domain]):
     r"""
     Negative (Shannon) entropy ``F(x) = sum_i x_i log x_i``.
@@ -25,6 +45,9 @@ class NegativeEntropyFunctional(_CoordinateFunctional[Domain]):
         Domain space ``X``.
     ctx : Context, str, or None, optional
         Backend context specification. Default is resolved from ``dom``.
+    check_level : {{"none", "cheap", "standard", "strict"}}, optional
+        Runtime validation policy for this object. When omitted, the ambient
+        default (see :func:`spacecore.get_check_level`) is used.
 
     Examples
     --------
@@ -39,10 +62,15 @@ class NegativeEntropyFunctional(_CoordinateFunctional[Domain]):
     array([1., 1.])
     """
 
-    def __init__(self, dom: Domain, ctx: Context | str | None = None) -> None:
-        super().__init__(dom, ctx)
+    def __init__(
+        self,
+        dom: Domain,
+        ctx: Context | str | None = None,
+        check_level: CheckLevel | bool | None = None,
+    ) -> None:
+        super().__init__(dom, ctx, check_level=check_level)
 
-    @checked_method(in_space="domain")
+    @checked_method(in_space="domain", out_scalar=True)
     def value(self, x: Any) -> Any:
         """Return ``sum_i x_i log x_i`` with ``0 log 0 = 0``."""
         o = self.ops
@@ -69,7 +97,6 @@ class NegativeEntropyFunctional(_CoordinateFunctional[Domain]):
         return NegativeEntropyFunctional(self.domain.convert(new_ctx), new_ctx)
 
 
-@jax_pytree_class
 class KLDivergenceFunctional(_CoordinateFunctional[Domain]):
     r"""
     Kullback--Leibler divergence to a fixed positive ``target``.
@@ -91,6 +118,9 @@ class KLDivergenceFunctional(_CoordinateFunctional[Domain]):
         bare element does not carry its space.
     ctx : Context, str, or None, optional
         Backend context specification. Default is resolved from ``dom``.
+    check_level : {{"none", "cheap", "standard", "strict"}}, optional
+        Runtime validation policy for this object. When omitted, the ambient
+        default (see :func:`spacecore.get_check_level`) is used.
 
     Examples
     --------
@@ -110,8 +140,9 @@ class KLDivergenceFunctional(_CoordinateFunctional[Domain]):
         target: Any,
         dom: Domain,
         ctx: Context | str | None = None,
+        check_level: CheckLevel | bool | None = None,
     ) -> None:
-        super().__init__(dom, ctx)
+        super().__init__(dom, ctx, check_level=check_level)
         self._target = _convert_space_element(self.domain, target)
         if self._checks_at_least("standard"):
             self.domain._check_member(self._target)
@@ -121,7 +152,7 @@ class KLDivergenceFunctional(_CoordinateFunctional[Domain]):
         """Stored reference element ``t``."""
         return self._target
 
-    @checked_method(in_space="domain")
+    @checked_method(in_space="domain", out_scalar=True)
     def value(self, x: Any) -> Any:
         """Return ``sum_i x_i log(x_i / t_i)`` with ``0 log 0 = 0``."""
         o = self.ops

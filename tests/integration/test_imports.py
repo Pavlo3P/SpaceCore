@@ -29,6 +29,6 @@ def test_subpackages_import():
         "spacecore.backend",
         "spacecore.space",
         "spacecore.linop",
-        "spacecore._contextual",
+        "spacecore.contextual",
     ]:
         assert importlib.import_module(name) is not None

@@ -7,7 +7,8 @@ from .._base import LinOp, Codomain
 from ..._checks import checked_method
 from ...kernels import CachedStackParts, dispatch, should_consult_dispatch
 from ...space import DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace, TreeSpace
-from ...backend import jax_pytree_class, Context
+from ...contextual import Context
+from ..._check_policy import CheckLevel
 
 # ADR-016 dispatch call site: a SumToSingleLinOp applies one shared input through
 # every component adjoint. The per-component loop is the ``generic`` fallback;
@@ -22,7 +23,6 @@ def _sum_to_single_rapply(parts: Any, y: Any) -> tuple[Any, ...]:
     return tuple(p._rapply_core(y) for p in parts)
 
 
-@jax_pytree_class
 class SumToSingleLinOp(TreeLinOp[TreeSpace, Codomain]):
     r"""
     Represent a sum of leaf operators from a tree domain.
@@ -41,6 +41,10 @@ class SumToSingleLinOp(TreeLinOp[TreeSpace, Codomain]):
         Operators from each product component to ``cod``.
     ctx : Context, str, or None, optional
         Backend context specification.
+    check_level : {"none", "cheap", "standard", "strict"}, optional
+        Runtime validation policy for this operator. When omitted, the ambient
+        default (see :func:`spacecore.get_check_level`) is used. Validation
+        policy is a property of the operator, not of the ``Context``.
     """
 
     def __init__(
@@ -49,8 +53,9 @@ class SumToSingleLinOp(TreeLinOp[TreeSpace, Codomain]):
         cod: Codomain,
         parts: Sequence[LinOp],
         ctx: Context | str | None = None,
+        check_level: CheckLevel | bool | None = None,
     ) -> None:
-        super().__init__(dom, cod, parts, ctx)
+        super().__init__(dom, cod, parts, ctx, check_level=check_level)
         # ADR-022: memoize the stacked adjoint matrices for the sum_to_single.rapply
         # broadcast fold (built once on first optimized use, NumPy-only).
         self.parts = CachedStackParts(self.parts)
@@ -131,13 +136,13 @@ class SumToSingleLinOp(TreeLinOp[TreeSpace, Codomain]):
 
     def _rapply_unchecked(self, y: Any) -> Any:
         """Apply component adjoints without checks and rebuild domain representation."""
-        if should_consult_dispatch(self.ctx):
+        if should_consult_dispatch(self):
             x_parts = dispatch(
                 _SUM_TO_SINGLE_RAPPLY_KEY,
                 self.parts,
                 y,
                 generic=_sum_to_single_rapply,
-                ctx=self.ctx,
+                ctx=self,
             )
         elif self._num_parts == 2:
             x_parts = (self._rapply_parts[0](y), self._rapply_parts[1](y))

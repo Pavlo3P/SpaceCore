@@ -1,6 +1,6 @@
 """Tests for :class:`spacecore.LinOpQuadraticForm`.
 
-Checklist section 7, ``LinOpQuadraticForm``:
+Contract specified here:
 
 * Construction guards: ``Q`` must be a square ``LinOp``, ``linear`` a
   ``LinearFunctional`` on ``Q.domain``, ``a`` scalar, ``Q`` Hermitian.
@@ -71,11 +71,12 @@ class TestConstruction:
             sc.LinOpQuadraticForm(Q, ctx=numpy_ctx)
 
     def test_rejects_nonscalar_constant(self):
-        ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="none")
-        space = sc.DenseCoordinateSpace((2,), ctx)
-        Q = sc.IdentityLinOp(space, ctx)
-        with pytest.raises(ValueError, match="scalar batch"):
-            sc.LinOpQuadraticForm(Q, a=ctx.asarray([0.0, 0.0]), ctx=ctx)
+        ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+        with sc.use_check_level("none"):
+            space = sc.DenseCoordinateSpace((2,), ctx)
+            Q = sc.IdentityLinOp(space, ctx)
+            with pytest.raises(ValueError, match="scalar output"):
+                sc.LinOpQuadraticForm(Q, a=ctx.asarray([0.0, 0.0]), ctx=ctx)
 
     def test_explicit_context_overrides_inferred(self, numpy_f32_ctx, numpy_ctx):
         space = sc.DenseCoordinateSpace((2,), numpy_f32_ctx)

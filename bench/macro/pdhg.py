@@ -137,18 +137,16 @@ def _build_numpy_payload(
     payload_meta: dict[str, Any],
 ) -> MacroPayload:
     m, n = a_np.shape
-    ctx_none = _backend_ctx("numpy", check_level="none")
-    ctx_cheap = _backend_ctx("numpy", check_level="cheap")
-    dom_none = sc.DenseCoordinateSpace((n,), ctx_none)
-    cod_none = sc.DenseCoordinateSpace((m,), ctx_none)
-    dom_cheap = sc.DenseCoordinateSpace((n,), ctx_cheap)
-    cod_cheap = sc.DenseCoordinateSpace((m,), ctx_cheap)
+    ctx = _backend_ctx("numpy")
+    dom_none = sc.DenseCoordinateSpace((n,), ctx, check_level="none")
+    cod_none = sc.DenseCoordinateSpace((m,), ctx, check_level="none")
+    dom_cheap = sc.DenseCoordinateSpace((n,), ctx, check_level="cheap")
+    cod_cheap = sc.DenseCoordinateSpace((m,), ctx, check_level="cheap")
 
-    a_arr_none = ctx_none.asarray(a_np)
-    a_arr_cheap = ctx_cheap.asarray(a_np)
-    ctx_none.asarray(b_np)
-    op_none = sc.DenseLinOp(a_arr_none, dom_none, cod_none, ctx_none)
-    op_cheap = sc.DenseLinOp(a_arr_cheap, dom_cheap, cod_cheap, ctx_cheap)
+    # Array conversion is level-independent — one copy serves both variants.
+    a_arr = ctx.asarray(a_np)
+    op_none = sc.DenseLinOp(a_arr, dom_none, cod_none, ctx, check_level="none")
+    op_cheap = sc.DenseLinOp(a_arr, dom_cheap, cod_cheap, ctx, check_level="cheap")
 
     a_local = a_np
     b_local = b_np
@@ -234,24 +232,23 @@ def _build_jax_payload(
     import jax.numpy as jnp
 
     m, n = a_np.shape
-    ctx_none = _backend_ctx("jax", check_level="none")
-    ctx_cheap = _backend_ctx("jax", check_level="cheap")
-    dom_none = sc.DenseCoordinateSpace((n,), ctx_none)
-    cod_none = sc.DenseCoordinateSpace((m,), ctx_none)
-    dom_cheap = sc.DenseCoordinateSpace((n,), ctx_cheap)
-    cod_cheap = sc.DenseCoordinateSpace((m,), ctx_cheap)
+    ctx = _backend_ctx("jax")
+    dom_none = sc.DenseCoordinateSpace((n,), ctx, check_level="none")
+    cod_none = sc.DenseCoordinateSpace((m,), ctx, check_level="none")
+    dom_cheap = sc.DenseCoordinateSpace((n,), ctx, check_level="cheap")
+    cod_cheap = sc.DenseCoordinateSpace((m,), ctx, check_level="cheap")
 
-    np_dtype = _np_dtype(ctx_none)
+    np_dtype = _np_dtype(ctx)
     a_typed = np.asarray(a_np, dtype=np_dtype)
     b_typed = np.asarray(b_np, dtype=np_dtype)
 
-    a_jax_none = ctx_none.asarray(a_typed)
-    a_jax_cheap = ctx_cheap.asarray(a_typed)
-    b_jax = ctx_none.asarray(b_typed)
-    op_none = sc.DenseLinOp(a_jax_none, dom_none, cod_none, ctx_none)
-    op_cheap = sc.DenseLinOp(a_jax_cheap, dom_cheap, cod_cheap, ctx_cheap)
+    # Array conversion is level-independent — one copy serves both variants.
+    a_jax = ctx.asarray(a_typed)
+    b_jax = ctx.asarray(b_typed)
+    op_none = sc.DenseLinOp(a_jax, dom_none, cod_none, ctx, check_level="none")
+    op_cheap = sc.DenseLinOp(a_jax, dom_cheap, cod_cheap, ctx, check_level="cheap")
 
-    a_local = a_jax_none
+    a_local = a_jax
     b_local = b_jax
     one_plus_sigma = 1.0 + sigma
     zeros_x = jnp.zeros((n,), dtype=a_local.dtype)
@@ -362,24 +359,23 @@ def _build_torch_payload(
     import torch
 
     m, n = a_np.shape
-    ctx_none = _backend_ctx("torch", check_level="none")
-    ctx_cheap = _backend_ctx("torch", check_level="cheap")
-    dom_none = sc.DenseCoordinateSpace((n,), ctx_none)
-    cod_none = sc.DenseCoordinateSpace((m,), ctx_none)
-    dom_cheap = sc.DenseCoordinateSpace((n,), ctx_cheap)
-    cod_cheap = sc.DenseCoordinateSpace((m,), ctx_cheap)
+    ctx = _backend_ctx("torch")
+    dom_none = sc.DenseCoordinateSpace((n,), ctx, check_level="none")
+    cod_none = sc.DenseCoordinateSpace((m,), ctx, check_level="none")
+    dom_cheap = sc.DenseCoordinateSpace((n,), ctx, check_level="cheap")
+    cod_cheap = sc.DenseCoordinateSpace((m,), ctx, check_level="cheap")
 
-    np_dtype = _np_dtype(ctx_none)
+    np_dtype = _np_dtype(ctx)
     a_typed = np.asarray(a_np, dtype=np_dtype)
     b_typed = np.asarray(b_np, dtype=np_dtype)
 
-    a_torch_none = ctx_none.asarray(a_typed)
-    a_torch_cheap = ctx_cheap.asarray(a_typed)
-    b_torch = ctx_none.asarray(b_typed)
-    op_none = sc.DenseLinOp(a_torch_none, dom_none, cod_none, ctx_none)
-    op_cheap = sc.DenseLinOp(a_torch_cheap, dom_cheap, cod_cheap, ctx_cheap)
+    # Array conversion is level-independent — one copy serves both variants.
+    a_torch = ctx.asarray(a_typed)
+    b_torch = ctx.asarray(b_typed)
+    op_none = sc.DenseLinOp(a_torch, dom_none, cod_none, ctx, check_level="none")
+    op_cheap = sc.DenseLinOp(a_torch, dom_cheap, cod_cheap, ctx, check_level="cheap")
 
-    a_local = a_torch_none
+    a_local = a_torch
     b_local = b_torch
     one_plus_sigma = 1.0 + sigma
     torch_dtype = a_local.dtype

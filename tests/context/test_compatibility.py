@@ -1,33 +1,42 @@
 """Tests for context compatibility / inference helpers.
 
+Book justification: the resolver relations and inference are pinned as
+contracts (Hunt & Thomas, *The Pragmatic Programmer*, tip 37). The synthetic
+``_OtherFamilyOps`` is a Test-Specific Subclass standing in for a second backend
+family, so cross-family behavior is covered without depending on an installed
+optional backend — keeping the suite Repeatable and free of Erratic Tests
+(Meszaros, *xUnit Test Patterns*).
+
 Checklist section 2: context compatibility and inference.
 
-Covers the free helpers that gate operator algebra and context resolution:
+Covers the free helpers that gate operator algebra and context resolution.
+(The ``Context.same_math`` / ``same_backend`` relation contracts live in
+``test_context_contracts.py``; this file covers the resolver helpers.)
 
-* :func:`spacecore._contextual._bound._same_math_context` — the
-  algebra-gating equality that ignores ``check_level``.
 * ``Contextual.are_compatible_values`` / ``are_compatible_ops`` — the
   family-mismatch logic for raw values and raw ``BackendOps``.
 * ``Contextual.infer_context`` / ``infer_contexts`` — the ``.ctx`` fast
   path, ``is_array`` matching, the ``get_dtype`` fallback, and the
   no-match ``None`` branch.
-* ``Contextual.ctx_from_ops`` — dtype sanitization and check-level
-  normalization for a raw ``BackendOps`` instance.
-* :func:`spacecore.normalize_context` — the deprecated ``enable_checks``
-  legacy path and its ``DeprecationWarning``.
+* ``Contextual.ctx_from_ops`` — dtype sanitization for a raw ``BackendOps``
+  instance. Validation policy is not part of the context: the ambient level
+  seeds the bound object instead.
+* ``normalize_check_level`` — the deprecated ``enable_checks`` legacy shim,
+  now the only surviving home of the Boolean switch, and the
+  ``DeprecationWarning`` it emits under ``warn_legacy=True``.
 
 References are independent: NumPy dtypes, explicit family strings, and the
 source contracts read from ``_state.py`` / ``_bound.py`` / ``_check_policy.py``.
 """
 from __future__ import annotations
 
-import warnings
-
 import numpy as np
+import pytest
 
 import spacecore as sc
-from spacecore._contextual._bound import _same_math_context
-from spacecore._contextual._state import Contextual
+from spacecore._check_policy import normalize_check_level
+from spacecore.contextual._contextual import Contextual
+from spacecore.backend import OpsRegistry
 
 
 # A NumpyOps subclass with a distinct family. Backend equality and the
@@ -36,33 +45,6 @@ from spacecore._contextual._state import Contextual
 # (jax/torch/cupy) installed.
 class _OtherFamilyOps(sc.NumpyOps):
     _family = "other_family"
-
-
-# ===========================================================================
-# _same_math_context — gates operator algebra; ignores check_level
-# ===========================================================================
-class TestSameMathContext:
-    def test_differ_only_in_check_level_is_same(self):
-        """Two contexts differing ONLY in ``check_level`` share math context."""
-        a = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="none")
-        b = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="strict")
-        assert a != b  # full equality is sensitive to check_level
-        assert _same_math_context(a, b) is True
-
-    def test_differ_in_dtype_is_not_same(self):
-        a = sc.Context(sc.NumpyOps(), dtype=np.float32)
-        b = sc.Context(sc.NumpyOps(), dtype=np.float64)
-        assert _same_math_context(a, b) is False
-
-    def test_differ_in_ops_family_is_not_same(self):
-        a = sc.Context(sc.NumpyOps(), dtype=np.float64)
-        b = sc.Context(_OtherFamilyOps(), dtype=np.float64)
-        assert _same_math_context(a, b) is False
-
-    def test_identical_context_is_same(self):
-        a = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="cheap")
-        b = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="cheap")
-        assert _same_math_context(a, b) is True
 
 
 # ===========================================================================
@@ -127,8 +109,8 @@ class TestInferContext:
 
     def test_ctx_fast_path(self):
         """An object exposing ``.ctx`` resolves via that attribute directly."""
-        ctx = sc.Context(sc.NumpyOps(), dtype=np.float32, check_level="cheap")
-        bound = sc.DenseCoordinateSpace((2,), ctx)
+        ctx = sc.Context(sc.NumpyOps(), dtype=np.float32)
+        bound = sc.DenseCoordinateSpace((2,), ctx, check_level="cheap")
         out = self.state.infer_context(bound)
         assert out == ctx
 
@@ -163,10 +145,10 @@ class TestInferContext:
         class _FakeArray:
             dtype = np.dtype(np.float32)
 
-        state = Contextual()
-        # Replace the registry with just the fake backend so it is the sole
-        # match for the fake array.
-        state._available_ops = {"fake_only": _FakeOps}
+        # Resolve against a registry holding only the fake backend, so it is
+        # the sole match for the fake array. Injecting a registry is the
+        # supported seam; this used to overwrite private state.
+        state = Contextual(ops_registry=OpsRegistry([_FakeOps]))
         captured["x"] = _FakeArray()
         out = state.infer_context(captured["x"])
         assert out is not None
@@ -198,7 +180,7 @@ class TestInferContexts:
 
 
 # ===========================================================================
-# ctx_from_ops — dtype sanitization + check-level normalization
+# ctx_from_ops — dtype sanitization; policy lives on the bound object
 # ===========================================================================
 class TestCtxFromOps:
     def setup_method(self):
@@ -214,14 +196,17 @@ class TestCtxFromOps:
         out = self.state.ctx_from_ops(ops, dtype=np.float32)
         assert out.dtype == np.dtype(np.float32)
 
-    def test_default_check_level_is_none(self):
-        """``Contextual._default_check_level`` is 'none'."""
+    def test_baseline_check_level_is_standard(self):
+        """``Contextual._baseline_check_level`` is 'standard', and it is what a
+        bound object built on a resolver-made context inherits."""
+        assert self.state.get_check_level() == "standard"
         out = self.state.ctx_from_ops(sc.NumpyOps())
-        assert out.check_level == "none"
+        assert sc.DenseCoordinateSpace((2,), out).check_level == "standard"
 
     def test_explicit_check_level_is_honored(self):
-        out = self.state.ctx_from_ops(sc.NumpyOps(), check_level="strict")
-        assert out.check_level == "strict"
+        out = self.state.ctx_from_ops(sc.NumpyOps())
+        bound = sc.DenseCoordinateSpace((2,), out, check_level="strict")
+        assert bound.check_level == "strict"
 
     def test_returned_ops_match_input(self):
         ops = sc.NumpyOps()
@@ -230,25 +215,19 @@ class TestCtxFromOps:
 
 
 # ===========================================================================
-# normalize_context — legacy enable_checks path + DeprecationWarning
+# normalize_check_level — legacy enable_checks shim + DeprecationWarning
 # ===========================================================================
-class TestNormalizeContextEnableChecks:
+class TestEnableChecksShim:
     def test_enable_checks_true_resolves_standard(self):
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", DeprecationWarning)
-            out = sc.normalize_context("numpy", enable_checks=True)
-        assert out.check_level == "standard"
+        assert normalize_check_level(enable_checks=True) == "standard"
 
     def test_enable_checks_false_resolves_none(self):
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", DeprecationWarning)
-            out = sc.normalize_context("numpy", enable_checks=False)
-        assert out.check_level == "none"
+        assert normalize_check_level(enable_checks=False) == "none"
 
-    def test_enable_checks_emits_deprecation_warning(self):
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
-            sc.normalize_context("numpy", enable_checks=True)
-        deprecations = [w for w in caught if issubclass(w.category, DeprecationWarning)]
-        assert deprecations, "expected a DeprecationWarning for enable_checks"
-        assert "enable_checks is deprecated" in str(deprecations[0].message)
+    def test_enable_checks_emits_deprecation_warning_when_requested(self):
+        """The shim warns only under ``warn_legacy=True``; no production caller
+        passes it, so the warning is opt-in for callers still bridging the
+        Boolean switch."""
+        with pytest.warns(DeprecationWarning) as caught:
+            normalize_check_level(enable_checks=True, warn_legacy=True)
+        assert "enable_checks is deprecated" in str(caught[0].message)

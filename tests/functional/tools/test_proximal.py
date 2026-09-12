@@ -198,6 +198,15 @@ class TestWrappers:
         out = sc.project_nonneg(v, X)
         np.testing.assert_allclose(to_numpy(out), np.maximum(to_numpy(v), 0.0))
 
+    def test_wrappers_reject_negative_step_nonneg(self, numpy_ctx):
+        """The step guard runs before the constrained branch too."""
+        X = sc.DenseCoordinateSpace((3,), numpy_ctx)
+        v = numpy_ctx.asarray([1.0, 2.0, 3.0])
+        with pytest.raises(ValueError):
+            sc.prox_l1(v, -1.0, X, nonneg=True)
+        with pytest.raises(ValueError):
+            sc.prox_l2sq(v, -1.0, X, nonneg=True)
+
     def test_wrappers_reject_negative_step(self, numpy_ctx):
         X = sc.DenseCoordinateSpace((3,), numpy_ctx)
         v = numpy_ctx.asarray([1.0, 2.0, 3.0])
@@ -226,6 +235,136 @@ class TestWrappers:
 # ---------------------------------------------------------------------------
 # S04 regression: metric-correct proximal gradient on a weighted space
 # ---------------------------------------------------------------------------
+class TestNonnegativeWrappers:
+    """``prox_l1`` / ``prox_l2sq`` with ``nonneg=True``.
+
+    Both delegate the constraint to ``generalized_shrinkage``, which already
+    implemented it — the wrappers simply did not expose the flag. Each is
+    verified against its **defining constrained minimization** on a weighted
+    metric, not against a twin formula.
+    """
+
+    W = np.array([2.0, 5.0, 11.0])
+
+    def _space(self, ctx):
+        return _weighted_space(ctx, self.W)
+
+    def _assert_is_constrained_minimizer(self, out, objective, seed):
+        """Local minimality on the feasible set, by random feasible perturbation."""
+        base = objective(out)
+        rng = np.random.default_rng(seed)
+        for _ in range(200):
+            perturbed = np.maximum(out + 1e-3 * rng.standard_normal(out.size), 0.0)
+            assert objective(perturbed) >= base - 1e-9
+
+    def test_prox_l1_nonneg_is_the_constrained_minimizer(self, numpy_ctx):
+        X = self._space(numpy_ctx)
+        v = numpy_ctx.asarray([-3.0, 0.5, 2.0])
+        t = 1.3
+        out = to_numpy(sc.prox_l1(v, t, X, nonneg=True))
+        assert np.all(out >= 0.0)
+
+        def objective(x):
+            diff = x - to_numpy(v)
+            return 0.5 * np.sum(self.W * diff * diff) + t * np.sum(np.abs(x))
+
+        self._assert_is_constrained_minimizer(out, objective, seed=1)
+
+    def test_prox_l2sq_nonneg_is_the_constrained_minimizer(self, numpy_ctx):
+        X = self._space(numpy_ctx)
+        v = numpy_ctx.asarray([-3.0, 0.5, 2.0])
+        t = 1.3
+        out = to_numpy(sc.prox_l2sq(v, t, X, nonneg=True))
+        assert np.all(out >= 0.0)
+
+        def objective(x):
+            diff = x - to_numpy(v)
+            return 0.5 * np.sum(self.W * diff * diff) + t * 0.5 * np.sum(self.W * x * x)
+
+        self._assert_is_constrained_minimizer(out, objective, seed=2)
+
+    def test_prox_l1_nonneg_uses_the_metric_aware_one_sided_threshold(self, numpy_ctx):
+        """On the orthant ``||x||_1`` is linear, giving ``max(v - t/w, 0)``."""
+        X = self._space(numpy_ctx)
+        v = numpy_ctx.asarray([-3.0, 0.5, 2.0])
+        t = 1.3
+        np.testing.assert_allclose(
+            to_numpy(sc.prox_l1(v, t, X, nonneg=True)),
+            np.maximum(to_numpy(v) - t / self.W, 0.0),
+        )
+
+    def test_prox_l2sq_nonneg_is_clipped_shrinkage(self, numpy_ctx):
+        X = self._space(numpy_ctx)
+        v = numpy_ctx.asarray([-3.0, 0.5, 2.0])
+        t = 1.3
+        np.testing.assert_allclose(
+            to_numpy(sc.prox_l2sq(v, t, X, nonneg=True)),
+            np.maximum(to_numpy(v), 0.0) / (1.0 + t),
+        )
+
+    @pytest.mark.parametrize("prox", [sc.prox_l1, sc.prox_l2sq], ids=["l1", "l2sq"])
+    def test_clipping_the_unconstrained_prox_agrees(self, numpy_ctx, prox):
+        """Pins an identity the docstrings claim; it is not general to prox operators.
+
+        For these two the constrained minimizer coincides with clipping the
+        unconstrained one at zero — for ``l1`` because ``v <= 0`` maps to ``0``
+        either way and ``v > 0`` already reduces to the one-sided form. Asserted
+        rather than assumed, so a future change to either branch is caught.
+        """
+        X = self._space(numpy_ctx)
+        rng = np.random.default_rng(3)
+        for _ in range(50):
+            v = numpy_ctx.asarray(rng.normal(scale=3.0, size=3))
+            t = float(rng.uniform(0.0, 4.0))
+            np.testing.assert_allclose(
+                np.maximum(to_numpy(prox(v, t, X)), 0.0),
+                to_numpy(prox(v, t, X, nonneg=True)),
+            )
+
+    @pytest.mark.parametrize("prox", [sc.prox_l1, sc.prox_l2sq], ids=["l1", "l2sq"])
+    def test_zero_step_degenerates_to_projection(self, numpy_ctx, prox):
+        X = self._space(numpy_ctx)
+        v = numpy_ctx.asarray([-3.0, 0.5, 2.0])
+        np.testing.assert_allclose(
+            to_numpy(prox(v, 0.0, X, nonneg=True)), to_numpy(sc.project_nonneg(v, X))
+        )
+
+    @pytest.mark.parametrize("prox", [sc.prox_l1, sc.prox_l2sq], ids=["l1", "l2sq"])
+    def test_default_is_unconstrained(self, numpy_ctx, prox):
+        """``nonneg`` defaults to ``False``; existing callers are unaffected."""
+        X = self._space(numpy_ctx)
+        v = numpy_ctx.asarray([-3.0, 0.5, 2.0])
+        np.testing.assert_allclose(
+            to_numpy(prox(v, 1.3, X)), to_numpy(prox(v, 1.3, X, nonneg=False))
+        )
+        assert np.any(to_numpy(prox(v, 1.3, X)) < 0.0)   # genuinely unconstrained
+
+    @pytest.mark.parametrize("prox", [sc.prox_l1, sc.prox_l2sq], ids=["l1", "l2sq"])
+    def test_nonneg_is_keyword_only(self, numpy_ctx, prox):
+        """Guards the signature: a positional fourth argument must not bind it."""
+        X = self._space(numpy_ctx)
+        v = numpy_ctx.asarray([-3.0, 0.5, 2.0])
+        with pytest.raises(TypeError):
+            prox(v, 1.3, X, True)
+
+    @pytest.mark.parametrize("prox", [sc.prox_l1, sc.prox_l2sq], ids=["l1", "l2sq"])
+    def test_nonneg_rejects_complex_spaces(self, numpy_complex_ctx, prox):
+        """``x >= 0`` is undefined on a complex space; the primitive's guard applies."""
+        X = sc.DenseCoordinateSpace((3,), numpy_complex_ctx)
+        v = numpy_complex_ctx.asarray([1 + 1j, -2 + 0j, 0.5 - 1j])
+        with pytest.raises(ValueError, match="real spaces only"):
+            prox(v, 1.3, X, nonneg=True)
+
+    @pytest.mark.parametrize("prox", [sc.prox_l1, sc.prox_l2sq], ids=["l1", "l2sq"])
+    def test_nonneg_still_rejects_a_non_diagonal_metric(self, numpy_ctx, prox):
+        """The separability refusal is not bypassed by the constrained branch."""
+        matrix = numpy_ctx.asarray([[2.0, 0.3, 0.0], [0.3, 2.0, 0.1], [0.0, 0.1, 2.0]])
+        X = sc.DenseCoordinateSpace((3,), numpy_ctx, geometry=_FullMetric(matrix))
+        v = numpy_ctx.asarray([-3.0, 0.5, 2.0])
+        with pytest.raises(ValueError, match="not diagonal"):
+            prox(v, 1.3, X, nonneg=True)
+
+
 class TestMetricTrap:
     def _setup(self, ctx):
         w = np.array([2.0, 5.0, 11.0])

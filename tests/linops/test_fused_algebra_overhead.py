@@ -46,8 +46,9 @@ def _spy_member_checks(space):
 @pytest.fixture
 def ctx():
     # check_level="standard" is the default; make it explicit so the per-call
-    # validation under test is actually active.
-    return sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="standard")
+    # validation under test is actually active on every object built here.
+    with sc.use_check_level("standard"):
+        yield sc.Context(sc.NumpyOps(), dtype=np.float64)
 
 
 def _dense(ctx, X, Y, seed):
@@ -214,9 +215,11 @@ def test_composed_chain_is_jit_safe():
     pytest.importorskip("jax")
     import jax
 
-    jctx = sc.Context(sc.JaxOps(), dtype=np.float32, check_level="none")
-    X = sc.DenseCoordinateSpace((3,), jctx)
-    chain, ops = _endo_chain(jctx, X, range(4))
+    jctx = sc.Context(sc.JaxOps(), dtype=np.float32)
+    with sc.use_check_level("none"):
+        X = sc.DenseCoordinateSpace((3,), jctx)
+        chain, ops = _endo_chain(jctx, X, range(4))
+    assert chain.check_level == "none"
     x = jctx.asarray(np.asarray([1.0, 2.0, 3.0], dtype=np.float32))
 
     jitted = jax.jit(lambda op, v: op.apply(v))

@@ -25,6 +25,103 @@ from __future__ import annotations
 
 from typing import Any, Sequence
 
+import numpy as _np
+
+
+# ----------------------------------------------------------------------
+# Pytree / axis helpers for the control-flow references
+# ----------------------------------------------------------------------
+# Deliberately independent of ``EagerControlFlowMixin``'s ``_tree_*`` helpers:
+# ``scan`` and ``vmap`` keep most of their logic in pytree walking, so a
+# reference that reused those helpers would be comparing them to themselves.
+
+
+def _ref_to_numpy(x: Any) -> Any:
+    """Best-effort conversion of one backend leaf to a NumPy array."""
+    if hasattr(x, "detach"):          # torch
+        x = x.detach().cpu()
+    return _np.asarray(x)
+
+
+def _ref_leaves(tree: Any) -> list[Any]:
+    """Flatten a dict/tuple/list pytree to its leaves, in structure order."""
+    if isinstance(tree, dict):
+        return [leaf for v in tree.values() for leaf in _ref_leaves(v)]
+    if isinstance(tree, (tuple, list)):
+        return [leaf for v in tree for leaf in _ref_leaves(v)]
+    return [tree]
+
+
+def _ref_tree_index(tree: Any, i: int) -> Any:
+    """Take ``leaf[i]`` along axis 0 of every leaf, preserving structure."""
+    if isinstance(tree, dict):
+        return {k: _ref_tree_index(v, i) for k, v in tree.items()}
+    if isinstance(tree, tuple):
+        return tuple(_ref_tree_index(v, i) for v in tree)
+    if isinstance(tree, list):
+        return [_ref_tree_index(v, i) for v in tree]
+    return tree[i]
+
+
+def _ref_tree_stack(steps: Sequence[Any]) -> Any:
+    """Stack a list of same-structure pytrees leafwise along a new axis 0."""
+    if not steps:
+        return ()
+    first = steps[0]
+    if isinstance(first, dict):
+        return {k: _ref_tree_stack([s[k] for s in steps]) for k in first}
+    if isinstance(first, tuple):
+        return tuple(_ref_tree_stack([s[i] for s in steps]) for i in range(len(first)))
+    if isinstance(first, list):
+        return [_ref_tree_stack([s[i] for s in steps]) for i in range(len(first))]
+    return _np.stack([_ref_to_numpy(s) for s in steps], axis=0)
+
+
+def _ref_leading_length(tree: Any) -> int:
+    """Length of axis 0 of the first leaf — how ``scan`` infers its length."""
+    return int(_np.shape(_ref_to_numpy(_ref_leaves(tree)[0]))[0])
+
+
+def _ref_axis_size(arg: Any, axis: Any) -> int | None:
+    """Size of ``arg`` along ``axis``; ``None`` when the argument is unmapped."""
+    if axis is None:
+        return None
+    if isinstance(arg, tuple):
+        axes = axis if isinstance(axis, (tuple, list)) else (axis,) * len(arg)
+        for sub, sub_axis in zip(arg, axes):
+            size = _ref_axis_size(sub, sub_axis)
+            if size is not None:
+                return size
+        return None
+    return int(_np.shape(_ref_to_numpy(arg))[int(axis)])
+
+
+def _ref_axis_take(arg: Any, axis: Any, i: int) -> Any:
+    """Slice index ``i`` out of ``axis``; pass through when ``axis`` is None."""
+    if axis is None:
+        return arg
+    if isinstance(arg, tuple):
+        axes = axis if isinstance(axis, (tuple, list)) else (axis,) * len(arg)
+        return tuple(_ref_axis_take(sub, a, i) for sub, a in zip(arg, axes))
+    return _np.take(_ref_to_numpy(arg), i, axis=int(axis))
+
+
+def _ref_stack_at(outputs: Sequence[Any], out_axes: Any) -> Any:
+    """Stack per-call outputs along ``out_axes`` (``None`` keeps the first)."""
+    first = outputs[0]
+    if isinstance(first, tuple):
+        axes = (
+            out_axes
+            if isinstance(out_axes, (tuple, list))
+            else (out_axes,) * len(first)
+        )
+        return tuple(
+            _ref_stack_at([o[i] for o in outputs], a) for i, a in enumerate(axes)
+        )
+    if out_axes is None:
+        return first
+    return _np.stack([_ref_to_numpy(o) for o in outputs], axis=int(out_axes))
+
 
 class ReferenceOps:
     """Calls the native library a backend wraps. The truth, not a wrapper.
@@ -648,6 +745,96 @@ class ReferenceOps:
 
     def cond(self, pred: bool, true_fun, false_fun, *operands):
         return true_fun(*operands) if bool(pred) else false_fun(*operands)
+
+    def scan(self, f, init, xs, length=None, reverse=False, unroll=1):
+        """Python-loop reference for ``scan``.
+
+        Stacks per-step outputs with NumPy rather than the backend's ``stack``,
+        and walks pytrees with its own helpers, so the reference shares no code
+        with the implementation under test — the eager ``scan`` keeps most of
+        its logic in exactly that pytree walking. ``unroll`` is accepted for
+        signature parity and by definition cannot change the result.
+        """
+        carry = init
+        if xs is None:
+            if length is None:
+                raise ValueError("scan(xs=None) requires an explicit `length`.")
+            n = int(length)
+
+            def take(_i):
+                return None
+        else:
+            n = int(length) if length is not None else _ref_leading_length(xs)
+
+            def take(i):
+                return _ref_tree_index(xs, i)
+
+        steps = range(n - 1, -1, -1) if reverse else range(n)
+        ys: list[Any] = []
+        for i in steps:
+            carry, y = f(carry, take(i))
+            ys.append(y)
+        if reverse:
+            ys.reverse()
+        return carry, _ref_tree_stack(ys)
+
+    def vmap(self, fn, in_axes=0, out_axes=0):
+        """Python-loop reference for ``vmap``: slice, call, stack.
+
+        The definition of vectorization written out. Axis ``None`` means
+        "pass this argument through unsliced"; when every argument has axis
+        ``None`` there is nothing to map over and ``fn`` is called once.
+        """
+
+        def mapped(*args: Any) -> Any:
+            axes = (
+                tuple(in_axes)
+                if isinstance(in_axes, (tuple, list))
+                else (in_axes,) * len(args)
+            )
+            size = None
+            for arg, axis in zip(args, axes):
+                size = _ref_axis_size(arg, axis)
+                if size is not None:
+                    break
+            if size is None:
+                return fn(*args)
+            outputs = [
+                fn(*(_ref_axis_take(arg, axis, i) for arg, axis in zip(args, axes)))
+                for i in range(size)
+            ]
+            return _ref_stack_at(outputs, out_axes)
+
+        return mapped
+
+    def vectorize(self, pyfunc, *, excluded=None, signature=None):
+        """Elementwise reference for ``vectorize`` (no ``signature`` support).
+
+        Broadcasts the non-excluded arguments and calls ``pyfunc`` once per
+        index — the semantics :func:`numpy.vectorize` documents, spelled out as
+        a loop instead of delegated to it.
+        """
+        if signature is not None:
+            raise NotImplementedError(
+                "the reference vectorize covers the elementwise case only"
+            )
+        skip = set() if excluded is None else set(excluded)
+
+        def vectorized(*args: Any) -> Any:
+            mapped_idx = [i for i in range(len(args)) if i not in skip]
+            arrays = _np.broadcast_arrays(
+                *[_np.asarray(_ref_to_numpy(args[i])) for i in mapped_idx]
+            )
+            shape = arrays[0].shape if arrays else ()
+            out = _np.empty(shape, dtype=object)
+            for idx in _np.ndindex(*shape):
+                call = list(args)
+                for slot, arr in zip(mapped_idx, arrays):
+                    call[slot] = arr[idx]
+                out[idx] = pyfunc(*call)
+            return _np.array(out.tolist())
+
+        return vectorized
 
     # ------------------------------------------------------------------
     # Sparse

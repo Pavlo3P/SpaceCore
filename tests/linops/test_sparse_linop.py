@@ -319,11 +319,12 @@ class TestConvert:
 # ===========================================================================
 class TestBatchedLifting:
     def test_fast_paths_without_checks(self):
-        ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="none")
-        dom = sc.DenseCoordinateSpace((2,), ctx)
-        cod = sc.DenseCoordinateSpace((3,), ctx)
+        ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+        dom = sc.DenseCoordinateSpace((2,), ctx, check_level="none")
+        cod = sc.DenseCoordinateSpace((3,), ctx, check_level="none")
         sparse = ctx.assparse(sps.csr_matrix([[1.0, 0.0], [0.0, 4.0], [5.0, 6.0]]))
-        op = sc.SparseLinOp(sparse, dom, cod, ctx)
+        op = sc.SparseLinOp(sparse, dom, cod, ctx, check_level="none")
+        assert op.check_level == "none"
         xs = ctx.asarray([[7.0, 8.0], [1.0, -1.0], [0.5, 2.0]])
         ys = ctx.asarray([[1.0, -1.0, 2.0], [0.0, 3.0, -2.0]])
 
@@ -339,14 +340,15 @@ class TestJit:
     def test_jit_apply_and_rapply(self):
         import jax
 
-        ctx = sc.Context(sc.JaxOps(), dtype=jax_real_dtype(), check_level="none")
+        ctx = sc.Context(sc.JaxOps(), dtype=jax_real_dtype())
         op = sc.SparseLinOp(
             ctx.assparse(
                 np.asarray([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=jax_real_dtype())
             ),
-            sc.DenseCoordinateSpace((2,), ctx),
-            sc.DenseCoordinateSpace((3,), ctx),
+            sc.DenseCoordinateSpace((2,), ctx, check_level="none"),
+            sc.DenseCoordinateSpace((3,), ctx, check_level="none"),
             ctx,
+            check_level="none",
         )
         x = ctx.asarray([7.0, 8.0])
 

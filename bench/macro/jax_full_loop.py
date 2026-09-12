@@ -130,21 +130,20 @@ def _cg_factory(
         return {"x": x, "residual": residual}
 
     # --- SpaceCore eager paths (public_none / public_cheap). Same callable
-    # shape, separate Context per check_level. We build the full LinOp once
-    # in setup; the timed callable just rebuilds the carries and steps.
-    ctx_none = _backend_ctx("jax", check_level="none")
-    ctx_cheap = _backend_ctx("jax", check_level="cheap")
+    # shape, one shared Context with a per-object check_level. We build the
+    # full LinOp once in setup; the timed callable just rebuilds the carries
+    # and steps.
+    ctx = _backend_ctx("jax")
 
-    space_none = sc.DenseCoordinateSpace((n,), ctx_none)
-    space_cheap = sc.DenseCoordinateSpace((n,), ctx_cheap)
+    space_none = sc.DenseCoordinateSpace((n,), ctx, check_level="none")
+    space_cheap = sc.DenseCoordinateSpace((n,), ctx, check_level="cheap")
 
-    a_arr_none = ctx_none.asarray(a_np)
-    a_arr_cheap = ctx_cheap.asarray(a_np)
-    b_arr_none = ctx_none.asarray(b_np)
-    b_arr_cheap = ctx_cheap.asarray(b_np)
+    # Array conversion is level-independent — one copy serves both variants.
+    a_arr = ctx.asarray(a_np)
+    b_arr = ctx.asarray(b_np)
 
-    op_none = sc.DenseLinOp(a_arr_none, space_none, space_none, ctx_none)
-    op_cheap = sc.DenseLinOp(a_arr_cheap, space_cheap, space_cheap, ctx_cheap)
+    op_none = sc.DenseLinOp(a_arr, space_none, space_none, ctx, check_level="none")
+    op_cheap = sc.DenseLinOp(a_arr, space_cheap, space_cheap, ctx, check_level="cheap")
 
     def _public_cg_step(op, space, b_arr):
         """Eager CG: one Python-level loop with SpaceCore public ops."""
@@ -166,18 +165,16 @@ def _cg_factory(
         return {"x": x, "residual": residual}
 
     def spacecore_public_none_callable():
-        return _public_cg_step(op_none, space_none, b_arr_none)
+        return _public_cg_step(op_none, space_none, b_arr)
 
     def spacecore_public_cheap_callable():
-        return _public_cg_step(op_cheap, space_cheap, b_arr_cheap)
+        return _public_cg_step(op_cheap, space_cheap, b_arr)
 
     # --- SpaceCore lowered path: jax.jit a function that uses the SC LinOp's
     # apply inside a jax.lax.scan. The trace lowers ``op.apply`` to the same
     # underlying ``a @ x`` JAX op without going through any Python-level
     # SpaceCore validation per iteration.
-    a_arr_lowered = ctx_none.asarray(a_np)
-    b_arr_lowered = ctx_none.asarray(b_np)
-    op_lowered = sc.DenseLinOp(a_arr_lowered, space_none, space_none, ctx_none)
+    op_lowered = sc.DenseLinOp(a_arr, space_none, space_none, ctx, check_level="none")
 
     def _lowered_cg_loop(b):
         x0 = space_none.zeros()
@@ -204,7 +201,7 @@ def _cg_factory(
     _lowered_cg_jit = jax.jit(_lowered_cg_loop)
 
     def spacecore_lowered_callable():
-        x, residual = _lowered_cg_jit(b_arr_lowered)
+        x, residual = _lowered_cg_jit(b_arr)
         return {"x": x, "residual": residual}
 
     def reference_metric_extractor(result: Any) -> dict[str, float]:
@@ -301,21 +298,23 @@ def _pdhg_factory(
         return {"x": x, "objective": objective}
 
     # --- SpaceCore eager public paths.
-    ctx_none = _backend_ctx("jax", check_level="none")
-    ctx_cheap = _backend_ctx("jax", check_level="cheap")
+    ctx = _backend_ctx("jax")
 
-    domain_none = sc.DenseCoordinateSpace((n,), ctx_none)
-    codomain_none = sc.DenseCoordinateSpace((m,), ctx_none)
-    domain_cheap = sc.DenseCoordinateSpace((n,), ctx_cheap)
-    codomain_cheap = sc.DenseCoordinateSpace((m,), ctx_cheap)
+    domain_none = sc.DenseCoordinateSpace((n,), ctx, check_level="none")
+    codomain_none = sc.DenseCoordinateSpace((m,), ctx, check_level="none")
+    domain_cheap = sc.DenseCoordinateSpace((n,), ctx, check_level="cheap")
+    codomain_cheap = sc.DenseCoordinateSpace((m,), ctx, check_level="cheap")
 
-    a_arr_none = ctx_none.asarray(a_np)
-    a_arr_cheap = ctx_cheap.asarray(a_np)
-    b_arr_none = ctx_none.asarray(b_np)
-    b_arr_cheap = ctx_cheap.asarray(b_np)
+    # Array conversion is level-independent — one copy serves both variants.
+    a_arr = ctx.asarray(a_np)
+    b_arr = ctx.asarray(b_np)
 
-    op_none = sc.DenseLinOp(a_arr_none, domain_none, codomain_none, ctx_none)
-    op_cheap = sc.DenseLinOp(a_arr_cheap, domain_cheap, codomain_cheap, ctx_cheap)
+    op_none = sc.DenseLinOp(
+        a_arr, domain_none, codomain_none, ctx, check_level="none"
+    )
+    op_cheap = sc.DenseLinOp(
+        a_arr, domain_cheap, codomain_cheap, ctx, check_level="cheap"
+    )
 
     def _public_pdhg_step(op, domain, codomain, b_arr):
         x = domain.zeros()
@@ -337,16 +336,16 @@ def _pdhg_factory(
         return {"x": x, "objective": objective}
 
     def spacecore_public_none_callable():
-        return _public_pdhg_step(op_none, domain_none, codomain_none, b_arr_none)
+        return _public_pdhg_step(op_none, domain_none, codomain_none, b_arr)
 
     def spacecore_public_cheap_callable():
-        return _public_pdhg_step(op_cheap, domain_cheap, codomain_cheap, b_arr_cheap)
+        return _public_pdhg_step(op_cheap, domain_cheap, codomain_cheap, b_arr)
 
     # --- SpaceCore lowered path: jit a function that uses op.apply/op.rapply
     # inside a jax.lax.scan body.
-    a_arr_lowered = ctx_none.asarray(a_np)
-    b_arr_lowered = ctx_none.asarray(b_np)
-    op_lowered = sc.DenseLinOp(a_arr_lowered, domain_none, codomain_none, ctx_none)
+    op_lowered = sc.DenseLinOp(
+        a_arr, domain_none, codomain_none, ctx, check_level="none"
+    )
 
     def _lowered_pdhg_loop(b):
         x0 = domain_none.zeros()
@@ -373,7 +372,7 @@ def _pdhg_factory(
     _lowered_pdhg_jit = jax.jit(_lowered_pdhg_loop)
 
     def spacecore_lowered_callable():
-        x, objective = _lowered_pdhg_jit(b_arr_lowered)
+        x, objective = _lowered_pdhg_jit(b_arr)
         return {"x": x, "objective": objective}
 
     def reference_metric_extractor(result: Any) -> dict[str, float]:

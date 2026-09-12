@@ -6,6 +6,7 @@ from typing import Any, cast
 
 from ._base import LinOp
 from ._metric import _metric_is_hermitian_by_basis, _requires_euclidean_or_riesz
+from .._check_policy import CheckLevel
 from .._checks import checked_method
 from ..space import (
     CoordinateSpace,
@@ -15,8 +16,8 @@ from ..space import (
     WeightedInnerProduct,
 )
 from ..types import DenseArray, SparseArray
-from ..backend import jax_pytree_class, Context
-from .._contextual import resolve_context_priority
+from ..contextual import Context
+from ..contextual import resolve_context_priority
 from ..kernels import core_kernels
 from ..kernels.core.sparse import _SparseMode
 
@@ -29,7 +30,6 @@ _VECTOR_SPACE_ONLY = (
 
 
 @core_kernels("sparse")
-@jax_pytree_class
 class SparseLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
     r"""
     Represent a sparse coordinate matrix-backed linear operator.
@@ -56,6 +56,11 @@ class SparseLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
         Codomain vector space, or a subclass of ``VectorSpace``.
     ctx : Context, str, or None, optional
         Backend context specification. Default is resolved from the spaces.
+    check_level : {"none", "cheap", "standard", "strict"}, optional
+        Runtime validation policy for this object. When omitted, the ambient
+        default (see :func:`spacecore.get_check_level`) is used. Unlike the
+        backend/dtype context, the validation policy is a property of the bound
+        object, not of the :class:`Context`.
 
     Attributes
     ----------
@@ -82,6 +87,7 @@ class SparseLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
         dom: CoordinateSpace,
         cod: CoordinateSpace,
         ctx: Context | str | None = None,
+        check_level: CheckLevel | bool | None = None,
     ) -> None:
         ctx = resolve_context_priority(ctx, dom, cod)
         ctx.assert_sparse(A)  # Check if A is sparse array of ctx
@@ -90,7 +96,7 @@ class SparseLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
 
         _requires_euclidean_or_riesz(dom, cod, "SparseLinOp")
 
-        super(SparseLinOp, self).__init__(dom, cod, ctx)
+        super(SparseLinOp, self).__init__(dom, cod, ctx, check_level=check_level)
 
         expected = (prod(self.cod.shape), prod(self.dom.shape))
         if tuple(A.shape) != expected:
@@ -252,7 +258,7 @@ class SparseLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
             return None
 
     def __eq__(self, other: Any) -> bool:
-        if not self._eq_backend_compatible(other):                  # Tier 1: backend
+        if not self.same_math(other):                  # Tier 1: backend
             return NotImplemented
         if self.dom != other.dom or self.cod != other.cod:          # Tier 2: spaces before allclose
             return False

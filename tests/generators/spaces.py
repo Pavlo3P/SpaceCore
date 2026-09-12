@@ -34,8 +34,10 @@ def _target_dtype(dtype: Any) -> np.dtype[Any]:
     return mapping[dtype]
 
 
-def _context(dtype: Any, check_level: sc.CheckLevel | str) -> sc.Context:
-    return sc.Context(sc.NumpyOps(), dtype=dtype, check_level=check_level)
+def _context(dtype: Any, check_level: sc.CheckLevel | str | None = None) -> sc.Context:
+    # check_level is applied to constructed spaces via ``use_check_level``; it is
+    # not carried on the Context.
+    return sc.Context(sc.NumpyOps(), dtype=dtype)
 
 
 def _scalar(ctx: sc.Context, real: float, imag: float = 0.0) -> Any:
@@ -124,7 +126,8 @@ def dense_coordinate_space_cases(
             ctx = _context(dtype, check_level)
             for shape_like in shapes:
                 shape = tuple(int(dimension) for dimension in shape_like)
-                space = sc.DenseCoordinateSpace(shape, ctx)
+                with sc.use_check_level(check_level):
+                    space = sc.DenseCoordinateSpace(shape, ctx)
                 reference = _dense_reference(space, rng=rng)
                 cases.append(
                     GeneratedCase(
@@ -157,7 +160,8 @@ def dense_vector_space_cases(
         for dtype in dtypes:
             ctx = _context(dtype, check_level)
             for size in sizes:
-                space = sc.DenseVectorSpace((int(size),), ctx)
+                with sc.use_check_level(check_level):
+                    space = sc.DenseVectorSpace((int(size),), ctx)
                 cases.append(
                     GeneratedCase(
                         obj=space,

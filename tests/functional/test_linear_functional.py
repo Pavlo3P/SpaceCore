@@ -1,6 +1,6 @@
 """Tests for :class:`spacecore.LinearFunctional` — the linear-map base.
 
-Checklist section 7, ``LinearFunctional``:
+Contract specified here:
 
 * ``grad(x)`` returns the *constant* Riesz representer, independent of ``x``.
 * ``vgrad(xs)`` broadcasts that constant representer across the batch axis.

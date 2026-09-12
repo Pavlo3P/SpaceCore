@@ -1,14 +1,26 @@
-"""Tests for the :mod:`spacecore._contextual._policies` error hierarchy.
+"""Tests for the context/backend error hierarchy (:mod:`spacecore._errors`).
+
+The types are defined at the top level because both :mod:`spacecore.backend`
+(the ops registry) and :mod:`spacecore.contextual` raise them; they remain
+public API of ``spacecore.contextual``, which is how these tests import them.
+
+
+Book justification: exception design deserves deliberate tests — each error is
+raised at its real trigger, sits at the correct (base-catchable) place in the
+hierarchy, and carries a useful message (Ousterhout, *A Philosophy of Software
+Design*: exceptions add complexity and must be tested and kept a small, stable
+set; Myers & Stylos, *Improving API Usability*: help users recognize, diagnose,
+and recover from errors).
 
 Four exception types live in this module:
 
-* :class:`spacecore._contextual.ContextError` — base, subclass of
+* :class:`spacecore.contextual.ContextError` — base, subclass of
   ``RuntimeError``;
-* :class:`spacecore._contextual.ContextInferenceError` — context cannot be
+* :class:`spacecore.contextual.ContextInferenceError` — context cannot be
   inferred from input (typically: ambiguous backend match);
-* :class:`spacecore._contextual.ContextConflictError` — contradictory
+* :class:`spacecore.contextual.ContextConflictError` — contradictory
   registrations or contexts (typically: duplicate ``register_ops``);
-* :class:`spacecore._contextual.UnknownBackendError` — a family name that
+* :class:`spacecore.contextual.UnknownBackendError` — a family name that
   was never registered.
 
 Each test pins both the hierarchy (``isinstance`` relationship) and the
@@ -22,7 +34,8 @@ import numpy as np
 import pytest
 
 import spacecore as sc
-from spacecore._contextual import (
+from spacecore.backend import ops_registry
+from spacecore.contextual import (
     ContextConflictError,
     ContextError,
     ContextInferenceError,
@@ -93,7 +106,6 @@ def _make_ephemeral_backend(family_name: str) -> Type[sc.BackendOps]:
 
 class TestContextConflictError:
     def test_duplicate_register_ops_raises(self):
-        from spacecore._contextual._state import _state
 
         family = "test_duplicate_register_ops_raises"
         cls = _make_ephemeral_backend(family)
@@ -102,10 +114,9 @@ class TestContextConflictError:
             with pytest.raises(ContextConflictError, match="already registered"):
                 sc.register_ops(cls)
         finally:
-            _state().available_ops.pop(family, None)
+            ops_registry.unregister(family)
 
     def test_duplicate_message_includes_family(self):
-        from spacecore._contextual._state import _state
 
         family = "test_duplicate_message_includes_family"
         cls = _make_ephemeral_backend(family)
@@ -115,7 +126,7 @@ class TestContextConflictError:
                 sc.register_ops(cls)
             assert family in str(exc_info.value)
         finally:
-            _state().available_ops.pop(family, None)
+            ops_registry.unregister(family)
 
 
 # ===========================================================================
@@ -130,7 +141,6 @@ class TestContextInferenceError:
         both the real numpy and our impostor in the registry, inferring a
         backend for a plain numpy array becomes ambiguous.
         """
-        from spacecore._contextual._state import _state
 
         family = "test_ambiguous_inference_two_claimants"
 
@@ -139,13 +149,15 @@ class TestContextInferenceError:
 
         _ClaimsNdarrayOps.__name__ = f"_Ephemeral_{family}_Ops"
 
+        from spacecore.contextual._state import _state
+
         x = np.asarray([1.0, 2.0, 3.0])
         try:
             sc.register_ops(_ClaimsNdarrayOps)
             with pytest.raises(ContextInferenceError, match="(?i)ambiguous"):
                 _state().infer_context(x)
         finally:
-            _state().available_ops.pop(family, None)
+            ops_registry.unregister(family)
 
 
 # ===========================================================================

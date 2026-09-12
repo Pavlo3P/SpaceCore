@@ -4,9 +4,10 @@ from abc import abstractmethod
 from typing import Any, Callable
 
 from ._base import Domain, Functional
-from .._batching import _check_scalar_shape, _leading_batch_size
+from .._batching import _check_scalar_shape
 from .._checks import checked_method
-from ..backend import Context, jax_pytree_class
+from .._check_policy import CheckLevel
+from ..contextual import Context
 from ..kernels import core_kernels
 from ..space import Space, TreeElement, TreeSpace
 
@@ -42,6 +43,9 @@ class LinearFunctional(Functional[Domain]):
         Domain space.
     ctx : Context, str, or None, optional
         Backend context specification. Default is resolved from ``dom``.
+    check_level : {{"none", "cheap", "standard", "strict"}}, optional
+        Runtime validation policy for this object. When omitted, the ambient
+        default (see :func:`spacecore.get_check_level`) is used.
     """
 
     @property
@@ -72,7 +76,6 @@ class LinearFunctional(Functional[Domain]):
 
 
 @core_kernels("inner-product-functional")
-@jax_pytree_class
 class InnerProductFunctional(LinearFunctional[Domain]):
     r"""
     Linear functional represented by a domain element.
@@ -88,6 +91,9 @@ class InnerProductFunctional(LinearFunctional[Domain]):
         Domain space.
     ctx : Context, str, or None, optional
         Backend context specification. Default is resolved from ``dom``.
+    check_level : {{"none", "cheap", "standard", "strict"}}, optional
+        Runtime validation policy for this object. When omitted, the ambient
+        default (see :func:`spacecore.get_check_level`) is used.
 
     Attributes
     ----------
@@ -100,8 +106,9 @@ class InnerProductFunctional(LinearFunctional[Domain]):
         c: Any,
         dom: Domain,
         ctx: Context | str | None = None,
+        check_level: CheckLevel | bool | None = None,
     ) -> None:
-        super().__init__(dom, ctx)
+        super().__init__(dom, ctx, check_level=check_level)
         self._c = _convert_space_element(self.domain, c)
         if self._checks_at_least("standard"):
             self.domain._check_member(self._c)
@@ -111,22 +118,19 @@ class InnerProductFunctional(LinearFunctional[Domain]):
         """Stored domain element ``c`` defining ``ell_c(x) = <c, x>``."""
         return self._c
 
-    @checked_method(in_space="domain")
+    @checked_method(in_space="domain", out_scalar=True)
     def value(self, x: Any) -> Any:
         """Return ``domain.inner(representer, x)``."""
         return self._value_core(x)
 
-    @checked_method(in_space="domain", in_batched=True)
+    @checked_method(in_space="domain", in_batched=True, out_batched_scalar=True)
     def vvalue(self, xs: Any) -> Any:
         """Evaluate ``domain.inner(representer, xs[i])`` without a Python loop."""
-        values = self._vvalue_core(xs)
-        if self._checks_at_least("standard"):
-            _check_scalar_shape(values, (_leading_batch_size(self.domain, xs),))
-        return values
+        return self._vvalue_core(xs)
 
     def __eq__(self, other: Any) -> bool:
         """Return whether another inner-product functional has the same representer."""
-        if not self._eq_backend_compatible(other):              # Tier 1: backend
+        if not self.same_math(other):              # Tier 1: backend
             return NotImplemented
         if self.domain != other.domain:                         # Tier 2: domain before allclose
             return False
@@ -155,7 +159,6 @@ class InnerProductFunctional(LinearFunctional[Domain]):
 
 
 @core_kernels("matrixfree-linear-functional")
-@jax_pytree_class
 class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
     """
     Linear functional defined by user-supplied evaluation callables.
@@ -176,6 +179,9 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
     vvalue : callable or None, optional
         Optional callable with signature ``vvalue(xs: Any) -> Any`` for batched
         evaluation. If omitted, backend ``vmap`` fallback is used.
+    check_level : {{"none", "cheap", "standard", "strict"}}, optional
+        Runtime validation policy for this object. When omitted, the ambient
+        default (see :func:`spacecore.get_check_level`) is used.
 
     Returns
     -------
@@ -190,6 +196,7 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
         dom: Domain,
         ctx: Context | str | None = None,
         vvalue: Callable[[Any], Any] | None = None,
+        check_level: CheckLevel | bool | None = None,
     ) -> None:
         """
         Initialize a matrix-free linear functional.
@@ -218,7 +225,7 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
             raise TypeError(f"value must be callable, got {type(value).__name__}.")
         if vvalue is not None and not callable(vvalue):
             raise TypeError(f"vvalue must be callable, got {type(vvalue).__name__}.")
-        super().__init__(dom, ctx)
+        super().__init__(dom, ctx, check_level=check_level)
         self.value_fn = value
         self.vvalue_fn = vvalue
 
@@ -238,7 +245,7 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
         """
         raise NotImplementedError(f"{type(self).__name__} does not store a Riesz representer.")
 
-    @checked_method(in_space="domain")
+    @checked_method(in_space="domain", out_scalar=True)
     def value(self, x: Any) -> Any:
         """
         Evaluate the scalar functional.
@@ -253,11 +260,14 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
         Any
             Scalar-like backend value returned by ``value_fn``.
         """
-        y = self._value_core(x)
-        if self._checks_at_least("standard"):
-            _check_scalar_shape(y, ())
-        return y
+        return self._value_core(x)
 
+    # NOT ``out_batched_scalar=True``: the decorator derives the expected batch
+    # shape as ``(_leading_batch_size(domain, xs),)`` — one leading axis, the
+    # contract ``Functional.vvalue`` documents. The check below is deliberately
+    # more permissive, stripping the domain shape so a user-supplied
+    # ``vvalue_fn`` may take *several* leading axes. Narrowing that to the
+    # documented contract is a real behavior change and is left alone here.
     @checked_method(in_space="domain", in_batched=True)
     def vvalue(self, xs: Any) -> Any:
         """
@@ -286,7 +296,7 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
 
     def __eq__(self, other: Any) -> bool:
         """Return whether another matrix-free functional uses the same callables."""
-        if not self._eq_backend_compatible(other):              # Tier 1: backend
+        if not self.same_math(other):              # Tier 1: backend
             return NotImplemented
         if self.domain != other.domain:                         # Tier 2: domain
             return False

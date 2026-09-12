@@ -1,6 +1,6 @@
 """Tests for :class:`spacecore.MatrixFreeLinearFunctional`.
 
-Checklist section 7, ``MatrixFreeLinearFunctional``:
+Contract specified here:
 
 * The supplied ``value`` callable is used verbatim.
 * ``representer`` raises ``NotImplementedError`` (no stored dual vector).
@@ -61,13 +61,13 @@ class TestConstruction:
         space = sc.DenseCoordinateSpace((2,), numpy_ctx)
         # Callable returns a vector, not a scalar.
         f = sc.MatrixFreeLinearFunctional(lambda x: x, space, numpy_ctx)
-        with pytest.raises(ValueError, match="Expected scalar batch output"):
+        with pytest.raises(ValueError, match="Expected scalar output"):
             f.value(numpy_ctx.asarray([1.0, 2.0]))
 
     def test_value_skips_scalar_check_at_none_level(self):
-        ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="none")
-        space = sc.DenseCoordinateSpace((2,), ctx)
-        f = sc.MatrixFreeLinearFunctional(lambda x: x, space, ctx)
+        ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+        space = sc.DenseCoordinateSpace((2,), ctx, check_level="none")
+        f = sc.MatrixFreeLinearFunctional(lambda x: x, space, ctx, check_level="none")
         out = f.value(ctx.asarray([1.0, 2.0]))  # no raise
         np.testing.assert_allclose(to_numpy(out), [1.0, 2.0])
 
@@ -104,10 +104,12 @@ class TestVValue:
 
     def test_python_loop_fallback_warns_once_on_numpy(self):
         _VMAP_FALLBACK_WARNED.clear()
-        ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="none")
-        space = sc.DenseCoordinateSpace((2,), ctx)
+        ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+        space = sc.DenseCoordinateSpace((2,), ctx, check_level="none")
         c = ctx.asarray([1.0, -2.0])
-        f = sc.MatrixFreeLinearFunctional(lambda y: space.inner(c, y), space, ctx)
+        f = sc.MatrixFreeLinearFunctional(
+            lambda y: space.inner(c, y), space, ctx, check_level="none"
+        )
         xs = ctx.asarray(np.arange(80.0).reshape(40, 2))
 
         with pytest.warns(RuntimeWarning, match="falls back to a Python loop"):

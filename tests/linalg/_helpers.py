@@ -28,8 +28,16 @@ def ops_for_backend(name: str):
 
 
 def make_ctx(backend_name: str = "numpy", dtype=np.float64, check_level: str = "none"):
-    """Build a solver context. Checks default to ``none`` (the solver hot path)."""
-    return sc.Context(ops_for_backend(backend_name), dtype=dtype, check_level=check_level)
+    """Build a solver context and arm ``check_level`` for the objects built from it.
+
+    ``check_level`` lives on the bound object rather than on the ``Context``, so the
+    requested level is installed as the ambient default that seeds the spaces and
+    operators the caller constructs next. Checks default to ``none`` (the solver hot
+    path); the autouse fixture in ``tests/conftest.py`` restores the previous ambient
+    level after each test.
+    """
+    sc.set_check_level(check_level)
+    return sc.Context(ops_for_backend(backend_name), dtype=dtype)
 
 
 def backend_params(*, cupy: bool = True):

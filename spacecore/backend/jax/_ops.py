@@ -75,6 +75,21 @@ class JaxOps(BackendOps):
     def __init__(self) -> None:
         super().__init__()
 
+    @classmethod
+    def install_pytree_protocol(cls) -> None:
+        """Register SpaceCore containers as JAX pytree nodes.
+
+        JAX's ``register_pytree_node_class`` consumes exactly the protocol
+        :class:`~spacecore.backend._container.PyTreeNode` defines — ``tree_flatten``
+        returning ``(children, aux)`` and a ``tree_unflatten(aux, children)``
+        classmethod — so it *is* the registrar and no translation is needed.
+        """
+        import jax
+
+        from .._container import registry
+
+        registry.register_backend("jax", jax.tree_util.register_pytree_node_class)
+
     def sanitize_dtype(self, dtype: DType | None) -> DType:
         """
         Normalize a dtype specifier using JAX.

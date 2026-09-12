@@ -244,10 +244,9 @@ def _factory(
     epsilon = float(size_params["epsilon"])
     D = d0 * d
 
-    # Resolve contexts up front (one per mode that uses SpaceCore).
-    ctx_none = _backend_ctx(backend, check_level="none")
-    ctx_cheap = _backend_ctx(backend, check_level="cheap")
-    np_dtype = _np_dtype(ctx_none)
+    # Resolve the backend context up front (check levels are per-object now).
+    ctx = _backend_ctx(backend)
+    np_dtype = _np_dtype(ctx)
     problem = _build_problem_np(S, d0, d, seed, np_dtype)
 
     # Pre-build the per-state Kronecker-sum tensor (U kron I_d + I_d0 kron V).
@@ -306,23 +305,24 @@ def _factory(
     else:
         raise ValueError(f"unknown backend {backend!r}")
 
-    # SpaceCore public-API path: build a HermitianSpace per check-level
-    # and convert operands into the matching context.
-    def _build_sc_callable(ctx: sc.Context) -> Callable[[], Any]:
-        space = sc.HermitianSpace(D, ctx=ctx)
-        C_sc = ctx.asarray(problem["C"])
-        kron_sc = ctx.asarray(kron_np)
-        # Pre-asarray each target row so the timed step is allocation-free.
-        targets_sc = [ctx.asarray(problem["targets"][s]) for s in range(S)]
-        ops = ctx.ops
+    # SpaceCore public-API path: build a HermitianSpace per check-level.
+    # Operand conversion is level-independent, so it happens once here.
+    C_sc = ctx.asarray(problem["C"])
+    kron_sc = ctx.asarray(kron_np)
+    # Pre-asarray each target row so the timed step is allocation-free.
+    targets_sc = [ctx.asarray(problem["targets"][s]) for s in range(S)]
+    ops = ctx.ops
+
+    def _build_sc_callable(check_level: str) -> Callable[[], Any]:
+        space = sc.HermitianSpace(D, ctx=ctx, check_level=check_level)
 
         def call():
             return _sc_step(space, C_sc, kron_sc, targets_sc, epsilon, d0, d, ops)
 
         return call
 
-    public_none_callable = _build_sc_callable(ctx_none)
-    public_cheap_callable = _build_sc_callable(ctx_cheap)
+    public_none_callable = _build_sc_callable("none")
+    public_cheap_callable = _build_sc_callable("cheap")
 
     # Lowered path. On JAX this is the jit-compiled bare step. Elsewhere
     # we alias the public_none callable, which is the contract default.

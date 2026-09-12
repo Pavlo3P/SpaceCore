@@ -27,8 +27,15 @@ from tests._helpers import has_jax, jax_real_dtype, to_numpy
 pytestmark = pytest.mark.skipif(not has_jax(), reason="jax is not installed")
 
 
+@pytest.fixture(autouse=True)
+def _unchecked_objects():
+    """Every object built in this module carries ``check_level="none"``."""
+    with sc.use_check_level("none"):
+        yield
+
+
 def _jax_ctx():
-    return sc.Context(sc.JaxOps(), dtype=jax_real_dtype(), check_level="none")
+    return sc.Context(sc.JaxOps(), dtype=jax_real_dtype())
 
 
 # ===========================================================================

@@ -127,6 +127,17 @@ def composed_functional_value_core(op: Any, x: Any) -> Any:
     return op.F._value_core(op.A._apply_core(x))
 
 
+def composed_functional_grad_core(op: Any, x: Any) -> Any:
+    # Chain rule in Riesz form: grad(F o A)(x) = A^#(grad F(A x)).
+    # ``rapply`` IS the metric adjoint A^# (ADR-009), so no extra Riesz map is
+    # applied here; inserting one would count the geometry twice.
+    return op.A._rapply_core(op.F._grad_core(op.A._apply_core(x)))
+
+
+def composed_functional_vgrad_core(op: Any, xs: Any) -> Any:
+    return op.A._rvapply_core(op.F._vgrad_core(op.A._vapply_core(xs)))
+
+
 register_core_kernels(CoreKernelSet(
     "functional-linear", grad=linear_grad_core, vgrad=linear_vgrad_core,
     notes="Constant Riesz gradient of a linear functional.",
@@ -148,6 +159,8 @@ register_core_kernels(CoreKernelSet(
     notes="Reaches Q and linear-term cores without re-validating intermediates.",
 ))
 register_core_kernels(CoreKernelSet(
-    "composed-functional", value=composed_functional_value_core,
-    notes="Pull-back F(Ax) via the operand cores.",
+    "composed-functional",
+    value=composed_functional_value_core, grad=composed_functional_grad_core,
+    vgrad=composed_functional_vgrad_core,
+    notes="Pull-back F(Ax) and its chain rule A^#(grad F(Ax)) via the operand cores.",
 ))

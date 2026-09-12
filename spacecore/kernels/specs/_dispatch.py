@@ -122,7 +122,13 @@ def _is_strict(ctx: Any) -> bool:
 
 
 def effective_mode(ctx: Any = None) -> DispatchMode:
-    """Resolve the dispatch mode for an operand context.
+    """Resolve the dispatch mode for an operand.
+
+    ``ctx`` is the context-*bound* operand (space, operator, or functional), not
+    a :class:`Context`. Only two attributes are read from it: ``check_level``
+    for the strict rule below, and ``ops`` for the memory gate. Validation
+    policy lives on the bound object, so passing a bare ``Context`` silently
+    disables the strict rule.
 
     ``check_level="strict"`` (ADR-014) implies ``verify``, overriding both the
     context override and the global default — the strictest policy always runs
@@ -243,8 +249,11 @@ def dispatch(
         dispatch is ``off``, when no eligible spec applies/fits, and (in
         ``verify``) as the value the optimized result is checked against.
     ctx : optional
-        The operand execution context. Supplies the check level (for the
-        ``strict`` → ``verify`` rule) and the backend (for the memory gate).
+        The context-*bound* operand (space, operator, or functional) — not a
+        :class:`Context`. Supplies ``check_level`` (for the ``strict`` →
+        ``verify`` rule) and ``ops`` (for the memory gate). A bare ``Context``
+        carries no ``check_level``, so passing one silently disables the strict
+        rule.
 
     Returns
     -------

@@ -42,6 +42,65 @@ class TestConstruction:
 
 
 # ===========================================================================
+# Scalar field — closed under real scaling only
+# ===========================================================================
+class TestScalarField:
+    """``Herm(n)`` has complex *entries* but is a **real** vector space.
+
+    ``(aH)* = conj(a) H``, so Hermitian structure survives real scaling only;
+    ``i H`` is anti-Hermitian. ``field`` reports the entry dtype (used by
+    equality and repr), ``scalar_field`` reports what the space is closed under.
+    """
+
+    def test_complex_dtype_still_has_real_scalar_field(self, numpy_complex_ctx):
+        H = sc.HermitianSpace(2, ctx=numpy_complex_ctx)
+        assert H.field == "complex"
+        assert H.scalar_field == "real"
+
+    def test_real_dtype_agrees_on_both(self, numpy_ctx):
+        H = sc.HermitianSpace(2, ctx=numpy_ctx)
+        assert H.field == "real"
+        assert H.scalar_field == "real"
+
+    def test_coordinate_space_scalar_field_defaults_to_field(self, numpy_complex_ctx):
+        X = sc.DenseVectorSpace((3,), ctx=numpy_complex_ctx)
+        assert X.scalar_field == X.field == "complex"
+
+    def test_real_scaling_stays_in_the_space(self, numpy_complex_ctx):
+        H = sc.HermitianSpace(2, ctx=numpy_complex_ctx)
+        x = numpy_complex_ctx.asarray([[1 + 0j, 2 - 1j], [2 + 1j, 3 + 0j]])
+        out = H.scale(2.0, x)
+        H.check_member(out)
+        assert np.allclose(to_numpy(out), 2.0 * to_numpy(x))
+
+    @pytest.mark.parametrize("bad", [1j, 2 + 3j, np.complex128(1j)])
+    def test_non_real_scaling_is_rejected(self, numpy_complex_ctx, bad):
+        """The failure is caught at the source, not at a later membership check."""
+        H = sc.HermitianSpace(2, ctx=numpy_complex_ctx)
+        x = numpy_complex_ctx.asarray([[1 + 0j, 2 - 1j], [2 + 1j, 3 + 0j]])
+        with pytest.raises(sc.SpaceValidationError, match="over ℝ"):
+            H.scale(bad, x)
+
+    def test_non_real_batch_scaling_is_rejected(self, numpy_complex_ctx):
+        H = sc.HermitianSpace(2, ctx=numpy_complex_ctx)
+        x = numpy_complex_ctx.asarray([[[1 + 0j, 2 - 1j], [2 + 1j, 3 + 0j]]])
+        with pytest.raises(sc.SpaceValidationError, match="over ℝ"):
+            H.scale_batch(1j, x)
+
+    def test_complex_scalar_really_would_have_left_the_space(self, numpy_complex_ctx):
+        """Pins the reason for the guard: the unchecked product is not Hermitian."""
+        H = sc.HermitianSpace(2, ctx=numpy_complex_ctx)
+        x = numpy_complex_ctx.asarray([[1 + 0j, 2 - 1j], [2 + 1j, 3 + 0j]])
+        assert not H.is_hermitian(1j * to_numpy(x))
+
+    def test_check_level_none_opts_out(self, numpy_complex_ctx):
+        """Consistent with every other membership check: ``"none"`` disables it."""
+        H = sc.HermitianSpace(2, ctx=numpy_complex_ctx, check_level="none")
+        x = numpy_complex_ctx.asarray([[1 + 0j, 2 - 1j], [2 + 1j, 3 + 0j]])
+        assert np.allclose(to_numpy(H.scale(1j, x)), 1j * to_numpy(x))
+
+
+# ===========================================================================
 # Membership + symmetrize
 # ===========================================================================
 class TestMembershipAndSymmetrize:
@@ -104,8 +163,8 @@ class TestSpectrum:
         """A·v_i = λ_i·v_i identity. Run at check_level=none to avoid
         the strict Hermitian membership gate on the reconstructed matrix.
         """
-        ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="none")
-        H = sc.HermitianSpace(3, ctx=ctx)
+        ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+        H = sc.HermitianSpace(3, ctx=ctx, check_level="none")
         rng = np.random.default_rng(0)
         A = H.symmetrize(ctx.asarray(rng.standard_normal((3, 3))))
         evals, evecs = H.spectral_decompose(A)
@@ -120,8 +179,8 @@ class TestSpectrum:
         tautology) — this genuinely verifies the reconstruction einsum and
         eigenvector handling.
         """
-        ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="none")
-        H = sc.HermitianSpace(3, ctx=ctx)
+        ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+        H = sc.HermitianSpace(3, ctx=ctx, check_level="none")
         rng = np.random.default_rng(1)
         A = H.symmetrize(ctx.asarray(rng.standard_normal((3, 3))))
         evals, evecs = H.spectral_decompose(A)
@@ -146,8 +205,8 @@ class TestPsdProj:
 
     def test_psd_proj_is_idempotent_on_psd_input(self):
         """psd_proj is a projector — applying it twice equals once."""
-        ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="none")
-        H = sc.HermitianSpace(2, ctx=ctx)
+        ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+        H = sc.HermitianSpace(2, ctx=ctx, check_level="none")
         # SPD input
         M = ctx.asarray([[2.0, 0.5], [0.5, 3.0]])
         A = H.symmetrize(M)

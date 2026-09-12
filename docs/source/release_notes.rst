@@ -1,6 +1,97 @@
 Release notes
 =============
 
+Version 0.4.3
+-------------
+
+Released 2026-09-12. SpaceCore 0.4.3 moves validation policy off the context and
+onto the bound object, makes pytree registration backend-neutral, and extends the
+functional algebra with products, constants, and the operator-family type that
+``Functional * LinOp`` needs.
+
+Removed
+~~~~~~~
+
+* ``jax_pytree_class`` is removed from the public API (breaking). Pytree
+  registration is now expressed through the backend-neutral ``PyTreeNode``
+  mixin, so a JAX-named decorator no longer sits in a backend-agnostic surface.
+* ``SpectralLpNormFunctional`` is removed (breaking). ``spectralize`` lifts any
+  coordinate functional to the spectrum of a Jordan-algebra space, which
+  subsumes the per-formula spectral class.
+
+Added
+~~~~~
+
+* Backend-neutral pytree registration. ``PyTreeNode`` carries the capability,
+  and ``TorchOps.install_pytree_protocol`` makes Torch a transform-capable
+  backend alongside JAX.
+* ``SpectralFunctional``, ``spectralize``, and ``eigenvalue_space`` lift any
+  coordinate functional onto a spectrum; ``RealifiedFunctional`` and ``realify``
+  view a complex-domain functional over its real coordinates, so optimizers that
+  assume a real vector space can consume it without hand-written Wirtinger
+  bookkeeping.
+* ``ProductFunctional`` / ``make_functional_product`` and ``ConstantFunctional``
+  / ``make_constant_functional`` complete the functional algebra with a
+  pointwise product carrying the product-rule Riesz gradient, and with the
+  embedding of a scalar as a functional.
+* ``spacecore.opfamily``: ``OperatorFamily`` and ``FunctionalScaledOperator``
+  model ``F * A``, the functional-weighted map ``m(x) = F(x) A x``. That map is
+  not linear, so it is deliberately not a ``LinOp``; ``m.at(x)`` freezes a member
+  and ``m.linearize_at(x)`` gives the derivative for Newton-type steps.
+* ``Space.scalar_field`` / ``declared_scalar_field`` / ``check_scalar`` declare
+  the field a space is closed under rather than inferring it from the dtype, and
+  ``checked_method`` gains ``out_scalar`` / ``out_batched_scalar`` so a
+  functional's scalar codomain is checked by the same decorator that guards
+  every ``LinOp`` output.
+* ``OpsRegistry`` extracts the backend registry out of ``Contextual``, and
+  ``BackendOps.complex_dtype`` completes the pair with ``real_dtype``.
+
+Changed
+~~~~~~~
+
+* ``check_level`` is a property of the bound object, not of ``Context``
+  (breaking). ``Context(ops, dtype=..., check_level=...)`` and the deprecated
+  ``enable_checks=`` argument are gone -- a ``Context`` is now exactly
+  ``(ops, dtype)``. Pass ``check_level=`` to a space, operator, or functional, or
+  move the ambient default with ``set_check_level`` / ``use_check_level``. See
+  :doc:`design/checking_policy`.
+* ``spacecore._contextual`` is now the public ``spacecore.contextual``
+  (breaking).
+* Ambient context and check level are scoped with ``contextvars``, so an
+  override is visible to the current thread and async task rather than to the
+  whole process.
+* ``Functional.__mul__`` / ``__rmul__`` dispatch on the operand type, and
+  functional outputs are checked as scalars at ``standard`` and above.
+* ``available_ops()`` is memoized and returns a tuple.
+
+Fixed
+~~~~~
+
+* ``ComposedFunctional`` now has a gradient: ``F.compose(A).grad(x)`` previously
+  raised.
+* A present-but-broken optional backend no longer aborts ``import spacecore``,
+  and one broken backend warns once rather than once per discovery call.
+* ``scalar_eq`` no longer swallows every exception; it narrows to ``TypeError``
+  so a genuinely broken ``__eq__`` propagates.
+
+Version 0.4.2
+-------------
+
+Released 2026-07-01. SpaceCore 0.4.2 adds the Jordan spectral primitives, a lazy
+functional algebra, and a compiled convergence-aware optimizer driver.
+
+Added
+~~~~~
+
+* Jordan spectral primitives on every Jordan-algebra space: ``trace``,
+  ``determinant``, and ``unit``, with ``TraceFunctional`` over them.
+* ``Functional.value_and_grad`` evaluates a functional and its Riesz gradient in
+  one pass.
+* Structure-preserving tree spectra, so a ``TreeSpace`` spectral decomposition
+  keeps the tree shape.
+* ``minimize_optax``, a compiled convergence-aware driver for the Optax
+  optimizers.
+
 Version 0.4.1
 -------------
 

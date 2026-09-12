@@ -150,7 +150,6 @@ class TestValidation:
         with pytest.raises(ValueError, match="column 1"):
             sc.BlockMatrixLinOp((rows[0], (rows[1][0], incompatible_column)))
 
-        other_ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="cheap")
-        other_space = sc.DenseCoordinateSpace((1,), other_ctx)
+        other_space = sc.DenseCoordinateSpace((1,), numpy_ctx, check_level="cheap")
         with pytest.raises(ValueError, match="check policy"):
             sc.BlockMatrixLinOp(((rows[0][0], sc.IdentityLinOp(other_space)),))

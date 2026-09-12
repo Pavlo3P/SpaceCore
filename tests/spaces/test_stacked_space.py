@@ -337,8 +337,9 @@ class TestConstructorValidation:
 class TestJaxPytree:
     def test_pytree_round_trip(self):
         import jax
-        ctx = sc.Context(sc.JaxOps(), dtype=jax_real_dtype(), check_level="none")
-        space = sc.DenseCoordinateSpace((2,), ctx).stacked(3)
+        ctx = sc.Context(sc.JaxOps(), dtype=jax_real_dtype())
+        with sc.use_check_level("none"):
+            space = sc.DenseCoordinateSpace((2,), ctx).stacked(3)
         leaves, treedef = jax.tree_util.tree_flatten(space)
         rebuilt = jax.tree_util.tree_unflatten(treedef, leaves)
         assert rebuilt == space

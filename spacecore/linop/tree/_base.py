@@ -4,10 +4,10 @@ from abc import abstractmethod
 from typing import Tuple, Sequence, Any, Self
 
 from .._base import LinOp, Domain, Codomain
-from ...backend import jax_pytree_class, Context
+from ...contextual import Context
+from ..._check_policy import CheckLevel
 
 
-@jax_pytree_class
 class TreeLinOp(LinOp[Domain, Codomain]):
     """
     Define a base class for operators assembled from component operators.
@@ -23,17 +23,26 @@ class TreeLinOp(LinOp[Domain, Codomain]):
     ctx : Context, str, or None, optional
         Backend context specification. Default is resolved from ``dom`` and
         ``cod``.
+    check_level : {"none", "cheap", "standard", "strict"}, optional
+        Runtime validation policy for this operator. When omitted, the ambient
+        default (see :func:`spacecore.get_check_level`) is used. Validation
+        policy is a property of the operator, not of the ``Context``.
     """
 
     parts: Tuple[LinOp, ...]
 
     def __init__(
-        self, dom: Domain, cod: Codomain, parts: Sequence[LinOp], ctx: Context | str | None = None
+        self,
+        dom: Domain,
+        cod: Codomain,
+        parts: Sequence[LinOp],
+        ctx: Context | str | None = None,
+        check_level: CheckLevel | bool | None = None,
     ) -> None:
         if not parts:
             raise ValueError("Parts must be non-empty.")
 
-        super().__init__(dom, cod, ctx)
+        super().__init__(dom, cod, ctx, check_level=check_level)
 
         self.parts = tuple(op.convert(self.ctx) for op in parts)
         self._num_parts = len(self.parts)
@@ -68,7 +77,7 @@ class TreeLinOp(LinOp[Domain, Codomain]):
 
     def __eq__(self, other: Any) -> bool:
         """Return whether another tree operator has the same layout."""
-        if not self._eq_backend_compatible(other):                  # Tier 1: backend
+        if not self.same_math(other):                  # Tier 1: backend
             return NotImplemented
         if self.dom != other.dom or self.cod != other.cod:          # Tier 2a: endpoint spaces
             return False

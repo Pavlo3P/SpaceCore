@@ -2,20 +2,9 @@
 
 from ._version import __version__
 
-from .backend import CHECK_LEVELS, CheckLevel, Context, BackendOps, NumpyOps, jax_pytree_class
-
-try:
-    from .backend import JaxOps as JaxOps
-except ImportError:
-    pass
-try:
-    from .backend import CuPyOps as CuPyOps
-except ImportError:
-    pass
-try:
-    from .backend import TorchOps as TorchOps
-except ImportError:
-    pass
+from .contextual import Context
+from .backend import CHECK_LEVELS, CheckLevel, BackendOps, NumpyOps
+from .backend._optional import available_ops as _available_ops
 from .linop import (
     BlockDiagonalLinOp,
     BlockMatrixLinOp,
@@ -37,8 +26,14 @@ from .linop import (
     make_sum,
 )
 from .functional import (
+    RealifiedFunctional,
+    realify,
+    SpectralFunctional,
+    eigenvalue_space,
+    spectralize,
     ComposedFunctional,
     Functional,
+    ConstantFunctional,
     HuberFunctional,
     InnerProductFunctional,
     KLDivergenceFunctional,
@@ -49,22 +44,29 @@ from .functional import (
     MatrixFreeLinearFunctional,
     NegativeEntropyFunctional,
     NuclearNormFunctional,
+    ProductFunctional,
     QuadraticForm,
     ScaledFunctional,
     ShiftedFunctional,
-    SpectralLpNormFunctional,
     SquaredL2NormFunctional,
     SumFunctional,
     ZeroFunctional,
     generalized_shrinkage,
     least_squares,
+    make_constant_functional,
     make_functional_composed,
+    make_functional_product,
     make_functional_sum,
     make_scaled_functional,
     make_shifted_functional,
     project_nonneg,
     prox_l1,
     prox_l2sq,
+)
+from .opfamily import (
+    FunctionalScaledOperator,
+    OperatorFamily,
+    make_functional_scaled_operator,
 )
 from .linalg import (
     CGResult,
@@ -116,15 +118,27 @@ from .space import (
 from .types import DenseArray, SparseArray, ArrayLike
 
 from ._checks import checked_method
-from ._contextual import (
+from .contextual import (
     ContextBound,
     set_context,
     get_context,
+    set_check_level,
+    get_check_level,
+    use_check_level,
+    use_context,
     resolve_context_priority,
     register_ops,
     normalize_ops,
     normalize_context,
 )
+
+# Re-export each optional backend whose dependency is importable (JaxOps,
+# CuPyOps, TorchOps). Mirrors the backend package: one loop over the single
+# source of truth in ``backend._optional`` (a missing dependency is skipped, a
+# broken install warns and is skipped) instead of per-backend try/except.
+_optional_ops = _available_ops()
+for _cls in _optional_ops:
+    globals().setdefault(_cls.__name__, _cls)
 
 __all__ = [
     "__version__",
@@ -132,7 +146,6 @@ __all__ = [
     "CheckLevel",
     "CHECK_LEVELS",
     "BackendOps",
-    "jax_pytree_class",
     "NumpyOps",
     "LinOp",
     "ComposedLinOp",
@@ -153,6 +166,7 @@ __all__ = [
     "SumToSingleLinOp",
     "StackedLinOp",
     "ComposedFunctional",
+    "FunctionalScaledOperator",
     "Functional",
     "LinearFunctional",
     "InnerProductFunctional",
@@ -160,12 +174,17 @@ __all__ = [
     "QuadraticForm",
     "LinOpQuadraticForm",
     "ScaledFunctional",
+    "ConstantFunctional",
+    "ProductFunctional",
     "ShiftedFunctional",
     "SumFunctional",
     "ZeroFunctional",
     "make_functional_composed",
     "make_functional_sum",
     "make_scaled_functional",
+    "make_constant_functional",
+    "make_functional_scaled_operator",
+    "make_functional_product",
     "make_shifted_functional",
     "least_squares",
     "SquaredL2NormFunctional",
@@ -174,8 +193,13 @@ __all__ = [
     "NegativeEntropyFunctional",
     "KLDivergenceFunctional",
     "HuberFunctional",
-    "SpectralLpNormFunctional",
+    "RealifiedFunctional",
+    "SpectralFunctional",
     "NuclearNormFunctional",
+    "OperatorFamily",
+    "eigenvalue_space",
+    "realify",
+    "spectralize",
     "generalized_shrinkage",
     "prox_l1",
     "prox_l2sq",
@@ -228,15 +252,14 @@ __all__ = [
     "ContextBound",
     "set_context",
     "get_context",
+    "set_check_level",
+    "get_check_level",
+    "use_check_level",
+    "use_context",
     "resolve_context_priority",
     "register_ops",
     "normalize_ops",
     "normalize_context",
 ]
 
-if "JaxOps" in globals():
-    __all__.append("JaxOps")
-if "TorchOps" in globals():
-    __all__.append("TorchOps")
-if "CuPyOps" in globals():
-    __all__.append("CuPyOps")
+__all__ += [_cls.__name__ for _cls in _optional_ops if _cls.__name__ != "NumpyOps"]

@@ -211,27 +211,33 @@ def test_functional_generator_records_check_level_and_required_reference_fields(
 
 
 def test_none_skips_optional_functional_input_membership_checks():
-    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="none")
-    domain = sc.DenseCoordinateSpace((2,), ctx)
-    functional = sc.MatrixFreeLinearFunctional(lambda _x: ctx.asarray(3.0), domain, ctx)
+    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    domain = sc.DenseCoordinateSpace((2,), ctx, check_level="none")
+    functional = sc.MatrixFreeLinearFunctional(
+        lambda _x: ctx.asarray(3.0), domain, ctx, check_level="none"
+    )
 
     np.testing.assert_allclose(functional.value(ctx.asarray([1.0, 2.0, 3.0])), 3.0)
 
 
 @pytest.mark.parametrize("check_level", check_level_params(("cheap", "standard", "strict")))
 def test_checked_functional_levels_reject_wrong_input_shape(check_level):
-    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level=check_level)
-    domain = sc.DenseCoordinateSpace((2,), ctx)
-    functional = sc.MatrixFreeLinearFunctional(lambda _x: ctx.asarray(3.0), domain, ctx)
+    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    domain = sc.DenseCoordinateSpace((2,), ctx, check_level=check_level)
+    functional = sc.MatrixFreeLinearFunctional(
+        lambda _x: ctx.asarray(3.0), domain, ctx, check_level=check_level
+    )
 
     with pytest.raises(TypeError, match="Expected shape"):
         functional.value(ctx.asarray([1.0, 2.0, 3.0]))
 
 
 def test_cheap_functional_checks_reject_field_and_dtype_mismatch():
-    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="cheap")
-    domain = sc.DenseCoordinateSpace((2,), ctx)
-    functional = sc.InnerProductFunctional(ctx.asarray([1.0, 2.0]), domain, ctx)
+    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    domain = sc.DenseCoordinateSpace((2,), ctx, check_level="cheap")
+    functional = sc.InnerProductFunctional(
+        ctx.asarray([1.0, 2.0]), domain, ctx, check_level="cheap"
+    )
 
     with pytest.raises(TypeError, match="real scalar field"):
         functional.value(np.asarray([1.0 + 1.0j, 2.0], dtype=np.complex128))
@@ -241,26 +247,29 @@ def test_cheap_functional_checks_reject_field_and_dtype_mismatch():
 
 @pytest.mark.parametrize("check_level", check_level_params(("standard", "strict")))
 def test_standard_functional_checks_reject_nonscalar_output(check_level):
-    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level=check_level)
-    domain = sc.DenseCoordinateSpace((2,), ctx)
-    functional = sc.MatrixFreeLinearFunctional(lambda x: x, domain, ctx)
+    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    domain = sc.DenseCoordinateSpace((2,), ctx, check_level=check_level)
+    functional = sc.MatrixFreeLinearFunctional(
+        lambda x: x, domain, ctx, check_level=check_level
+    )
 
-    with pytest.raises(ValueError, match="Expected scalar batch output"):
+    with pytest.raises(ValueError, match="Expected scalar output"):
         functional.value(ctx.asarray([1.0, 2.0]))
 
 
 @pytest.mark.parametrize("check_level", check_level_params())
 def test_pullback_domain_codomain_mismatch_is_always_rejected(check_level):
-    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level=check_level)
-    domain = sc.DenseCoordinateSpace((2,), ctx)
-    wrong_codomain = sc.DenseCoordinateSpace((3,), ctx)
-    functional = sc.InnerProductFunctional(ctx.asarray([1.0, 2.0]), domain, ctx)
-    operator = sc.DenseLinOp(
-        ctx.asarray([[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]]),
-        domain,
-        wrong_codomain,
-        ctx,
-    )
+    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    with sc.use_check_level(check_level):
+        domain = sc.DenseCoordinateSpace((2,), ctx)
+        wrong_codomain = sc.DenseCoordinateSpace((3,), ctx)
+        functional = sc.InnerProductFunctional(ctx.asarray([1.0, 2.0]), domain, ctx)
+        operator = sc.DenseLinOp(
+            ctx.asarray([[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]]),
+            domain,
+            wrong_codomain,
+            ctx,
+        )
 
     with pytest.raises(ValueError, match="A.codomain == F.domain"):
         functional.compose(operator)

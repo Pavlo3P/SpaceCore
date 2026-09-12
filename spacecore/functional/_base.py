@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import abstractmethod
 from numbers import Number
-from typing import TYPE_CHECKING, Any, Generic, Self, TypeVar
+from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
 from .._batching import _leading_batch_size, _warn_vmap_fallback_once
 
@@ -14,9 +14,11 @@ from .._batching import (  # noqa: F401
     _check_scalar_shape,
 )
 from .._checks import checked_method
+from ..backend import PyTreeNode
 from .._repr import describe_space, field_symbol
-from .._contextual import ContextBound
-from ..backend import Context
+from ..contextual import ContextBound
+from ..contextual import Context
+from .._check_policy import CheckLevel
 from ..space import CoordinateSpace
 
 if TYPE_CHECKING:
@@ -26,14 +28,14 @@ if TYPE_CHECKING:
 Domain = TypeVar("Domain", bound=CoordinateSpace)
 
 
-class Functional(ContextBound, Generic[Domain]):
+class Functional(PyTreeNode, ContextBound, Generic[Domain]):
     r"""
     Scalar-valued map on a space.
 
     ``Functional`` represents a map ``F : X -> K`` without assuming any storage
     model. It mirrors the minimal ``LinOp`` contract: the domain is converted
-    into the resolved context, value checks follow ``ctx.check_level``, and
-    batched evaluation is implemented by a backend ``vmap`` fallback.
+    into the resolved context, value checks follow this object's ``check_level``,
+    and batched evaluation is implemented by a backend ``vmap`` fallback.
 
     Parameters
     ----------
@@ -41,6 +43,10 @@ class Functional(ContextBound, Generic[Domain]):
         Domain space ``X``.
     ctx : Context, str, or None, optional
         Backend context specification. Default is resolved from ``dom``.
+    check_level : {"none", "cheap", "standard", "strict"}, optional
+        Runtime validation policy for this functional. When omitted, the ambient
+        default (see :func:`spacecore.get_check_level`) is used. Validation
+        policy is a property of the functional, not of the ``Context``.
 
     Attributes
     ----------
@@ -50,8 +56,13 @@ class Functional(ContextBound, Generic[Domain]):
         Resolved backend context.
     """
 
-    def __init__(self, dom: Domain, ctx: Context | str | None = None) -> None:
-        (self.dom,) = self._bind_context(ctx, dom)
+    def __init__(
+        self,
+        dom: Domain,
+        ctx: Context | str | None = None,
+        check_level: CheckLevel | bool | None = None,
+    ) -> None:
+        (self.dom,) = self._bind_context(ctx, dom, check_level=check_level)
 
     @property
     def domain(self) -> Domain:
@@ -184,23 +195,44 @@ class Functional(ContextBound, Generic[Domain]):
 
         return make_scaled_functional(-1, self)
 
-    def __mul__(self, scalar: Any) -> "Functional":
-        """Return the lazy right scalar multiple ``self * scalar``."""
-        from ._algebra import is_scalar_like, make_scaled_functional
+    def __mul__(self, other: Any) -> Any:
+        """Return ``self * other``.
 
-        if not is_scalar_like(scalar):
-            return NotImplemented
-        return make_scaled_functional(scalar, self)
+        Three cases, by operand type: a scalar gives a ``ScaledFunctional``,
+        another ``Functional`` the pointwise product, and a ``LinOp`` the
+        functional-weighted map ``x -> F(x) A x``. The last is **not** a
+        ``LinOp`` — it is non-linear — so it returns an
+        :class:`~spacecore.opfamily.OperatorFamily`; see that module.
+        """
+        from ..linop import LinOp
+        from ._algebra import is_scalar_like, make_functional_product, make_scaled_functional
 
-    def __rmul__(self, scalar: Any) -> "Functional":
-        """Return the lazy left scalar multiple ``scalar * self``."""
-        from ._algebra import is_scalar_like, make_scaled_functional
+        if isinstance(other, Functional):
+            return make_functional_product(self, other)
+        if isinstance(other, LinOp):
+            from ..opfamily import make_functional_scaled_operator
 
-        if not is_scalar_like(scalar):
-            return NotImplemented
-        return make_scaled_functional(scalar, self)
+            return make_functional_scaled_operator(self, other)
+        if is_scalar_like(other):
+            return make_scaled_functional(other, self)
+        return NotImplemented
 
-    @checked_method(in_space="domain", in_batched=True)
+    def __rmul__(self, other: Any) -> Any:
+        """Return ``other * self`` — see :meth:`__mul__` for the operand cases."""
+        from ..linop import LinOp
+        from ._algebra import is_scalar_like, make_functional_product, make_scaled_functional
+
+        if isinstance(other, Functional):
+            return make_functional_product(other, self)
+        if isinstance(other, LinOp):
+            from ..opfamily import make_functional_scaled_operator
+
+            return make_functional_scaled_operator(self, other)
+        if is_scalar_like(other):
+            return make_scaled_functional(other, self)
+        return NotImplemented
+
+    @checked_method(in_space="domain", in_batched=True, out_batched_scalar=True)
     def vvalue(self, xs: Any) -> Any:
         """Evaluate over a leading batch axis. Input must have shape ``(N,) + domain.shape``; use ``moveaxis`` for other layouts."""
         _warn_vmap_fallback_once(self, "vvalue", _leading_batch_size(self.domain, xs))
@@ -234,13 +266,8 @@ class Functional(ContextBound, Generic[Domain]):
         """Return a bounded ``ClassName(domain → field)`` form for nesting."""
         return f"{type(self).__name__}({self._arrow()})"
 
-    @abstractmethod
-    def tree_flatten(self) -> tuple[tuple[Any, ...], Any]:
-        """Flatten this functional for pytree registration."""
-        ...
-
-    @classmethod
-    @abstractmethod
-    def tree_unflatten(cls, aux: Any, children: Any) -> Self:
-        """Rebuild this functional from pytree data."""
-        ...
+    # tree_flatten / tree_unflatten are inherited from PyTreeNode, which owns the
+    # flatten contract for every SpaceCore container and auto-registers concrete
+    # subclasses with each backend's tree protocol. Every concrete Functional is a
+    # container, so the capability belongs on this base rather than being
+    # re-declared (and separately registered) per functional.

@@ -274,11 +274,13 @@ class TestJit:
         # Folded from tests/linops/test_linop_jit.py (test_product_linops_jit_compile).
         import jax
 
-        ctx = sc.Context(sc.JaxOps(), dtype=jax_real_dtype(), check_level="none")
-        X = sc.DenseCoordinateSpace((2,), ctx)
-        Y = sc.DenseCoordinateSpace((2,), ctx)
-        A1 = _dense(ctx, [[1.0, 2.0], [3.0, 4.0]], X, Y)
+        ctx = sc.Context(sc.JaxOps(), dtype=jax_real_dtype())
+        with sc.use_check_level("none"):
+            X = sc.DenseCoordinateSpace((2,), ctx)
+            Y = sc.DenseCoordinateSpace((2,), ctx)
+            A1 = _dense(ctx, [[1.0, 2.0], [3.0, 4.0]], X, Y)
         op = sc.SumToSingleLinOp.from_operators((A1, A1))
+        assert op.check_level == "none"
         x = ctx.asarray([7.0, 8.0])
 
         sum_apply = jax.jit(lambda Aop, a, b: Aop.apply((a, b)))

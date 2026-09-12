@@ -1,21 +1,24 @@
 from dataclasses import dataclass
 from typing import Any
 
-from .._check_policy import CheckLevel, level_to_enabled, normalize_check_level
-from ._ops import BackendOps
+from ..backend import BackendOps
 from ..types import DenseArray, SparseArray, DType, ArrayLike
 
 
 @dataclass(frozen=True, slots=True, init=False)
 class Context:
     """
-    Select backend operations, representation dtype, and validation policy.
+    Select backend operations and representation dtype.
 
-    A context collects the backend operations object, default dtype, and runtime
-    validation policy used by spaces, linear operators, and context-bound
-    values. It is intentionally small: it does not own arrays, but it defines
-    how new arrays are created and how existing arrays are checked or converted
-    for a backend family.
+    A context collects the backend operations object and default dtype used by
+    spaces, linear operators, and context-bound values. It is intentionally
+    small: it does not own arrays, but it defines how new arrays are created and
+    how existing arrays are checked or converted for a backend family.
+
+    Validation policy is deliberately *not* part of a context. ``check_level`` is
+    a property of the context-bound object (space, operator, functional) — see
+    :class:`spacecore.contextual.ContextBound` — because two objects on the same
+    backend and dtype may legitimately validate at different strictness.
 
     Parameters
     ----------
@@ -30,11 +33,6 @@ class Context:
         ``ops.sanitize_dtype`` during initialization. It does not independently
         define a mathematical scalar field; spaces expose that contract through
         :attr:`spacecore.space.Space.field`.
-    enable_checks : bool or None, optional
-        Deprecated compatibility alias. ``True`` maps to ``"standard"`` and
-        ``False`` maps to ``"none"``. Passing both policy arguments is an error.
-    check_level : {"none", "cheap", "standard", "strict"}, optional
-        Runtime validation policy. The default is ``"standard"``.
 
     Attributes
     ----------
@@ -48,7 +46,12 @@ class Context:
     ``Context`` is frozen and slot-based. Methods that convert values return new
     backend arrays or sparse objects; they do not mutate the context itself.
 
-    Equality compares backend family, dtype, and ``check_level``.
+    Equality (:meth:`__eq__`) and :meth:`same_math` both compare backend ops and
+    dtype. They coincide now that ``check_level`` has moved off the context — the
+    two are kept distinct because they answer different questions at their call
+    sites (object identity versus "may these be combined algebraically"), and
+    only :meth:`same_math` is part of the ``ContextBound`` equality contract.
+    :meth:`same_backend` remains strictly coarser, ignoring dtype.
 
     Examples
     --------
@@ -64,16 +67,8 @@ class Context:
 
     ops: BackendOps
     dtype: DType | None
-    check_level: CheckLevel
 
-    def __init__(
-        self,
-        ops: BackendOps,
-        dtype: DType | None = None,
-        enable_checks: bool | None = None,
-        *,
-        check_level: CheckLevel | None = None,
-    ) -> None:
+    def __init__(self, ops: BackendOps, dtype: DType | None = None) -> None:
         """
         Validate and normalize the context after dataclass initialization.
 
@@ -82,7 +77,7 @@ class Context:
         TypeError
             If ``ops`` is not a :class:`BackendOps` instance.
         """
-        from .._contextual._state import normalize_ops
+        from ._state import normalize_ops
 
         try:
             ops = normalize_ops(ops)
@@ -90,20 +85,6 @@ class Context:
             raise TypeError("Unknown ops type.")
         object.__setattr__(self, "ops", ops)
         object.__setattr__(self, "dtype", self.ops.sanitize_dtype(dtype))
-        object.__setattr__(
-            self,
-            "check_level",
-            normalize_check_level(
-                check_level,
-                enable_checks=enable_checks,
-                warn_legacy=enable_checks is not None,
-            ),
-        )
-
-    @property
-    def enable_checks(self) -> bool:
-        """Deprecated Boolean view of :attr:`check_level`."""
-        return level_to_enabled(self.check_level)
 
     def assert_dense(self, x: Any) -> DenseArray:
         """
@@ -229,6 +210,71 @@ class Context:
         else:
             raise NotImplementedError
 
+    def same_math(self, other: Any) -> bool:
+        """
+        Return whether ``other`` shares this context's mathematical backend.
+
+        Two contexts "share a math context" when they have equal backend
+        ``ops`` and ``dtype``. Validation policy is not consulted, being a
+        property of the bound object rather than of the context. This is a
+        *fixed* equivalence relation — currently coextensive with :meth:`__eq__`
+        — and the first-tier gate in every context-bound
+        ``__eq__`` (via :meth:`ContextBound.same_math`): it
+        guarantees any later elementwise ``ops.allclose`` runs only on
+        same-backend, same-dtype arrays.
+
+        It is intentionally *not* policy-configurable. Compatibility decisions
+        that may legitimately vary — family-only matching, dtype promotion —
+        belong to the context-resolution policy
+        (``Contextual.are_compatible_contexts``), which may use ``same_math``
+        as its strict floor.
+
+        Parameters
+        ----------
+        other:
+            Object to compare against.
+
+        Returns
+        -------
+        bool
+            ``True`` when ``other`` is a ``Context`` with equal backend
+            operations and dtype. Validation policy is not consulted: it lives
+            on the bound object, not the context.
+        """
+        if isinstance(other, Context):
+            return self.ops == other.ops and self.dtype == other.dtype
+        return False
+
+    def same_backend(self, other: Any) -> bool:
+        """
+        Return whether ``other`` runs on the same backend as this context.
+
+        Two contexts "share a backend" when they have equal backend ``ops``
+        (i.e. the same backend family — :class:`BackendOps` equality compares
+        ``family``), ignoring ``dtype``. This is the loosest of the three context
+        relations and the coarsest point of the strictness chain ``__eq__`` ≡
+        :meth:`same_math` (ops ∧ dtype) ⊃ ``same_backend`` (ops).
+
+        It is the dtype-agnostic notion used by the context-resolution policy
+        (``Contextual.are_compatible_contexts``): operands on the same backend
+        are combinable, with any dtype difference reconciled by conversion onto
+        the resolved context.
+
+        Parameters
+        ----------
+        other:
+            Object to compare against.
+
+        Returns
+        -------
+        bool
+            ``True`` when ``other`` is a ``Context`` on the same backend,
+            regardless of ``dtype``.
+        """
+        if isinstance(other, Context):
+            return self.ops == other.ops
+        return False
+
     def __eq__(self, other: Any) -> bool:
         """
         Return whether another object has the same execution context.
@@ -242,18 +288,12 @@ class Context:
         -------
         bool
             ``True`` when ``other`` is a ``Context`` with equal backend
-            operations, dtype, and ``check_level``.
+            operations and dtype. Validation policy (``check_level``) is not a
+            property of the context — it lives on the context-bound object.
         """
         if isinstance(other, Context):
-            return (
-                self.ops == other.ops
-                and self.dtype == other.dtype
-                and self.check_level == other.check_level
-            )
+            return self.ops == other.ops and self.dtype == other.dtype
         return False
 
     def __repr__(self) -> str:
-        return (
-            f"Context(ops={self.ops!r}, dtype={self.dtype!r}, "
-            f"check_level={self.check_level!r})"
-        )
+        return f"Context(ops={self.ops!r}, dtype={self.dtype!r})"

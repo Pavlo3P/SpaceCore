@@ -1,6 +1,6 @@
 """Tests for :class:`spacecore.QuadraticForm` — the quadratic-objective base.
 
-Checklist section 7, ``QuadraticForm`` base:
+Contract specified here:
 
 * ``grad`` / ``hess_apply`` raise ``NotImplementedError`` until a subclass
   provides them.

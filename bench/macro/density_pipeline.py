@@ -20,7 +20,7 @@ through which the spectral/structural operations are issued changes:
 * ``bare`` — pure backend ops on raw arrays.
 * ``spacecore_public_none`` / ``spacecore_public_cheap`` —
   :class:`spacecore.HermitianSpace` and :class:`spacecore.StackedSpace`,
-  with the corresponding :attr:`Context.check_level`.
+  constructed with the corresponding ``check_level``.
 * ``spacecore_lowered`` — JAX-jitted SpaceCore path; on NumPy / Torch it
   aliases the public-none callable.
 
@@ -262,35 +262,32 @@ def _factory(
     # Build a single set of operand arrays on each backend / context.
     rng = _rng(seed)
 
-    # Public-cheap context drives the operand dtype + asarray; reuse the
+    # The backend context drives the operand dtype + asarray; reuse the
     # same NumPy operand pool for every mode so cross-mode error
-    # comparisons are meaningful.
-    ctx_cheap = _backend_ctx(backend, check_level="cheap")
-    ctx_none = _backend_ctx(backend, check_level="none")
-    np_dtype = _np_dtype(ctx_cheap)
+    # comparisons are meaningful. Check levels are per-object now, so a
+    # single context serves every mode.
+    ctx = _backend_ctx(backend)
+    np_dtype = _np_dtype(ctx)
 
     rho_np = _make_density_batch(rng, batch, D, np_dtype)
     eye_d_np = (np.eye(d) / d).astype(np_dtype)
 
     # Pre-materialize backend arrays once (operand construction is *not*
-    # timed).
-    rho_bare = ctx_cheap.asarray(rho_np)
-    eye_d_bare = ctx_cheap.asarray(eye_d_np)
-    rho_none = ctx_none.asarray(rho_np)
-    rho_cheap = ctx_cheap.asarray(rho_np)
-    eye_d_none = ctx_none.asarray(eye_d_np)
-    eye_d_cheap = ctx_cheap.asarray(eye_d_np)
+    # timed). Array conversion is level-independent, so all modes share
+    # the same operands.
+    rho_arr = ctx.asarray(rho_np)
+    eye_d_arr = ctx.asarray(eye_d_np)
 
     # SpaceCore stacked spaces (one per check level).
-    herm_full_none = sc.HermitianSpace(D, ctx=ctx_none)
-    herm_pt_none = sc.HermitianSpace(d0, ctx=ctx_none)
-    stacked_full_none = sc.StackedSpace(herm_full_none, batch, ctx_none)
-    stacked_pt_none = sc.StackedSpace(herm_pt_none, batch, ctx_none)
+    herm_full_none = sc.HermitianSpace(D, ctx=ctx, check_level="none")
+    herm_pt_none = sc.HermitianSpace(d0, ctx=ctx, check_level="none")
+    stacked_full_none = sc.StackedSpace(herm_full_none, batch, ctx, check_level="none")
+    stacked_pt_none = sc.StackedSpace(herm_pt_none, batch, ctx, check_level="none")
 
-    herm_full_cheap = sc.HermitianSpace(D, ctx=ctx_cheap)
-    herm_pt_cheap = sc.HermitianSpace(d0, ctx=ctx_cheap)
-    stacked_full_cheap = sc.StackedSpace(herm_full_cheap, batch, ctx_cheap)
-    stacked_pt_cheap = sc.StackedSpace(herm_pt_cheap, batch, ctx_cheap)
+    herm_full_cheap = sc.HermitianSpace(D, ctx=ctx, check_level="cheap")
+    herm_pt_cheap = sc.HermitianSpace(d0, ctx=ctx, check_level="cheap")
+    stacked_full_cheap = sc.StackedSpace(herm_full_cheap, batch, ctx, check_level="cheap")
+    stacked_pt_cheap = sc.StackedSpace(herm_pt_cheap, batch, ctx, check_level="cheap")
 
     # Build bare callables per backend.
     if backend == "numpy":
@@ -298,12 +295,12 @@ def _factory(
             return _bare_pipeline_numpy(rho_np, d0, d)
     elif backend == "jax":
         jax_pipeline = _bare_pipeline_jax_factory(d0, d)
-        rho_jax = rho_bare  # already a jax array via ctx.asarray
+        rho_jax = rho_arr  # already a jax array via ctx.asarray
         def bare_cb():
             return jax_pipeline(rho_jax)
     elif backend == "torch":
-        torch_pipeline = _bare_pipeline_torch_factory(d0, d, eye_d_bare)
-        rho_torch = rho_bare
+        torch_pipeline = _bare_pipeline_torch_factory(d0, d, eye_d_arr)
+        rho_torch = rho_arr
         def bare_cb():
             return torch_pipeline(rho_torch)
     else:
@@ -311,15 +308,15 @@ def _factory(
 
     # SpaceCore public callables.
     sc_none_pipeline = _sc_pipeline_factory(
-        ctx_none, stacked_full_none, herm_pt_none, stacked_pt_none, d0, d, eye_d_none
+        ctx, stacked_full_none, herm_pt_none, stacked_pt_none, d0, d, eye_d_arr
     )
     sc_cheap_pipeline = _sc_pipeline_factory(
-        ctx_cheap, stacked_full_cheap, herm_pt_cheap, stacked_pt_cheap, d0, d, eye_d_cheap
+        ctx, stacked_full_cheap, herm_pt_cheap, stacked_pt_cheap, d0, d, eye_d_arr
     )
     def sc_none_cb():
-        return sc_none_pipeline(rho_none)
+        return sc_none_pipeline(rho_arr)
     def sc_cheap_cb():
-        return sc_cheap_pipeline(rho_cheap)
+        return sc_cheap_pipeline(rho_arr)
 
     # Lowered callable.
     if backend == "jax":
@@ -329,7 +326,7 @@ def _factory(
         # implementation through JAX tracing.
         sc_lowered_jit = jax.jit(sc_none_pipeline)
         def sc_lowered_cb():
-            return sc_lowered_jit(rho_none)
+            return sc_lowered_jit(rho_arr)
     else:
         # For NumPy / Torch the lowered path matches public_none.
         sc_lowered_cb = sc_none_cb

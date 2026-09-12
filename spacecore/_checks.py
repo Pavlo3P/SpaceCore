@@ -5,6 +5,7 @@ from typing import Any, Callable
 
 from ._check_policy import (
     CheckLevel,
+    check_level_at_least,
     enabled_to_level,
     normalize_check_level,
     require_mutually_exclusive,
@@ -45,6 +46,8 @@ def checked_method(
     arg_positions: int | tuple[int, ...] | None = None,
     in_batched: bool = False,
     out_batched: bool = False,
+    out_scalar: bool = False,
+    out_batched_scalar: bool = False,
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """
     Build a decorator that validates method inputs and outputs against spaces.
@@ -68,6 +71,16 @@ def checked_method(
         Validate inputs as leading-axis batches instead of single elements.
     out_batched : bool, optional
         Validate outputs as leading-axis batches instead of single elements.
+    out_scalar : bool, optional
+        Validate that the output is scalar-shaped (``shape == ()``). This is the
+        codomain check for a :class:`~spacecore.functional.Functional`, whose
+        codomain is the scalar field rather than a :class:`Space` object and so
+        cannot be expressed through ``out_space``.
+    out_batched_scalar : bool, optional
+        Validate that the output is a vector of scalars, one per input element:
+        ``shape == (N,)`` for a leading batch of size ``N``. The batch size is
+        read from the *input* named by ``in_space`` at the first checked
+        position, so this flag requires ``in_space``.
 
     Returns
     -------
@@ -83,10 +96,23 @@ def checked_method(
     The validated path resolves ``in_space``/``out_space`` once per call
     (rather than per argument position) and uses the per-instance
     ``_check_member`` cache populated by :class:`spacecore.space.Space`.
+
+    The scalar-output checks run at ``standard`` and above, matching the
+    hand-written ``_checks_at_least("standard")`` gating they replace. Shape is
+    static under ``jax.jit``, so they are safe to run while tracing.
     """
+    require_mutually_exclusive(
+        "out_scalar", out_scalar or None, "out_batched_scalar", out_batched_scalar or None
+    )
+    if out_batched_scalar and in_space is None:
+        # TypeError, matching ``require_mutually_exclusive``: both are misuse of
+        # the decorator's argument combination, not a bad runtime value.
+        raise TypeError("out_batched_scalar requires in_space to locate the batch size.")
     positions = _as_positions(arg_pos, arg_positions)
     # Resolve positions to a single-element fast path or a tuple iteration.
     single_pos = positions[0] if len(positions) == 1 else None
+    # The batch size for out_batched_scalar comes from the first checked input.
+    batch_pos = positions[0]
 
     def decorate(method: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(method)
@@ -129,6 +155,19 @@ def checked_method(
                     _check_batched(out_target, y)
                 else:
                     out_target._check_member(y)
+
+            if (out_scalar or out_batched_scalar) and check_level_at_least(level, "standard"):
+                from ._batching import _check_scalar_shape
+
+                if out_scalar:
+                    _check_scalar_shape(y, ())
+                else:
+                    from ._batching import _leading_batch_size
+
+                    batch_target = self if in_space == "self" else getattr(self, in_space)
+                    _check_scalar_shape(
+                        y, (_leading_batch_size(batch_target, args[batch_pos]),)
+                    )
 
             return y
 
