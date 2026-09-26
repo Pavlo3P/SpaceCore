@@ -1,0 +1,328 @@
+{
+  "version": 1,
+  "jobId": "f7fd5108-f445-403e-8e6a-5f381568636c",
+  "sessionId": "61670f89-ff4c-48af-92e1-4c86dc4e3c64",
+  "scopeKey": "830e226ba9e347e5298ffccfe5dad261130d76d2f69e233798d66bfa9c726e48",
+  "revision": 41,
+  "createdAt": "2026-09-12T22:21:44.503Z",
+  "updatedAt": "2026-09-12T22:21:45.708Z",
+  "producerGraceExpiresAt": "2026-09-12T22:22:14.504Z",
+  "bestEffortDeadlineAt": "2026-09-12T22:23:05.504Z",
+  "producers": {
+    "core": {
+      "state": "sealed",
+      "intentKey": "7fa3692c5821952b3fb0d4633aa8ae28657204ba5d29b87312024a9c5a3b928e",
+      "payloadDigest": "7fa3692c5821952b3fb0d4633aa8ae28657204ba5d29b87312024a9c5a3b928e",
+      "sealedAt": "2026-09-12T22:21:44.533Z",
+      "sealedBy": "foreground"
+    },
+    "wiki": {
+      "state": "no-op",
+      "sealedAt": "2026-09-12T22:21:44.503Z",
+      "sealedBy": "wiki-producer"
+    }
+  },
+  "actions": {
+    "foreground-cleanup": {
+      "class": "required",
+      "phase": "deferred-required",
+      "status": "completed",
+      "attempts": 0,
+      "idempotencyKey": "febf6dba2f2536433960a07f7cedce72e946b43ced0896570df80f017b8914d2",
+      "payload": {
+        "transcriptPath": "/Users/pavlopelikh/.claude/projects/-Users-pavlopelikh-Documents-Dev-SpaceCore/61670f89-ff4c-48af-92e1-4c86dc4e3c64.jsonl",
+        "cwd": "/Users/pavlopelikh/Documents/Dev/SpaceCore",
+        "reason": "other",
+        "input": {
+          "session_id": "61670f89-ff4c-48af-92e1-4c86dc4e3c64",
+          "transcript_path": "/Users/pavlopelikh/.claude/projects/-Users-pavlopelikh-Documents-Dev-SpaceCore/61670f89-ff4c-48af-92e1-4c86dc4e3c64.jsonl",
+          "cwd": "/Users/pavlopelikh/Documents/Dev/SpaceCore",
+          "scratchpad_dir": "/private/tmp/claude-501/-Users-pavlopelikh-Documents-Dev-SpaceCore/61670f89-ff4c-48af-92e1-4c86dc4e3c64/scratchpad",
+          "hook_event_name": "SessionEnd",
+          "reason": "other"
+        },
+        "metrics": {
+          "session_id": "61670f89-ff4c-48af-92e1-4c86dc4e3c64",
+          "ended_at": "2026-09-12T22:21:44.501Z",
+          "reason": "other",
+          "agents_spawned": 0,
+          "agents_completed": 0,
+          "modes_used": []
+        },
+        "initialTeamNames": [],
+        "openClawEnabled": false,
+        "openClawRouting": {},
+        "foregroundResult": {
+          "removedTransientFiles": 0,
+          "completedAt": "2026-09-12T22:21:44.533Z"
+        }
+      },
+      "budgetMs": 9000,
+      "completedAt": "2026-09-12T22:21:44.533Z",
+      "lastOutcomeCode": "completed"
+    },
+    "wiki-capture": {
+      "class": "required",
+      "phase": "deferred-required",
+      "status": "completed",
+      "attempts": 0,
+      "idempotencyKey": "1719cd1ef5b51e0269b78c4cb8c9308c9c1f7b82fd1c067fc034c060f23863f5",
+      "payload": {},
+      "budgetMs": 9000,
+      "completedAt": "2026-09-12T22:21:44.503Z"
+    },
+    "team-cleanup": {
+      "class": "required",
+      "phase": "deferred-required",
+      "status": "completed",
+      "attempts": 1,
+      "idempotencyKey": "cee6ac31df545408e1e822247ac249b3f8182a98a5fe8e448ae3b251e55bdee1",
+      "payload": {
+        "transcriptPath": "/Users/pavlopelikh/.claude/projects/-Users-pavlopelikh-Documents-Dev-SpaceCore/61670f89-ff4c-48af-92e1-4c86dc4e3c64.jsonl",
+        "cwd": "/Users/pavlopelikh/Documents/Dev/SpaceCore",
+        "reason": "other",
+        "input": {
+          "session_id": "61670f89-ff4c-48af-92e1-4c86dc4e3c64",
+          "transcript_path": "/Users/pavlopelikh/.claude/projects/-Users-pavlopelikh-Documents-Dev-SpaceCore/61670f89-ff4c-48af-92e1-4c86dc4e3c64.jsonl",
+          "cwd": "/Users/pavlopelikh/Documents/Dev/SpaceCore",
+          "scratchpad_dir": "/private/tmp/claude-501/-Users-pavlopelikh-Documents-Dev-SpaceCore/61670f89-ff4c-48af-92e1-4c86dc4e3c64/scratchpad",
+          "hook_event_name": "SessionEnd",
+          "reason": "other"
+        },
+        "metrics": {
+          "session_id": "61670f89-ff4c-48af-92e1-4c86dc4e3c64",
+          "ended_at": "2026-09-12T22:21:44.501Z",
+          "reason": "other",
+          "agents_spawned": 0,
+          "agents_completed": 0,
+          "modes_used": []
+        },
+        "initialTeamNames": [],
+        "openClawEnabled": false,
+        "openClawRouting": {}
+      },
+      "budgetMs": 9000,
+      "claimedAt": "2026-09-12T22:21:44.634Z",
+      "runner": {
+        "attempt": 1,
+        "runnerNonce": "41f3b5a2-359c-4981-8a7f-c2d632c03e98",
+        "phase": "terminal",
+        "deadlineAt": "2026-09-12T22:21:54.600Z"
+      },
+      "lastOutcomeCode": "completed",
+      "completedAt": "2026-09-12T22:21:44.803Z"
+    },
+    "python-cleanup": {
+      "class": "required",
+      "phase": "deferred-required",
+      "status": "completed",
+      "attempts": 1,
+      "idempotencyKey": "1f1370c4ac056606059d517e2f106b602d8cbcb04587b3fcc5f3b9f89e649cd0",
+      "payload": {
+        "transcriptPath": "/Users/pavlopelikh/.claude/projects/-Users-pavlopelikh-Documents-Dev-SpaceCore/61670f89-ff4c-48af-92e1-4c86dc4e3c64.jsonl",
+        "cwd": "/Users/pavlopelikh/Documents/Dev/SpaceCore",
+        "reason": "other",
+        "input": {
+          "session_id": "61670f89-ff4c-48af-92e1-4c86dc4e3c64",
+          "transcript_path": "/Users/pavlopelikh/.claude/projects/-Users-pavlopelikh-Documents-Dev-SpaceCore/61670f89-ff4c-48af-92e1-4c86dc4e3c64.jsonl",
+          "cwd": "/Users/pavlopelikh/Documents/Dev/SpaceCore",
+          "scratchpad_dir": "/private/tmp/claude-501/-Users-pavlopelikh-Documents-Dev-SpaceCore/61670f89-ff4c-48af-92e1-4c86dc4e3c64/scratchpad",
+          "hook_event_name": "SessionEnd",
+          "reason": "other"
+        },
+        "metrics": {
+          "session_id": "61670f89-ff4c-48af-92e1-4c86dc4e3c64",
+          "ended_at": "2026-09-12T22:21:44.501Z",
+          "reason": "other",
+          "agents_spawned": 0,
+          "agents_completed": 0,
+          "modes_used": []
+        },
+        "initialTeamNames": [],
+        "openClawEnabled": false,
+        "openClawRouting": {}
+      },
+      "budgetMs": 9000,
+      "claimedAt": "2026-09-12T22:21:44.816Z",
+      "runner": {
+        "attempt": 1,
+        "runnerNonce": "47929fc1-36b7-42f1-8283-776b164039a8",
+        "phase": "terminal",
+        "deadlineAt": "2026-09-12T22:21:54.600Z"
+      },
+      "lastOutcomeCode": "completed",
+      "completedAt": "2026-09-12T22:21:44.988Z"
+    },
+    "reply-cleanup": {
+      "class": "required",
+      "phase": "deferred-required",
+      "status": "completed",
+      "attempts": 1,
+      "idempotencyKey": "0b3a8b47c28b26d56aca004d4f572b96c118f16819c0d35162418816f9a5420a",
+      "payload": {
+        "transcriptPath": "/Users/pavlopelikh/.claude/projects/-Users-pavlopelikh-Documents-Dev-SpaceCore/61670f89-ff4c-48af-92e1-4c86dc4e3c64.jsonl",
+        "cwd": "/Users/pavlopelikh/Documents/Dev/SpaceCore",
+        "reason": "other",
+        "input": {
+          "session_id": "61670f89-ff4c-48af-92e1-4c86dc4e3c64",
+          "transcript_path": "/Users/pavlopelikh/.claude/projects/-Users-pavlopelikh-Documents-Dev-SpaceCore/61670f89-ff4c-48af-92e1-4c86dc4e3c64.jsonl",
+          "cwd": "/Users/pavlopelikh/Documents/Dev/SpaceCore",
+          "scratchpad_dir": "/private/tmp/claude-501/-Users-pavlopelikh-Documents-Dev-SpaceCore/61670f89-ff4c-48af-92e1-4c86dc4e3c64/scratchpad",
+          "hook_event_name": "SessionEnd",
+          "reason": "other"
+        },
+        "metrics": {
+          "session_id": "61670f89-ff4c-48af-92e1-4c86dc4e3c64",
+          "ended_at": "2026-09-12T22:21:44.501Z",
+          "reason": "other",
+          "agents_spawned": 0,
+          "agents_completed": 0,
+          "modes_used": []
+        },
+        "initialTeamNames": [],
+        "openClawEnabled": false,
+        "openClawRouting": {}
+      },
+      "budgetMs": 9000,
+      "claimedAt": "2026-09-12T22:21:45.000Z",
+      "runner": {
+        "attempt": 1,
+        "runnerNonce": "6a6ce98d-c970-467b-86af-cb1693ae3de1",
+        "phase": "terminal",
+        "deadlineAt": "2026-09-12T22:21:54.600Z"
+      },
+      "lastOutcomeCode": "completed",
+      "completedAt": "2026-09-12T22:21:45.165Z"
+    },
+    "callback": {
+      "class": "best-effort",
+      "phase": "deferred-best-effort",
+      "status": "completed",
+      "attempts": 1,
+      "idempotencyKey": "d068ede2655bf89e0c0950e087d0603d7dcf45538e94f20a654d08c6f4841895",
+      "payload": {
+        "transcriptPath": "/Users/pavlopelikh/.claude/projects/-Users-pavlopelikh-Documents-Dev-SpaceCore/61670f89-ff4c-48af-92e1-4c86dc4e3c64.jsonl",
+        "cwd": "/Users/pavlopelikh/Documents/Dev/SpaceCore",
+        "reason": "other",
+        "input": {
+          "session_id": "61670f89-ff4c-48af-92e1-4c86dc4e3c64",
+          "transcript_path": "/Users/pavlopelikh/.claude/projects/-Users-pavlopelikh-Documents-Dev-SpaceCore/61670f89-ff4c-48af-92e1-4c86dc4e3c64.jsonl",
+          "cwd": "/Users/pavlopelikh/Documents/Dev/SpaceCore",
+          "scratchpad_dir": "/private/tmp/claude-501/-Users-pavlopelikh-Documents-Dev-SpaceCore/61670f89-ff4c-48af-92e1-4c86dc4e3c64/scratchpad",
+          "hook_event_name": "SessionEnd",
+          "reason": "other"
+        },
+        "metrics": {
+          "session_id": "61670f89-ff4c-48af-92e1-4c86dc4e3c64",
+          "ended_at": "2026-09-12T22:21:44.501Z",
+          "reason": "other",
+          "agents_spawned": 0,
+          "agents_completed": 0,
+          "modes_used": []
+        },
+        "initialTeamNames": [],
+        "openClawEnabled": false,
+        "openClawRouting": {}
+      },
+      "budgetMs": 2000,
+      "claimedAt": "2026-09-12T22:21:45.177Z",
+      "runner": {
+        "attempt": 1,
+        "runnerNonce": "805c83af-2101-42ab-8a41-629dea976429",
+        "phase": "terminal",
+        "deadlineAt": "2026-09-12T22:21:54.600Z"
+      },
+      "lastOutcomeCode": "completed",
+      "completedAt": "2026-09-12T22:21:45.341Z"
+    },
+    "notification": {
+      "class": "best-effort",
+      "phase": "deferred-best-effort",
+      "status": "completed",
+      "attempts": 1,
+      "idempotencyKey": "89c0438ff63097ce04beb60efb87292ff68a7af350a0ee331f3de9dbf42d62fc",
+      "payload": {
+        "transcriptPath": "/Users/pavlopelikh/.claude/projects/-Users-pavlopelikh-Documents-Dev-SpaceCore/61670f89-ff4c-48af-92e1-4c86dc4e3c64.jsonl",
+        "cwd": "/Users/pavlopelikh/Documents/Dev/SpaceCore",
+        "reason": "other",
+        "input": {
+          "session_id": "61670f89-ff4c-48af-92e1-4c86dc4e3c64",
+          "transcript_path": "/Users/pavlopelikh/.claude/projects/-Users-pavlopelikh-Documents-Dev-SpaceCore/61670f89-ff4c-48af-92e1-4c86dc4e3c64.jsonl",
+          "cwd": "/Users/pavlopelikh/Documents/Dev/SpaceCore",
+          "scratchpad_dir": "/private/tmp/claude-501/-Users-pavlopelikh-Documents-Dev-SpaceCore/61670f89-ff4c-48af-92e1-4c86dc4e3c64/scratchpad",
+          "hook_event_name": "SessionEnd",
+          "reason": "other"
+        },
+        "metrics": {
+          "session_id": "61670f89-ff4c-48af-92e1-4c86dc4e3c64",
+          "ended_at": "2026-09-12T22:21:44.501Z",
+          "reason": "other",
+          "agents_spawned": 0,
+          "agents_completed": 0,
+          "modes_used": []
+        },
+        "initialTeamNames": [],
+        "openClawEnabled": false,
+        "openClawRouting": {}
+      },
+      "budgetMs": 2000,
+      "claimedAt": "2026-09-12T22:21:45.352Z",
+      "runner": {
+        "attempt": 1,
+        "runnerNonce": "613f42fa-8241-4a21-8261-6201f05e6414",
+        "phase": "terminal",
+        "deadlineAt": "2026-09-12T22:21:54.600Z"
+      },
+      "lastOutcomeCode": "completed",
+      "completedAt": "2026-09-12T22:21:45.510Z"
+    },
+    "openclaw": {
+      "class": "best-effort",
+      "phase": "deferred-best-effort",
+      "status": "completed",
+      "attempts": 1,
+      "idempotencyKey": "31fe8f6e1cf204e27006de511df257326fdd98655122ca437013e8779ffc735b",
+      "payload": {
+        "transcriptPath": "/Users/pavlopelikh/.claude/projects/-Users-pavlopelikh-Documents-Dev-SpaceCore/61670f89-ff4c-48af-92e1-4c86dc4e3c64.jsonl",
+        "cwd": "/Users/pavlopelikh/Documents/Dev/SpaceCore",
+        "reason": "other",
+        "input": {
+          "session_id": "61670f89-ff4c-48af-92e1-4c86dc4e3c64",
+          "transcript_path": "/Users/pavlopelikh/.claude/projects/-Users-pavlopelikh-Documents-Dev-SpaceCore/61670f89-ff4c-48af-92e1-4c86dc4e3c64.jsonl",
+          "cwd": "/Users/pavlopelikh/Documents/Dev/SpaceCore",
+          "scratchpad_dir": "/private/tmp/claude-501/-Users-pavlopelikh-Documents-Dev-SpaceCore/61670f89-ff4c-48af-92e1-4c86dc4e3c64/scratchpad",
+          "hook_event_name": "SessionEnd",
+          "reason": "other"
+        },
+        "metrics": {
+          "session_id": "61670f89-ff4c-48af-92e1-4c86dc4e3c64",
+          "ended_at": "2026-09-12T22:21:44.501Z",
+          "reason": "other",
+          "agents_spawned": 0,
+          "agents_completed": 0,
+          "modes_used": []
+        },
+        "initialTeamNames": [],
+        "openClawEnabled": false,
+        "openClawRouting": {}
+      },
+      "budgetMs": 2000,
+      "claimedAt": "2026-09-12T22:21:45.522Z",
+      "runner": {
+        "attempt": 1,
+        "runnerNonce": "a4950639-2cae-49c4-9ce9-b82392a41988",
+        "phase": "terminal",
+        "deadlineAt": "2026-09-12T22:21:54.600Z"
+      },
+      "lastOutcomeCode": "completed",
+      "completedAt": "2026-09-12T22:21:45.678Z"
+    }
+  },
+  "owner": null,
+  "phase": "complete",
+  "completion": {
+    "completedAt": "2026-09-12T22:21:45.691Z",
+    "terminalDigest": "d76c97f475bc5f089ff27a055379e227311925f4710fb9dcd8659fdfb0e1a7d7",
+    "terminalRevision": 40
+  }
+}

@@ -1,0 +1,228 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1789251703303,
+  "projectRoot": "/Users/pavlopelikh/Documents/Dev/SpaceCore",
+  "techStack": {
+    "languages": [
+      {
+        "name": "Python",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "pyproject.toml"
+        ]
+      }
+    ],
+    "frameworks": [
+      {
+        "name": "pytest",
+        "version": null,
+        "category": "testing"
+      }
+    ],
+    "packageManager": null,
+    "runtime": null
+  },
+  "build": {
+    "buildCommand": null,
+    "testCommand": "pytest",
+    "lintCommand": "ruff check",
+    "devCommand": null,
+    "scripts": {}
+  },
+  "conventions": {
+    "namingStyle": null,
+    "importStyle": null,
+    "testPattern": null,
+    "fileOrganization": null
+  },
+  "structure": {
+    "isMonorepo": false,
+    "workspaces": [],
+    "mainDirectories": [
+      "docs",
+      "examples",
+      "scripts",
+      "tests"
+    ],
+    "gitBranches": {
+      "defaultBranch": "master",
+      "branchingStrategy": null
+    }
+  },
+  "customNotes": [],
+  "directoryMap": {
+    "__pycache__": {
+      "path": "__pycache__",
+      "purpose": null,
+      "fileCount": 1,
+      "lastAccessed": 1789251703292,
+      "keyFiles": [
+        "full_probe.cpython-313.pyc"
+      ]
+    },
+    "_release": {
+      "path": "_release",
+      "purpose": null,
+      "fileCount": 1,
+      "lastAccessed": 1789251703293,
+      "keyFiles": []
+    },
+    "archive": {
+      "path": "archive",
+      "purpose": null,
+      "fileCount": 0,
+      "lastAccessed": 1789251703293,
+      "keyFiles": []
+    },
+    "bench": {
+      "path": "bench",
+      "purpose": null,
+      "fileCount": 18,
+      "lastAccessed": 1789251703294,
+      "keyFiles": [
+        "README.md",
+        "__init__.py",
+        "__main__.py",
+        "_dashboard.py",
+        "_devices.py"
+      ]
+    },
+    "dist": {
+      "path": "dist",
+      "purpose": "Distribution/build output",
+      "fileCount": 2,
+      "lastAccessed": 1789251703294,
+      "keyFiles": [
+        "spacecore-0.4.1-py3-none-any.whl",
+        "spacecore-0.4.1.tar.gz"
+      ]
+    },
+    "docs": {
+      "path": "docs",
+      "purpose": "Documentation",
+      "fileCount": 2,
+      "lastAccessed": 1789251703294,
+      "keyFiles": [
+        "README.md"
+      ]
+    },
+    "examples": {
+      "path": "examples",
+      "purpose": "Example code",
+      "fileCount": 2,
+      "lastAccessed": 1789251703294,
+      "keyFiles": [
+        "nqs_anharmonic_oscillator.ipynb",
+        "tvmc_quench_dynamics.ipynb"
+      ]
+    },
+    "graphify-out": {
+      "path": "graphify-out",
+      "purpose": null,
+      "fileCount": 11,
+      "lastAccessed": 1789251703294,
+      "keyFiles": [
+        "GRAPH_REPORT.md",
+        "graph.html",
+        "graph.json"
+      ]
+    },
+    "notebooks": {
+      "path": "notebooks",
+      "purpose": null,
+      "fileCount": 7,
+      "lastAccessed": 1789251703294,
+      "keyFiles": [
+        "0.4.2_jordan_primitives.ipynb",
+        "0.4.2_optimizer_sandbox.ipynb",
+        "playpit.ipynb",
+        "sphere_descent.ipynb",
+        "sphere_descent_fixed.ipynb"
+      ]
+    },
+    "scripts": {
+      "path": "scripts",
+      "purpose": "Build/utility scripts",
+      "fileCount": 5,
+      "lastAccessed": 1789251703294,
+      "keyFiles": [
+        "api_audit.py",
+        "docstring_audit.py",
+        "jit_audit.py",
+        "setup_labels.sh",
+        "verify_release_candidate.sh"
+      ]
+    },
+    "spacecore": {
+      "path": "spacecore",
+      "purpose": null,
+      "fileCount": 10,
+      "lastAccessed": 1789251703295,
+      "keyFiles": [
+        "__init__.py",
+        "_batching.py",
+        "_check_policy.py",
+        "_checks.py",
+        "_errors.py"
+      ]
+    },
+    "spacecore.egg-info": {
+      "path": "spacecore.egg-info",
+      "purpose": null,
+      "fileCount": 5,
+      "lastAccessed": 1789251703295,
+      "keyFiles": [
+        "PKG-INFO",
+        "SOURCES.txt",
+        "dependency_links.txt",
+        "requires.txt",
+        "top_level.txt"
+      ]
+    },
+    "tests": {
+      "path": "tests",
+      "purpose": "Test files",
+      "fileCount": 8,
+      "lastAccessed": 1789251703295,
+      "keyFiles": [
+        "__init__.py",
+        "_conformance.py",
+        "_helpers.py",
+        "conftest.py",
+        "test_equality.py"
+      ]
+    },
+    "tutorials": {
+      "path": "tutorials",
+      "purpose": null,
+      "fileCount": 10,
+      "lastAccessed": 1789251703295,
+      "keyFiles": [
+        "01_backend_and_context.ipynb",
+        "02_linear_algebra.ipynb",
+        "03_functionals.ipynb",
+        "04_tree_spaces.ipynb",
+        "05_weighted_tikhonov.ipynb"
+      ]
+    },
+    "docs/build": {
+      "path": "docs/build",
+      "purpose": "Build output",
+      "fileCount": 0,
+      "lastAccessed": 1789251703296,
+      "keyFiles": []
+    },
+    "tests/fixtures": {
+      "path": "tests/fixtures",
+      "purpose": "Test fixtures",
+      "fileCount": 1,
+      "lastAccessed": 1789251703297,
+      "keyFiles": [
+        "jaxpr_lanczos_smallest.txt"
+      ]
+    }
+  },
+  "hotPaths": [],
+  "userDirectives": []
+}

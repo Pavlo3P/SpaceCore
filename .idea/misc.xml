@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="Black">
+    <option name="sdkName" value="Python 3.13 (SpaceCore)" />
+  </component>
+  <component name="ProjectRootManager" version="2" project-jdk-name="SSH (sftp://ppelikh@10.40.33.62:22/home/ppelikh/miniconda3/envs/py311/bin/python)" project-jdk-type="Python SDK" />
+</project>
