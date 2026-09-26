@@ -244,7 +244,7 @@ class JaxOps(BackendOps):
             Tuple of dense backend arrays usable for open-mesh indexing.
 
         See:
-            https://docs.jax.dev/en/latest/_autosummary/jax.numpy.ix\\_.html
+            `Open-mesh indexing documentation <https://docs.jax.dev/en/latest/_autosummary/jax.numpy.ix_.html>`_
         """
         return self.jnp.ix_(*args)
 

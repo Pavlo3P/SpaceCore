@@ -3,9 +3,11 @@ Real-coordinate view of a complex-domain functional.
 
 For real-valued ``F`` with metric gradient ``g`` and ``v = a + i b``, the real
 gradient is ``(Re g_v, Im g_v)`` where ``g_v = flatten(X.riesz(g))``. The view
-writes that bookkeeping once, so optimizers that need a real space can use it.
-Realification is an isometry, since ``Re<.,.>`` is a real inner product with the
-same norm (Kreutz-Delgado, arXiv:0906.4835, section 4).
+writes that bookkeeping once: ``DF[h] = Re(g_v^H flatten(h))`` gives the stacked
+partials. Kreutz-Delgado, *The Complex Gradient Operator and the CR-Calculus*,
+arXiv:0906.4835, Eqs. (51), (55)-(56); SpaceCore's ``g`` is twice that paper's
+complex gradient. Stacking is an isometry to this Euclidean view when ``X`` is
+Euclidean; a non-Euclidean ``X`` requires the displayed Riesz conversion.
 """
 from __future__ import annotations
 
@@ -39,8 +41,9 @@ class RealifiedFunctional(Functional):
     Notes
     -----
     :class:`~spacecore.HermitianSpace` stores complex entries but is a real space of
-    dimension :math:`n^2`. Realifying it works but doubles the coordinates and leaves
-    :math:`n^2` null Hessian directions, so optimize it directly instead.
+    dimension :math:`n^2` (``n`` real diagonal entries and two real coordinates per
+    off-diagonal pair). Its stacked representation still has Hermitian constraints;
+    this view does not supply an unconstrained extension of the functional.
 
     Examples
     --------

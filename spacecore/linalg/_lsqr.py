@@ -103,7 +103,10 @@ def lsqr(
     -----
     JIT-compatible on JAX with ``maxiter``, ``check_every`` and ``residual_mode``
     static. A small normal-equation residual does not imply a small error when ``A`` is
-    ill-conditioned. Paige and Saunders, ACM Trans. Math. Soft. 8 (1982).
+    ill-conditioned: the error solves ``A.H A e = A.H (A x - b)``.
+    Golub & Van Loan, *Matrix Computations*, 4th ed., Sec. 11.4.2.
+    Orthonormal bases in both spaces give ordinary LSQR; complex spaces replace
+    transposes by conjugate transposes in the bidiagonalization.
 
     Examples
     --------

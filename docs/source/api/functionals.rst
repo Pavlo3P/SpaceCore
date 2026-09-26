@@ -4,7 +4,9 @@ Functionals API
 Functionals are scalar-valued maps on a domain space :math:`f : X \to R`.
 Gradients are represented as elements of ``X`` using the domain geometry: for a
 differentiable functional, ``grad(x)`` satisfies
-:math:`\langle \nabla f(x), v \rangle_X = D f(x)[v]` when implemented.
+:math:`\operatorname{Re}\langle \nabla f(x), v \rangle_X = D f(x)[v]` when implemented.
+Beck, *First-Order Methods in Optimization*, Remark 3.32; on complex domains
+use the real inner product as in :doc:`../design/geometry`.
 
 Base and composition
 --------------------
@@ -54,6 +56,11 @@ types, never values.
   product: ``make_functional_product`` folds a ``ConstantFunctional`` factor back
   into a ``ScaledFunctional``, and a ``ZeroFunctional`` factor to zero.
 
+For complex-linear differentials, expand ``D(FG)[h] = G DF[h] + F DG[h]``
+and use conjugate-linearity in the first inner-product argument to obtain the
+displayed rule. It also holds for real-valued factors using the real pairing.
+Arbitrary complex-valued, real-differentiable maps need more than one gradient.
+
 Operator families (``F · A``)
 -----------------------------
 
@@ -70,14 +77,15 @@ direction move with ``x`` — so it is *not* a ``LinOp``; it is a
 ``Mapping``, the common parent of ``LinOp`` and ``Functional``, read as a
 point-indexed family :math:`x \mapsto A_x`.
 
-Each point carries two different linear operators, and they are not the same:
+When ``DF`` is linear over the domain field, the two operators are:
 
 * ``m.at(x)`` — the **frozen member** ``F(x) · A``, an ordinary ``LinOp`` that
   composes, sums, and has an adjoint. Freezing the point is what recovers
   linearity.
 * ``m.linearize_at(x)`` — the **derivative** :math:`Dm(x)`, for Newton-type
-  steps. They coincide only when ``F`` is constant; otherwise they differ by a
-  rank-one term.
+  steps, with extra term ``DF(x)[h] A x`` from expanding ``F(x+h) A(x+h)``.
+  A nonconstant real-valued ``F`` on a complex domain generally has only a
+  real-linear derivative, outside this ``LinOp`` interpretation.
 
 A ``ConstantFunctional`` weight collapses to an ordinary ``ScaledLinOp``, so the
 linear case is never forced through the non-linear type.
@@ -135,8 +143,10 @@ metric (Riesz) gradients under the domain geometry.
 * ``SquaredL2NormFunctional`` is ``1/2 ||x||_X^2`` (gradient ``x``, clean shrinkage prox).
 * ``LpNormFunctional`` / ``L1NormFunctional`` are coordinate ``p``-norms.
 * ``SpectralFunctional`` / ``spectralize`` lift **any** symmetric coordinate
-  functional onto a Jordan spectrum (Lewis): the Schatten ``p``-norm is
-  ``spectralize(X, lambda s: LpNormFunctional(s, p))``, the von Neumann entropy
+  functional onto a Jordan spectrum: on Hermitian matrices the differentiable
+  case is Lewis, "Derivatives of Spectral Functions", Thm 1.1, and convex
+  subgradients are Thm 1.3. The Schatten ``p``-norm is
+  ``spectralize(X, lambda s: LpNormFunctional(s, p))``, the negative von Neumann entropy
   is ``spectralize(X, NegativeEntropyFunctional)``. ``eigenvalue_space`` builds
   the real space the spectrum lives in.
 * ``NuclearNormFunctional`` is the named Schatten-1 case.

@@ -12,15 +12,16 @@ Tikhonov regularisation
 The two norms are **non-Euclidean on purpose**:
 :math:`\lVert\cdot\rVert_Y` weights each measurement by its *precision*
 :math:`1/\sigma_i^2` (trust clean sensors, discount noisy ones), and
-:math:`\lVert\cdot\rVert_X` encodes a prior. The moment the geometry is
-non-Euclidean, the adjoint is **no longer the transpose** — it is the
+:math:`\lVert\cdot\rVert_X` encodes a prior. For these weighted spaces, use the
 metric adjoint :math:`A^\* = G_X^{-1} A^\top G_Y`. SpaceCore’s ``A.H``
 *is* that metric adjoint, so the normal equations
 
 .. math::  (A^\* A + \lambda I)\,x = A^\* b 
 
 carry the weights automatically. We assemble them with operator algebra
-and solve with ``sc.cg``.
+and solve with ``sc.cg``. Differentiating the displayed objective gives
+``A.H (A x - b) + lambda x = 0`` (Beck, *First-Order Methods in Optimization*,
+Thm 3.29); the Gram-adjoint derivation is in :doc:`../design/geometry`.
 
 **You will learn to** build operators between weighted spaces, rely on
 the metric adjoint, and see — visually — why ignoring the geometry gives

@@ -1,10 +1,9 @@
 """
 Closed-form proximal steps in the space metric (ADR-019).
 
-A prox must be taken in the metric that the gradient uses: a Euclidean
-soft-threshold paired with a metric gradient converges to the wrong point. Only
-Euclidean or diagonal metrics separate; other metrics raise. See Beck,
-*First-Order Methods in Optimization*, 2017, chapter 6.
+For diagonal weights, divide each scalar proximal objective by ``w_i`` to obtain
+the Euclidean problem with step ``t / w_i``; other metrics raise.
+Beck, *First-Order Methods in Optimization*, Thm 6.6 and Lemma 6.5.
 """
 from __future__ import annotations
 
@@ -55,10 +54,13 @@ def generalized_shrinkage(
     nonneg: bool = False,
 ) -> Any:
     r"""
-    Solve ``min_x <c, x>_X + eps ||x - x0||_X^2 + lam ||x||_1`` coordinatewise, optionally with ``x >= 0``.
+    Solve ``min_x Re<c, x>_X + eps ||x - x0||_X^2 + lam ||x||_1`` coordinatewise, optionally with ``x >= 0``.
 
     The smooth minimizer is ``v = x0 - c / (2 eps)``; the l1 term soft-thresholds it
-    with width ``lam / (2 eps w_i)`` for diagonal metric weights ``w``.
+    with width ``lam / (2 eps w_i)`` for diagonal metric weights ``w``: complete
+    the square, then divide by ``2 eps w_i``. Beck, *First-Order Methods in
+    Optimization*, Sec. 6.2.2 and Lemma 6.5; for complex coordinates, minimizing
+    over phase aligns ``x_i`` with ``v_i`` and leaves the same scalar radius problem.
 
     Parameters
     ----------
@@ -136,12 +138,13 @@ def prox_l1(v: Any, t: Any, X: Any, *, nonneg: bool = False) -> Any:
         Euclidean or diagonal-metric space.
     nonneg : bool, optional
         Constrain to ``x >= 0``, giving ``max(v_i - t / w_i, 0)``; at ``t = 0`` this is
-        :func:`project_nonneg`.
+        :func:`project_nonneg` (Beck, *First-Order Methods in Optimization*, Lemma 6.5).
 
     Returns
     -------
     Element
-        The thresholded point.
+        The thresholded point; divide each scalar objective by ``w_i`` to apply
+        Beck, *First-Order Methods in Optimization*, Example 6.8.
     """
     # prox of t ||.||_1 = shrinkage with c = 0, x0 = v, eps = 1/2.
     t = _require_step(t, "prox_l1")
@@ -168,7 +171,8 @@ def prox_l2sq(v: Any, t: Any, X: Any, *, nonneg: bool = False) -> Any:
     Returns
     -------
     Element
-        The shrunk point.
+        The shrunk point; cancel ``w_i`` in the scalar quadratic optimality equation.
+        Beck, *First-Order Methods in Optimization*, Sec. 6.2.3.
     """
     # prox of (t/2) ||.||^2 = shrinkage with c = -v, x0 = 0, eps = (1 + t) / 2.
     t = _require_step(t, "prox_l2sq")
@@ -193,7 +197,8 @@ def project_nonneg(v: Any, X: Any) -> Any:
     Returns
     -------
     Element
-        ``max(v, 0)``.
+        ``max(v, 0)``; positive diagonal weights do not change each scalar minimizer.
+        Beck, *First-Order Methods in Optimization*, Lemma 6.5 (``mu = 0``).
     """
     v = X.ctx.asarray(v)
     _require_member_shape(X, v, "v", "project_nonneg")

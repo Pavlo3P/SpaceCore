@@ -17,6 +17,7 @@ class HermitianSpace(DenseCoordinateSpace, StarSpace, EuclideanJordanAlgebraSpac
 
     A real vector space: scaling by a non-real number is rejected. Membership checks
     Hermitian structure up to ``atol``/``rtol``.
+    Horn & Johnson, *Matrix Analysis*, 2nd ed., Thm 4.1.5 (spectral decomposition).
 
     Parameters
     ----------
@@ -171,7 +172,12 @@ class HermitianSpace(DenseCoordinateSpace, StarSpace, EuclideanJordanAlgebraSpac
 
     @checked_method(in_space="self")
     def psd_proj(self, x: DenseArray) -> DenseArray:
-        """Project a Hermitian element onto the positive semidefinite cone."""
+        """Project onto the PSD cone in Frobenius norm by clipping negative eigenvalues.
+
+        Horn & Johnson, *Matrix Analysis*, 2nd ed., Thm 4.1.5 and Eq. (5.2.7):
+        in an eigenbasis, off-diagonal entries add squared error and the optimal
+        nonnegative diagonal entries are ``max(lambda_i, 0)``.
+        """
         evals, evecs = self.spectral_decompose(x)
         evals = self.ops.maximum(evals, cast(Any, 0.0))
         return self.eig_to_dense(evals, evecs)
@@ -213,14 +219,15 @@ class HermitianSpace(DenseCoordinateSpace, StarSpace, EuclideanJordanAlgebraSpac
         r"""
         Return :math:`f(X) = U \operatorname{diag}(f(\lambda)) U^*`, with ``f`` applied to the eigenvalues.
 
-        This is spectral calculus, not an entrywise map: eigenvectors are kept.
+        Eigenvectors are kept: Higham, *Functions of Matrices*, Sec. 4.5.
 
         Parameters
         ----------
         x : DenseArray
             Hermitian matrix in this space.
         f : callable
-            Map from an eigenvalue array to an array of the same shape.
+            Real-valued scalar function applied elementwise to the spectrum,
+            returning an array of the same shape; equal eigenvalues need equal images.
 
         Returns
         -------

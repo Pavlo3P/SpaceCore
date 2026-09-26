@@ -170,7 +170,7 @@ class NumpyOps(EagerControlFlowMixin, BackendOps):
             Tuple of dense backend arrays usable for open-mesh indexing.
 
         See:
-            https://numpy.org/doc/stable/reference/generated/numpy.ix\\_.html
+            `Open-mesh indexing documentation <https://numpy.org/doc/stable/reference/generated/numpy.ix_.html>`_
         """
         return self.np.ix_(*args)
 

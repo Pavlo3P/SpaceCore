@@ -2,8 +2,8 @@
 Entropy objectives: negative entropy and KL divergence (ADR-019).
 
 The negative entropy is the standard mirror-descent kernel (Beck, *First-Order
-Methods in Optimization*, 2017, Example 9.10); lifted with
-:func:`~spacecore.spectralize` it becomes the von Neumann entropy.
+Methods in Optimization*, Example 9.10, on the probability simplex); its spectral
+lift is ``Tr(X log X)``, the negative von Neumann entropy for a density matrix.
 """
 from __future__ import annotations
 
@@ -84,7 +84,9 @@ class KLDivergenceFunctional(_CoordinateFunctional[Domain]):
     Kullback-Leibler divergence ``sum_i x_i log(x_i / t_i)`` to a positive target ``t``.
 
     Defined for ``x_i >= 0`` (``0 log 0 = 0``); the gradient is ``log(x_i / t_i) + 1``.
-    With ``t`` all ones it is :class:`NegativeEntropyFunctional`.
+    With ``t`` all ones it is :class:`NegativeEntropyFunctional`. On probability
+    vectors this is KL divergence (Beck, *First-Order Methods in Optimization*,
+    Example 9.10, Eq. (9.13)); without equal total mass it can be negative.
 
     Parameters
     ----------

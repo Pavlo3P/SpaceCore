@@ -21,7 +21,7 @@ and [ADR-010](010_functional_contract.md), but NumPy/JAX optimizers expect
 *coordinate* gradients. On a non-Euclidean space, passing `F.grad(x)` directly is
 mathematically wrong; run-01 S04 converged to the wrong fixed point and run-02
 S11 measured a gradient-representation difference of `6.0e-01`. The correct
-handoff is `X.riesz(F.grad(x))`, which no scenario discovered without difficulty.
+handoff is `X.riesz(F.grad(x))`, which no scenario discovered without difficulty (Beck, *First-Order Methods in Optimization*, Remark 3.32).
 
 ## Current design
 

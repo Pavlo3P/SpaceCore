@@ -116,7 +116,10 @@ class ComposedFunctional(Functional):
         Return :math:`\nabla (F \circ A)(x) = A^{\#} \nabla F(A x)`.
 
         ``A.rapply`` is already the metric adjoint, so no Riesz map is added. Raises
-        :class:`NotImplementedError` when ``F`` has no gradient.
+        :class:`NotImplementedError` when ``F`` has no gradient. Indeed,
+        ``D(F o A)[h] = DF[Ah] = <grad F, Ah> = <A^# grad F, h>``; take real parts
+        for real-valued objectives on complex spaces. Beck, *First-Order Methods in
+        Optimization*, Thm 3.29 (gradient pairing).
 
         Parameters
         ----------

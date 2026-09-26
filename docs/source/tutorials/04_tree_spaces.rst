@@ -289,7 +289,7 @@ Recap
 -----
 
 -  A **``TreeSpace``** is a direct product of heterogeneous leaves;
-   elements are Python trees and ``inner``/``norm`` sum over leaves.
+   elements are Python trees; inner products and squared norms sum over leaves.
    ``flatten``/``unflatten`` bridge to a plain vector.
 -  **``BlockMatrixLinOp``** (and friends ``BlockDiagonalLinOp``,
    ``StackedLinOp``, ``SumToSingleLinOp``) compose leaf operators into

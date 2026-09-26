@@ -155,9 +155,11 @@ def power_iteration(
 
     Notes
     -----
-    Convergence needs the dominant modulus to be separated; with both ``lambda`` and
-    ``-lambda`` dominant the iterate oscillates. JIT-compatible on JAX with ``maxiter``
-    static.
+    Convergence needs a separated dominant modulus and nonzero initial overlap with
+    its eigenspace. Trefethen & Bau, *Numerical Linear Algebra*, Thm 27.1; expansion
+    in a metric-orthonormal eigenbasis gives the same eigenvalue-ratio argument.
+    With both ``lambda`` and ``-lambda`` present at the dominant modulus the iterate
+    can oscillate. JIT-compatible on JAX with ``maxiter`` static.
 
     Examples
     --------

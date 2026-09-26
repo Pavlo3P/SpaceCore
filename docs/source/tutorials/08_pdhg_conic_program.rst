@@ -135,7 +135,12 @@ PDHG alternates a **primal** step (gradient in :math:`c + A^\top y`,
 then project onto :math:`\mathcal{K}`), an over-relaxation, and a
 **dual** step (drive :math:`Ax \to b`). The operator’s adjoint
 ``A.rapply`` supplies :math:`A^\top y`; the cone projection is the
-primal proximal step.
+primal proximal step. Chambolle & Pock, "A First-Order Primal-Dual Algorithm
+for Convex Problems with Applications to Imaging", Algorithm 1 and Theorem 1;
+shift the dual index to write the primal step first, with
+``G(x) = c.T x + indicator_K(x)`` and ``F*(y) = b.T y``. A saddle point exists
+for this LP, and ``tau * sigma * ||A||^2 < 1`` with extrapolation one ensures
+finite-dimensional convergence.
 
 .. code:: python
 

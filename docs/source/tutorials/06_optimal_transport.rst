@@ -148,7 +148,10 @@ subject to the marginals. Its optimal plan has the form
 :math:`P_{ij} = \exp\big((\phi_i + \psi_j - C_{ij})/\varepsilon\big)` —
 and :math:`\phi_i+\psi_j` is precisely ``K.rapply([φ, ψ])``. Sinkhorn
 alternately rescales rows and columns to hit :math:`a` and :math:`b`. We
-track the marginal error with ``K.apply``.
+track the marginal error with ``K.apply``. Nutz, *Introduction to Entropic
+Optimal Transport*, Algorithm 6.1, gives the potential updates; in finite
+coordinates absorb the positive marginal masses into the scaling vectors
+and use cost ``C / eps`` to obtain ``u = a / (kernel @ v)`` and its column analogue.
 
 .. code:: python
 

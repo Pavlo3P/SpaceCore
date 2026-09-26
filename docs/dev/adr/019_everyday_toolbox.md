@@ -82,7 +82,9 @@ norm at `p = 1`). It is a spectral function `f(λ(X))`, so its gradient is the
 spectral function gradient `from_spectrum(∇f(λ), frame)` and it is built on the
 `spectrum` / `spectral_decompose` / `from_spectrum` capabilities, not on backend
 `eigh`. On an elementwise Jordan space (spectrum = coordinates) it coincides with
-`LpNormFunctional`.
+`LpNormFunctional`. For Hermitian matrices, the differentiable formula is Lewis,
+"Derivatives of Spectral Functions", Thm 1.1; at nonsmooth points the convex
+subgradient formula is Thm 1.3.
 
 `least_squares` returns an existing `LinOpQuadraticForm`, not a new type. Norm
 functionals are coordinate norms; `LpNormFunctional` is the general form and
@@ -100,6 +102,10 @@ prox_l1(v, t, X)        # wrapper: soft-threshold
 prox_l2sq(v, t, X)      # wrapper: shrinkage
 project_nonneg(v, X)    # wrapper: nonnegative orthant
 ```
+
+Dividing each scalar subproblem by its positive metric weight gives Euclidean
+shrinkage with threshold `lam / (2 eps w_i)` (Beck, *First-Order Methods in
+Optimization*, Lemma 6.5 and Thm 6.6).
 
 `c` is typed as a **metric gradient** (i.e. `F.grad(x)`), consistent with
 [ADR-010](010_functional_contract.md). The primitive is metric-aware: under a

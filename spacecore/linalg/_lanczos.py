@@ -298,9 +298,11 @@ def lanczos_smallest(
     Notes
     -----
     ``residual_norm`` is the recurrence estimate :math:`\beta_m |y_{m-1}|`. The smallest
-    Ritz value approaches the smallest eigenvalue only if the bottom of the spectrum is
-    separated and ``initial_vector`` overlaps its eigenspace. JIT-compatible on JAX with
-    ``max_iter`` and ``check_every`` static. Lanczos, J. Res. Natl. Bur. Stand. 45 (1950).
+    Ritz value can recover the smallest eigenvalue only if ``initial_vector`` overlaps
+    its eigenspace. Trefethen & Bau, *Numerical Linear Algebra*, Algorithm 36.1 and
+    Thm 36.1; multiplying the Lanczos relation by a unit Ritz vector gives the residual.
+    Orthonormal coordinates give the metric version, with conjugate inner products
+    for complex spaces. JIT-compatible on JAX with ``max_iter`` and ``check_every`` static.
 
     Examples
     --------

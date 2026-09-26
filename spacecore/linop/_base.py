@@ -24,9 +24,12 @@ class LinOp(Mapping, Generic[Domain, Codomain]):
 
     ``rapply`` is the Hilbert-space adjoint in each space's own inner product,
     :math:`\langle A x, y\rangle_Y = \langle x, A^* y\rangle_X`, not the coordinate
-    transpose. On a non-Euclidean space it is :math:`R_X^{-1} A^\dagger R_Y`
-    (:func:`~spacecore.linop._metric.metric_rapply`). Conway, *A Course in Functional
-    Analysis*, II.2.4.
+    transpose. In orthonormal bases it is the conjugate transpose (Trefethen & Bau,
+    *Numerical Linear Algebra*, Lecture 2, pp. 11-12); in general coordinates it is
+    :math:`R_X^{-1} A^\dagger R_Y`, derived in
+    :func:`~spacecore.linop._metric.metric_rapply`.
+    Adjoint products reverse order (Trefethen & Bau, *Numerical Linear Algebra*,
+    Eq. (2.4)); inserting Gram factors cancels the intermediate metric.
 
     Parameters
     ----------
@@ -106,12 +109,11 @@ class LinOp(Mapping, Generic[Domain, Codomain]):
         r"""Apply the adjoint map to an element of ``self.codomain``.
 
         This is the **Hilbert-space adjoint** ``A^#``, defined by
-        ``<Ax, y>_Y = <x, A^# y>_X`` (Dunford-Schwartz, *Linear Operators I*,
-        Definition VI.2.9) -- *not* the Banach adjoint of Definition VI.2.1,
-        which maps ``Y^* -> X^*`` and is the coordinate transpose. The two
-        coincide only when both spaces are Euclidean. See
-        :func:`spacecore.linop._metric.metric_rapply` for the derivation and
-        the full reference block.
+        ``<Ax, y>_Y = <x, A^# y>_X``. Trefethen & Bau, *Numerical Linear Algebra*,
+        Lecture 2, pp. 11-12, gives the conjugate transpose in orthonormal coordinates;
+        :func:`spacecore.linop._metric.metric_rapply` derives the Gram-matrix form.
+        The dual map sends a linear functional ``phi`` to ``phi o A``; writing
+        ``phi(y) = b^T y`` gives dual coordinates ``A^T b``, even over the complex field.
         """
 
     def _apply_core(self, x: Any) -> Any:
@@ -137,8 +139,7 @@ class LinOp(Mapping, Generic[Domain, Codomain]):
     def adjoint_apply(self, y: Any) -> Any:
         """Apply the adjoint of this linear operator to ``y``.
 
-        Spelled-out alias for :meth:`rapply`; the same Definition VI.2.9
-        adjoint, not a second notion.
+        Spelled-out alias for the inner-product adjoint :meth:`rapply`.
         """
         return self.rapply(y)
 

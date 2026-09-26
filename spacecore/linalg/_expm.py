@@ -19,8 +19,8 @@ class ExpmMultiplyResult(NamedTuple):
     krylov_dim : int-like
         Actual Krylov dimension reached before breakdown or ``max_iter``.
     residual_estimate : scalar
-        Projected exponential residual estimate
-        ``abs(beta[m] * phi[m - 1])``.
+        Normalized projection indicator ``abs(beta[m] * phi[m - 1])``;
+        it omits ``norm(v)`` and is not a bound on the exponential-action error.
     converged : bool-like
         Boolean indicating whether ``residual_estimate < tol``.
     """
@@ -64,15 +64,17 @@ def expm_multiply(
     t : float or complex, optional
         Scalar multiplying ``A``; a complex ``t`` needs a complex ``ctx.dtype``.
     max_iter : int, optional
-        Maximum Krylov dimension; 20 to 50 usually suffices. Static under ``jax.jit``.
+        Maximum Krylov dimension. Static under ``jax.jit``.
     tol : float, optional
         Breakdown threshold, and the residual below which ``converged`` is set.
 
     Returns
     -------
     ExpmMultiplyResult
-        The result vector, the Krylov dimension used, the residual estimate
-        :math:`|\beta_m \phi_{m-1}|`, and the convergence flag.
+        The result vector, Krylov dimension, normalized projection indicator
+        :math:`|\beta_m \phi_{m-1}|`, and convergence flag. The approximation is
+        ``norm(v) V_m exp(t T_m) e_1`` in a metric-orthonormal basis.
+        Higham, *Functions of Matrices*, Sec. 13.2.2, Eq. (13.7).
 
     Raises
     ------

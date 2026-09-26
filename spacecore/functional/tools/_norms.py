@@ -81,7 +81,9 @@ class LpNormFunctional(_CoordinateFunctional[Domain]):
     Coordinate ``p``-norm ``(sum_i |x_i|^p)^(1/p)`` for ``p >= 1``.
 
     The gradient is ``sign(x_i) |x_i|^(p-1) / ||x||_p^(p-1)``, Riesz-corrected; at the
-    origin the zero subgradient is returned.
+    origin the zero subgradient is returned (Beck, *First-Order Methods in
+    Optimization*, Example 3.3). For ``p = 1``, zero coordinates also use zero
+    subgradient components (Example 3.4); elsewhere differentiate the displayed norm.
 
     Parameters
     ----------

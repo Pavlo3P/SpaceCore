@@ -114,12 +114,17 @@ turns a coordinate gradient into the natural gradient.
 
 One step on the :math:`M`-sphere has three parts:
 
-1. **raise the index** — natural gradient $:raw-latex:`\nabla`\_M f =
-   M^{-1}:raw-latex:`\partial `f = $ ``Sm.riesz_inverse(∂f)``;
+1. **raise the index** — natural gradient :math:`\nabla_M f = M^{-1} \partial f`,
+   computed by ``Sm.riesz_inverse(∂f)``;
 2. **project onto the tangent space**
    :math:`\{v : \langle x, v\rangle_M = 0\}`, using the :math:`M`-inner
    product;
 3. **retract** back onto the manifold by :math:`M`-normalising.
+
+Boumal, *An Introduction to Optimization on Smooth Manifolds*, Sec. 7.2,
+Eqs. (7.8)–(7.10), applies to any real Euclidean inner product, here
+``<u,v> = u.T M v``; the ambient gradient is ``M^{-1} partial f`` by Beck,
+*First-Order Methods in Optimization*, Remark 3.32.
 
 We run it twice: once with the *natural* gradient (``riesz_inverse``),
 and once with the raw coordinate gradient (the common bug of forgetting

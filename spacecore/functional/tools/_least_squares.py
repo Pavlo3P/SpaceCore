@@ -28,7 +28,12 @@ def least_squares(
     Build ``scale * ||A x - b||^2`` as a :class:`~spacecore.functional.LinOpQuadraticForm`.
 
     It is ``1/2 <x, Q x> + <c, x> + a`` with ``Q = 2 scale A.H A``, ``c = -2 scale A.H b``
-    and ``a = scale <b, b>``, all in the operator's own geometry.
+    and ``a = scale <b, b>``, all in the operator's own geometry. Expanding
+    the squared norm and moving ``A`` by the adjoint identity gives this formula
+    on real spaces; on complex spaces the cross term must be ``Re<c, x>``.
+    The current linear term retains the full pairing, so the squared-norm
+    interpretation requires real data. Trefethen & Bau, *Numerical Linear Algebra*,
+    Lecture 2, pp. 11-12.
 
     Parameters
     ----------

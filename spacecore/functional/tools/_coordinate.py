@@ -3,8 +3,9 @@ Base for coordinate-defined functionals: value plus Euclidean coordinate gradien
 
 :class:`_CoordinateFunctional` turns the coordinate gradient into the Riesz gradient
 ``domain.riesz_inverse(d phi / d x)`` once. That is the one guard against pairing a
-Euclidean gradient with a non-Euclidean metric (ADR-010, ADR-019). The two coincide
-only on Euclidean spaces.
+Euclidean gradient with a non-Euclidean metric (ADR-010, ADR-019).
+Beck, *First-Order Methods in Optimization*, Remark 3.32; for complex real-valued
+objectives use ``DF[h] = Re(g^H R h)`` to obtain the same ``R^{-1}`` conversion.
 """
 from __future__ import annotations
 

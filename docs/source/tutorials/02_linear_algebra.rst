@@ -132,7 +132,9 @@ The **Riesz map** turns a coordinate vector into the dual vector that
 represents it under the geometry. For Euclidean geometry it is the
 identity; for weights :math:`w` it multiplies by :math:`w`. It is what
 makes gradients and adjoints *metric-aware* (you will use it in
-tutorials 3 and 6).
+tutorials 3 and 6). In coordinates ``<x,y> = x^H R y = (R x)^H y``; an
+orthonormal basis gives ``R = I`` (Horn & Johnson, *Matrix Analysis*, 2nd ed.,
+Sec. 0.6.5).
 
 .. code:: python
 

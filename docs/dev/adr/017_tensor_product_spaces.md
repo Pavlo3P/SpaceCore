@@ -67,7 +67,10 @@ forming the Kronecker product, with the metric-aware adjoint being the tensor of
 factor adjoints; the homogeneous variant may expose a dedicated optimized path
 while the heterogeneous variant carries per-factor metadata. In both, the induced
 inner product is the tensor product of factor inners and the Riesz map is the
-tensor of factor Riesz maps.
+tensor of factor Riesz maps: in product bases `R = R_1 ⊗ R_2`, so the mixed-product
+identity gives `(A_1 ⊗ A_2)^sharp = A_1^sharp ⊗ A_2^sharp`.
+Golub & Van Loan, *Matrix Computations*, 4th ed., Sec. 1.3.6, Eqs. (1.3.1)–(1.3.3);
+entrywise conjugation extends the transpose identity to complex adjoints.
 
 Activation is gated on **both** an accepted design that resolves the geometry,
 adjoint, and batching interactions **and** a concrete downstream workload

@@ -1,7 +1,7 @@
 Geometry and Riesz Maps
 =======================
 
-Every ``Space`` has an ``InnerProduct`` geometry. The geometry defines the
+An ``InnerProductSpace`` has an ``InnerProduct`` geometry. The geometry defines the
 inner product and the Riesz maps used to convert between coordinate elements
 and dual coordinates. Matrix-backed adjoints use those maps:
 
@@ -10,7 +10,9 @@ and dual coordinates. Matrix-backed adjoints use those maps:
    A^\sharp y = R_X^{-1} A^\dagger R_Y y.
 
 Here ``A^\dagger`` is the Euclidean coordinate adjoint, while ``A^\sharp`` is
-the true adjoint for the declared domain and codomain geometries.
+the true adjoint for the declared domain and codomain geometries. Expanding the
+inner-product identity gives ``A^dagger R_Y = R_X A^sharp``. Trefethen & Bau,
+*Numerical Linear Algebra*, Lecture 2, pp. 11-12 (orthonormal coordinates).
 
 Matrix-Free Adjoints
 --------------------
@@ -95,11 +97,13 @@ Solvers and Functionals
 Solvers such as ``cg``, ``lsqr``, ``power_iteration``, and
 ``lanczos_smallest`` use ``domain.inner`` and ``domain.norm`` (or
 ``codomain.norm`` for residuals that live in the codomain). Gradients returned
-by functionals are space elements: they satisfy
+by real-valued functionals are space elements: they satisfy
 
 .. math::
 
-   \langle \nabla f(x), v \rangle_X = Df(x)[v].
+   \operatorname{Re}\langle \nabla f(x), v \rangle_X = Df(x)[v].
 
 This contract is correct on non-Euclidean geometries when spaces supply Riesz
-maps and operators use metric-aware adjoints.
+maps and operators use metric-aware adjoints. Beck, *First-Order Methods in
+Optimization*, Remark 3.32, gives the real-coordinate formula; expanding
+``Re(g^H R v)`` gives the complex real-valued case.

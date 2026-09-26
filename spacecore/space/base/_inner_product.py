@@ -9,7 +9,14 @@ from ._vector import VectorSpace
 
 
 class InnerProduct(ABC):
-    """Geometry of a space: inner product plus Riesz maps."""
+    """
+    Geometry of a space: inner product plus Riesz maps.
+
+    An orthonormal basis gives a representer for each linear functional
+    (Horn & Johnson, *Matrix Analysis*, 2nd ed., Sec. 0.6.5).
+    In coordinates, ``<x, y> = x^H R y`` with positive-definite Gram matrix ``R``;
+    ``riesz(x) = R x`` stores the column in ``<x, y> = (R x)^H y``.
+    """
 
     @abstractmethod
     def inner(self, ops, x, y):

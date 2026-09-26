@@ -103,8 +103,9 @@ def cg(
     -----
     JIT-compatible on JAX with ``maxiter`` and ``check_every`` static. Stops early when
     no useful update remains (residual at machine precision, or non-positive
-    curvature). Complex inner products conjugate their first argument. Hestenes and
-    Stiefel, J. Res. Natl. Bur. Stand. 49 (1952).
+    curvature). Trefethen & Bau, *Numerical Linear Algebra*, Algorithm 38.1.
+    In an orthonormal basis the metric recurrence is ordinary CG; complex spaces
+    use conjugate inner products, and a nonzero ``x0`` starts from ``b - A x0``.
 
     Examples
     --------

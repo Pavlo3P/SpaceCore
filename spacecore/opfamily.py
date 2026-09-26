@@ -2,7 +2,8 @@ r"""
 The functional-weighted map ``m(x) = F(x) A x``: a :class:`~spacecore.Mapping` that is not linear.
 
 ``at(x)`` is the frozen member ``F(x) A``, with ``at(x).apply(x) == m(x)``;
-``linearize_at(x)`` is the derivative ``Dm(x)``. The two agree only for constant ``F``.
+``linearize_at(x)`` uses the product rule when ``DF(x)[h] = <grad F(x), h>``
+is linear over the domain field; its extra term is ``DF(x)[h] A x``.
 """
 from __future__ import annotations
 
@@ -98,7 +99,10 @@ class FunctionalScaledOperator(Mapping, Generic[Domain, Codomain]):
 
         It differs from :meth:`at` by the rank-one first term. Its adjoint is
         :math:`\langle Ax, w\rangle_Y \nabla F(x) + \overline{F(x)} A^{\#} w`, in the
-        codomain geometry.
+        codomain geometry. This requires ``DF(x)[h] = <grad F(x), h>`` to be
+        linear over the domain field; a nonconstant real-valued ``F`` on a complex
+        domain generally has only a real-linear derivative. Expand
+        ``F(x+h) A(x+h)`` to first order to obtain the product rule.
         """
         # Precompute F(x), grad F(x) and A x once for the derivative and its adjoint.
         X, Y = self.domain, self.codomain

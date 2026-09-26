@@ -59,6 +59,9 @@ class LinOpQuadraticForm(QuadraticForm[Domain]):
 
     Hermiticity is checked where the operator's structure allows; matrix-free ``Q``
     is trusted. For a non-Hermitian ``Q``, pass its Hermitian part ``0.5 * (Q + Q.H)``.
+    Expanding the quadratic gives ``D(1/2 <x,Qx>)[h] = Re<Qx,h>``; for a
+    real-valued objective on a complex space the linear term must also be real.
+    Beck, *First-Order Methods in Optimization*, Thm 3.29, with the real pairing.
 
     Parameters
     ----------

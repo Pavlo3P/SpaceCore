@@ -16,7 +16,7 @@ Spaces expose Riesz maps through their `InnerProduct` geometry. Matrix-backed `D
 A^sharp = R_X^{-1} A^dagger R_Y
 ```
 
-where `A : X -> Y`, `A^dagger` is the Euclidean conjugate coordinate adjoint, and `A^sharp` is the metric adjoint. Fast paths exist for Euclidean and weighted diagonal geometries. General metric paths require usable Riesz maps. `InnerProduct.validate_for(space)` validates geometry storage such as weighted metrics.
+Expanding `<Ax,y>_Y = <x,A^sharp y>_X` gives `A^dagger R_Y = R_X A^sharp`; this is the Gram-coordinate extension of Trefethen & Bau, *Numerical Linear Algebra*, Lecture 2, pp. 11–12. Here `A : X -> Y`, `A^dagger` is the Euclidean conjugate coordinate adjoint, and `A^sharp` is the metric adjoint. Fast paths exist for Euclidean and weighted diagonal geometries. General metric paths require usable Riesz maps. `InnerProduct.validate_for(space)` validates geometry storage such as weighted metrics.
 
 `MatrixFreeLinOp` is different: its direct `rapply` callable is already the metric adjoint and must not be Riesz-wrapped. `MatrixFreeLinOp.from_coordinate_adjoint(...)` exists for the case where the user has a Euclidean coordinate adjoint and wants SpaceCore to wrap it.
 

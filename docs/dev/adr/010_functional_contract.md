@@ -37,7 +37,7 @@ Representing all functionals as LinOps into a scalar space was rejected because 
 
 ## Consequences
 
-New functionals must validate domain inputs and scalar output shape when checks are enabled. Gradients must be Riesz gradients satisfying the domain inner-product convention. Pull-back specializations may use `A.H` and therefore depend on [ADR-009](009_metric_adjoint.md).
+New functionals must validate domain inputs and scalar output shape when checks are enabled. Real-valued objectives use `DF(x)[h] = Re<grad F(x),h>`; complex-linear differentials use the full pairing. Beck, *First-Order Methods in Optimization*, Thm 3.29 and Remark 3.32, supplies the real case; expanding the real part supplies the complex real-valued case. Pull-back specializations may use `A.H` and therefore depend on [ADR-009](009_metric_adjoint.md).
 
 ## Contributor invariants
 

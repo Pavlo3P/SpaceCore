@@ -366,7 +366,8 @@ class ProductFunctional(Functional):
 
     The gradient is :math:`\overline{G(x)} \nabla F(x) + \overline{F(x)} \nabla G(x)`:
     the coefficients are conjugated because the inner product conjugates its first
-    argument.
+    argument. Expanding ``D(FG)[h] = G DF[h] + F DG[h]`` gives this rule for
+    complex-linear differentials, or real-valued factors with the real pairing.
 
     Parameters
     ----------

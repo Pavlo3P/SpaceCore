@@ -1,9 +1,9 @@
 """
 Spectral lift ``F(X) = f(lambda(X))`` of a symmetric coordinate functional (ADR-019).
 
-Its gradient is ``from_spectrum(grad f(lambda), frame)`` (Lewis, *Handbook of
-Semidefinite Programming*, 2000, Thm 2.3.2), so one wrapper serves every formula:
-Schatten norms, von Neumann entropy, and so on.
+For real-valued symmetric ``f`` differentiable at the spectrum of a Hermitian ``X``,
+the Frobenius gradient is ``from_spectrum(grad f(lambda), frame)``.
+Lewis, "Derivatives of Spectral Functions", 1996, Thm 1.1 (convex subgradients: Thm 1.3).
 """
 from __future__ import annotations
 
@@ -22,8 +22,9 @@ def eigenvalue_space(dom: Any, check_level: CheckLevel | None = None) -> Any:
     r"""
     Return the real Euclidean space of shape ``(rank,)`` that the spectrum of ``dom`` lives in.
 
-    Eigenvalues are real even when entries are complex. The rank is read off the zero
-    element.
+    Hermitian eigenvalues are real even with complex entries (Horn & Johnson,
+    *Matrix Analysis*, 2nd ed., Thm 4.1.5). Other domains must supply a real
+    spectrum for this helper; the rank is read off the zero element.
 
     Parameters
     ----------
@@ -57,13 +58,18 @@ class SpectralFunctional(_CoordinateFunctional[Domain]):
     Lift a symmetric coordinate functional onto a Jordan spectrum: :math:`F(X) = f(\lambda(X))`.
 
     ``LpNormFunctional`` lifts to the Schatten norm and ``NegativeEntropyFunctional`` to
-    the von Neumann entropy.
+    the negative von Neumann entropy on positive trace-one matrices.
+    Horn & Johnson, *Matrix Analysis*, 2nd ed., Thm 7.4.7.2; for Hermitian matrices
+    the singular values are the absolute eigenvalues, so the gauge is the p-norm.
 
     .. warning::
 
-        ``f`` must be permutation-invariant; otherwise ``f(lambda(X))`` depends on the
-        eigenvalue order and is not a function of ``X``. This cannot be checked, and
-        :class:`~spacecore.KLDivergenceFunctional` does not qualify.
+        The gradient formula requires permutation-invariant ``f`` and differentiability
+        at ``lambda(X)`` (or a convex subgradient). Lewis, "Derivatives of Spectral
+        Functions", Thms 1.1 and 1.3. Permutation invariance is not checked; a generic
+        :class:`~spacecore.KLDivergenceFunctional` with unequal targets fails it.
+        Elementwise spaces reduce to coordinate differentiation; custom Jordan spaces
+        must supply a compatible spectral-gradient reconstruction.
 
     Parameters
     ----------
@@ -131,7 +137,7 @@ class SpectralFunctional(_CoordinateFunctional[Domain]):
         return self.base.value(cast(Any, self.domain).spectrum(x))
 
     def _coordinate_grad(self, x: Any) -> Any:
-        """Return ``U diag(grad f(lambda)) U^*`` via ``from_spectrum`` (Lewis)."""
+        """Return the spectral gradient (Lewis, "Derivatives of Spectral Functions", Thm 1.1)."""
         domain = cast(Any, self.domain)
         eigvals, frame = domain.spectral_decompose(x)
         return domain.from_spectrum(self.base.grad(eigvals), frame)
@@ -191,7 +197,7 @@ def spectralize(
     >>> import spacecore as sc
     >>> ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
     >>> X = sc.HermitianSpace(2, ctx=ctx)
-    >>> vn = sc.spectralize(X, sc.NegativeEntropyFunctional)   # von Neumann entropy
+    >>> vn = sc.spectralize(X, sc.NegativeEntropyFunctional)   # negative von Neumann entropy
     >>> float(vn.value(ctx.asarray([[0.5, 0.0], [0.0, 0.5]])))
     -0.6931471805599453
     """

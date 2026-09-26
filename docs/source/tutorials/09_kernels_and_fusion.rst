@@ -68,7 +68,9 @@ Fusing reassociates the arithmetic (a matrix product, then apply,
 differs at the last bit from applying in sequence), so the result is
 equal **up to rounding**, not bit-for-bit. It is adjoint-consistent on
 any geometry — including non-Euclidean — because the shared middle-space
-Riesz maps cancel.
+Riesz maps cancel: ``R_X^-1 B^H R_Y R_Y^-1 A^H R_Z = R_X^-1 (A B)^H R_Z``.
+Trefethen & Bau, *Numerical Linear Algebra*, Eq. (2.4), gives the conjugate-transpose
+product identity; :doc:`../design/geometry` supplies the Gram factors.
 
 .. code:: python
 

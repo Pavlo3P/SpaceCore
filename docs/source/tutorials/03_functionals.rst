@@ -203,7 +203,8 @@ inner product.
 Choosing the inner product is choosing a **preconditioner**. If we give
 the space the weighted geometry :math:`W = \mathrm{diag}(H)`, the *same*
 ``QuadraticBowl`` code now produces the gradient :math:`W^{-1} H x` —
-because ``grad`` ends in ``domain.riesz_inverse(...)``. Steepest descent
+because ``grad`` ends in ``domain.riesz_inverse(...)`` (Beck, *First-Order
+Methods in Optimization*, Remark 3.32). Steepest descent
 in this metric heads almost straight at the minimum. Nothing in the
 functional changed; only the space did.
 

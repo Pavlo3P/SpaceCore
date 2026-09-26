@@ -8,7 +8,7 @@ responsibility, recorded in ADR-018: a SpaceCore gradient ``F.grad(x)`` is a
 a *coordinate* gradient. The correct, geometry-aware handoff is
 ``X.riesz(F.grad(x))`` -- the identity on a Euclidean space, and mandatory on a
 weighted/non-Euclidean one. :func:`coordinate_gradient` performs this conversion
-once, centrally, so no adapter -- and no user wrapper -- re-derives it.
+once, centrally. Beck, *First-Order Methods in Optimization*, Remark 3.32.
 """
 from __future__ import annotations
 

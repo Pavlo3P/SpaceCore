@@ -16,9 +16,9 @@ class HuberFunctional(_CoordinateFunctional[Domain]):
     Separable Huber loss ``sum_i h_delta(x_i)``.
 
     ``h_delta(r)`` is ``r^2 / 2`` for ``|r| <= delta`` and ``delta (|r| - delta / 2)``
-    beyond; it is ``C^1``. This is Huber's scaling [Huber1964]_, which is ``delta``
-    times the Moreau-envelope form of [Beck]_ Example 6.54, so prox formulas from the
-    two sources differ by that factor.
+    beyond; it is ``C^1``. This is ``delta * H_delta`` in Beck, *First-Order Methods
+    in Optimization*, Examples 6.54 and 6.62; multiplying both branches by ``delta``
+    gives this scaling and the derivative ``r`` or ``delta sign(r)``.
 
     Parameters
     ----------
@@ -30,11 +30,6 @@ class HuberFunctional(_CoordinateFunctional[Domain]):
         Backend context; resolved from ``dom`` when omitted.
     check_level : {"none", "cheap", "standard", "strict"}, optional
         Validation level; the ambient default when omitted.
-
-    References
-    ----------
-    .. [Huber1964] P. J. Huber, Ann. Math. Statist. 35(1):73-101, 1964.
-    .. [Beck] A. Beck, *First-Order Methods in Optimization*, SIAM, 2017.
 
     Examples
     --------
