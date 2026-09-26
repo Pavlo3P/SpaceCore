@@ -37,36 +37,17 @@ print(N.is_hermitian())               # True          inferred from the structur
 print(sc.cg(N, x, tol=1e-12).converged)  # True
 ```
 
-Nested structures are spaces too:
+## Features
 
-```python
-P = sc.DenseCoordinateSpace((3,), ctx)
-R = sc.DenseCoordinateSpace((1,), ctx)
-B = sc.BlockDiagonalLinOp({
-    "position": sc.IdentityLinOp(P, ctx),
-    "twist": {"angular": sc.DiagonalLinOp(ctx.asarray([0.5]), R, ctx)},
-})
-y = B.dom.element({"position": ctx.asarray([1.0, 0.0, 0.0]), "twist": {"angular": ctx.asarray([4.0])}})
-
-print(B.apply(y))         # {'position': array([1., 0., 0.]), 'twist': {'angular': array([2.])}}
-print(B.dom.inner(y, y))  # 17.0
-```
-
-## What's in it
-
-- **Spaces:** `DenseCoordinateSpace`, `DenseVectorSpace`, `HermitianSpace`,
-  `ElementwiseJordanSpace`, `TreeSpace` (nested direct products via `optree`), `StackedSpace`.
-- **Operators:** dense, sparse, diagonal, matrix-free, identity, zero, block; lazy
-  sums, scalings and compositions. `apply` / `rapply` (forward / metric adjoint).
-- **Functionals:** linear, quadratic, least squares, Lp/L1 norms, entropy, KL, Huber,
-  nuclear norm, and metric-aware proximal maps (`prox_l1`, `prox_l2sq`, `project_nonneg`).
-  Gradients are Riesz gradients in the domain geometry.
-- **Linear algebra:** `cg`, `lsqr`, `lanczos_smallest`, `power_iteration`, `expm_multiply`.
-  Small by design; they reject provably invalid inputs (e.g. `cg` on a non-self-adjoint map).
-- **Optimizers:** `minimize_scipy`, `line_search_scipy`, `minimize_optax` — the
-  metric-to-coordinate gradient handoff is done for you.
-- **Backends:** `NumpyOps` always; `JaxOps`, `TorchOps`, `CuPyOps` when installed.
-  Cross-backend behaviour: [conformance matrix](https://pavlo3p.github.io/SpaceCore/design/backend_conformance.html),
+- **Spaces:** dense vectors, matrices, Jordan algebras, nested trees, and stacks.
+- **Operators:** dense, sparse, diagonal, matrix-free, and block operators;
+  lazy sums, scaling, and composition.
+- **Functionals:** linear, quadratic, least squares, norms, entropy, KL, and Huber;
+  geometry-aware gradients and proximal maps.
+- **Solvers:** CG, LSQR, Lanczos, power iteration, and matrix exponential action.
+- **Optimizer adapters:** SciPy and Optax, with metric-to-coordinate gradient conversion.
+- **Backends:** NumPy, JAX, Torch, and CuPy. See
+  [conformance](https://pavlo3p.github.io/SpaceCore/design/backend_conformance.html) and
   [deviations](https://pavlo3p.github.io/SpaceCore/design/backend_deviations.html).
 
 ## Validation

@@ -1,10 +1,8 @@
 Tutorials
 =========
 
-A guided path from SpaceCore's core abstractions to three complete algorithms. Every
-page below is a runnable Jupyter notebook in ``tutorials/`` — read it here or open the
-notebook and execute it yourself. The foundations build on each other; the worked
-algorithms can be read in any order once the foundations are in place.
+Read the foundations in order, then choose a worked example. Each page has a
+runnable notebook in the repository's ``tutorials/`` directory.
 
 Foundations
 -----------
@@ -25,7 +23,7 @@ Worked examples
 Performance and internals
 -------------------------
 
-* :doc:`09_kernels_and_fusion` — Optimized-kernel dispatch (ADR-016), operator fusion (ADR-021), and fold-stack caching (ADR-022): running the fastest *bit-exact* kernel, multiplying operators together with ``fuse()``, and reusing a fold's materialized stack across applies — all opt-in or invisible, none touching the matrix-free contract.
+* :doc:`09_kernels_and_fusion` — Kernel dispatch, operator fusion with ``fuse()``, and caching materialized stacks.
 
 .. toctree::
    :hidden:

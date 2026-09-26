@@ -1,8 +1,7 @@
 Developer documentation
 =======================
 
-Developer documentation records contributor-facing architecture, documentation,
-and maintenance guidance for SpaceCore.
+Contribution guidelines, architecture decisions, and project direction.
 
 .. toctree::
    :maxdepth: 1

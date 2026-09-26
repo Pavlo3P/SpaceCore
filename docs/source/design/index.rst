@@ -1,8 +1,7 @@
 Design notes
 ============
 
-These notes document current ``0.3.x`` behavior. Planned APIs are not presented
-as current behavior.
+Rules for geometry, validation, batching, conversion, and backend behavior.
 
 .. toctree::
    :maxdepth: 1
