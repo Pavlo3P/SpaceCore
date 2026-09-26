@@ -13,7 +13,12 @@ from .._checks import checked_method
 from .._check_policy import CheckLevel
 from ..contextual import resolve_context_priority
 from ..contextual import Context
-from ..kernels import core_kernels
+from ..kernels.core.functional import (
+    linop_quadratic_grad_core,
+    linop_quadratic_value_core,
+    linop_quadratic_vgrad_core,
+    linop_quadratic_vvalue_core,
+)
 from ..linop import LinOp
 
 
@@ -48,7 +53,6 @@ class QuadraticForm(Functional[Domain]):
         return self.ops.vmap(self.grad, in_axes=0, out_axes=0)(xs)
 
 
-@core_kernels("linop-quadratic-form")
 class LinOpQuadraticForm(QuadraticForm[Domain]):
     r"""
     Quadratic form ``1/2 <x, Q x> + linear(x) + a`` for a Hermitian ``Q``, so ``grad = Q x + ...``.
@@ -70,13 +74,18 @@ class LinOpQuadraticForm(QuadraticForm[Domain]):
         Validation level; the ambient default when omitted.
     """
 
+    _value_core = linop_quadratic_value_core
+    _grad_core = linop_quadratic_grad_core
+    _vvalue_core = linop_quadratic_vvalue_core
+    _vgrad_core = linop_quadratic_vgrad_core
+
     def __init__(
         self,
         Q: LinOp[Domain, Domain],
         linear: LinearFunctional[Domain] | None = None,
         a: Any = 0,
         ctx: Context | str | None = None,
-        check_level: CheckLevel | bool | None = None,
+        check_level: CheckLevel | None = None,
     ) -> None:
         # Q must be a LinOp; linear, if given, a LinearFunctional.
         if not isinstance(Q, LinOp):

@@ -15,7 +15,7 @@ from abc import abstractmethod
 from typing import Any, Callable
 
 from ._check_policy import minimum_check_level
-from ._lazy_algebra import finalize_sum, flatten_sum, fold_scaled, is_scalar_like, scalar_eq
+from ._lazy_algebra import is_scalar_like, scalar_eq
 from ._repr import describe_space
 from .backend import PyTreeNode
 from .contextual import ContextBound
@@ -303,15 +303,19 @@ def make_sum_of(family: type, parts: Any) -> Any:
         if not isinstance(part, family):
             raise TypeError(f"operand {i} must be a {family.__name__}, got {type(part).__name__}.")
     # Flatten nested sums, then validate every term, zeros included.
-    flat = flatten_sum(parts, is_sum=lambda t: isinstance(t, SumNode), parts=lambda t: t.parts)
-    flat = _checked_parts(family, flat, family._Sum.__name__)
+    def flatten(terms):
+        for term in terms:
+            if isinstance(term, SumNode):
+                yield from flatten(term.parts)
+            else:
+                yield term
+
+    flat = _checked_parts(family, flatten(parts), family._Sum.__name__)
     # Drop zeros; collapse to a zero map, a single term, or a sum node.
-    return finalize_sum(
-        flat,
-        is_zero=lambda t: isinstance(t, ZeroNode),
-        make_zero=lambda: family._Zero._of(flat[0].domain, flat[0].codomain, flat[0].ctx),
-        make_sum_node=family._Sum,
-    )
+    nonzero = tuple(term for term in flat if not isinstance(term, ZeroNode))
+    if not nonzero:
+        return family._Zero._of(flat[0].domain, flat[0].codomain, flat[0].ctx)
+    return nonzero[0] if len(nonzero) == 1 else family._Sum(nonzero)
 
 
 def make_scaled_of(family: type, scalar: Any, operand: Any) -> Any:
@@ -321,11 +325,12 @@ def make_scaled_of(family: type, scalar: Any, operand: Any) -> Any:
     if not is_scalar_like(scalar):
         raise TypeError(f"scalar must be scalar-like, got {type(scalar).__name__}.")
     # 0 gives zero, 1 gives the operand, nested scalars multiply out.
-    return fold_scaled(
-        scalar,
-        operand,
-        is_zero=lambda o: isinstance(o, ZeroNode),
-        unwrap_scaled=lambda o: (o.scalar, o.operand) if isinstance(o, ScaledNode) else None,
-        make_zero=lambda: family._Zero._of(operand.domain, operand.codomain, operand.ctx),
-        make_scaled_node=family._Scaled,
-    )
+    current = operand
+    while True:
+        if scalar_eq(scalar, 0):
+            return family._Zero._of(operand.domain, operand.codomain, operand.ctx)
+        if scalar_eq(scalar, 1) or isinstance(current, ZeroNode):
+            return current
+        if not isinstance(current, ScaledNode):
+            return family._Scaled(scalar, current)
+        scalar, current = scalar * current.scalar, current.operand

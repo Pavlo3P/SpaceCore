@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 
 import spacecore as sc
-from spacecore.functional import _base as _functional_base
+from spacecore import _batching
 from tests._helpers import has_jax, jax_real_dtype, to_numpy
 
 
@@ -209,7 +209,7 @@ def test_linop_quadratic_form_vectorized_batches_match_elementwise(
 
 
 def test_matrix_free_functional_vvalue_python_loop_warns_once_on_numpy():
-    _functional_base._VMAP_FALLBACK_WARNED.clear()
+    _batching._VMAP_FALLBACK_WARNED.clear()
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
     space = sc.DenseCoordinateSpace((2,), ctx, check_level="none")
     c = ctx.asarray([1.0, -2.0])

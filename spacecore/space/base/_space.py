@@ -7,7 +7,7 @@ from ..._lazy_algebra import is_recognizably_nonreal
 from ...contextual import ContextBound
 from ..._repr import field_symbol
 from ...contextual import Context
-from ..checks import SpaceCheck, SpaceValidationError, _run_checks
+from ..checks import SpaceCheck, SpaceValidationError
 
 
 class Space(ContextBound):
@@ -27,7 +27,7 @@ class Space(ContextBound):
     def __init__(
         self,
         ctx: Context | str | None = None,
-        check_level: CheckLevel | bool | None = None,
+        check_level: CheckLevel | None = None,
     ) -> None:
         super().__init__(ctx, check_level=check_level)
         # Spaces hold floating data; a complex scalar field needs complex storage.
@@ -208,8 +208,3 @@ class Space(ContextBound):
 
     def _convert(self, new_ctx: Context) -> Space:
         raise NotImplementedError()
-
-    # ``_run_checks`` is kept importable for backwards compatibility but
-    # callers inside SpaceCore go through ``_check_member`` (single
-    # element) or ``_check_batched_member`` (batched) above.
-    _legacy_run_checks = staticmethod(_run_checks)

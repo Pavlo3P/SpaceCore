@@ -34,7 +34,7 @@ class SumToSingleLinOp(TreeLinOp[TreeSpace, Codomain]):
         cod: Codomain,
         parts: Sequence[LinOp],
         ctx: Context | str | None = None,
-        check_level: CheckLevel | bool | None = None,
+        check_level: CheckLevel | None = None,
     ) -> None:
         super().__init__(dom, cod, parts, ctx, check_level=check_level)
         # Cache the parts' flat matrices once (None unless all are flat dense

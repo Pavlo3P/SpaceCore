@@ -18,14 +18,11 @@ Checklist section 3:
   through the relevant space's ``_check_member`` and raises on invalid
   members (``in_space``/``out_space``/``"self"`` targets, ``value``/``grad``
   variants).
-* Enable/disable: a receiver with ``check_level == "none"`` (or the legacy
-  ``_enable_checks == False`` fallback) skips all validation, while
+* Enable/disable: a receiver with ``check_level == "none"`` skips all validation, while
   ``"cheap"``/``"standard"``/``"strict"`` take the validated path.
 * Metadata: ``functools.wraps`` preserves ``__name__``, ``__doc__``, and
   exposes ``__wrapped__``.
-* Argument positions: ``arg_positions`` selects multiple positional args,
-  the deprecated ``arg_pos`` alias still selects a single one, and supplying
-  both raises ``TypeError``.
+* Argument positions: ``arg_positions`` selects one or more positional args.
 * Batched: ``in_batched``/``out_batched`` validate leading-axis batches via
   :func:`spacecore._batching._check_batched`.
 """
@@ -50,10 +47,10 @@ class _RecordingSpace:
 
 
 class _CheckedDemo:
-    """Legacy receiver exposing only ``_enable_checks`` (real fallback path)."""
+    """Receiver whose validation follows its ``check_level``."""
 
-    def __init__(self, enable_checks=True):
-        self._enable_checks = enable_checks
+    def __init__(self, check_level="standard"):
+        self.check_level = check_level
         self.dom = _RecordingSpace("x")
         self.cod = _RecordingSpace("y")
         self.space = _RecordingSpace("z")
@@ -82,10 +79,6 @@ class _CheckedDemo:
     @checked_method(in_space="self", arg_positions=(0, 1))
     def combine(self, x, y):
         return "combined"
-
-    @checked_method(in_space="self", arg_pos=0)
-    def legacy_single_arg(self, x):
-        return "legacy"
 
     def _check_member(self, value):
         self.space._check_member(value)
@@ -153,13 +146,13 @@ class TestInputOutputValidation:
         assert demo.space.calls == ["z", "z"]
 
     def test_invalid_input_raises_when_enabled(self):
-        demo = _CheckedDemo(enable_checks=True)
+        demo = _CheckedDemo()
 
         with pytest.raises(ValueError, match="invalid member"):
             demo.apply("bad")
 
     def test_invalid_output_raises_when_enabled(self):
-        demo = _CheckedDemo(enable_checks=True)
+        demo = _CheckedDemo()
         demo.apply_result = "bad"
 
         with pytest.raises(ValueError, match="invalid member"):
@@ -170,14 +163,6 @@ class TestInputOutputValidation:
 # Enable / disable
 # ===========================================================================
 class TestEnableDisable:
-    def test_skips_checks_when_legacy_disabled(self):
-        demo = _CheckedDemo(enable_checks=False)
-        demo.apply_result = "bad"
-
-        assert demo.apply("bad") == "bad"
-        assert demo.dom.calls == []
-        assert demo.cod.calls == []
-
     @pytest.mark.parametrize("level", ["cheap", "standard", "strict"])
     def test_modern_check_level_takes_validated_path(self, level):
         demo = _ModernDemo(check_level=level)
@@ -221,17 +206,6 @@ class TestArgPositions:
 
         assert demo.combine("z", "z") == "combined"
         assert demo.space.calls == ["z", "z"]
-
-    def test_arg_pos_alias_still_works(self):
-        demo = _CheckedDemo()
-
-        assert demo.legacy_single_arg("z") == "legacy"
-        assert demo.space.calls == ["z"]
-
-    def test_rejects_arg_pos_and_arg_positions_together(self):
-        with pytest.raises(TypeError, match="arg_pos"):
-            checked_method(in_space="space", arg_pos=0, arg_positions=(0,))
-
 
 # ===========================================================================
 # Batched

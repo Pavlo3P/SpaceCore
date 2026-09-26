@@ -176,7 +176,6 @@ def minimize_optax(
     log_every: int = 50,
     history_every: int | None = None,
     record_history: bool = True,
-    progress_callback: Callable[[dict], None] | None = None,
 ) -> OptaxResult:
     r"""
     Minimize a functional with an optax optimizer inside one ``jax.jit`` while-loop.
@@ -205,8 +204,6 @@ def minimize_optax(
         Logging and history cadences; neither affects convergence.
     record_history : bool
         Whether to record value, value change and gradient norm.
-    progress_callback : callable, optional
-        Called with each recorded row after the loop finishes.
 
     Returns
     -------
@@ -445,18 +442,6 @@ def minimize_optax(
         }
     else:
         history = {}
-
-    # Callbacks run after the compiled loop, replaying the recorded rows.
-    if progress_callback is not None and record_history:
-        for i in range(len(history["iteration"])):
-            progress_callback(
-                {
-                    "iteration": int(history["iteration"][i]),
-                    "value": float(history["value"][i]),
-                    "value_delta": float(history["value_delta"][i]),
-                    "grad_norm": float(history["grad_norm"][i]),
-                }
-            )
 
     average_iteration_ms = (
         execution_seconds * 1000.0 / num_iters if num_iters else 0.0

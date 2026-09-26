@@ -9,7 +9,14 @@ from .._batching import _check_scalar_shape
 from .._checks import checked_method
 from .._check_policy import CheckLevel
 from ..contextual import Context
-from ..kernels import core_kernels
+from ..kernels.core.functional import (
+    inner_product_value_core,
+    inner_product_vvalue_core,
+    linear_grad_core,
+    linear_vgrad_core,
+    matrixfree_linear_value_core,
+    matrixfree_linear_vvalue_core,
+)
 from ..space import Space, TreeElement, TreeSpace
 
 
@@ -34,7 +41,6 @@ def _convert_space_element(space: Space, value: Any) -> Any:
     return space.ctx.asarray(value)
 
 
-@core_kernels("functional-linear")
 class LinearFunctional(Functional[Domain]):
     """
     A linear scalar-valued map on ``dom``.
@@ -50,6 +56,9 @@ class LinearFunctional(Functional[Domain]):
     cod : Field or None, optional
         Scalar codomain; the domain's ``scalars`` by default.
     """
+
+    _grad_core = linear_grad_core
+    _vgrad_core = linear_vgrad_core
 
     @property
     @abstractmethod
@@ -78,7 +87,6 @@ class LinearFunctional(Functional[Domain]):
         return self._vgrad_core(xs)
 
 
-@core_kernels("inner-product-functional")
 class InnerProductFunctional(LinearFunctional[Domain]):
     r"""
     The linear functional :math:`x \mapsto \langle c, x\rangle_X` of a representer ``c``.
@@ -95,12 +103,15 @@ class InnerProductFunctional(LinearFunctional[Domain]):
         Validation level; the ambient default when omitted.
     """
 
+    _value_core = inner_product_value_core
+    _vvalue_core = inner_product_vvalue_core
+
     def __init__(
         self,
         c: Any,
         dom: Domain,
         ctx: Context | str | None = None,
-        check_level: CheckLevel | bool | None = None,
+        check_level: CheckLevel | None = None,
     ) -> None:
         super().__init__(dom, ctx, check_level=check_level)
         # Store the representer on the functional's backend, and check it belongs.
@@ -153,7 +164,6 @@ class InnerProductFunctional(LinearFunctional[Domain]):
         return InnerProductFunctional(self._c, self.domain.convert(new_ctx), new_ctx)
 
 
-@core_kernels("matrixfree-linear-functional")
 class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
     """
     Linear functional given by an evaluation callable; no Riesz representer is stored.
@@ -174,13 +184,16 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
         Scalar codomain; ``dom.scalars`` by default.
     """
 
+    _value_core = matrixfree_linear_value_core
+    _vvalue_core = matrixfree_linear_vvalue_core
+
     def __init__(
         self,
         value: Callable[[Any], Any],
         dom: Domain,
         ctx: Context | str | None = None,
         vvalue: Callable[[Any], Any] | None = None,
-        check_level: CheckLevel | bool | None = None,
+        check_level: CheckLevel | None = None,
         *,
         cod: Field | None = None,
     ) -> None:

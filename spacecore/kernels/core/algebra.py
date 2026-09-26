@@ -11,15 +11,13 @@ The functions are duck-typed on the operator — they read ``op.left``,
 kernels subpackage free of a circular dependency: ``linop`` imports ``kernels``,
 never the reverse.
 
-The operator classes opt in via the :func:`spacecore.kernels.core_kernels` class
-decorator (see :mod:`spacecore.kernels._core`); the kernel sets registered at the
-bottom of this module are what those declarations resolve.
+The operator classes bind these functions as class attributes
+(``_apply_core = scaled_apply_core``).
 """
 from __future__ import annotations
 
 from typing import Any
 
-from ._rules import CoreKernelSet, register_core_kernels
 
 # Re-exported: the scalar predicates/helpers live together in
 # :mod:`spacecore._lazy_algebra` (stdlib-only, so importable from anywhere),
@@ -196,36 +194,3 @@ def matrixfree_vapply_core(op: Any, xs: Any) -> Any:
     if op.vapply_fn is None:
         return op.ops.vmap(op.apply, in_axes=0, out_axes=0)(xs)
     return op.vapply_fn(xs)
-
-
-# ---------------------------------------------------------------------------
-# Registration — the rules that operator classes resolve by name
-# ---------------------------------------------------------------------------
-register_core_kernels(CoreKernelSet(
-    "composed", composed_apply_core, composed_rapply_core, composed_vapply_core,
-    notes="Fused flat chain of leaf cores; no per-link rewrapping or re-check.",
-))
-register_core_kernels(CoreKernelSet(
-    "scaled", scaled_apply_core, scaled_rapply_core, scaled_vapply_core,
-    notes="Fold the scalar through the operand core via the space scale helper.",
-))
-register_core_kernels(CoreKernelSet(
-    "sum", sum_apply_core, sum_rapply_core, sum_vapply_core,
-    notes="Accumulate operand cores via the space's check-free add.",
-))
-register_core_kernels(CoreKernelSet(
-    "adjoint", adjoint_apply_core, adjoint_rapply_core, adjoint_vapply_core,
-    notes="Swap the wrapped operator's forward and adjoint cores.",
-))
-register_core_kernels(CoreKernelSet(
-    "identity", identity_apply_core, identity_apply_core, identity_vapply_core,
-    notes="Pass the operand through unchanged.",
-))
-register_core_kernels(CoreKernelSet(
-    "zero", zero_apply_core, zero_rapply_core, zero_vapply_core,
-    notes="Return the codomain/domain zero element.",
-))
-register_core_kernels(CoreKernelSet(
-    "matrixfree", matrixfree_apply_core, matrixfree_rapply_core, matrixfree_vapply_core,
-    notes="Invoke the user-supplied apply/rapply/vapply callables directly.",
-))

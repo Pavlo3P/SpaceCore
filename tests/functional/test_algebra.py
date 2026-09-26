@@ -238,11 +238,14 @@ class TestShifted:
         np.testing.assert_allclose(to_numpy((10.0 - F).value(x)), 10.0 - to_numpy(F.value(x)))
         np.testing.assert_allclose(to_numpy((10.0 - F).grad(x)), -to_numpy(F.grad(x)))
 
-    def test_zero_offset_and_nested_fold(self, numpy_ctx):
-        _, F, _ = _dense(numpy_ctx)
+    def test_zero_offset_and_sum_with_constant(self, numpy_ctx):
+        _, F, x = _dense(numpy_ctx)
         assert (F + 0.0) is F
         s = (F + 3.0) + 2.0
-        assert isinstance(s, sc.ShiftedFunctional) and s.offset == 5.0
+        assert isinstance(s, sc.SumFunctional) and isinstance(s.terms[-1], sc.ConstantFunctional)
+        value, grad = s.value_and_grad(x)
+        np.testing.assert_allclose(to_numpy(value), to_numpy(F.value(x)) + 5.0)
+        np.testing.assert_allclose(to_numpy(grad), to_numpy(F.grad(x)))
 
     def test_non_scalar_non_functional_notimplemented(self, numpy_ctx):
         _, F, _ = _dense(numpy_ctx)
@@ -281,7 +284,7 @@ class TestZero:
 
     def test_pytree_round_trip(self, numpy_ctx):
         X, F, _ = _dense(numpy_ctx)
-        for obj, cls in [(F + 3.0, sc.ShiftedFunctional), (sc.ZeroFunctional(X, numpy_ctx), sc.ZeroFunctional)]:
+        for obj, cls in [(F + 3.0, sc.SumFunctional), (sc.ZeroFunctional(X, numpy_ctx), sc.ZeroFunctional)]:
             children, aux = obj.tree_flatten()
             assert cls.tree_unflatten(aux, children) == obj
 

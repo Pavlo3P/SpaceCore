@@ -19,11 +19,15 @@ from ..space import (
 from ..types import DenseArray
 from ..contextual import Context
 from ..contextual import resolve_context_priority
-from ..kernels import core_kernels
-from ..kernels.core.dense import _DenseMode
+from ..kernels.core.dense import (
+    dense_apply_core,
+    dense_rapply_core,
+    dense_rvapply_core,
+    dense_vapply_core,
+    _DenseMode,
+)
 
 
-@core_kernels("dense")
 class DenseLinOp(LinOp[Domain, Codomain]):
     r"""
     Linear operator stored as a dense array of shape ``cod.shape + dom.shape``.
@@ -56,13 +60,18 @@ class DenseLinOp(LinOp[Domain, Codomain]):
     array([2., 6.])
     """
 
+    _apply_core = dense_apply_core
+    _rapply_core = dense_rapply_core
+    _vapply_core = dense_vapply_core
+    _rvapply_core = dense_rvapply_core
+
     def __init__(
         self,
         A: DenseArray,
         dom: Domain,
         cod: Codomain | None = None,
         ctx: Context | str | None = None,
-        check_level: CheckLevel | bool | None = None,
+        check_level: CheckLevel | None = None,
     ) -> None:
         # A must already be a dense array of the resolved backend.
         ctx = resolve_context_priority(ctx, dom, cod)

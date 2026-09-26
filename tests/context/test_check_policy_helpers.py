@@ -19,16 +19,12 @@ Checklist section 2:
 * ``check_level_at_least`` implements the full ``actual`` >= ``required``
   truth table over the four levels.
 * ``normalize_check_level`` resolves ``None`` to its default, passes explicit
-  levels through, rejects unknown levels, maps the deprecated ``enable_checks``
-  shim (``True`` -> ``"standard"``, ``False`` -> ``"none"``), rejects non-bool
-  ``enable_checks``, rejects supplying both selectors, and emits the
-  ``DeprecationWarning`` only when ``warn_legacy=True``.
+  levels through, and rejects unknown levels.
 * ``minimum_check_level`` returns ``"none"`` for the empty tuple and otherwise
   the least-expensive level of a mixed tuple.
 """
 from __future__ import annotations
 
-import warnings
 
 import numpy as np  # noqa: F401  (kept for convention parity across the suite)
 import pytest
@@ -111,31 +107,6 @@ class TestNormalizeCheckLevel:
         message = str(exc_info.value)
         assert "'none'" in message
         assert "'strict'" in message
-
-    def test_enable_checks_true_maps_to_standard(self):
-        assert normalize_check_level(enable_checks=True) == "standard"
-
-    def test_enable_checks_false_maps_to_none(self):
-        assert normalize_check_level(enable_checks=False) == "none"
-
-    def test_non_bool_enable_checks_raises_type_error(self):
-        with pytest.raises(TypeError, match="enable_checks must be a bool"):
-            normalize_check_level(enable_checks="yes")  # type: ignore[arg-type]
-
-    def test_both_selectors_raise_type_error(self):
-        with pytest.raises(TypeError, match="either check_level or enable_checks"):
-            normalize_check_level("strict", enable_checks=True)
-
-    def test_deprecation_warning_only_when_requested(self):
-        with pytest.warns(DeprecationWarning, match="enable_checks is deprecated"):
-            result = normalize_check_level(enable_checks=True, warn_legacy=True)
-        assert result == "standard"
-
-    def test_no_deprecation_warning_by_default(self):
-        with warnings.catch_warnings():
-            warnings.simplefilter("error", DeprecationWarning)
-            # Must not raise: warn_legacy defaults to False.
-            assert normalize_check_level(enable_checks=True) == "standard"
 
 
 # ===========================================================================

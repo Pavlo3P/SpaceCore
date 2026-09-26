@@ -16,7 +16,6 @@ from enum import Enum, auto
 from typing import Any
 
 from ...space import DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace
-from ._rules import CoreKernelSet, register_core_kernels
 
 _VECTOR_SPACES = (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace)
 
@@ -111,10 +110,3 @@ def diagonal_rvapply_core(op: Any, ys: Any) -> Any:
         opname=type(op).__name__,
         ops=op.ops,
     )
-
-
-register_core_kernels(CoreKernelSet(
-    "diagonal", diagonal_apply_core, diagonal_rapply_core,
-    diagonal_vapply_core, diagonal_rvapply_core,
-    notes="Coordinatewise diagonal action; metric-aware adjoint via Riesz maps.",
-))

@@ -110,7 +110,7 @@ class TestGeometryAndFallback:
                 self.weights = weights
 
             def inner(self, x, y):
-                if self._enable_checks:
+                if self.check_level != "none":
                     self._check_member(x)
                     self._check_member(y)
                 return self.ops.vdot(x, self.weights * y)

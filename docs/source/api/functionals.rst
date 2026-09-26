@@ -33,7 +33,6 @@ types, never values.
 
    spacecore.functional.ScaledFunctional
    spacecore.functional.SumFunctional
-   spacecore.functional.ShiftedFunctional
    spacecore.functional.ZeroFunctional
    spacecore.functional.ConstantFunctional
    spacecore.functional.ProductFunctional
@@ -45,7 +44,6 @@ types, never values.
 
 * ``ScaledFunctional`` is ``a * F``; the Riesz gradient scales by ``conj(a)``.
 * ``SumFunctional`` is ``F_1 + ... + F_n`` on a shared domain.
-* ``ShiftedFunctional`` is the affine shift ``F + c`` (gradient unchanged).
 * ``ZeroFunctional`` is the additive identity, recognized by the canonicalizers.
 * ``ConstantFunctional`` is ``x -> c``, the embedding of a scalar into the
   algebra; ``make_constant_functional`` collapses ``c = 0`` to ``ZeroFunctional``.

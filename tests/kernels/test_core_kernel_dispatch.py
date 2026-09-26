@@ -1,12 +1,9 @@
-"""Core-kernel dispatch: rules engine + operator bindings.
+"""Core-kernel binding: operators bind the check-free cores as class attributes.
 
-The lazy LinOp algebra no longer hand-writes ``_apply_core``/``_rapply_core``/
-``_vapply_core`` in each operator body. Instead the concrete cores live in
-:mod:`spacecore.kernels.core.algebra` and operators opt in with the
-:func:`spacecore.kernels.core_kernels` class decorator. These tests pin that
-wiring: the registry behaves, each operator binds the expected kernel set, and
-the bound cores are exactly the functions from the kernels submodule (i.e. the
-logic is organized in the submodule, not duplicated in the operator classes).
+The concrete cores live in :mod:`spacecore.kernels.core` and each operator class
+binds them directly (``_apply_core = dense_apply_core``). These tests pin that
+the bound cores are the submodule functions (not duplicated inline) and that
+the fused paths compute and validate correctly.
 """
 from __future__ import annotations
 
@@ -14,97 +11,7 @@ import numpy as np
 import pytest
 
 import spacecore as sc
-from spacecore.kernels import (
-    CoreKernelSet,
-    core_kernel_names,
-    get_core_kernels,
-    register_core_kernels,
-)
 from spacecore.kernels.core import algebra as kalg
-from spacecore.kernels.core import core_kernels
-
-
-# ---------------------------------------------------------------------------
-# Registry / rules engine
-# ---------------------------------------------------------------------------
-def test_every_kernel_set_is_registered():
-    names = set(core_kernel_names())
-    expected = {
-        # composite algebra
-        "composed", "scaled", "sum", "adjoint", "identity", "zero", "matrixfree",
-        # concrete leaves
-        "dense", "diagonal", "sparse",
-    }
-    assert expected <= names
-
-
-def test_register_is_idempotent_for_same_object():
-    kset = get_core_kernels("composed")
-    # Re-registering the identical object is a no-op, not a collision.
-    assert register_core_kernels(kset) is kset
-
-
-def test_register_rejects_name_collision():
-    other = CoreKernelSet("composed", lambda op, x: x)
-    with pytest.raises(ValueError, match="name collision"):
-        register_core_kernels(other)
-
-
-def test_core_kernel_set_validates_callables():
-    # No cores at all is an error.
-    with pytest.raises(ValueError):
-        CoreKernelSet("bad")
-    # A provided core must be callable.
-    with pytest.raises(TypeError):
-        CoreKernelSet("bad", apply="not callable")  # type: ignore[arg-type]
-    with pytest.raises(TypeError):
-        CoreKernelSet("bad", value="not callable")  # type: ignore[arg-type]
-    # Empty name is an error even with a valid core.
-    with pytest.raises(ValueError):
-        CoreKernelSet("", apply=lambda op, x: x)
-
-
-def test_functional_kernel_set_binds_value_family():
-    """A functional kernel set installs the ``_value_core`` family."""
-    kset = CoreKernelSet(
-        "test-functional-bind",
-        value=lambda op, x: ("v", x),
-        vgrad=lambda op, xs: ("vg", xs),
-    )
-    register_core_kernels(kset)
-
-    @core_kernels("test-functional-bind")
-    class _Dummy:
-        pass
-
-    assert _Dummy._value_core is kset.value
-    assert _Dummy._vgrad_core is kset.vgrad
-    assert "_grad_core" not in _Dummy.__dict__
-    assert "_apply_core" not in _Dummy.__dict__
-
-
-def test_decorator_binds_kernel_functions_onto_class():
-    kset = CoreKernelSet(
-        "test-bind",
-        apply=lambda op, x: ("a", x),
-        rapply=lambda op, y: ("r", y),
-    )
-    register_core_kernels(kset)
-
-    @core_kernels("test-bind")
-    class _Dummy:
-        pass
-
-    assert _Dummy._apply_core is kset.apply
-    assert _Dummy._rapply_core is kset.rapply
-    assert _Dummy._core_kernel_set == "test-bind"
-    # vapply was left None, so it is not bound onto the class.
-    assert "_vapply_core" not in _Dummy.__dict__
-
-
-def test_decorator_unknown_name_raises():
-    with pytest.raises(KeyError):
-        core_kernels("no-such-kernel-set")
 
 
 # ---------------------------------------------------------------------------
@@ -118,30 +25,6 @@ def ctx():
 def _endo(ctx, X, seed=0):
     rng = np.random.default_rng(seed)
     return sc.DenseLinOp(ctx.asarray(rng.standard_normal((3, 3))), X, X, ctx)
-
-
-@pytest.mark.parametrize(
-    "build, expected",
-    [
-        (lambda ctx, X, A: A @ A, "composed"),
-        (lambda ctx, X, A: 2.0 * A, "scaled"),
-        (lambda ctx, X, A: A + A, "sum"),
-        (lambda ctx, X, A: A.H, "adjoint"),
-        (lambda ctx, X, A: sc.IdentityLinOp(X, ctx), "identity"),
-        (lambda ctx, X, A: sc.ZeroLinOp(X, X, ctx), "zero"),
-        (lambda ctx, X, A: sc.MatrixFreeLinOp(A.apply, A.rapply, X, X, ctx), "matrixfree"),
-    ],
-)
-def test_operator_binds_expected_core_kernel_set(ctx, build, expected):
-    X = sc.DenseCoordinateSpace((3,), ctx)
-    A = _endo(ctx, X)
-    op = build(ctx, X, A)
-    assert op._core_kernel_set == expected
-    kset = get_core_kernels(expected)
-    # The class's core methods ARE the registered kernel functions — the logic
-    # lives in spacecore.kernels.core.algebra, not duplicated in the operator class.
-    assert type(op)._apply_core is kset.apply
-    assert type(op)._apply_core.__module__ == "spacecore.kernels.core.algebra"
 
 
 @pytest.mark.parametrize(

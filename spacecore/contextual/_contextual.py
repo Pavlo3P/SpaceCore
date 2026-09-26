@@ -71,7 +71,7 @@ class Contextual:
         level = _check_override.get()
         return level if level is not None else self._baseline_check_level
 
-    def set_check_level(self, level: CheckLevel | bool | None) -> None:
+    def set_check_level(self, level: CheckLevel | None) -> None:
         """Set the process-wide *baseline* validation level for new bound objects.
 
         Deliberately does not disturb scoped overrides: a ``scoped_check_level``
@@ -80,7 +80,7 @@ class Contextual:
         self._baseline_check_level = normalize_check_level(level)
 
     @contextmanager
-    def scoped_check_level(self, level: CheckLevel | bool | None) -> Iterator[CheckLevel]:
+    def scoped_check_level(self, level: CheckLevel | None) -> Iterator[CheckLevel]:
         """Override the ambient validation level for the duration of the block.
 
         The override is visible only to the current thread / async task. The
@@ -212,14 +212,6 @@ class Contextual:
             return True
         first = ops[0]
         return all(op == first for op in ops)
-
-    def enforce_convert_policy(
-        self, x: Any, to: Context | BackendFamily | str | None = None
-    ) -> Tuple[Any, Context]:
-        """Resolve the target context for ``x``."""
-        self.infer_context(x)
-        ctx = self.normalize_context(to)
-        return x, ctx
 
     def resolve_context_priority(
         self,

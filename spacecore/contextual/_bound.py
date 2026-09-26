@@ -7,14 +7,12 @@ from ..backend import BackendFamily, BackendOps
 from .._check_policy import (
     CheckLevel,
     check_level_at_least,
-    level_to_enabled,
     minimum_check_level,
     normalize_check_level,
 )
 from .._repr import format_dtype
 from ..types import DType
 from ._state import (
-    enforce_convert_policy,
     get_check_level,
     normalize_context,
     resolve_context_priority,
@@ -37,7 +35,7 @@ class ContextBound(ABC):
     def __init__(
         self,
         ctx: Context | str | None = None,
-        check_level: CheckLevel | bool | None = None,
+        check_level: CheckLevel | None = None,
     ):
         ctx = normalize_context(ctx)
         self._ctx = ctx
@@ -67,7 +65,7 @@ class ContextBound(ABC):
         ctx: Any,
         *children: Any,
         sources: tuple[Any, ...] | None = None,
-        check_level: CheckLevel | bool | None = None,
+        check_level: CheckLevel | None = None,
     ):
         """
         Resolve the context, store it with the check level, and return ``children`` converted onto it.
@@ -133,11 +131,6 @@ class ContextBound(ABC):
             return self._check_level
         return get_check_level()
 
-    @property
-    def _enable_checks(self) -> bool:
-        """Deprecated internal Boolean view retained for compatibility."""
-        return level_to_enabled(self.check_level)
-
     def _checks_at_least(self, level: CheckLevel) -> bool:
         """Return whether this object runs checks assigned to ``level``."""
         return check_level_at_least(self.check_level, level)
@@ -198,7 +191,7 @@ class ContextBound(ABC):
         re-seeded from the ambient default.
         """
         # Same context: nothing to do. Otherwise rebuild, keeping the check level.
-        _, new_ctx = enforce_convert_policy(self, new_ctx)
+        new_ctx = normalize_context(new_ctx)
         if self.ctx == new_ctx:
             return self
         result = self._convert(new_ctx)

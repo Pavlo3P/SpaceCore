@@ -35,7 +35,7 @@ class TreeLinOp(LinOp[Domain, Codomain]):
         cod: Codomain,
         parts: Sequence[LinOp],
         ctx: Context | str | None = None,
-        check_level: CheckLevel | bool | None = None,
+        check_level: CheckLevel | None = None,
     ) -> None:
         if not parts:
             raise ValueError("Parts must be non-empty.")

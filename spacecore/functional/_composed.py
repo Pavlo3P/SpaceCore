@@ -8,7 +8,11 @@ from ._quadratic import LinOpQuadraticForm
 from .._checks import checked_method
 from .._check_policy import CheckLevel, minimum_check_level
 from ..contextual import Context
-from ..kernels import core_kernels
+from ..kernels.core.functional import (
+    composed_functional_grad_core,
+    composed_functional_value_core,
+    composed_functional_vgrad_core,
+)
 from ..linop import LinOp
 from ..mapping import register
 
@@ -55,7 +59,6 @@ def make_functional_composed(F: Functional, A: LinOp) -> Functional:
     return ComposedFunctional(F, A)
 
 
-@core_kernels("composed-functional")
 class ComposedFunctional(Functional):
     """
     Generic pull-back of a functional through a linear operator.
@@ -72,11 +75,15 @@ class ComposedFunctional(Functional):
         Validation level; the ambient default when omitted.
     """
 
+    _value_core = composed_functional_value_core
+    _grad_core = composed_functional_grad_core
+    _vgrad_core = composed_functional_vgrad_core
+
     def __init__(
         self,
         F: Functional,
         A: LinOp,
-        check_level: CheckLevel | bool | None = None,
+        check_level: CheckLevel | None = None,
     ) -> None:
         _require_composable(F, A)
         # The pull-back lives on A's domain and keeps F's scalar codomain.

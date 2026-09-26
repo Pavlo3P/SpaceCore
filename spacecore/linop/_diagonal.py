@@ -18,11 +18,15 @@ from ..space import (
 )
 from ..types import DenseArray
 from ..contextual import resolve_context_priority
-from ..kernels import core_kernels
-from ..kernels.core.diagonal import _DiagonalMode
+from ..kernels.core.diagonal import (
+    diagonal_apply_core,
+    diagonal_rapply_core,
+    diagonal_rvapply_core,
+    diagonal_vapply_core,
+    _DiagonalMode,
+)
 
 
-@core_kernels("diagonal")
 class DiagonalLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
     r"""
     Coordinatewise map ``x -> diagonal * x`` on one space.
@@ -52,12 +56,17 @@ class DiagonalLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
     array([ 8., 15.])
     """
 
+    _apply_core = diagonal_apply_core
+    _rapply_core = diagonal_rapply_core
+    _vapply_core = diagonal_vapply_core
+    _rvapply_core = diagonal_rvapply_core
+
     def __init__(
         self,
         diagonal: DenseArray,
         space: CoordinateSpace | None = None,
         ctx: Context | str | None = None,
-        check_level: CheckLevel | bool | None = None,
+        check_level: CheckLevel | None = None,
     ) -> None:
         # Infer a Euclidean space from the diagonal's shape if none is given.
         ctx = resolve_context_priority(ctx, space)

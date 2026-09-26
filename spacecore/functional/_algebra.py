@@ -1,5 +1,5 @@
 """
-Lazy functional algebra: scaled, sum, product, constant and shifted nodes.
+Lazy functional algebra: scaled, sum, product and constant nodes.
 
 Functionals are scalar-valued, so beyond the operator algebra ``F * G`` is a
 pointwise product and a scalar embeds as :class:`ConstantFunctional`.
@@ -59,7 +59,7 @@ class ScaledFunctional(ScaledNode, Functional):
         Validation level; the ambient default when omitted.
     """
 
-    def __init__(self, scalar: Any, functional: Functional, check_level: CheckLevel | bool | None = None) -> None:
+    def __init__(self, scalar: Any, functional: Functional, check_level: CheckLevel | None = None) -> None:
         super().__init__(scalar, functional, check_level)
 
     @property
@@ -125,7 +125,7 @@ class SumFunctional(SumNode, Functional):
         Validation level; the ambient default when omitted.
     """
 
-    def __init__(self, terms: Any, check_level: CheckLevel | bool | None = None) -> None:
+    def __init__(self, terms: Any, check_level: CheckLevel | None = None) -> None:
         super().__init__(terms, check_level)
 
     @property
@@ -149,13 +149,14 @@ class SumFunctional(SumNode, Functional):
 
     def grad(self, x: Any, *args: Any, **kwargs: Any) -> Any:
         """Return the domain-sum of the term gradients (combined via ``X.add``)."""
-        # Sum of the terms' gradients, added in the domain (elements may be pytrees).
+        # Constant terms have zero gradient and are skipped, so ``F + c`` costs no extra add.
         domain = self.domain
-        terms = iter(self.terms)
-        total = next(terms).grad(x, *args, **kwargs)
-        for term in terms:
-            total = domain.add(total, term.grad(x, *args, **kwargs))
-        return total
+        total = None
+        for term in self.terms:
+            if not isinstance(term, ConstantFunctional):
+                grad = term.grad(x, *args, **kwargs)
+                total = grad if total is None else domain.add(total, grad)
+        return domain.zeros() if total is None else total
 
     def value_and_grad(self, x: Any, *args: Any, **kwargs: Any) -> tuple[Any, Any]:
         """Return ``(sum values, domain-sum grads)`` from one fused pass per term."""
@@ -164,10 +165,13 @@ class SumFunctional(SumNode, Functional):
         value_total = None
         grad_total = None
         for term in self.terms:
+            if isinstance(term, ConstantFunctional):
+                value_total = term._value_core(x) if value_total is None else value_total + term._value_core(x)
+                continue
             value, grad = term.value_and_grad(x, *args, **kwargs)
             value_total = value if value_total is None else value_total + value
             grad_total = grad if grad_total is None else domain.add(grad_total, grad)
-        return value_total, grad_total
+        return value_total, domain.zeros() if grad_total is None else grad_total
 
 
 def make_functional_sum(terms: Any) -> Functional:
@@ -250,7 +254,7 @@ class ConstantFunctional(Functional):
         dom: Any,
         constant: Any,
         ctx: Context | str | None = None,
-        check_level: CheckLevel | bool | None = None,
+        check_level: CheckLevel | None = None,
         *,
         cod: Field | None = None,
     ) -> None:
@@ -329,80 +333,9 @@ def make_constant_functional(
     return ConstantFunctional(dom, constant, ctx)
 
 
-class ShiftedFunctional(Functional):
-    """
-    Affine shift ``functional + offset``: value shifted, gradient unchanged.
-
-    Parameters
-    ----------
-    functional : Functional
-        Functional to shift.
-    offset : scalar-like
-        Constant added to the value.
-    check_level : {"none", "cheap", "standard", "strict"}, optional
-        Validation level; the ambient default when omitted.
-    """
-
-    def __init__(
-        self,
-        functional: Functional,
-        offset: Any,
-        check_level: CheckLevel | bool | None = None,
-    ) -> None:
-        # Validate, then bind with the functional's endpoints.
-        if not isinstance(functional, Functional):
-            raise TypeError(f"functional must be a Functional, got {type(functional).__name__}.")
-        if not is_scalar_like(offset):
-            raise TypeError(f"offset must be scalar-like, got {type(offset).__name__}.")
-        if check_level is None:
-            check_level = functional.check_level
-        super().__init__(functional.domain, functional.ctx, check_level=check_level,
-                         cod=functional.codomain)
-        self.functional = functional.convert(self.ctx)
-        self.offset = offset
-
-    @checked_method(in_space="domain", out_space="codomain")
-    def value(self, x: Any, *args: Any, **kwargs: Any) -> Any:
-        """Return ``functional.value(x) + offset``."""
-        return self._value_core(x, *args, **kwargs)
-
-    def _value_core(self, x: Any, *args: Any, **kwargs: Any) -> Any:
-        """Check-free shifted value."""
-        return self.functional._value_core(x, *args, **kwargs) + self.offset
-
-    def grad(self, x: Any, *args: Any, **kwargs: Any) -> Any:
-        """Return ``functional.grad(x)`` (a constant shift has zero gradient)."""
-        return self.functional.grad(x, *args, **kwargs)
-
-    def value_and_grad(self, x: Any, *args: Any, **kwargs: Any) -> tuple[Any, Any]:
-        """Return ``(value + offset, grad)`` from one fused child evaluation."""
-        value, grad = self.functional.value_and_grad(x, *args, **kwargs)
-        return value + self.offset, grad
-
-    def __eq__(self, other: Any) -> bool:
-        """Return whether another shifted functional has the same offset and operand."""
-        if not self.same_math(other):
-            return NotImplemented
-        return scalar_eq(self.offset, other.offset) and self.functional == other.functional
-
-    def tree_flatten(self):
-        """Flatten this functional for pytree registration (offset is a traced child)."""
-        return (self.functional, self.offset), ()
-
-    @classmethod
-    def tree_unflatten(cls, aux, children):
-        """Rebuild this functional from pytree data."""
-        functional, offset = children
-        return cls(functional, offset)
-
-    def _convert(self, new_ctx: Context) -> "ShiftedFunctional":
-        """Convert the shifted functional to ``new_ctx``."""
-        return ShiftedFunctional(self.functional.convert(new_ctx), self.offset)
-
-
 def make_shifted_functional(functional: Functional, offset: Any) -> Functional:
     """
-    Return ``functional + offset``: ``0`` passes it through, nested shifts fold.
+    Return ``functional + offset`` as a sum with a :class:`ConstantFunctional`; ``0`` passes it through.
 
     Parameters
     ----------
@@ -416,16 +349,15 @@ def make_shifted_functional(functional: Functional, offset: Any) -> Functional:
     Functional
         The shifted functional.
     """
-    # Zero offsets vanish and nested shifts add up.
     if not isinstance(functional, Functional):
         raise TypeError(f"functional must be a Functional, got {type(functional).__name__}.")
     if not is_scalar_like(offset):
         raise TypeError(f"offset must be scalar-like, got {type(offset).__name__}.")
     if scalar_eq(offset, 0):
         return functional
-    if isinstance(functional, ShiftedFunctional):
-        return make_shifted_functional(functional.functional, functional.offset + offset)
-    return ShiftedFunctional(functional, offset)
+    constant = ConstantFunctional(functional.domain, offset, functional.ctx,
+                                  check_level=functional.check_level, cod=functional.codomain)
+    return make_functional_sum((functional, constant))
 
 
 class ProductFunctional(Functional):
@@ -448,7 +380,7 @@ class ProductFunctional(Functional):
         self,
         left: Functional,
         right: Functional,
-        check_level: CheckLevel | bool | None = None,
+        check_level: CheckLevel | None = None,
     ) -> None:
         # Both factors must be functionals on one domain.
         for name, factor in (("left", left), ("right", right)):

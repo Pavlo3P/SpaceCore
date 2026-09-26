@@ -47,7 +47,7 @@ class NegativeEntropyFunctional(_CoordinateFunctional[Domain]):
         self,
         dom: Domain,
         ctx: Context | str | None = None,
-        check_level: CheckLevel | bool | None = None,
+        check_level: CheckLevel | None = None,
     ) -> None:
         super().__init__(dom, ctx, check_level=check_level)
 
@@ -115,7 +115,7 @@ class KLDivergenceFunctional(_CoordinateFunctional[Domain]):
         target: Any,
         dom: Domain,
         ctx: Context | str | None = None,
-        check_level: CheckLevel | bool | None = None,
+        check_level: CheckLevel | None = None,
     ) -> None:
         super().__init__(dom, ctx, check_level=check_level)
         # Store the target on the functional's backend and check it belongs.

@@ -46,7 +46,7 @@ class HermitianSpace(DenseCoordinateSpace, StarSpace, EuclideanJordanAlgebraSpac
         rtol: float = 0.0,
         enforce_herm: bool = True,
         ctx: Context | str | None = None,
-        check_level: CheckLevel | bool | None = None,
+        check_level: CheckLevel | None = None,
     ):
         # An n x n coordinate space plus Hermitian-check tolerances.
         if n <= 0:

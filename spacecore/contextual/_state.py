@@ -57,7 +57,7 @@ def get_check_level() -> CheckLevel:
     return _state().get_check_level()
 
 
-def set_check_level(level: CheckLevel | bool | None) -> None:
+def set_check_level(level: CheckLevel | None) -> None:
     """
     Set the ambient default validation level applied to new bound objects.
 
@@ -74,7 +74,7 @@ def set_check_level(level: CheckLevel | bool | None) -> None:
 
 
 @contextmanager
-def use_check_level(level: CheckLevel | bool | None):
+def use_check_level(level: CheckLevel | None):
     """
     Override the ambient validation level inside a ``with`` block (thread/task-scoped, like :func:`use_context`).
 
@@ -219,11 +219,3 @@ def normalize_ops(ops: str | BackendFamily | BackendOps | type[BackendOps] | Con
     if isinstance(ops, BackendOps):
         return ops
     return _ops_registry.get(ops)
-
-
-def enforce_convert_policy(
-    x: Any,
-    to: Context | BackendFamily | str | None = None,
-) -> tuple[Any, Context]:
-    """Resolve a conversion target context."""
-    return _state().enforce_convert_policy(x, to)

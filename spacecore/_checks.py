@@ -3,46 +3,22 @@ from __future__ import annotations
 from functools import wraps
 from typing import Any, Callable
 
-from ._check_policy import (
-    CheckLevel,
-    check_level_at_least,
-    enabled_to_level,
-    normalize_check_level,
-    require_mutually_exclusive,
-)
+from ._check_policy import check_level_at_least
 
 
-def _as_positions(
-    arg_pos: int | None,
-    arg_positions: int | tuple[int, ...] | None,
-) -> tuple[int, ...]:
-    """Normalize legacy and multi-position argument selectors."""
-    require_mutually_exclusive("arg_pos", arg_pos, "arg_positions", arg_positions)
+def _as_positions(arg_positions: int | tuple[int, ...] | None) -> tuple[int, ...]:
+    """Normalize the checked-argument selector to a tuple of positions."""
     if arg_positions is None:
-        return (0,) if arg_pos is None else (arg_pos,)
+        return (0,)
     if isinstance(arg_positions, int):
         return (arg_positions,)
     return tuple(arg_positions)
-
-
-def _space_target(self: Any, space_name: str) -> Any:
-    """Return the space object named by ``space_name``."""
-    return self if space_name == "self" else getattr(self, space_name)
-
-
-def _object_check_level(obj: Any) -> CheckLevel:
-    """Read the new policy while supporting legacy decorator users."""
-    level = getattr(obj, "check_level", None)
-    if level is not None:
-        return normalize_check_level(level)
-    return enabled_to_level(getattr(obj, "_enable_checks", True))
 
 
 def checked_method(
     *,
     in_space: str | None = None,
     out_space: str | None = None,
-    arg_pos: int | None = None,
     arg_positions: int | tuple[int, ...] | None = None,
     in_batched: bool = False,
     out_batched: bool = False,
@@ -59,8 +35,6 @@ def checked_method(
         Attribute of ``self`` holding the input space, ``"self"``, or ``None`` for no input check.
     out_space : str or None, optional
         Attribute of ``self`` holding the output space, ``"self"``, or ``None`` for no output check.
-    arg_pos : int or None, optional
-        Deprecated alias for a single ``arg_positions`` entry.
     arg_positions : int, tuple of int, or None, optional
         Positions in ``*args`` checked against ``in_space``; ``(0,)`` by default.
     in_batched : bool, optional
@@ -80,7 +54,7 @@ def checked_method(
         # the decorator's argument combination, not a bad runtime value.
         raise TypeError("out_batched_scalar requires in_space to locate the batch size.")
     # Precompute which arguments to check, so the wrapper stays cheap.
-    positions = _as_positions(arg_pos, arg_positions)
+    positions = _as_positions(arg_positions)
     # Resolve positions to a single-element fast path or a tuple iteration.
     single_pos = positions[0] if len(positions) == 1 else None
     # The batch size for out_batched_scalar comes from the first checked input.
@@ -89,13 +63,8 @@ def checked_method(
     def decorate(method: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(method)
         def wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
-            # Fast path: ``check_level == "none"`` means no validation
-            # on either side. Read the attribute directly; the
-            # legacy-fallback path is only taken on objects that don't
-            # expose ``check_level`` (older user code).
-            level = getattr(self, "check_level", None)
-            if level is None:
-                level = enabled_to_level(getattr(self, "_enable_checks", True))
+            # Fast path: ``check_level == "none"`` means no validation on either side.
+            level = getattr(self, "check_level", "standard")
             if level == "none":
                 return method(self, *args, **kwargs)
 

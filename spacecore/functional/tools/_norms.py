@@ -43,7 +43,7 @@ class SquaredL2NormFunctional(_CoordinateFunctional[Domain]):
         self,
         dom: Domain,
         ctx: Context | str | None = None,
-        check_level: CheckLevel | bool | None = None,
+        check_level: CheckLevel | None = None,
     ) -> None:
         super().__init__(dom, ctx, check_level=check_level)
 
@@ -110,7 +110,7 @@ class LpNormFunctional(_CoordinateFunctional[Domain]):
         dom: Domain,
         p: Any,
         ctx: Context | str | None = None,
-        check_level: CheckLevel | bool | None = None,
+        check_level: CheckLevel | None = None,
     ) -> None:
         super().__init__(dom, ctx, check_level=check_level)
         # p must be finite and at least 1.
@@ -146,7 +146,7 @@ class LpNormFunctional(_CoordinateFunctional[Domain]):
 def L1NormFunctional(
     dom: Domain,
     ctx: Context | str | None = None,
-    check_level: CheckLevel | bool | None = None,
+    check_level: CheckLevel | None = None,
 ) -> "LpNormFunctional[Domain]":
     r"""
     Coordinate 1-norm: ``LpNormFunctional(dom, 1)``.

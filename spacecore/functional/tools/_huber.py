@@ -52,7 +52,7 @@ class HuberFunctional(_CoordinateFunctional[Domain]):
         dom: Domain,
         delta: Any,
         ctx: Context | str | None = None,
-        check_level: CheckLevel | bool | None = None,
+        check_level: CheckLevel | None = None,
     ) -> None:
         super().__init__(dom, ctx, check_level=check_level)
         # delta must be finite and positive.

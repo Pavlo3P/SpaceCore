@@ -5,13 +5,6 @@ from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
 from .._batching import _leading_batch_size, _warn_vmap_fallback_once
 
-# Re-exported for backward compatibility; these helpers now live in
-# :mod:`spacecore._batching` and are shared with :class:`~spacecore.linop.LinOp`.
-from .._batching import (  # noqa: F401
-    _VMAP_FALLBACK_WARN_BATCH,
-    _VMAP_FALLBACK_WARNED,
-    _check_scalar_shape,
-)
 from .._checks import checked_method
 from ..mapping import Mapping
 from ..contextual import Context, resolve_context_priority
@@ -48,7 +41,7 @@ class Functional(Mapping, Generic[Domain]):
         self,
         dom: Domain,
         ctx: Context | str | None = None,
-        check_level: CheckLevel | bool | None = None,
+        check_level: CheckLevel | None = None,
         *,
         cod: Field | None = None,
     ) -> None:

@@ -7,7 +7,7 @@ from ..contextual import Context
 from ..functional import QuadraticForm
 from ..linop import LinOp
 from ..space import Space
-from ._utils import DEFAULT_CONVERGENCE_CHECK_INTERVAL, SpaceCoreOps, check_interval
+from ._utils import SpaceCoreOps
 from ._utils import check_maxiter, core_normalize, default_initial_vector, is_converged
 from ._utils import require_linop, require_square, resolve_apply, result_repr
 
@@ -119,7 +119,6 @@ def power_iteration(
     x0: Any | None = None,
     tol: float = 1e-6,
     maxiter: int | None = None,
-    check_every: int = DEFAULT_CONVERGENCE_CHECK_INTERVAL,
 ) -> PowerIterationResult:
     r"""
     Estimate the dominant eigenpair (largest in absolute value) of a self-adjoint action.
@@ -136,8 +135,6 @@ def power_iteration(
         Converged when ``norm(A @ x - eigenvalue * x) < tol``.
     maxiter : int or None, optional
         Iteration cap; ``prod(A.domain.shape)`` by default.
-    check_every : int, optional
-        Ignored; kept for backward compatibility.
 
     Returns
     -------
@@ -184,7 +181,6 @@ def power_iteration(
         raise TypeError(f"A must be a LinOp or QuadraticForm, got {type(A).__name__}.")
 
     maxiter = check_maxiter(maxiter, cast(Any, action))
-    check_interval(check_every)
 
     # Start from normalized ones unless x0 is given.
     x = default_initial_vector(cast(Any, action)) if x0 is None else x0

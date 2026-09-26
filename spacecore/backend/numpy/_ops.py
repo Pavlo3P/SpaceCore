@@ -33,18 +33,6 @@ class NumpyOps(EagerControlFlowMixin, BackendOps):
     def __init__(self) -> None:
         super().__init__()
 
-    def free_memory_bytes(self) -> int | None:
-        """Return available system RAM in bytes.
-
-        For a CPU backend the "device" is host memory, so this reports the
-        available physical RAM via :mod:`psutil`, a required dependency. The
-        kernel dispatcher (ADR-016) uses it as the memory budget that gates a
-        materializing fast path.
-        """
-        import psutil
-
-        return int(psutil.virtual_memory().available)
-
     @property
     def dense_array(self) -> Type[Any]:
         """

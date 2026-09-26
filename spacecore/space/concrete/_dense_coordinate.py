@@ -33,7 +33,7 @@ class DenseCoordinateSpace(CoordinateSpace, InnerProductSpace):
         shape: Tuple[int, ...],
         ctx: Context | str | None = None,
         geometry: InnerProduct | None = None,
-        check_level: CheckLevel | bool | None = None,
+        check_level: CheckLevel | None = None,
     ) -> None:
         super().__init__(tuple(shape), ctx, check_level=check_level)
         # Euclidean geometry unless one is given; validate it against this space.

@@ -86,7 +86,7 @@ class DenseVectorSpace(DenseCoordinateSpace, StarSpace):
         shape: Tuple[int, ...],
         ctx: Context | str | None = None,
         geometry: InnerProduct | None = None,
-        check_level: CheckLevel | bool | None = None,
+        check_level: CheckLevel | None = None,
     ) -> None:
         shape = tuple(shape)
         # Only one-dimensional shapes.
@@ -126,7 +126,7 @@ class ElementwiseJordanSpace(PyTreeNode, JordanAlgebraSpace, DenseCoordinateSpac
         shape: Tuple[int, ...],
         ctx: Context | str | None = None,
         geometry: InnerProduct | None = None,
-        check_level: CheckLevel | bool | None = None,
+        check_level: CheckLevel | None = None,
         *,
         inner_product: InnerProduct | None = None,
     ):
@@ -143,7 +143,7 @@ class ElementwiseJordanSpace(PyTreeNode, JordanAlgebraSpace, DenseCoordinateSpac
         shape: Tuple[int, ...],
         ctx: Context | str | None = None,
         geometry: InnerProduct | None = None,
-        check_level: CheckLevel | bool | None = None,
+        check_level: CheckLevel | None = None,
         *,
         inner_product: InnerProduct | None = None,
     ) -> None:
@@ -245,7 +245,7 @@ class EuclideanElementwiseJordanSpace(ElementwiseJordanSpace, EuclideanJordanAlg
         shape: Tuple[int, ...],
         ctx: Context | str | None = None,
         geometry: InnerProduct | None = None,
-        check_level: CheckLevel | bool | None = None,
+        check_level: CheckLevel | None = None,
         *,
         inner_product: InnerProduct | None = None,
     ) -> None:

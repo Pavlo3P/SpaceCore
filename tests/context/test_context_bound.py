@@ -144,14 +144,6 @@ class TestChecksAtLeast:
         bound = _ToyBound(ctx, check_level=current)
         assert bound._checks_at_least(required) is expected
 
-    def test_enable_checks_property_is_legacy_view(self):
-        """``ContextBound._enable_checks`` is the legacy bool view of
-        ``check_level``: True for anything other than 'none'."""
-        ctx = sc.Context(sc.NumpyOps())
-        for level in ("cheap", "standard", "strict"):
-            assert _ToyBound(ctx, check_level=level)._enable_checks is True
-        assert _ToyBound(ctx, check_level="none")._enable_checks is False
-
 
 # ---------------------------------------------------------------------------
 # convert(): idempotency, dispatch, target resolution

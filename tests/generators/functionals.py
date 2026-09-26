@@ -463,7 +463,7 @@ def _algebra_case(
 def _algebra_cases(dtype: Any, check_level: sc.CheckLevel | str) -> tuple[FunctionalCase, ...]:
     """Generated cases for the functional-algebra nodes.
 
-    Covers Scaled/Sum/Shifted/Zero plus the multiplicative nodes
+    Covers Scaled/Sum/shift/Zero plus the multiplicative nodes
     Constant/Product.
     """
     c2 = np.asarray([0.5, -0.25, 1.0], dtype=dtype)
@@ -486,7 +486,7 @@ def _algebra_cases(dtype: Any, check_level: sc.CheckLevel | str) -> tuple[Functi
         ),
         _algebra_case(
             dtype, check_level, kind="shifted-functional", id_stub="shifted-functional",
-            build=lambda base, domain, ctx: sc.ShiftedFunctional(base, offset),
+            build=lambda base, domain, ctx: base + offset,
             value=lambda x, c: np.vdot(c, x) + offset,
             gradient=lambda x, c: c,
         ),

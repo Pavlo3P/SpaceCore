@@ -31,7 +31,7 @@ class CoordinateSpace(VectorSpace):
         self,
         shape: Tuple[int, ...],
         ctx: Context | str | None = None,
-        check_level: CheckLevel | bool | None = None,
+        check_level: CheckLevel | None = None,
     ) -> None:
         super().__init__(ctx, check_level=check_level)
         self.shape = tuple(shape)

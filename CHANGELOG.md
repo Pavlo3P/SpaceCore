@@ -20,6 +20,27 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 - **`OperatorFamily`** (breaking). `FunctionalScaledOperator` is now a `Mapping`
   and keeps `at`, `apply` and `linearize_at`; the base-class defaults went with
   the class.
+- **The `enable_checks` boolean shim** (breaking): `check_level` accepts only
+  `"none"`/`"cheap"`/`"standard"`/`"strict"` or `None`, and the
+  `normalize_check_level(enable_checks=...)`, `level_to_enabled`,
+  `enabled_to_level` and `ContextBound._enable_checks` bridges are gone.
+- **`checked_method(arg_pos=...)`** (breaking); use `arg_positions`.
+- **`enforce_convert_policy`** (breaking); `ContextBound.convert` normalizes the
+  target context itself.
+- **Entry-point backend discovery** (breaking): `discover_entry_point_ops` and the
+  `spacecore.backends` entry-point group. `available_ops` lists NumPy and the
+  importable built-in backends.
+- **`minimize_optax(progress_callback=...)`** (breaking). It only replayed the
+  recorded history after the loop; read `result.history` instead.
+- **`power_iteration(check_every=...)`** (breaking); it was already ignored.
+- **`ShiftedFunctional`** (breaking). `F + c` is now the sum of `F` and a
+  `ConstantFunctional`; a sum skips its constant terms' zero gradients, so the
+  shift costs no extra gradient add.
+- **`BackendOps.free_memory_bytes`** (breaking) and the `psutil` dependency. Only
+  the removed dispatcher read the memory budget.
+- **The core-kernel registry** (breaking): `CoreKernelSet`, `core_kernels`,
+  `register_core_kernels`, `get_core_kernels` and `core_kernel_names`. Operator
+  classes bind their cores as class attributes (`_apply_core = dense_apply_core`).
 
 ### Changed
 

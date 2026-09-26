@@ -22,7 +22,7 @@ import pytest
 import spacecore as sc
 
 from spacecore._checks import checked_method
-from spacecore.functional._base import (
+from spacecore._batching import (
     _check_scalar_shape,
     _leading_batch_size,
     _warn_vmap_fallback_once,

@@ -5,7 +5,7 @@ loop runs inside ``jax.jit(jax.lax.while_loop(...))`` with the fused
 ``F.value_and_grad`` cached once per iteration. These tests (jax + optax) cover
 convergence + early stop, the weighted-metric Riesz handoff, tree / bound-element
 pass-through, the ``max_iter``/finiteness stop reasons, the ``project`` hook, the
-four-column history + ``progress_callback`` replay, the guarantee that
+four-column history, the guarantee that
 ``value_and_grad`` is evaluated once (not per iteration), and the input guards.
 """
 from __future__ import annotations
@@ -226,20 +226,6 @@ class TestHistory:
         # Column 3 is the per-iteration objective change F_k - F_{k-1}.
         np.testing.assert_allclose(h["value_delta"][1:], np.diff(h["value"]), atol=1e-6)
         assert h["value"][-1] < h["value"][0]  # objective decreased
-
-    def test_progress_callback_replayed_from_history(self):
-        import optax
-
-        ctx = _jax_ctx()
-        X, F, _ = euclidean_problem(ctx)
-        rows = []
-        res = sc.minimize_optax(
-            F, X.zeros(), optax.adam(1e-1), max_iter=500, tol=1e-5,
-            history_every=25, verbose=0, progress_callback=rows.append,
-        )
-
-        assert len(rows) == len(res.history["iteration"])
-        assert rows and set(rows[0]) == {"iteration", "value", "value_delta", "grad_norm"}
 
     def test_record_history_false_empty(self):
         import optax

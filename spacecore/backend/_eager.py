@@ -133,19 +133,8 @@ class EagerControlFlowMixin:
         """
         carry = init
 
-        # No xs: call f `length` times with None as the input.
-        if xs is None:
-            if length is None:
-                raise ValueError("scan(xs=None) requires an explicit `length`.")
-            n = int(length)
-            indices = range(n - 1, -1, -1) if reverse else range(n)
-            ys_steps: list[Any] = []
-            for _i in indices:
-                carry, y = f(carry, None)  # type: ignore[arg-type]
-                ys_steps.append(y)
-            if reverse:
-                ys_steps.reverse()
-            return carry, self._tree_stack(ys_steps)
+        if xs is None and length is None:
+            raise ValueError("scan(xs=None) requires an explicit `length`.")
 
         # infer length from xs if not provided
         if length is None:
@@ -161,9 +150,9 @@ class EagerControlFlowMixin:
 
         # Feed slice i of xs; outputs are restored to forward order when reversed.
         indices = range(n - 1, -1, -1) if reverse else range(n)
-        ys_steps = []
+        ys_steps: list[Any] = []
         for i in indices:
-            x_i = self._tree_index(xs, i)
+            x_i = None if xs is None else self._tree_index(xs, i)
             carry, y = f(carry, x_i)
             ys_steps.append(y)
 

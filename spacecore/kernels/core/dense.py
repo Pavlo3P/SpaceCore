@@ -16,7 +16,6 @@ from __future__ import annotations
 from enum import Enum, auto
 from typing import Any
 
-from ._rules import CoreKernelSet, register_core_kernels
 
 
 class _DenseMode(Enum):
@@ -112,9 +111,3 @@ def dense_rvapply_core(op: Any, ys: Any) -> Any:
         opname=type(op).__name__,
         ops=op.ops,
     )
-
-
-register_core_kernels(CoreKernelSet(
-    "dense", dense_apply_core, dense_rapply_core, dense_vapply_core, dense_rvapply_core,
-    notes="Flattened dense matrix action; metric-aware adjoint via Riesz maps.",
-))

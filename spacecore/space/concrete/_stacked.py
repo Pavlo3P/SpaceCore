@@ -97,7 +97,7 @@ class StackedSpace(PyTreeNode, CoordinateSpace):
         base: Space,
         count: int,
         ctx: Context | str | None = None,
-        check_level: CheckLevel | bool | None = None,
+        check_level: CheckLevel | None = None,
     ):
         # Pick the subclass that carries exactly the base's capabilities.
         if cls is StackedSpace:
@@ -112,7 +112,7 @@ class StackedSpace(PyTreeNode, CoordinateSpace):
         base: Space,
         count: int,
         ctx: Context | str | None = None,
-        check_level: CheckLevel | bool | None = None,
+        check_level: CheckLevel | None = None,
     ) -> None:
         # Element shape is (count,) + base.shape.
         base = _validate_stacked_base(base, type(self).__name__)

@@ -16,8 +16,27 @@ from ..space.base import InnerProductSpace
 from ..space._capabilities import _CAP_BATCH, _CAP_COORDINATE, probe_element, require
 from .._repr import summarize_value
 from ..contextual import Context
-from ..kernels import core_kernels
 from ..kernels.core.algebra import (
+    adjoint_apply_core,
+    adjoint_rapply_core,
+    adjoint_vapply_core,
+    composed_apply_core,
+    composed_rapply_core,
+    composed_vapply_core,
+    identity_apply_core,
+    identity_vapply_core,
+    matrixfree_apply_core,
+    matrixfree_rapply_core,
+    matrixfree_vapply_core,
+    scaled_apply_core,
+    scaled_rapply_core,
+    scaled_vapply_core,
+    sum_apply_core,
+    sum_rapply_core,
+    sum_vapply_core,
+    zero_apply_core,
+    zero_rapply_core,
+    zero_vapply_core,
     batched_zeros as _batched_zeros,
     compose_chain as _compose_chain,
     conjugate_scalar as _conjugate_scalar,
@@ -136,7 +155,6 @@ def make_composed(left: LinOp, right: LinOp) -> LinOp:
     return ComposedLinOp(left, right)
 
 
-@core_kernels("scaled")
 class ScaledLinOp(ScaledNode, LinOp[Domain, Codomain]):
     r"""
     Lazy ``scalar * op``; its adjoint is ``conj(scalar) * op.H``.
@@ -151,7 +169,11 @@ class ScaledLinOp(ScaledNode, LinOp[Domain, Codomain]):
         Validation level; the ambient default when omitted.
     """
 
-    def __init__(self, scalar: Any, op: LinOp[Domain, Codomain], check_level: CheckLevel | bool | None = None) -> None:
+    _apply_core = scaled_apply_core
+    _rapply_core = scaled_rapply_core
+    _vapply_core = scaled_vapply_core
+
+    def __init__(self, scalar: Any, op: LinOp[Domain, Codomain], check_level: CheckLevel | None = None) -> None:
         super().__init__(scalar, op, check_level)
 
     @property
@@ -222,7 +244,6 @@ class ScaledLinOp(ScaledNode, LinOp[Domain, Codomain]):
         return f"{summarize_value(self.scalar)} · {self.op._short_repr()}"
 
 
-@core_kernels("sum")
 class SumLinOp(SumNode, LinOp[Domain, Codomain]):
     r"""
     Lazy sum of operators sharing context, domain and codomain.
@@ -235,7 +256,11 @@ class SumLinOp(SumNode, LinOp[Domain, Codomain]):
         Validation level; the ambient default when omitted.
     """
 
-    def __init__(self, ops: Sequence[LinOp[Domain, Codomain]], check_level: CheckLevel | bool | None = None) -> None:
+    _apply_core = sum_apply_core
+    _rapply_core = sum_rapply_core
+    _vapply_core = sum_vapply_core
+
+    def __init__(self, ops: Sequence[LinOp[Domain, Codomain]], check_level: CheckLevel | None = None) -> None:
         super().__init__(ops, check_level)
 
     @property
@@ -325,7 +350,6 @@ class SumLinOp(SumNode, LinOp[Domain, Codomain]):
         return truncated_join((op._short_repr() for op in self.ops_tuple), " + ")
 
 
-@core_kernels("composed")
 class ComposedLinOp(LinOp[Domain, Codomain]):
     r"""
     Lazy composition ``left @ right``; the adjoint is ``right.H @ left.H``.
@@ -340,11 +364,15 @@ class ComposedLinOp(LinOp[Domain, Codomain]):
         Validation level; the ambient default when omitted.
     """
 
+    _apply_core = composed_apply_core
+    _rapply_core = composed_rapply_core
+    _vapply_core = composed_vapply_core
+
     def __init__(
         self,
         left: LinOp,
         right: LinOp,
-        check_level: CheckLevel | bool | None = None,
+        check_level: CheckLevel | None = None,
     ) -> None:
         # Validate: both LinOps, same context, matching middle space.
         left = _require_linop(left, "left")
@@ -455,7 +483,6 @@ class ComposedLinOp(LinOp[Domain, Codomain]):
         return ComposedLinOp(self.left.convert(new_ctx), self.right.convert(new_ctx))
 
 
-@core_kernels("zero")
 class ZeroLinOp(ZeroNode, LinOp[Domain, Codomain]):
     r"""
     Lazy zero map from ``dom`` to ``cod``.
@@ -471,6 +498,10 @@ class ZeroLinOp(ZeroNode, LinOp[Domain, Codomain]):
     check_level : {"none", "cheap", "standard", "strict"}, optional
         Validation level; the ambient default when omitted.
     """
+
+    _apply_core = zero_apply_core
+    _rapply_core = zero_rapply_core
+    _vapply_core = zero_vapply_core
 
     @checked_method(in_space="domain", out_space="codomain")
     def apply(self, x: Any) -> Any:
@@ -520,7 +551,6 @@ class ZeroLinOp(ZeroNode, LinOp[Domain, Codomain]):
         return self.domain == self.codomain
 
 
-@core_kernels("identity")
 class IdentityLinOp(LinOp[Domain, Domain]):
     r"""
     Lazy identity map on ``space``.
@@ -535,11 +565,15 @@ class IdentityLinOp(LinOp[Domain, Domain]):
         Validation level; the ambient default when omitted.
     """
 
+    _apply_core = identity_apply_core
+    _rapply_core = identity_apply_core
+    _vapply_core = identity_vapply_core
+
     def __init__(
         self,
         space: Domain,
         ctx: Context | str | None = None,
-        check_level: CheckLevel | bool | None = None,
+        check_level: CheckLevel | None = None,
     ) -> None:
         super().__init__(space, space, ctx, check_level=check_level)
 
@@ -621,7 +655,6 @@ class IdentityLinOp(LinOp[Domain, Domain]):
         return IdentityLinOp(self.domain.convert(new_ctx), new_ctx)
 
 
-@core_kernels("matrixfree")
 class MatrixFreeLinOp(LinOp[Domain, Codomain]):
     """
     Linear operator given by forward and adjoint callables; no matrix is stored.
@@ -655,6 +688,10 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
         coordinate adjoint there is silently wrong.
     """
 
+    _apply_core = matrixfree_apply_core
+    _rapply_core = matrixfree_rapply_core
+    _vapply_core = matrixfree_vapply_core
+
     def __init__(
         self,
         apply: Callable[[Any], Any],
@@ -664,7 +701,7 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
         ctx: Context | str | None = None,
         vapply: Callable[[Any], Any] | None = None,
         rvapply: Callable[[Any], Any] | None = None,
-        check_level: CheckLevel | bool | None = None,
+        check_level: CheckLevel | None = None,
         *,
         euclidean_adjoint: bool | Any = _ADJOINT_UNSPECIFIED,
     ) -> None:
@@ -1016,7 +1053,6 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
         )
 
 
-@core_kernels("adjoint")
 class _AdjointViewLinOp(LinOp[Codomain, Domain]):
     """
     Adjoint view ``op.H``: ``apply`` is ``op.rapply`` and ``rapply`` is ``op.apply``; ``op.H.H is op``.
@@ -1029,10 +1065,14 @@ class _AdjointViewLinOp(LinOp[Codomain, Domain]):
         Validation level; the ambient default when omitted.
     """
 
+    _apply_core = adjoint_apply_core
+    _rapply_core = adjoint_rapply_core
+    _vapply_core = adjoint_vapply_core
+
     def __init__(
         self,
         op: LinOp[Domain, Codomain],
-        check_level: CheckLevel | bool | None = None,
+        check_level: CheckLevel | None = None,
     ) -> None:
         # The view swaps domain and codomain.
         op = _require_linop(op, "op")

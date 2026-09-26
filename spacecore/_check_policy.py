@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from typing import Literal
-from warnings import warn
 
 CheckLevel = Literal["none", "cheap", "standard", "strict"]
 
@@ -37,38 +36,12 @@ def require_mutually_exclusive(
         raise TypeError(f"{verb} either {name_a} or {name_b}, not both.")
 
 
-def level_to_enabled(level: CheckLevel) -> bool:
-    """Return the deprecated Boolean view of ``level`` (``True`` unless ``"none"``)."""
-    return level != "none"
-
-
-def enabled_to_level(flag: bool) -> CheckLevel:
-    """Map the deprecated Boolean check flag to a :data:`CheckLevel`."""
-    return "standard" if flag else "none"
-
-
 def normalize_check_level(
     check_level: CheckLevel | str | None = None,
     *,
-    enable_checks: bool | None = None,
     default: CheckLevel = "standard",
-    warn_legacy: bool = False,
 ) -> CheckLevel:
-    """Normalize the public policy and its deprecated Boolean compatibility shim."""
-    require_mutually_exclusive("check_level", check_level, "enable_checks", enable_checks)
-
-    if enable_checks is not None:
-        if not isinstance(enable_checks, bool):
-            raise TypeError("enable_checks must be a bool or None.")
-        if warn_legacy:
-            warn(
-                "enable_checks is deprecated; use check_level='standard' or "
-                "check_level='none' instead.",
-                DeprecationWarning,
-                stacklevel=3,
-            )
-        return enabled_to_level(enable_checks)
-
+    """Return ``check_level`` (or ``default`` when ``None``), validated against the known levels."""
     level = default if check_level is None else check_level
     if level not in _CHECK_LEVEL_ORDER:
         allowed = ", ".join(repr(item) for item in CHECK_LEVELS)

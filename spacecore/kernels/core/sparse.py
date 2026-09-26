@@ -10,7 +10,6 @@ from __future__ import annotations
 from enum import Enum, auto
 from typing import Any
 
-from ._rules import CoreKernelSet, register_core_kernels
 
 
 class _SparseMode(Enum):
@@ -106,10 +105,3 @@ def sparse_rvapply_core(op: Any, ys: Any) -> Any:
         opname=type(op).__name__,
         ops=op.ops,
     )
-
-
-register_core_kernels(CoreKernelSet(
-    "sparse", sparse_apply_core, sparse_rapply_core,
-    sparse_vapply_core, sparse_rvapply_core,
-    notes="Sparse matrix action; metric-aware adjoint via Riesz maps.",
-))

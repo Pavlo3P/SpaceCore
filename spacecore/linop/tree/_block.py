@@ -103,7 +103,7 @@ class BlockDiagonalLinOp(TreeLinOp[TreeSpace, TreeSpace]):
         cod: TreeSpace | None = None,
         parts: Sequence[LinOp] | None = None,
         ctx: Context | str | None = None,
-        check_level: CheckLevel | bool | None = None,
+        check_level: CheckLevel | None = None,
     ) -> None:
         # Legacy form: explicit dom, cod and parts.
         if isinstance(blocks, TreeSpace):
@@ -126,10 +126,6 @@ class BlockDiagonalLinOp(TreeLinOp[TreeSpace, TreeSpace]):
             cod = TreeSpace(treedef, tuple(block.codomain for block in block_parts), ctx=ctx)
 
         super().__init__(dom, cod, block_parts, ctx, check_level=check_level)
-        # ADR-022: carry the per-accessor stacked-block-matrix memo on the parts
-        # so the uniform-dense batched fold (block_batched) stacks once and reuses
-        # across applies. Built lazily on first optimized use, NumPy-only; dropped
-        # and rebuilt on a pytree round-trip (tree_flatten re-normalizes parts).
 
     def _check_layout(self) -> None:
         """Check that each block maps the corresponding pair of tree leaves."""
@@ -244,7 +240,7 @@ class BlockMatrixLinOp(TreeLinOp[TreeSpace, TreeSpace]):
     def __init__(
         self,
         block_rows: Sequence[Sequence[LinOp]],
-        check_level: CheckLevel | bool | None = None,
+        check_level: CheckLevel | None = None,
     ) -> None:
         # Normalize to a rectangular tuple of rows.
         if not isinstance(block_rows, Sequence) or isinstance(block_rows, (str, bytes)):

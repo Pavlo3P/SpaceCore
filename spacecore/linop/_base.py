@@ -57,7 +57,7 @@ class LinOp(Mapping, Generic[Domain, Codomain]):
         dom: Domain,
         cod: Codomain,
         ctx: Context | str | None = None,
-        check_level: CheckLevel | bool | None = None,
+        check_level: CheckLevel | None = None,
     ):
         # Scalar-valued maps are Functionals, not LinOps (ADR-010).
         if isinstance(cod, Field):

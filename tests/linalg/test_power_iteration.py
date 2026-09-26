@@ -11,7 +11,7 @@ Checklist section 8, ``power_iteration`` + internal ``_SelfAdjointAction``:
   and the generic ``domain.inner`` fallback.
 * Public dispatch builds a ``_SelfAdjointAction`` before the numeric core; the
   core carries no dispatch logic and no ``check_every`` argument.
-* Rejects non-Hermitian and rectangular operators; validates ``check_every``.
+* Rejects non-Hermitian and rectangular operators.
 * JAX ``jit`` round-trip preserves correctness.
 """
 from __future__ import annotations
@@ -105,7 +105,7 @@ class TestDominantEigenpair:
 
 
 # ===========================================================================
-# Application accounting & check_every backward-compat
+# Application accounting
 # ===========================================================================
 class TestApplicationAccounting:
     def test_one_application_per_iteration_after_initial_product(self):
@@ -119,34 +119,24 @@ class TestApplicationAccounting:
             return matrix @ x
 
         A = sc.MatrixFreeLinOp(apply, apply, space, space, ctx)
-        result = sc.power_iteration(A, x0=ctx.asarray([1.0, 1.0]), tol=1e-4, maxiter=60, check_every=1000)
+        result = sc.power_iteration(A, x0=ctx.asarray([1.0, 1.0]), tol=1e-4, maxiter=60)
 
         assert calls["apply"] == int(result.num_iters) + 1
         np.testing.assert_allclose(to_numpy(result.eigenvalue), 5.0, rtol=1e-4, atol=1e-4)
         assert bool(to_numpy(result.converged))
 
-    def test_large_check_every_no_longer_delays_convergence(self):
+    def test_stops_at_once_on_an_eigenvector(self):
         ctx = make_ctx()
         space = sc.DenseCoordinateSpace((2,), ctx)
         A = sc.DiagonalLinOp(ctx.asarray([1.0, 5.0]), space, ctx)
 
         result = sc.power_iteration(
-            A, x0=ctx.asarray([0.0, 1.0]), tol=1e-12, maxiter=65, check_every=10_000
+            A, x0=ctx.asarray([0.0, 1.0]), tol=1e-12, maxiter=65
         )
 
         assert int(to_numpy(result.num_iters)) == 1
         np.testing.assert_allclose(to_numpy(result.eigenvalue), 5.0, rtol=1e-12, atol=1e-12)
         assert bool(to_numpy(result.converged))
-
-    def test_validates_check_every_for_backward_compatibility(self):
-        ctx = make_ctx()
-        space = sc.DenseCoordinateSpace((2,), ctx)
-        A = sc.DiagonalLinOp(ctx.asarray([1.0, 2.0]), space, ctx)
-
-        sc.power_iteration(A, check_every=1, maxiter=1)
-        with pytest.raises(ValueError, match="check_every"):
-            sc.power_iteration(A, check_every=0, maxiter=1)
-
 
 # ===========================================================================
 # Geometry awareness

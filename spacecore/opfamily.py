@@ -39,7 +39,7 @@ class FunctionalScaledOperator(Mapping, Generic[Domain, Codomain]):
         self,
         functional: Functional,
         op: LinOp,
-        check_level: CheckLevel | bool | None = None,
+        check_level: CheckLevel | None = None,
     ) -> None:
         # Validate types and the shared domain; bind with the operator's endpoints.
         if not isinstance(functional, Functional):

@@ -18,8 +18,13 @@ from ..space import (
 from ..types import DenseArray, SparseArray
 from ..contextual import Context
 from ..contextual import resolve_context_priority
-from ..kernels import core_kernels
-from ..kernels.core.sparse import _SparseMode
+from ..kernels.core.sparse import (
+    sparse_apply_core,
+    sparse_rapply_core,
+    sparse_rvapply_core,
+    sparse_vapply_core,
+    _SparseMode,
+)
 
 
 _VECTOR_SPACE_ONLY = (
@@ -29,7 +34,6 @@ _VECTOR_SPACE_ONLY = (
 )
 
 
-@core_kernels("sparse")
 class SparseLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
     r"""
     Linear operator stored as a sparse matrix of shape ``(cod.size, dom.size)``.
@@ -63,13 +67,18 @@ class SparseLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
     array([1., 2.])
     """
 
+    _apply_core = sparse_apply_core
+    _rapply_core = sparse_rapply_core
+    _vapply_core = sparse_vapply_core
+    _rvapply_core = sparse_rvapply_core
+
     def __init__(
         self,
         A: SparseArray,
         dom: CoordinateSpace,
         cod: CoordinateSpace,
         ctx: Context | str | None = None,
-        check_level: CheckLevel | bool | None = None,
+        check_level: CheckLevel | None = None,
     ) -> None:
         # A must be a sparse array of the backend; spaces must be coordinate spaces.
         ctx = resolve_context_priority(ctx, dom, cod)

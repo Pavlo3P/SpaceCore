@@ -18,7 +18,7 @@ from ._coordinate import _CoordinateFunctional
 from ._norms import LpNormFunctional
 
 
-def eigenvalue_space(dom: Any, check_level: CheckLevel | bool | None = None) -> Any:
+def eigenvalue_space(dom: Any, check_level: CheckLevel | None = None) -> Any:
     r"""
     Return the real Euclidean space of shape ``(rank,)`` that the spectrum of ``dom`` lives in.
 
@@ -94,7 +94,7 @@ class SpectralFunctional(_CoordinateFunctional[Domain]):
         dom: Domain,
         base: Functional,
         ctx: Context | str | None = None,
-        check_level: CheckLevel | bool | None = None,
+        check_level: CheckLevel | None = None,
     ) -> None:
         super().__init__(dom, ctx, check_level=check_level, cod=base.codomain)
         # Check the domain has a spectrum and base lives on its eigenvalue space.
@@ -164,7 +164,7 @@ def spectralize(
     dom: Domain,
     make_base: Any,
     ctx: Context | str | None = None,
-    check_level: CheckLevel | bool | None = None,
+    check_level: CheckLevel | None = None,
 ) -> "SpectralFunctional[Domain]":
     r"""
     Build the spectral lift of ``make_base(eigenvalue_space(dom))`` on ``dom``.
@@ -202,7 +202,7 @@ def spectralize(
 def NuclearNormFunctional(
     dom: Domain,
     ctx: Context | str | None = None,
-    check_level: CheckLevel | bool | None = None,
+    check_level: CheckLevel | None = None,
 ) -> "SpectralFunctional[Domain]":
     r"""
     Nuclear norm ``sum_i |lambda_i(X)|``, i.e. the Schatten-1 lift of the 1-norm.

@@ -3,7 +3,6 @@ from __future__ import annotations
 import importlib
 import warnings
 from functools import lru_cache
-from importlib import metadata
 
 from ._ops import BackendOps
 from .numpy import NumpyOps
@@ -15,49 +14,6 @@ _OPTIONAL_OPS: tuple[tuple[str, str, str], ...] = (
     (".torch", "TorchOps", "torch"),
 )
 
-# Packaging entry-point group that external packages use to advertise a backend.
-_ENTRY_POINT_GROUP = "spacecore.backends"
-
-
-def _entry_points(group: str) -> list:
-    """Return the entry points in ``group``, across ``importlib.metadata`` APIs."""
-    eps = metadata.entry_points()
-    select = getattr(eps, "select", None)
-    if select is not None:  # Python 3.10+: EntryPoints.select(group=...)
-        return list(select(group=group))
-    return list(eps.get(group, []))  # Python < 3.10: dict-of-lists API
-
-
-def discover_entry_point_ops() -> list[type[BackendOps]]:
-    """
-    Return the backend classes advertised through ``spacecore.backends`` entry points.
-
-    A package adds a backend with, e.g., ``mlx = "spacecore_mlx:MLXOps"`` under
-    ``[project.entry-points."spacecore.backends"]``. An entry that fails to load or is
-    not a ``BackendOps`` subclass is skipped with a ``UserWarning``.
-    """
-    discovered: list[type[BackendOps]] = []
-    # Load each plugin; broken or wrongly typed entries warn and are skipped.
-    for ep in _entry_points(_ENTRY_POINT_GROUP):
-        name = getattr(ep, "name", ep)
-        try:
-            obj = ep.load()
-        except Exception as exc:  # noqa: BLE001 - a broken plugin must not be fatal
-            warnings.warn(
-                f"SpaceCore backend entry point {name!r} failed to load "
-                f"({type(exc).__name__}: {exc}); skipping it.",
-                stacklevel=2,
-            )
-            continue
-        if not (isinstance(obj, type) and issubclass(obj, BackendOps)):
-            warnings.warn(
-                f"SpaceCore backend entry point {name!r} does not point at a "
-                f"BackendOps subclass (got {obj!r}); skipping it.",
-                stacklevel=2,
-            )
-            continue
-        discovered.append(obj)
-    return discovered
 
 
 def _backend_absent(exc: ModuleNotFoundError, dep: str) -> bool:
@@ -101,10 +57,9 @@ def import_backend(module: str, dep: str):
 @lru_cache(maxsize=1)
 def available_ops() -> tuple[type[BackendOps], ...]:
     """
-    Return the importable backend classes, NumPy first, then built-ins, then entry-point plugins.
+    Return the importable backend classes: NumPy first, then the optional built-ins.
 
-    A built-in family cannot be shadowed by a plugin. The result is cached for the
-    process, since discovery imports modules and would otherwise repeat its warnings;
+    The result is cached for the process, since discovery imports modules and would otherwise repeat its warnings;
     tests that patch imports call ``available_ops.cache_clear()``.
 
     Returns
@@ -112,7 +67,7 @@ def available_ops() -> tuple[type[BackendOps], ...]:
     tuple of type of BackendOps
         The available classes.
     """
-    # NumPy always, then the importable optional backends, then plugins for new families.
+    # NumPy always, then the importable optional backends.
     ops: list[type[BackendOps]] = [NumpyOps]
     for module, attr, dep in _OPTIONAL_OPS:
         mod = import_backend(module, dep)
@@ -121,11 +76,6 @@ def available_ops() -> tuple[type[BackendOps], ...]:
         cls = getattr(mod, attr, None)
         if cls is not None:
             ops.append(cls)
-    seen = {o._family for o in ops}
-    for cls in discover_entry_point_ops():
-        if cls._family not in seen:
-            ops.append(cls)
-            seen.add(cls._family)
     return tuple(ops)
 
 

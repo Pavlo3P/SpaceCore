@@ -18,8 +18,7 @@ Plus additional Context-API surface area not in the original checklist:
 7. ``assert_dense`` / ``assert_sparse`` gates.
 8. ``convert`` dispatch (dense → ``asarray``, sparse → ``assparse``).
 9. Validation policy is *not* a context property: ``check_level`` is carried by
-   the context-bound object, and the deprecated ``enable_checks`` Boolean
-   survives only as the ``normalize_check_level`` shim.
+   the context-bound object.
 
 Generic per-op behavior lives in :mod:`tests.backend.test_operations`;
 this module pins the ``Context`` API only.
@@ -31,7 +30,6 @@ import pytest
 import scipy.sparse as sps
 
 import spacecore as sc
-from spacecore._check_policy import level_to_enabled, normalize_check_level
 
 from tests._helpers import has_cupy, has_jax, has_torch, to_numpy
 from tests.backend._conformance import (
@@ -405,16 +403,3 @@ class TestCheckLevel:
         ctx = sc.Context(sc.NumpyOps())
         assert sc.DenseCoordinateSpace((2,), ctx, check_level=level).check_level == level
 
-    def test_enable_checks_true_maps_to_standard(self):
-        with pytest.warns(DeprecationWarning):
-            level = normalize_check_level(enable_checks=True, warn_legacy=True)
-        assert level == "standard"
-
-    def test_enable_checks_false_maps_to_none(self):
-        with pytest.warns(DeprecationWarning):
-            level = normalize_check_level(enable_checks=False, warn_legacy=True)
-        assert level == "none"
-
-    def test_enable_checks_is_the_legacy_view_of_a_level(self):
-        assert level_to_enabled("none") is False
-        assert level_to_enabled("standard") is True

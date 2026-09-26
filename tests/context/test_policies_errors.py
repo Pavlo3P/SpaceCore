@@ -40,7 +40,6 @@ from spacecore.contextual import (
     ContextError,
     ContextInferenceError,
     UnknownBackendError,
-    enforce_convert_policy,
 )
 
 
@@ -160,36 +159,3 @@ class TestContextInferenceError:
             ops_registry.unregister(family)
 
 
-# ===========================================================================
-# enforce_convert_policy — accept / reject
-# ===========================================================================
-class TestEnforceConvertPolicy:
-    def test_accepts_valid_target_context(self):
-        ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
-        x = ctx.asarray([1.0, 2.0])
-        out_x, out_ctx = enforce_convert_policy(x, ctx)
-        assert out_x is x
-        assert out_ctx == ctx
-
-    def test_accepts_family_string_target(self):
-        x = sc.NumpyOps().asarray([1.0, 2.0])
-        _, out_ctx = enforce_convert_policy(x, "numpy")
-        assert out_ctx.ops.family == "numpy"
-
-    def test_accepts_none_target_falls_back_to_default(self, preserve_default_context):
-        default = sc.Context(sc.NumpyOps(), dtype=np.float32)
-        sc.set_context(default)
-        x = default.asarray([1.0, 2.0])
-        out_x, out_ctx = enforce_convert_policy(x, None)
-        assert out_x is x
-        assert out_ctx == default
-
-    def test_rejects_unknown_family_target(self):
-        x = sc.NumpyOps().asarray([1.0, 2.0])
-        with pytest.raises(UnknownBackendError):
-            enforce_convert_policy(x, "not_a_real_backend")
-
-    def test_rejects_invalid_target_type(self):
-        x = sc.NumpyOps().asarray([1.0, 2.0])
-        with pytest.raises(TypeError):
-            enforce_convert_policy(x, 42)

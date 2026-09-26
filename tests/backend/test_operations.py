@@ -1307,7 +1307,8 @@ class TestScanBranches:
         assert float(to_numpy(final_carry)) == pytest.approx(ref_carry)
         np.testing.assert_allclose(to_numpy(ys), np.asarray(ref_ys))
 
-    def test_scan_xs_none_length_driven(self, backend_ops):
+    @pytest.mark.parametrize("reverse", [False, True])
+    def test_scan_xs_none_length_driven(self, backend_ops, reverse):
         """gap-5: ``xs=None`` with an explicit ``length`` runs length steps.
 
         The body ignores ``x`` (which is None) and counts up; the stacked
@@ -1319,9 +1320,10 @@ class TestScanBranches:
             new_carry = carry + 1.0
             return new_carry, new_carry
 
-        final_carry, ys = backend_ops.scan(body, init, None, length=4)
+        final_carry, ys = backend_ops.scan(body, init, None, length=4, reverse=reverse)
         assert float(to_numpy(final_carry)) == pytest.approx(4.0)
-        np.testing.assert_allclose(to_numpy(ys), np.asarray([1.0, 2.0, 3.0, 4.0]))
+        expected = [1.0, 2.0, 3.0, 4.0]
+        np.testing.assert_allclose(to_numpy(ys), np.asarray(expected[::-1] if reverse else expected))
 
 
 # ===========================================================================

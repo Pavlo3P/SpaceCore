@@ -18,7 +18,6 @@ from typing import Any
 
 from ..._batching import _batched_inner
 from ...space import TreeSpace
-from ._rules import CoreKernelSet, register_core_kernels
 
 
 def _broadcast_space_element(space: Any, value: Any, n: int) -> Any:
@@ -143,31 +142,3 @@ def composed_functional_grad_core(op: Any, x: Any) -> Any:
 
 def composed_functional_vgrad_core(op: Any, xs: Any) -> Any:
     return op.A._rvapply_core(op.F._vgrad_core(op.A._vapply_core(xs)))
-
-
-register_core_kernels(CoreKernelSet(
-    "functional-linear", grad=linear_grad_core, vgrad=linear_vgrad_core,
-    notes="Constant Riesz gradient of a linear functional.",
-))
-register_core_kernels(CoreKernelSet(
-    "inner-product-functional",
-    value=inner_product_value_core, vvalue=inner_product_vvalue_core,
-    notes="value(x) = <c, x> via the space's check-free inner product.",
-))
-register_core_kernels(CoreKernelSet(
-    "matrixfree-linear-functional",
-    value=matrixfree_linear_value_core, vvalue=matrixfree_linear_vvalue_core,
-    notes="Invoke the user-supplied value/vvalue callables directly.",
-))
-register_core_kernels(CoreKernelSet(
-    "linop-quadratic-form",
-    value=linop_quadratic_value_core, grad=linop_quadratic_grad_core,
-    vvalue=linop_quadratic_vvalue_core, vgrad=linop_quadratic_vgrad_core,
-    notes="Reaches Q and linear-term cores without re-validating intermediates.",
-))
-register_core_kernels(CoreKernelSet(
-    "composed-functional",
-    value=composed_functional_value_core, grad=composed_functional_grad_core,
-    vgrad=composed_functional_vgrad_core,
-    notes="Pull-back F(Ax) and its chain rule A^#(grad F(Ax)) via the operand cores.",
-))
