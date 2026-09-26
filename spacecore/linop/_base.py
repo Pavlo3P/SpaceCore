@@ -100,6 +100,10 @@ class LinOp(Mapping, Generic[Domain, Codomain]):
             )
         self.dom, self.cod = self._bind_context(ctx, dom, cod, check_level=check_level)
 
+    def _init_map(self, domain: Any, codomain: Any, ctx: Any, check_level: Any) -> None:
+        """Bind a node of this family (the hook the shared lazy nodes in ``mapping`` call)."""
+        LinOp.__init__(self, domain, codomain, ctx, check_level=check_level)
+
     @property
     def domain(self) -> Domain:
         """Domain space of this linear operator."""
@@ -334,3 +338,6 @@ class LinOp(Mapping, Generic[Domain, Codomain]):
     # subclasses with each backend's tree protocol. Every concrete LinOp is a
     # container, so the capability belongs on this base rather than being
     # re-declared (and separately registered) per operator.
+
+
+LinOp._family = LinOp

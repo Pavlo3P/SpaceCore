@@ -4,7 +4,10 @@ import warnings
 from typing import Any, Callable, Sequence, cast
 
 from ._base import LinOp, Domain, Codomain
-from ..mapping import Scalar, register
+from ..mapping import (
+    Scalar, ScaledNode, SumNode, ZeroNode, make_scaled_of, make_sum_of, register,
+    same_space_for_algebra as _same_space_for_algebra,
+)
 from ..space import DenseElement, Element
 from ._metric import _requires_euclidean_or_riesz, metric_rapply, metric_rvapply
 from .._check_policy import CheckLevel, minimum_check_level
@@ -23,12 +26,8 @@ from ..kernels.core.algebra import (
 
 
 from .._lazy_algebra import (
-    finalize_sum,
-    flatten_sum,
-    fold_scaled,
     is_scalar_like as is_scalar_like,  # re-exported for linop/_base.py
-    scalar_eq,
-)
+    )
 
 
 #: Sentinel for "the caller did not mention ``euclidean_adjoint`` at all".
@@ -53,20 +52,6 @@ def _require_same_context(ops: Sequence[LinOp]) -> Context:
                 f"operand 0 has ctx {ctx!r}, operand {i} has ctx {op.ctx!r}."
             )
     return ctx
-
-
-def _same_space_for_algebra(left: Any, right: Any) -> bool:
-    """Return whether two spaces are compatible for algebraic composition."""
-    if left == right:
-        return True
-    if type(left) is not type(right):
-        return False
-    if not left.ctx.same_math(right.ctx):
-        return False
-    try:
-        return left.convert(right.ctx) == right
-    except Exception:
-        return False
 
 
 def _require_linop(op: Any, name: str) -> LinOp:
@@ -96,33 +81,7 @@ def make_sum(ops: Sequence[LinOp]) -> LinOp:
     LinOp
         Simplified lazy sum, a single operand, or a zero operator.
     """
-    if not ops:
-        raise ValueError("make_sum requires a nonempty sequence of LinOp operands.")
-
-    terms = flatten_sum(
-        tuple(_require_linop(op, f"ops[{i}]") for i, op in enumerate(ops)),
-        is_sum=lambda t: isinstance(t, SumLinOp),
-        parts=lambda t: t.parts,
-    )
-    ctx = _require_same_context(terms)
-    domain = terms[0].domain
-    codomain = terms[0].codomain
-    for i, op in enumerate(terms[1:], start=1):
-        if not _same_space_for_algebra(op.domain, domain) or not _same_space_for_algebra(
-            op.codomain, codomain
-        ):
-            raise ValueError(
-                "All SumLinOp operands must have the same domain and codomain; "
-                f"operand 0 maps {domain!r} -> {codomain!r}, "
-                f"operand {i} maps {op.domain!r} -> {op.codomain!r}."
-            )
-
-    return finalize_sum(
-        terms,
-        is_zero=lambda t: isinstance(t, ZeroLinOp),
-        make_zero=lambda: ZeroLinOp(domain, codomain, ctx),
-        make_sum_node=SumLinOp,
-    )
+    return make_sum_of(LinOp, ops)
 
 
 def make_scaled(scalar: Any, op: LinOp) -> LinOp:
@@ -147,18 +106,7 @@ def make_scaled(scalar: Any, op: LinOp) -> LinOp:
     LinOp
         Simplified scalar multiple.
     """
-    op = _require_linop(op, "op")
-    if not is_scalar_like(scalar):
-        raise TypeError(f"scalar must be scalar-like, got {type(scalar).__name__}.")
-
-    return fold_scaled(
-        scalar,
-        op,
-        is_zero=lambda o: isinstance(o, ZeroLinOp),
-        unwrap_scaled=lambda o: (o.scalar, o.op) if isinstance(o, ScaledLinOp) else None,
-        make_zero=lambda: ZeroLinOp(op.domain, op.codomain, op.ctx),
-        make_scaled_node=ScaledLinOp,
-    )
+    return make_scaled_of(LinOp, scalar, op)
 
 
 def make_composed(left: LinOp, right: LinOp) -> LinOp:
@@ -205,7 +153,7 @@ def make_composed(left: LinOp, right: LinOp) -> LinOp:
 
 
 @core_kernels("scaled")
-class ScaledLinOp(LinOp[Domain, Codomain]):
+class ScaledLinOp(ScaledNode, LinOp[Domain, Codomain]):
     r"""
     Lazy scalar multiple of a linear operator.
 
@@ -235,27 +183,15 @@ class ScaledLinOp(LinOp[Domain, Codomain]):
     ----------
     scalar : scalar-like
         Stored scalar multiplier.
-    op : LinOp
-        Stored operand.
     """
 
-    def __init__(
-        self,
-        scalar: Any,
-        op: LinOp[Domain, Codomain],
-        check_level: CheckLevel | bool | None = None,
-    ) -> None:
-        op = _require_linop(op, "op")
-        if not is_scalar_like(scalar):
-            raise TypeError(f"scalar must be scalar-like, got {type(scalar).__name__}.")
-        # Default the policy from the OPERAND, not from its domain/codomain
-        # spaces: an algebra node inherits the least-strict operand so the
-        # result does not depend on operand order.
-        if check_level is None:
-            check_level = op.check_level
-        super().__init__(op.domain, op.codomain, op.ctx, check_level=check_level)
-        self.scalar = scalar
-        self.op = op
+    def __init__(self, scalar: Any, op: LinOp[Domain, Codomain], check_level: CheckLevel | bool | None = None) -> None:
+        super().__init__(scalar, op, check_level)
+
+    @property
+    def op(self) -> LinOp[Domain, Codomain]:
+        """The scaled operand."""
+        return self.operand
 
     @checked_method(in_space="domain", out_space="codomain")
     def apply(self, x: Any) -> Any:
@@ -321,37 +257,12 @@ class ScaledLinOp(LinOp[Domain, Codomain]):
             return self.op.is_hermitian()
         return None
 
-    def __eq__(self, other: Any) -> bool:
-        """Return whether another scaled operator has the same scalar and operand."""
-        if not self.same_math(other):          # Tier 1: backend
-            return NotImplemented
-        # NaN-reflexive, returns a real Python bool (no np.bool_ leak).
-        if not scalar_eq(self.scalar, other.scalar):       # Tier 3: scalar value
-            return False
-        return self.op == other.op                          # operand (own gate)
-
     def _repr_body(self) -> str:
         return f"{summarize_value(self.scalar)} · {self.op._short_repr()}"
 
-    def tree_flatten(self):
-        """Flatten this operator for pytree registration."""
-        children = (self.scalar, self.op)
-        aux = ()
-        return children, aux
-
-    @classmethod
-    def tree_unflatten(cls, aux, children):
-        """Rebuild this operator from pytree data."""
-        scalar, op = children
-        return cls(scalar, op)
-
-    def _convert(self, new_ctx: Context) -> ScaledLinOp:
-        """Convert the operand to ``new_ctx`` while preserving the scalar."""
-        return ScaledLinOp(self.scalar, self.op.convert(new_ctx))
-
 
 @core_kernels("sum")
-class SumLinOp(LinOp[Domain, Codomain]):
+class SumLinOp(SumNode, LinOp[Domain, Codomain]):
     r"""
     Lazy finite sum of linear operators with common spaces.
 
@@ -381,35 +292,13 @@ class SumLinOp(LinOp[Domain, Codomain]):
         Stored operands in the lazy sum.
     """
 
-    def __init__(
-        self,
-        ops: Sequence[LinOp[Domain, Codomain]],
-        check_level: CheckLevel | bool | None = None,
-    ) -> None:
-        if not ops:
-            raise ValueError("SumLinOp requires a nonempty sequence of LinOp operands.")
-        parts = tuple(_require_linop(op, f"ops[{i}]") for i, op in enumerate(ops))
-        ctx = _require_same_context(parts)
-        domain = parts[0].domain
-        codomain = parts[0].codomain
-        for i, op in enumerate(parts[1:], start=1):
-            if not _same_space_for_algebra(op.domain, domain) or not _same_space_for_algebra(
-                op.codomain, codomain
-            ):
-                raise ValueError(
-                    "All SumLinOp operands must have the same domain and codomain; "
-                    f"operand 0 maps {domain!r} -> {codomain!r}, "
-                    f"operand {i} maps {op.domain!r} -> {op.codomain!r}."
-                )
-        if check_level is None:
-            check_level = minimum_check_level(tuple(op.check_level for op in parts))
-        super().__init__(domain, codomain, ctx, check_level=check_level)
-        self.ops_tuple = parts
+    def __init__(self, ops: Sequence[LinOp[Domain, Codomain]], check_level: CheckLevel | bool | None = None) -> None:
+        super().__init__(ops, check_level)
 
     @property
-    def parts(self) -> tuple[LinOp[Domain, Codomain], ...]:
-        """Operators in this lazy sum."""
-        return self.ops_tuple
+    def ops_tuple(self) -> tuple[LinOp[Domain, Codomain], ...]:
+        """The summed operators (alias of ``parts``)."""
+        return self.parts
 
     @checked_method(in_space="domain", out_space="codomain")
     def apply(self, x: Any) -> Any:
@@ -484,35 +373,10 @@ class SumLinOp(LinOp[Domain, Codomain]):
             return True
         return None
 
-    def __eq__(self, other: Any) -> bool:
-        """Return whether another sum has the same operands, in order."""
-        if not self.same_math(other):              # Tier 1: backend
-            return NotImplemented
-        if len(self.ops_tuple) != len(other.ops_tuple):         # Tier 2: operand count before zip
-            return False
-        # Ordered, structural: A + B != B + A. Commutative equivalence is a
-        # separate concern (a future equiv()), not __eq__.
-        return all(a == b for a, b in zip(self.ops_tuple, other.ops_tuple))
-
     def _repr_body(self) -> str:
         from .._repr import truncated_join
 
         return truncated_join((op._short_repr() for op in self.ops_tuple), " + ")
-
-    def tree_flatten(self):
-        """Flatten this operator for pytree registration."""
-        children = self.ops_tuple
-        aux = ()
-        return children, aux
-
-    @classmethod
-    def tree_unflatten(cls, aux, children):
-        """Rebuild this operator from pytree data."""
-        return cls(tuple(children))
-
-    def _convert(self, new_ctx: Context) -> SumLinOp:
-        """Convert all operands to ``new_ctx``."""
-        return SumLinOp(tuple(op.convert(new_ctx) for op in self.ops_tuple))
 
 
 @core_kernels("composed")
@@ -669,7 +533,7 @@ class ComposedLinOp(LinOp[Domain, Codomain]):
 
 
 @core_kernels("zero")
-class ZeroLinOp(LinOp[Domain, Codomain]):
+class ZeroLinOp(ZeroNode, LinOp[Domain, Codomain]):
     r"""
     Lazy zero map between two spaces.
 
@@ -695,15 +559,6 @@ class ZeroLinOp(LinOp[Domain, Codomain]):
         backend/dtype context, the validation policy is a property of the bound
         object, not of the :class:`Context`.
     """
-
-    def __init__(
-        self,
-        dom: Domain,
-        cod: Codomain,
-        ctx: Context | str | None = None,
-        check_level: CheckLevel | bool | None = None,
-    ) -> None:
-        super().__init__(dom, cod, ctx, check_level=check_level)
 
     @checked_method(in_space="domain", out_space="codomain")
     def apply(self, x: Any) -> Any:
@@ -751,28 +606,6 @@ class ZeroLinOp(LinOp[Domain, Codomain]):
             ``True`` exactly when domain and codomain are the same space.
         """
         return self.domain == self.codomain
-
-    def __eq__(self, other: Any) -> bool:
-        """Return whether another zero map has the same spaces."""
-        if not self.same_math(other):              # Tier 1: backend
-            return NotImplemented
-        return self.domain == other.domain and self.codomain == other.codomain  # Tier 2
-
-    def tree_flatten(self):
-        """Flatten this operator for pytree registration."""
-        children = ()
-        aux = (self.domain, self.codomain, self.ctx)
-        return children, aux
-
-    @classmethod
-    def tree_unflatten(cls, aux, children):
-        """Rebuild this operator from pytree data."""
-        domain, codomain, ctx = aux
-        return cls(domain, codomain, ctx)
-
-    def _convert(self, new_ctx: Context) -> ZeroLinOp:
-        """Convert domain and codomain spaces to ``new_ctx``."""
-        return ZeroLinOp(self.domain.convert(new_ctx), self.codomain.convert(new_ctx), new_ctx)
 
 
 @core_kernels("identity")
@@ -1466,6 +1299,8 @@ class _AdjointViewLinOp(LinOp[Codomain, Domain]):
     def _convert(self, new_ctx: Context) -> _AdjointViewLinOp:
         return _AdjointViewLinOp(self.op.convert(new_ctx))
 
+
+LinOp._Sum, LinOp._Scaled, LinOp._Zero = SumLinOp, ScaledLinOp, ZeroLinOp
 
 register("add", LinOp, LinOp, lambda a, b: make_sum((a, b)))
 register("mul", Scalar, LinOp, make_scaled)

@@ -76,6 +76,10 @@ class Functional(Mapping, Generic[Domain]):
         # or explicitly supplied field uses a different validation level.
         self.cod = self.cod._with_check_level(self.check_level)
 
+    def _init_map(self, domain: Any, codomain: Any, ctx: Any, check_level: Any) -> None:
+        """Bind a node of this family (the hook the shared lazy nodes in ``mapping`` call)."""
+        Functional.__init__(self, domain, ctx, check_level=check_level, cod=codomain)
+
     @property
     def codomain(self) -> Field:
         """The independently bound scalar field of this functional's values."""
@@ -175,3 +179,6 @@ class Functional(Mapping, Generic[Domain]):
     # subclasses with each backend's tree protocol. Every concrete Functional is a
     # container, so the capability belongs on this base rather than being
     # re-declared (and separately registered) per functional.
+
+
+Functional._family = Functional

@@ -15,6 +15,10 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- The `Scaled`/`Sum`/`Zero` lazy nodes and the `make_sum`/`make_scaled` factories are
+  written once in `spacecore.mapping` and mixed into the `LinOp` and `Functional` node
+  classes, which keep only evaluation. A functional sum now also requires its terms to
+  share a codomain field, as an operator sum already did.
 - Functionals now expose a `Field` codomain, defaulting to `domain.scalars`,
   and validate scalar output through ordinary space membership. Explicit field
   codomains can differ from the domain's coefficient field; exact batched

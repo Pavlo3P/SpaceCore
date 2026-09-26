@@ -24,15 +24,12 @@ from __future__ import annotations
 from typing import Any
 
 from ._base import Functional
-from ..mapping import Scalar, register
+from ..mapping import Scalar, ScaledNode, SumNode, ZeroNode, make_scaled_of, make_sum_of, register
 from ..space import Field
 from .._checks import checked_method
 from .._check_policy import CheckLevel, minimum_check_level
 from ..contextual import Context
 from .._lazy_algebra import (
-    finalize_sum,
-    flatten_sum,
-    fold_scaled,
     is_scalar_like as is_scalar_like,  # re-exported for functional/_base.py
     scalar_eq,
 )
@@ -60,7 +57,7 @@ def _require_same_domain(terms: Any, node: str = "SumFunctional") -> None:
             )
 
 
-class ScaledFunctional(Functional):
+class ScaledFunctional(ScaledNode, Functional):
     """
     Lazy scalar multiple ``scalar * functional``.
 
@@ -76,24 +73,13 @@ class ScaledFunctional(Functional):
         policy is a property of the functional, not of the ``Context``.
     """
 
-    def __init__(
-        self,
-        scalar: Any,
-        functional: Functional,
-        check_level: CheckLevel | bool | None = None,
-    ) -> None:
-        if not isinstance(functional, Functional):
-            raise TypeError(f"functional must be a Functional, got {type(functional).__name__}.")
-        if not is_scalar_like(scalar):
-            raise TypeError(f"scalar must be scalar-like, got {type(scalar).__name__}.")
-        # Default the policy from the OPERAND, not from its domain space, so the
-        # result inherits the least-strict operand independently of order.
-        if check_level is None:
-            check_level = functional.check_level
-        super().__init__(functional.domain, functional.ctx, check_level=check_level,
-                         cod=functional.codomain)
-        self.scalar = scalar
-        self.functional = functional.convert(self.ctx)
+    def __init__(self, scalar: Any, functional: Functional, check_level: CheckLevel | bool | None = None) -> None:
+        super().__init__(scalar, functional, check_level)
+
+    @property
+    def functional(self) -> Functional:
+        """The scaled functional."""
+        return self.operand
 
     @checked_method(in_space="domain", out_space="codomain")
     def value(self, x: Any, *args: Any, **kwargs: Any) -> Any:
@@ -121,26 +107,6 @@ class ScaledFunctional(Functional):
         conj_scalar = self.ops.conj(self.scalar)
         return self.scalar * value, self.domain.scale(conj_scalar, grad)
 
-    def __eq__(self, other: Any) -> bool:
-        """Return whether another scaled functional has the same scalar and operand."""
-        if not self.same_math(other):
-            return NotImplemented
-        return scalar_eq(self.scalar, other.scalar) and self.functional == other.functional
-
-    def tree_flatten(self):
-        """Flatten this functional for pytree registration (scalar is a traced child)."""
-        return (self.scalar, self.functional), ()
-
-    @classmethod
-    def tree_unflatten(cls, aux, children):
-        """Rebuild this functional from pytree data."""
-        scalar, functional = children
-        return cls(scalar, functional)
-
-    def _convert(self, new_ctx: Context) -> "ScaledFunctional":
-        """Convert the scaled functional to ``new_ctx``."""
-        return ScaledFunctional(self.scalar, self.functional.convert(new_ctx))
-
 
 def make_scaled_functional(scalar: Any, functional: Functional) -> Functional:
     """
@@ -162,24 +128,10 @@ def make_scaled_functional(scalar: Any, functional: Functional) -> Functional:
     Functional
         Simplified scalar multiple.
     """
-    if not isinstance(functional, Functional):
-        raise TypeError(f"functional must be a Functional, got {type(functional).__name__}.")
-    if not is_scalar_like(scalar):
-        raise TypeError(f"scalar must be scalar-like, got {type(scalar).__name__}.")
-
-    return fold_scaled(
-        scalar,
-        functional,
-        is_zero=lambda f: isinstance(f, ZeroFunctional),
-        unwrap_scaled=lambda f: (
-            (f.scalar, f.functional) if isinstance(f, ScaledFunctional) else None
-        ),
-        make_zero=lambda: ZeroFunctional(functional.domain, functional.ctx, cod=functional.codomain),
-        make_scaled_node=ScaledFunctional,
-    )
+    return make_scaled_of(Functional, scalar, functional)
 
 
-class SumFunctional(Functional):
+class SumFunctional(SumNode, Functional):
     """
     Lazy sum of finitely many functionals on a common domain.
 
@@ -194,25 +146,12 @@ class SumFunctional(Functional):
     """
 
     def __init__(self, terms: Any, check_level: CheckLevel | bool | None = None) -> None:
-        parts = tuple(terms)
-        if not parts:
-            raise ValueError(
-                "SumFunctional requires a nonempty sequence of Functional operands."
-            )
-        for i, term in enumerate(parts):
-            if not isinstance(term, Functional):
-                raise TypeError(f"operand {i} must be a Functional, got {type(term).__name__}.")
-        _require_same_domain(parts)
-        if check_level is None:
-            check_level = minimum_check_level(tuple(term.check_level for term in parts))
-        super().__init__(parts[0].domain, parts[0].ctx, check_level=check_level,
-                         cod=parts[0].codomain)
-        self.terms = tuple(term.convert(self.ctx) for term in parts)
+        super().__init__(terms, check_level)
 
     @property
-    def parts(self) -> tuple[Functional, ...]:
-        """Return the summed terms in order."""
-        return self.terms
+    def terms(self) -> tuple[Functional, ...]:
+        """The summed functionals (alias of ``parts``)."""
+        return self.parts
 
     @checked_method(in_space="domain", out_space="codomain")
     def value(self, x: Any, *args: Any, **kwargs: Any) -> Any:
@@ -247,27 +186,6 @@ class SumFunctional(Functional):
             grad_total = grad if grad_total is None else domain.add(grad_total, grad)
         return value_total, grad_total
 
-    def __eq__(self, other: Any) -> bool:
-        """Return whether another sum has the same ordered terms."""
-        if not self.same_math(other):
-            return NotImplemented
-        if len(self.terms) != len(other.terms):
-            return False
-        return all(a == b for a, b in zip(self.terms, other.terms))
-
-    def tree_flatten(self):
-        """Flatten this functional for pytree registration."""
-        return self.terms, ()
-
-    @classmethod
-    def tree_unflatten(cls, aux, children):
-        """Rebuild this functional from pytree data."""
-        return cls(tuple(children))
-
-    def _convert(self, new_ctx: Context) -> "SumFunctional":
-        """Convert every term to ``new_ctx``."""
-        return SumFunctional(tuple(term.convert(new_ctx) for term in self.terms))
-
 
 def make_functional_sum(terms: Any) -> Functional:
     """
@@ -287,31 +205,10 @@ def make_functional_sum(terms: Any) -> Functional:
     Functional
         Simplified lazy sum, or the single operand when only one remains.
     """
-    terms = tuple(terms)
-    if not terms:
-        raise ValueError(
-            "make_functional_sum requires a nonempty sequence of Functional operands."
-        )
-    for i, term in enumerate(terms):
-        if not isinstance(term, Functional):
-            raise TypeError(f"operand {i} must be a Functional, got {type(term).__name__}.")
-    flat = flatten_sum(
-        terms,
-        is_sum=lambda t: isinstance(t, SumFunctional),
-        parts=lambda t: t.terms,
-    )
-    # Validate all terms' domains BEFORE dropping zeros, so a domain mismatch is
-    # never swallowed by the single-survivor unwrap or the all-zero collapse.
-    _require_same_domain(flat)
-    return finalize_sum(
-        flat,
-        is_zero=lambda f: isinstance(f, ZeroFunctional),
-        make_zero=lambda: ZeroFunctional(flat[0].domain, flat[0].ctx, cod=flat[0].codomain),
-        make_sum_node=SumFunctional,
-    )
+    return make_sum_of(Functional, terms)
 
 
-class ZeroFunctional(Functional):
+class ZeroFunctional(ZeroNode, Functional):
     """
     The zero functional: value ``0``, gradient the domain's zero element.
 
@@ -332,15 +229,9 @@ class ZeroFunctional(Functional):
         complex field is independent of the domain's storage dtype.
     """
 
-    def __init__(
-        self,
-        dom: Any,
-        ctx: Context | str | None = None,
-        check_level: CheckLevel | bool | None = None,
-        *,
-        cod: Field | None = None,
-    ) -> None:
-        super().__init__(dom, ctx, check_level=check_level, cod=cod)
+    @classmethod
+    def _of(cls, domain: Any, codomain: Any, ctx: Any, check_level: Any = None) -> "ZeroFunctional":
+        return cls(domain, ctx, check_level, cod=codomain)
 
     @checked_method(in_space="domain", out_space="codomain")
     def value(self, x: Any, *args: Any, **kwargs: Any) -> Any:
@@ -358,27 +249,6 @@ class ZeroFunctional(Functional):
     def value_and_grad(self, x: Any, *args: Any, **kwargs: Any) -> tuple[Any, Any]:
         """Return ``(0, X.zeros())``."""
         return self._value_core(x, *args, **kwargs), self.domain.zeros()
-
-    def __eq__(self, other: Any) -> bool:
-        """Return whether another zero functional has the same domain."""
-        if not self.same_math(other):
-            return NotImplemented
-        return self.domain == other.domain and self.codomain == other.codomain
-
-    def tree_flatten(self):
-        """Flatten this functional for pytree registration."""
-        return (), (self.domain, self.ctx, self.codomain, self.check_level)
-
-    @classmethod
-    def tree_unflatten(cls, aux, children):
-        """Rebuild this functional from pytree data."""
-        dom, ctx, cod, check_level = aux
-        return cls(dom, ctx, check_level=check_level, cod=cod)
-
-    def _convert(self, new_ctx: Context) -> "ZeroFunctional":
-        """Convert the zero functional to ``new_ctx``."""
-        return ZeroFunctional(self.domain.convert(new_ctx), new_ctx,
-                              check_level=self.check_level, cod=self.codomain)
 
 
 class ConstantFunctional(Functional):
@@ -778,6 +648,8 @@ def make_functional_product(left: Functional, right: Functional) -> Functional:
         return make_scaled_functional(right.constant, left)
     return ProductFunctional(left, right)
 
+
+Functional._Sum, Functional._Scaled, Functional._Zero = SumFunctional, ScaledFunctional, ZeroFunctional
 
 register("add", Functional, Functional, lambda f, g: make_functional_sum((f, g)))
 register("add", Functional, Scalar, make_shifted_functional)

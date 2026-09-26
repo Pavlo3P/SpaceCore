@@ -10,13 +10,21 @@ Subtraction, negation, the reflected forms and ``0 + m == m`` (so builtin ``sum`
 works) are derived here. Same-family and cross-family rules are the same mechanism:
 ``(LinOp, LinOp)`` and ``(Functional, LinOp)`` are just different keys. A pair with no
 rule returns ``NotImplemented``, so Python raises ``TypeError``.
+
+The lazy nodes are written here once too: :class:`ScaledNode`, :class:`SumNode` and
+:class:`ZeroNode`, with the factories :func:`make_sum_of` and :func:`make_scaled_of`.
+A family mixes them into its own node classes, which add only evaluation
+(``apply``/``rapply`` or ``value``/``grad``). The family supplies three hooks:
+``_family`` (its base class), ``_init_map(domain, codomain, ctx, check_level)``, and
+``_Sum``/``_Scaled``/``_Zero`` (its node classes).
 """
 from __future__ import annotations
 
 from abc import abstractmethod
 from typing import Any, Callable
 
-from ._lazy_algebra import is_scalar_like, scalar_eq
+from ._check_policy import minimum_check_level
+from ._lazy_algebra import finalize_sum, flatten_sum, fold_scaled, is_scalar_like, scalar_eq
 from ._repr import describe_space
 from .backend import PyTreeNode
 from .contextual import ContextBound
@@ -153,3 +161,166 @@ class Mapping(Algebraic, PyTreeNode, ContextBound):
     def _short_repr(self) -> str:
         """Return a bounded ``ClassName(domain → codomain)`` form, so nested trees stay short."""
         return f"{type(self).__name__}({self._arrow()})"
+
+
+def same_space_for_algebra(left: Any, right: Any) -> bool:
+    """Return whether two spaces are compatible for algebraic combination."""
+    if left == right:
+        return True
+    if type(left) is not type(right) or not left.ctx.same_math(right.ctx):
+        return False
+    try:
+        return left.convert(right.ctx) == right
+    except Exception:
+        return False
+
+
+def _checked_parts(family: type, parts: Any, node: str) -> tuple[Any, ...]:
+    """Return ``parts`` as a tuple after checking type, count, and shared endpoints."""
+    parts = tuple(parts)
+    if not parts:
+        raise ValueError(f"{node} requires a nonempty sequence of {family.__name__} operands.")
+    for i, part in enumerate(parts):
+        if not isinstance(part, family):
+            raise TypeError(f"operand {i} must be a {family.__name__}, got {type(part).__name__}.")
+    ctx, dom, cod = parts[0].ctx, parts[0].domain, parts[0].codomain
+    for i, part in enumerate(parts[1:], start=1):
+        if not ctx.same_math(part.ctx):
+            raise ValueError(
+                f"All {family.__name__} operands in an algebraic expression must have the same "
+                f"ctx; operand 0 has ctx {ctx!r}, operand {i} has ctx {part.ctx!r}."
+            )
+        if not (same_space_for_algebra(part.domain, dom) and same_space_for_algebra(part.codomain, cod)):
+            raise ValueError(
+                f"All {node} operands must have the same domain and codomain; operand 0 maps "
+                f"{dom!r} -> {cod!r}, operand {i} maps {part.domain!r} -> {part.codomain!r}."
+            )
+    return parts
+
+
+class ScaledNode:
+    """Lazy ``scalar * operand``, shared by every family; the family class adds evaluation."""
+
+    def __init__(self, scalar: Any, operand: Any, check_level: Any = None) -> None:
+        if not isinstance(operand, self._family):
+            raise TypeError(f"operand must be a {self._family.__name__}, got {type(operand).__name__}.")
+        if not is_scalar_like(scalar):
+            raise TypeError(f"scalar must be scalar-like, got {type(scalar).__name__}.")
+        # The policy defaults from the operand, so the result does not depend on operand order.
+        level = operand.check_level if check_level is None else check_level
+        self._init_map(operand.domain, operand.codomain, operand.ctx, level)
+        self.scalar, self.operand = scalar, operand.convert(self.ctx)
+
+    def __eq__(self, other: Any) -> bool:
+        """Return whether ``other`` has the same scalar and operand."""
+        if not self.same_math(other):
+            return NotImplemented
+        return scalar_eq(self.scalar, other.scalar) and self.operand == other.operand
+
+    def tree_flatten(self):
+        """Expose the scalar (traced) and the operand as children."""
+        return (self.scalar, self.operand), ()
+
+    @classmethod
+    def tree_unflatten(cls, aux, children):
+        """Rebuild from the scalar and the operand."""
+        return cls(*children)
+
+    def _convert(self, new_ctx: Any) -> Any:
+        return type(self)(self.scalar, self.operand.convert(new_ctx))
+
+
+class SumNode:
+    """Lazy finite sum of operands sharing domain and codomain; the family class adds evaluation."""
+
+    def __init__(self, parts: Any, check_level: Any = None) -> None:
+        parts = _checked_parts(self._family, parts, type(self).__name__)
+        if check_level is None:
+            check_level = minimum_check_level(tuple(part.check_level for part in parts))
+        self._init_map(parts[0].domain, parts[0].codomain, parts[0].ctx, check_level)
+        self.parts = tuple(part.convert(self.ctx) for part in parts)
+
+    def __eq__(self, other: Any) -> bool:
+        """Return whether ``other`` has the same operands, in order (``A + B != B + A``)."""
+        if not self.same_math(other):
+            return NotImplemented
+        return len(self.parts) == len(other.parts) and all(
+            a == b for a, b in zip(self.parts, other.parts)
+        )
+
+    def tree_flatten(self):
+        """Expose the operands as children."""
+        return self.parts, ()
+
+    @classmethod
+    def tree_unflatten(cls, aux, children):
+        """Rebuild from the operands."""
+        return cls(tuple(children))
+
+    def _convert(self, new_ctx: Any) -> Any:
+        return type(self)(tuple(part.convert(new_ctx) for part in self.parts))
+
+
+class ZeroNode:
+    """The zero map of a family; the family class adds evaluation."""
+
+    @classmethod
+    def _of(cls, domain: Any, codomain: Any, ctx: Any, check_level: Any = None) -> Any:
+        """Build the zero map; a family whose constructor orders arguments differently overrides this."""
+        return cls(domain, codomain, ctx, check_level)
+
+    def __eq__(self, other: Any) -> bool:
+        """Return whether ``other`` is the zero map between the same spaces."""
+        if not self.same_math(other):
+            return NotImplemented
+        return self.domain == other.domain and self.codomain == other.codomain
+
+    def tree_flatten(self):
+        """No children: the spaces, context and policy are static."""
+        return (), (self.domain, self.codomain, self.ctx, self.check_level)
+
+    @classmethod
+    def tree_unflatten(cls, aux, children):
+        """Rebuild from the static data."""
+        return cls._of(*aux)
+
+    def _convert(self, new_ctx: Any) -> Any:
+        return self._of(
+            self.domain.convert(new_ctx), self.codomain.convert(new_ctx), new_ctx, self.check_level
+        )
+
+
+def make_sum_of(family: type, parts: Any) -> Any:
+    """Return the canonical lazy sum: nested sums flattened, zeros dropped, singletons unwrapped.
+
+    Every operand's type and endpoints are checked before any zero is dropped, so a
+    mismatched zero term cannot vanish silently.
+    """
+    parts = tuple(parts)
+    for i, part in enumerate(parts):
+        if not isinstance(part, family):
+            raise TypeError(f"operand {i} must be a {family.__name__}, got {type(part).__name__}.")
+    flat = flatten_sum(parts, is_sum=lambda t: isinstance(t, SumNode), parts=lambda t: t.parts)
+    flat = _checked_parts(family, flat, family._Sum.__name__)
+    return finalize_sum(
+        flat,
+        is_zero=lambda t: isinstance(t, ZeroNode),
+        make_zero=lambda: family._Zero._of(flat[0].domain, flat[0].codomain, flat[0].ctx),
+        make_sum_node=family._Sum,
+    )
+
+
+def make_scaled_of(family: type, scalar: Any, operand: Any) -> Any:
+    """Return the canonical ``scalar * operand``: ``0`` gives zero, ``1`` the operand, nested scalars fold."""
+    if not isinstance(operand, family):
+        raise TypeError(f"operand must be a {family.__name__}, got {type(operand).__name__}.")
+    if not is_scalar_like(scalar):
+        raise TypeError(f"scalar must be scalar-like, got {type(scalar).__name__}.")
+    return fold_scaled(
+        scalar,
+        operand,
+        is_zero=lambda o: isinstance(o, ZeroNode),
+        unwrap_scaled=lambda o: (o.scalar, o.operand) if isinstance(o, ScaledNode) else None,
+        make_zero=lambda: family._Zero._of(operand.domain, operand.codomain, operand.ctx),
+        make_scaled_node=family._Scaled,
+    )
