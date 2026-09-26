@@ -21,4 +21,3 @@ as current behavior.
    backend_ops_array_api
    backend_conformance
    backend_deviations
-   kernels_policy

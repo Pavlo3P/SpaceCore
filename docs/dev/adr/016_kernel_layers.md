@@ -2,6 +2,12 @@
 
 ## Status
 
+**Superseded in part (0.5.0a, 2026-09-26).** The benchmarked-spec dispatch layer —
+`spacecore.kernels.specs`, `dispatch`, `dispatch_mode` — was removed. Its batched specs
+applied only to eager NumPy, where they measured mostly slower than the generic loops
+(as ADR-022 had already recorded for 0.4.1), and never under `jax.jit`. Six of its ten
+specs were never selected. The core-kernel layer below stands unchanged.
+
 Accepted for the kernel-layer architecture and for the optimized-kernel
 **dispatch policy** (see "Decision — optimized-kernel dispatch" below). The
 broader structural-dispatch design is implemented in `spacecore.kernels.specs`:

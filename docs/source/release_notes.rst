@@ -202,7 +202,7 @@ Added
   loop over dense block leaves). Each kernel has a correctness reference
   in ``tests/kernels/``. No dispatch or fusion is wired in ``0.4.0``: the
   ADR-016 structural-dispatch mechanism is implemented but ships off by default
-  and dormant, with no production routing. See :doc:`design/kernels_policy`.
+  and dormant, with no production routing. (The kernel policy page was removed with the spec layer in 0.5.0a.)
 
 Breaking changes
 ~~~~~~~~~~~~~~~~

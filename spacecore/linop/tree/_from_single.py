@@ -5,22 +5,9 @@ from typing import Any, Sequence, Tuple, cast
 from ._base import TreeLinOp
 from .._base import LinOp, Domain
 from ..._checks import checked_method
-from ...kernels import CachedStackParts, dispatch, should_consult_dispatch
 from ...space import DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace, TreeSpace
 from ...contextual import Context
 from ..._check_policy import CheckLevel
-
-# ADR-016 dispatch call site: a StackedLinOp applies one shared input through
-# every component. The per-component loop is the ``generic`` fallback; the
-# ``stacked-uniform-dense-batched-apply`` spec routes here when dispatch is on
-# and the components are uniform flat-dense. ``parts[i]._apply_core`` is exactly
-# the bound core in ``self._apply_parts[i]``, so the generic stays byte-identical.
-_STACKED_APPLY_KEY = "linop.stacked.apply"
-
-
-def _stacked_apply(parts: Any, x: Any) -> tuple[Any, ...]:
-    """Apply the shared input through each component core (generic stacked apply)."""
-    return tuple(p._apply_core(x) for p in parts)
 
 
 class StackedLinOp(TreeLinOp[Domain, TreeSpace]):
@@ -58,7 +45,6 @@ class StackedLinOp(TreeLinOp[Domain, TreeSpace]):
         super().__init__(dom, cod, parts, ctx, check_level=check_level)
         # ADR-022: memoize the stacked component matrices for the stacked.apply
         # broadcast fold (built once on first optimized use, NumPy-only).
-        self.parts = CachedStackParts(self.parts)
         self._flat_dense_rapply_mats = self._make_flat_dense_rapply_mats()
 
     def _make_flat_dense_rapply_mats(self):
@@ -103,15 +89,7 @@ class StackedLinOp(TreeLinOp[Domain, TreeSpace]):
 
     def _apply_unchecked(self, x: Any) -> Any:
         """Apply component operators without checks and rebuild codomain representation."""
-        if should_consult_dispatch(self):
-            y_parts = dispatch(
-                _STACKED_APPLY_KEY,
-                self.parts,
-                x,
-                generic=_stacked_apply,
-                ctx=self,
-            )
-        elif self._num_parts == 2:
+        if self._num_parts == 2:
             y_parts = (self._apply_parts[0](x), self._apply_parts[1](x))
         else:
             y_parts = tuple(apply(x) for apply in self._apply_parts)

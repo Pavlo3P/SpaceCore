@@ -9,8 +9,7 @@ diagonal metric weights.
 Metric helpers are imported lazily (general-metric path only), so this module has
 no module-level dependency on :mod:`spacecore.linop` and no import cycle forms.
 
-No ADR-016 dispatch spec is wired for ``SparseLinOp`` (the ``linop.matvec.sparse``
-key stays reserved/inert). Every direction is already a *single* optimal backend
+Every direction is already a *single* optimal backend
 call: ``apply``/``rapply`` are one SpMV (``op._A @ x`` / ``op._AH @ y``) and
 ``vapply``/``rvapply`` are one batched SpMV over the stacked right-hand side
 (``(op._A @ xs.reshape((-1, n)).T).T``), never an ``O(batch)`` Python loop. There

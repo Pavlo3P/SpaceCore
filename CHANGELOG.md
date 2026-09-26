@@ -9,6 +9,14 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Removed
 
+- **The ADR-016 benchmarked-spec dispatch layer** (breaking): `spacecore.kernels.specs`,
+  `dispatch`, `dispatch_mode`, `set_dispatch_mode`, `get_dispatch_mode`,
+  `should_consult_dispatch`, `KernelSpec`, `KernelCost`, `KernelRegistry`, `registry`,
+  the dispatch errors and the memory-budget knobs, together with the ADR-022
+  `CachedStackParts` cache. Dispatch was off by default; its batched specs applied only
+  to eager NumPy, where they ran mostly slower than the plain per-block loops, and
+  never under `jax.jit`. The core kernels stay. The bench harness now runs the
+  `baseline` regime only, and tutorial 09 covers fusion alone.
 - **`OperatorFamily`** (breaking). `FunctionalScaledOperator` is now a `Mapping`
   and keeps `at`, `apply` and `linearize_at`; the base-class defaults went with
   the class.

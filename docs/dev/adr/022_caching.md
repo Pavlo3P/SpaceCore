@@ -2,6 +2,10 @@
 
 ## Status
 
+**Withdrawn in part (0.5.0a, 2026-09-26).** The dispatch-fold cache (`CachedStackParts`)
+went with the ADR-016 dispatch layer it fed. The fused-form part of this ADR is not
+affected by that removal.
+
 Accepted
 
 ## Context

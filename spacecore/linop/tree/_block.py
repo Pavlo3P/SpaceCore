@@ -11,20 +11,8 @@ from .._base import LinOp
 from ..._checks import checked_method
 from ...contextual import Context
 from ..._check_policy import CheckLevel
-from ...kernels import CachedStackParts, dispatch, should_consult_dispatch
 from ...space import TreeSpace
 
-# ADR-016 approves the block-diagonal apply as a dispatch call site. The
-# per-part loop is the ``generic`` fallback; the ``block-diagonal-uniform-dense-
-# batched`` spec routes here when dispatch is on and the blocks are uniform
-# flat-dense. The block operators (not just their bound cores) are passed so a
-# spec can inspect block structure; ``parts[i]._apply_core`` is exactly the
-# bound core in ``self._apply_parts[i]``, so the generic stays byte-identical.
-# The ``should_consult_dispatch`` guard keeps the default path untouched.
-_BLOCK_DIAGONAL_APPLY_KEY = "linop.block_diagonal.apply"
-_BLOCK_DIAGONAL_RAPPLY_KEY = "linop.block_diagonal.rapply"
-_BLOCK_DIAGONAL_VAPPLY_KEY = "linop.block_diagonal.vapply"
-_BLOCK_DIAGONAL_RVAPPLY_KEY = "linop.block_diagonal.rvapply"
 
 
 def _block_diagonal_apply(parts: Any, x_parts: Any) -> tuple[Any, ...]:
@@ -150,7 +138,6 @@ class BlockDiagonalLinOp(TreeLinOp[TreeSpace, TreeSpace]):
         # so the uniform-dense batched fold (block_batched) stacks once and reuses
         # across applies. Built lazily on first optimized use, NumPy-only; dropped
         # and rebuilt on a pytree round-trip (tree_flatten re-normalizes parts).
-        self.parts = CachedStackParts(self.parts)
 
     def _check_layout(self) -> None:
         """Check that each block maps the corresponding pair of tree leaves."""
@@ -172,16 +159,7 @@ class BlockDiagonalLinOp(TreeLinOp[TreeSpace, TreeSpace]):
 
     def _apply_unchecked(self, x: Any) -> Any:
         x_parts = self.dom._components(x)
-        if should_consult_dispatch(self):
-            y_parts = dispatch(
-                _BLOCK_DIAGONAL_APPLY_KEY,
-                self.parts,
-                x_parts,
-                generic=_block_diagonal_apply,
-                ctx=self,
-            )
-        else:
-            y_parts = _block_diagonal_apply(self.parts, x_parts)
+        y_parts = _block_diagonal_apply(self.parts, x_parts)
         return self.cod._from_components(y_parts)
 
     @checked_method(in_space="codomain", out_space="domain")
@@ -191,16 +169,7 @@ class BlockDiagonalLinOp(TreeLinOp[TreeSpace, TreeSpace]):
 
     def _rapply_unchecked(self, y: Any) -> Any:
         y_parts = self.cod._components(y)
-        if should_consult_dispatch(self):
-            x_parts = dispatch(
-                _BLOCK_DIAGONAL_RAPPLY_KEY,
-                self.parts,
-                y_parts,
-                generic=_block_diagonal_rapply,
-                ctx=self,
-            )
-        else:
-            x_parts = _block_diagonal_rapply(self.parts, y_parts)
+        x_parts = _block_diagonal_rapply(self.parts, y_parts)
         return self.dom._from_components(x_parts)
 
     @checked_method(
@@ -212,16 +181,7 @@ class BlockDiagonalLinOp(TreeLinOp[TreeSpace, TreeSpace]):
 
     def _vapply_unchecked(self, x: Any) -> Any:
         x_parts = self.dom._components(x)
-        if should_consult_dispatch(self):
-            y_parts = dispatch(
-                _BLOCK_DIAGONAL_VAPPLY_KEY,
-                self.parts,
-                x_parts,
-                generic=_block_diagonal_vapply,
-                ctx=self,
-            )
-        else:
-            y_parts = _block_diagonal_vapply(self.parts, x_parts)
+        y_parts = _block_diagonal_vapply(self.parts, x_parts)
         return self.cod._from_components(y_parts)
 
     @checked_method(
@@ -233,16 +193,7 @@ class BlockDiagonalLinOp(TreeLinOp[TreeSpace, TreeSpace]):
 
     def _rvapply_unchecked(self, y: Any) -> Any:
         y_parts = self.cod._components(y)
-        if should_consult_dispatch(self):
-            x_parts = dispatch(
-                _BLOCK_DIAGONAL_RVAPPLY_KEY,
-                self.parts,
-                y_parts,
-                generic=_block_diagonal_rvapply,
-                ctx=self,
-            )
-        else:
-            x_parts = _block_diagonal_rvapply(self.parts, y_parts)
+        x_parts = _block_diagonal_rvapply(self.parts, y_parts)
         return self.dom._from_components(x_parts)
 
     @property

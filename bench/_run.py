@@ -295,11 +295,8 @@ def run_probes(
         is not jittable, which would make the jitted-vs-jitted comparison
         eager-vs-jitted; ``cheap`` requests are dropped for the JAX backend.
     regimes
-        Dispatch/cache regimes to sweep for dispatch-eligible (``linop``)
-        probes. ``None`` selects :data:`bench._regimes.DEFAULT_DISPATCH_REGIMES`
-        (``baseline`` + ``dispatch_cache``); non-dispatch families always run
-        ``baseline`` only. ``baseline`` is always included so it can serve as
-        the ``regime_speedup`` reference.
+        Accepted for compatibility and ignored: every probe runs the ``baseline``
+        regime since the ADR-016 dispatch layer was removed.
     max_size
         Run each probe only at sizes ``<= max_size``. ``None`` (the
         default) keeps every configured size. Use a small value to keep

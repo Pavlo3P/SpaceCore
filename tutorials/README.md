@@ -33,10 +33,9 @@ order once the foundations are in place.
 
 ### Performance and internals
 
-9. [`09_kernels_and_fusion.ipynb`](09_kernels_and_fusion.ipynb) — optimized-kernel
-   **dispatch** (ADR-016) and operator **fusion** (ADR-021): running the fastest bit-exact
-   kernel with `dispatch_mode`, and multiplying operators together with `fuse()`. Both are
-   opt-in and neither densifies a matrix-free operator.
+9. [`09_kernels_and_fusion.ipynb`](09_kernels_and_fusion.ipynb) — lazy operator algebra
+   and **fusion** (ADR-021): automatic rewrites at construction, and multiplying operators
+   together with `fuse()`, which never densifies a matrix-free operator.
 
 ## Running
 

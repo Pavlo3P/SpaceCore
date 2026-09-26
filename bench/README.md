@@ -29,9 +29,8 @@ python -m bench list       [--family space|linop|functional]
 
 `run` filters:
 - `--family <name>` (repeatable) restricts to one operation family.
-- `--regime <name>` (repeatable) selects dispatch/cache regimes for `linop`
-  probes (`baseline`, `dispatch`, `dispatch_cache`, `verify`); default is
-  `baseline` + `dispatch_cache`.
+- `--regime <name>` is accepted and ignored: every probe runs the `baseline` regime
+  since the ADR-016 dispatch layer was removed in 0.5.0a.
 - `--match <substring>` filters by probe name.
 - `--quiet` suppresses per-probe progress.
 - `--html <path>` writes a self-contained interactive dashboard.
@@ -46,12 +45,12 @@ The micro surface follows the 0.4.1 benchmark-surface spec
 against a hand-optimal pure-array-library bare, across three families. `linalg`,
 the synthetic `kernel`-comparison probes, `check_member`, and the tree-space
 probes are intentionally out of scope (the optimized folds are still measured on
-the real `linop` operators under the dispatch regimes).
+the real `linop` operators).
 
 | Family | Probes | What is measured |
 |---|---|---|
 | `space` | `add`, `scale`, `inner`, `norm`, `zeros`, `flatten`/`unflatten`, `convert`, `stacked.*`, `hermitian.*`, `elementwise_jordan.*` | space arithmetic / geometry / spectra vs idiomatic `numpy` |
-| `linop` | `dense.{apply,rapply,vapply,rvapply}`, `diagonal.*`, `sparse.*`, `identity`, `zero`, `scaled`, `composed.*`, `summed`, `block_diagonal`/`stacked`/`sum_to_single` (uniform **and** ragged), `matrix_free.*` | LinOp apply / metric-adjoint / batched / structured paths vs raw `matmul` / `*`, swept across dispatch regimes |
+| `linop` | `dense.{apply,rapply,vapply,rvapply}`, `diagonal.*`, `sparse.*`, `identity`, `zero`, `scaled`, `composed.*`, `summed`, `block_diagonal`/`stacked`/`sum_to_single` (uniform **and** ragged), `matrix_free.*` | LinOp apply / metric-adjoint / batched / structured paths vs raw `matmul` / `*` |
 | `functional` | `inner_product.value`/`grad`, `quadratic.value`, `matrix_free.value`, `generated_linear.value` | Functional value + gradient vs analytic NumPy |
 
 Sizes are picked per probe to span small / medium / large regimes. Block
@@ -128,7 +127,7 @@ hand-optimal pure-array-library implementation and must reproduce the
 bench/
   __main__.py        # CLI: python -m bench {run, compare, plot, summary, list}
   _seeds.py          # SEEDS = (0, 1, 2, 3)
-  _regimes.py        # dispatch/cache regimes (baseline/dispatch/dispatch_cache/verify)
+  _regimes.py        # the regime coordinate (baseline only since 0.5.0a)
   _probes.py         # Probe / ProbeCase / SeedTiming / ProbeResult / ProbeRegistry
   _operations.py     # Probe definitions registered at import time
   _run.py            # Multi-seed runner with per-size warmup/repeat

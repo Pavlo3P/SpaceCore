@@ -20,7 +20,6 @@ from __future__ import annotations
 from typing import Any
 
 from ._rules import CoreKernelSet, register_core_kernels
-from ..specs._dispatch import dispatch, should_consult_dispatch
 
 # Re-exported: the scalar predicates/helpers live together in
 # :mod:`spacecore._lazy_algebra` (stdlib-only, so importable from anywhere),
@@ -64,14 +63,6 @@ def batched_zeros(space: Any, leading: tuple[int, ...]) -> Any:
 # ---------------------------------------------------------------------------
 # Composition — fused flat chain of leaf cores
 # ---------------------------------------------------------------------------
-#
-# ADR-016 approves the composed apply chain as a dispatch call site. The flat
-# fused loop below is the ``generic`` fallback; a dispatch-eligible spec
-# registered under ``"linop.composed.apply"`` (none ships on by default) would
-# be selected for it when dispatch is on. The ``should_consult_dispatch`` guard
-# keeps the default (dispatch ``off``, non-strict) path a single bound-method
-# call away from today's loop — the core layer's zero-cost guarantee holds.
-_COMPOSED_APPLY_KEY = "linop.composed.apply"
 
 
 def _composed_chain_apply(chain: Any, x: Any) -> Any:
@@ -82,12 +73,7 @@ def _composed_chain_apply(chain: Any, x: Any) -> Any:
 
 
 def composed_apply_core(op: Any, x: Any) -> Any:
-    chain = op._apply_chain
-    if should_consult_dispatch(op):
-        return dispatch(
-            _COMPOSED_APPLY_KEY, chain, x, generic=_composed_chain_apply, ctx=op
-        )
-    return _composed_chain_apply(chain, x)
+    return _composed_chain_apply(op._apply_chain, x)
 
 
 def composed_rapply_core(op: Any, z: Any) -> Any:
