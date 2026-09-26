@@ -1,0 +1,2695 @@
+{
+  "meta": {
+    "python": "3.13.2",
+    "platform": "macOS-26.5-arm64-arm-64bit-Mach-O",
+    "processor": "arm",
+    "versions": {
+      "spacecore": "0.4.0",
+      "numpy": "2.4.2",
+      "scipy": "1.17.0",
+      "jax": "0.9.1",
+      "torch": "2.11.0"
+    },
+    "cli": {
+      "benchmark": null,
+      "backend": [
+        "numpy"
+      ],
+      "check_level": "both",
+      "seeds": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "sizes": "all",
+      "quick": true,
+      "modes": [
+        "bare",
+        "spacecore_public_none",
+        "spacecore_public_cheap",
+        "spacecore_lowered"
+      ]
+    }
+  },
+  "results": [
+    {
+      "benchmark_name": "cg_poisson",
+      "family": "macro",
+      "workload": "matrix-free CG on 2D (-Laplacian + lambda I) with Dirichlet BCs",
+      "backend": "numpy",
+      "device": "cpu",
+      "mode": "bare",
+      "check_level": null,
+      "size_label": "n=64",
+      "size_params": {
+        "n": 64,
+        "maxiter": 100,
+        "lambda": 0.01
+      },
+      "seed": 0,
+      "iterations": 100,
+      "setup_time_ns": 223791.0,
+      "compile_time_ns": null,
+      "run_time_ns": 2856667.0,
+      "time_per_iteration_ns": 28566.67,
+      "throughput": 35005.83022102331,
+      "memory_peak_bytes": 262792,
+      "error_vs_bare": 0.0,
+      "residual": null,
+      "objective": null,
+      "notes": "1 matvec / iteration; SPD ensured by lambda > 0.",
+      "extra": {}
+    },
+    {
+      "benchmark_name": "cg_poisson",
+      "family": "macro",
+      "workload": "matrix-free CG on 2D (-Laplacian + lambda I) with Dirichlet BCs",
+      "backend": "numpy",
+      "device": "cpu",
+      "mode": "spacecore_public_none",
+      "check_level": "none",
+      "size_label": "n=64",
+      "size_params": {
+        "n": 64,
+        "maxiter": 100,
+        "lambda": 0.01
+      },
+      "seed": 0,
+      "iterations": 100,
+      "setup_time_ns": 223791.0,
+      "compile_time_ns": null,
+      "run_time_ns": 6146625.0,
+      "time_per_iteration_ns": 61466.25,
+      "throughput": 16269.090761190084,
+      "memory_peak_bytes": 330275,
+      "error_vs_bare": 2.439454888092385e-19,
+      "residual": null,
+      "objective": null,
+      "notes": "1 matvec / iteration; SPD ensured by lambda > 0.",
+      "extra": {}
+    },
+    {
+      "benchmark_name": "cg_poisson",
+      "family": "macro",
+      "workload": "matrix-free CG on 2D (-Laplacian + lambda I) with Dirichlet BCs",
+      "backend": "numpy",
+      "device": "cpu",
+      "mode": "spacecore_public_cheap",
+      "check_level": "cheap",
+      "size_label": "n=64",
+      "size_params": {
+        "n": 64,
+        "maxiter": 100,
+        "lambda": 0.01
+      },
+      "seed": 0,
+      "iterations": 100,
+      "setup_time_ns": 223791.0,
+      "compile_time_ns": null,
+      "run_time_ns": 15351333.0,
+      "time_per_iteration_ns": 153513.33,
+      "throughput": 6514.092294134978,
+      "memory_peak_bytes": 330985,
+      "error_vs_bare": 2.439454888092385e-19,
+      "residual": null,
+      "objective": null,
+      "notes": "1 matvec / iteration; SPD ensured by lambda > 0.",
+      "extra": {}
+    },
+    {
+      "benchmark_name": "cg_poisson",
+      "family": "macro",
+      "workload": "matrix-free CG on 2D (-Laplacian + lambda I) with Dirichlet BCs",
+      "backend": "numpy",
+      "device": "cpu",
+      "mode": "spacecore_lowered",
+      "check_level": "none",
+      "size_label": "n=64",
+      "size_params": {
+        "n": 64,
+        "maxiter": 100,
+        "lambda": 0.01
+      },
+      "seed": 0,
+      "iterations": 100,
+      "setup_time_ns": 223791.0,
+      "compile_time_ns": null,
+      "run_time_ns": 5855208.0,
+      "time_per_iteration_ns": 58552.08,
+      "throughput": 17078.81257164562,
+      "memory_peak_bytes": 330297,
+      "error_vs_bare": 2.439454888092385e-19,
+      "residual": null,
+      "objective": null,
+      "notes": "1 matvec / iteration; SPD ensured by lambda > 0.",
+      "extra": {}
+    },
+    {
+      "benchmark_name": "power_iteration",
+      "family": "macro",
+      "workload": "power method on -Laplacian + diag(V), matrix-free",
+      "backend": "numpy",
+      "device": "cpu",
+      "mode": "bare",
+      "check_level": null,
+      "size_label": "d=10000_K=50",
+      "size_params": {
+        "d": 10000,
+        "K": 50
+      },
+      "seed": 0,
+      "iterations": 50,
+      "setup_time_ns": 372875.0,
+      "compile_time_ns": null,
+      "run_time_ns": 1055125.0,
+      "time_per_iteration_ns": 21102.5,
+      "throughput": 47387.7502665561,
+      "memory_peak_bytes": 400544,
+      "error_vs_bare": 0.0,
+      "residual": null,
+      "objective": null,
+      "notes": "K power-method steps; one matvec per iteration.",
+      "extra": {}
+    },
+    {
+      "benchmark_name": "power_iteration",
+      "family": "macro",
+      "workload": "power method on -Laplacian + diag(V), matrix-free",
+      "backend": "numpy",
+      "device": "cpu",
+      "mode": "spacecore_public_none",
+      "check_level": "none",
+      "size_label": "d=10000_K=50",
+      "size_params": {
+        "d": 10000,
+        "K": 50
+      },
+      "seed": 0,
+      "iterations": 50,
+      "setup_time_ns": 372875.0,
+      "compile_time_ns": null,
+      "run_time_ns": 2186292.0,
+      "time_per_iteration_ns": 43725.84,
+      "throughput": 22869.772198773084,
+      "memory_peak_bytes": 642200,
+      "error_vs_bare": 8.881784197001252e-16,
+      "residual": null,
+      "objective": null,
+      "notes": "K power-method steps; one matvec per iteration.",
+      "extra": {}
+    },
+    {
+      "benchmark_name": "power_iteration",
+      "family": "macro",
+      "workload": "power method on -Laplacian + diag(V), matrix-free",
+      "backend": "numpy",
+      "device": "cpu",
+      "mode": "spacecore_public_cheap",
+      "check_level": "cheap",
+      "size_label": "d=10000_K=50",
+      "size_params": {
+        "d": 10000,
+        "K": 50
+      },
+      "seed": 0,
+      "iterations": 50,
+      "setup_time_ns": 372875.0,
+      "compile_time_ns": null,
+      "run_time_ns": 5989250.0,
+      "time_per_iteration_ns": 119785.0,
+      "throughput": 8348.290687481738,
+      "memory_peak_bytes": 642578,
+      "error_vs_bare": 8.881784197001252e-16,
+      "residual": null,
+      "objective": null,
+      "notes": "K power-method steps; one matvec per iteration.",
+      "extra": {}
+    },
+    {
+      "benchmark_name": "power_iteration",
+      "family": "macro",
+      "workload": "power method on -Laplacian + diag(V), matrix-free",
+      "backend": "numpy",
+      "device": "cpu",
+      "mode": "spacecore_lowered",
+      "check_level": "none",
+      "size_label": "d=10000_K=50",
+      "size_params": {
+        "d": 10000,
+        "K": 50
+      },
+      "seed": 0,
+      "iterations": 50,
+      "setup_time_ns": 372875.0,
+      "compile_time_ns": null,
+      "run_time_ns": 2196250.0,
+      "time_per_iteration_ns": 43925.0,
+      "throughput": 22766.078542970972,
+      "memory_peak_bytes": 642224,
+      "error_vs_bare": 8.881784197001252e-16,
+      "residual": null,
+      "objective": null,
+      "notes": "K power-method steps; one matvec per iteration.",
+      "extra": {}
+    },
+    {
+      "benchmark_name": "lanczos",
+      "family": "macro",
+      "workload": "K-step Lanczos on -Laplacian + diag(V), matrix-free",
+      "backend": "numpy",
+      "device": "cpu",
+      "mode": "bare",
+      "check_level": null,
+      "size_label": "d=10000_K=50",
+      "size_params": {
+        "d": 10000,
+        "K": 50
+      },
+      "seed": 0,
+      "iterations": 50,
+      "setup_time_ns": 239792.0,
+      "compile_time_ns": null,
+      "run_time_ns": 3528042.0,
+      "time_per_iteration_ns": 70560.84,
+      "throughput": 14172.166884634593,
+      "memory_peak_bytes": 4402256,
+      "error_vs_bare": 0.0,
+      "residual": null,
+      "objective": null,
+      "notes": "Fixed-K Lanczos; bare path uses full reorthogonalization.",
+      "extra": {}
+    },
+    {
+      "benchmark_name": "lanczos",
+      "family": "macro",
+      "workload": "K-step Lanczos on -Laplacian + diag(V), matrix-free",
+      "backend": "numpy",
+      "device": "cpu",
+      "mode": "spacecore_public_none",
+      "check_level": "none",
+      "size_label": "d=10000_K=50",
+      "size_params": {
+        "d": 10000,
+        "K": 50
+      },
+      "seed": 0,
+      "iterations": 50,
+      "setup_time_ns": 239792.0,
+      "compile_time_ns": null,
+      "run_time_ns": 40406875.0,
+      "time_per_iteration_ns": 808137.5,
+      "throughput": 1237.4131877310483,
+      "memory_peak_bytes": 12732796,
+      "error_vs_bare": 6.800116025829084e-16,
+      "residual": null,
+      "objective": null,
+      "notes": "Fixed-K Lanczos; bare path uses full reorthogonalization.",
+      "extra": {}
+    },
+    {
+      "benchmark_name": "lanczos",
+      "family": "macro",
+      "workload": "K-step Lanczos on -Laplacian + diag(V), matrix-free",
+      "backend": "numpy",
+      "device": "cpu",
+      "mode": "spacecore_public_cheap",
+      "check_level": "cheap",
+      "size_label": "d=10000_K=50",
+      "size_params": {
+        "d": 10000,
+        "K": 50
+      },
+      "seed": 0,
+      "iterations": 50,
+      "setup_time_ns": 239792.0,
+      "compile_time_ns": null,
+      "run_time_ns": 52696625.0,
+      "time_per_iteration_ns": 1053932.5,
+      "throughput": 948.8273679766019,
+      "memory_peak_bytes": 12731596,
+      "error_vs_bare": 6.800116025829084e-16,
+      "residual": null,
+      "objective": null,
+      "notes": "Fixed-K Lanczos; bare path uses full reorthogonalization.",
+      "extra": {}
+    },
+    {
+      "benchmark_name": "lanczos",
+      "family": "macro",
+      "workload": "K-step Lanczos on -Laplacian + diag(V), matrix-free",
+      "backend": "numpy",
+      "device": "cpu",
+      "mode": "spacecore_lowered",
+      "check_level": "none",
+      "size_label": "d=10000_K=50",
+      "size_params": {
+        "d": 10000,
+        "K": 50
+      },
+      "seed": 0,
+      "iterations": 50,
+      "setup_time_ns": 239792.0,
+      "compile_time_ns": null,
+      "run_time_ns": 52936042.0,
+      "time_per_iteration_ns": 1058720.84,
+      "throughput": 944.536049748487,
+      "memory_peak_bytes": 12731314,
+      "error_vs_bare": 6.800116025829084e-16,
+      "residual": null,
+      "objective": null,
+      "notes": "Fixed-K Lanczos; bare path uses full reorthogonalization.",
+      "extra": {}
+    },
+    {
+      "benchmark_name": "pdhg.l1_lsq",
+      "family": "macro",
+      "workload": "PDHG L1-regularized least squares",
+      "backend": "numpy",
+      "device": "cpu",
+      "mode": "bare",
+      "check_level": null,
+      "size_label": "(5000,2000)",
+      "size_params": {
+        "m": 5000,
+        "n": 2000,
+        "iterations": 500,
+        "lambda_": 0.01
+      },
+      "seed": 0,
+      "iterations": 500,
+      "setup_time_ns": 66337208.0,
+      "compile_time_ns": null,
+      "run_time_ns": 2920327209.0,
+      "time_per_iteration_ns": 5840654.418,
+      "throughput": 171.21369086966584,
+      "memory_peak_bytes": 208880,
+      "error_vs_bare": 0.0,
+      "residual": null,
+      "objective": 1521.9073797899673,
+      "notes": "Standard PDHG for min 0.5||Ax-b||^2 + lam||x||_1 with theta=1.",
+      "extra": {}
+    },
+    {
+      "benchmark_name": "pdhg.l1_lsq",
+      "family": "macro",
+      "workload": "PDHG L1-regularized least squares",
+      "backend": "numpy",
+      "device": "cpu",
+      "mode": "spacecore_public_none",
+      "check_level": "none",
+      "size_label": "(5000,2000)",
+      "size_params": {
+        "m": 5000,
+        "n": 2000,
+        "iterations": 500,
+        "lambda_": 0.01
+      },
+      "seed": 0,
+      "iterations": 500,
+      "setup_time_ns": 66337208.0,
+      "compile_time_ns": null,
+      "run_time_ns": 2921289750.0,
+      "time_per_iteration_ns": 5842579.5,
+      "throughput": 171.15727736353438,
+      "memory_peak_bytes": 208880,
+      "error_vs_bare": 0.0,
+      "residual": null,
+      "objective": 1521.9073797899673,
+      "notes": "Standard PDHG for min 0.5||Ax-b||^2 + lam||x||_1 with theta=1.",
+      "extra": {}
+    },
+    {
+      "benchmark_name": "pdhg.l1_lsq",
+      "family": "macro",
+      "workload": "PDHG L1-regularized least squares",
+      "backend": "numpy",
+      "device": "cpu",
+      "mode": "spacecore_public_cheap",
+      "check_level": "cheap",
+      "size_label": "(5000,2000)",
+      "size_params": {
+        "m": 5000,
+        "n": 2000,
+        "iterations": 500,
+        "lambda_": 0.01
+      },
+      "seed": 0,
+      "iterations": 500,
+      "setup_time_ns": 66337208.0,
+      "compile_time_ns": null,
+      "run_time_ns": 2922845958.0,
+      "time_per_iteration_ns": 5845691.916,
+      "throughput": 171.06614826261057,
+      "memory_peak_bytes": 209124,
+      "error_vs_bare": 0.0,
+      "residual": null,
+      "objective": 1521.9073797899673,
+      "notes": "Standard PDHG for min 0.5||Ax-b||^2 + lam||x||_1 with theta=1.",
+      "extra": {}
+    },
+    {
+      "benchmark_name": "pdhg.l1_lsq",
+      "family": "macro",
+      "workload": "PDHG L1-regularized least squares",
+      "backend": "numpy",
+      "device": "cpu",
+      "mode": "spacecore_lowered",
+      "check_level": "none",
+      "size_label": "(5000,2000)",
+      "size_params": {
+        "m": 5000,
+        "n": 2000,
+        "iterations": 500,
+        "lambda_": 0.01
+      },
+      "seed": 0,
+      "iterations": 500,
+      "setup_time_ns": 66337208.0,
+      "compile_time_ns": null,
+      "run_time_ns": 2911621750.0,
+      "time_per_iteration_ns": 5823243.5,
+      "throughput": 171.72560275042594,
+      "memory_peak_bytes": 208880,
+      "error_vs_bare": 0.0,
+      "residual": null,
+      "objective": 1521.9073797899673,
+      "notes": "Standard PDHG for min 0.5||Ax-b||^2 + lam||x||_1 with theta=1.",
+      "extra": {}
+    },
+    {
+      "benchmark_name": "qot_barycenter",
+      "family": "macro",
+      "workload": "QOT barycenter gradient on Hermitian operators",
+      "backend": "numpy",
+      "device": "cpu",
+      "mode": "bare",
+      "check_level": null,
+      "size_label": "s4_d4",
+      "size_params": {
+        "S": 4,
+        "d0": 4,
+        "d": 4,
+        "epsilon": 0.1
+      },
+      "seed": 0,
+      "iterations": 4,
+      "setup_time_ns": 4581417.0,
+      "compile_time_ns": null,
+      "run_time_ns": 245875.0,
+      "time_per_iteration_ns": 61468.75,
+      "throughput": 16268.42907981698,
+      "memory_peak_bytes": 20824,
+      "error_vs_bare": 0.0,
+      "residual": null,
+      "objective": null,
+      "notes": "Per-state Hermitian eigendecomposition + soft-density partial trace.",
+      "extra": {}
+    },
+    {
+      "benchmark_name": "qot_barycenter",
+      "family": "macro",
+      "workload": "QOT barycenter gradient on Hermitian operators",
+      "backend": "numpy",
+      "device": "cpu",
+      "mode": "spacecore_public_none",
+      "check_level": "none",
+      "size_label": "s4_d4",
+      "size_params": {
+        "S": 4,
+        "d0": 4,
+        "d": 4,
+        "epsilon": 0.1
+      },
+      "seed": 0,
+      "iterations": 4,
+      "setup_time_ns": 4581417.0,
+      "compile_time_ns": null,
+      "run_time_ns": 178334.0,
+      "time_per_iteration_ns": 44583.5,
+      "throughput": 22429.82269225162,
+      "memory_peak_bytes": 19832,
+      "error_vs_bare": 0.0,
+      "residual": null,
+      "objective": null,
+      "notes": "Per-state Hermitian eigendecomposition + soft-density partial trace.",
+      "extra": {}
+    },
+    {
+      "benchmark_name": "qot_barycenter",
+      "family": "macro",
+      "workload": "QOT barycenter gradient on Hermitian operators",
+      "backend": "numpy",
+      "device": "cpu",
+      "mode": "spacecore_public_cheap",
+      "check_level": "cheap",
+      "size_label": "s4_d4",
+      "size_params": {
+        "S": 4,
+        "d0": 4,
+        "d": 4,
+        "epsilon": 0.1
+      },
+      "seed": 0,
+      "iterations": 4,
+      "setup_time_ns": 4581417.0,
+      "compile_time_ns": null,
+      "run_time_ns": 237833.0,
+      "time_per_iteration_ns": 59458.25,
+      "throughput": 16818.523922247965,
+      "memory_peak_bytes": 20226,
+      "error_vs_bare": 0.0,
+      "residual": null,
+      "objective": null,
+      "notes": "Per-state Hermitian eigendecomposition + soft-density partial trace.",
+      "extra": {}
+    },
+    {
+      "benchmark_name": "qot_barycenter",
+      "family": "macro",
+      "workload": "QOT barycenter gradient on Hermitian operators",
+      "backend": "numpy",
+      "device": "cpu",
+      "mode": "spacecore_lowered",
+      "check_level": "none",
+      "size_label": "s4_d4",
+      "size_params": {
+        "S": 4,
+        "d0": 4,
+        "d": 4,
+        "epsilon": 0.1
+      },
+      "seed": 0,
+      "iterations": 4,
+      "setup_time_ns": 4581417.0,
+      "compile_time_ns": null,
+      "run_time_ns": 170708.0,
+      "time_per_iteration_ns": 42677.0,
+      "throughput": 23431.825104857417,
+      "memory_peak_bytes": 19832,
+      "error_vs_bare": 0.0,
+      "residual": null,
+      "objective": null,
+      "notes": "Per-state Hermitian eigendecomposition + soft-density partial trace.",
+      "extra": {}
+    },
+    {
+      "benchmark_name": "density_pipeline",
+      "family": "macro",
+      "workload": "Batched density-matrix pipeline: hermitize -> PSD-clip -> trace-normalize -> partial trace -> spectral log -> kron lift.",
+      "backend": "numpy",
+      "device": "cpu",
+      "mode": "bare",
+      "check_level": null,
+      "size_label": "b16_d4",
+      "size_params": {
+        "batch": 16,
+        "d0": 4,
+        "d": 4
+      },
+      "seed": 0,
+      "iterations": 16,
+      "setup_time_ns": 549583.0,
+      "compile_time_ns": null,
+      "run_time_ns": 457167.0,
+      "time_per_iteration_ns": 28572.9375,
+      "throughput": 34998.15166011545,
+      "memory_peak_bytes": 178013,
+      "error_vs_bare": 0.0,
+      "residual": null,
+      "objective": null,
+      "notes": "iterations = batch size. Spectral-log step intentionally produces a non-PSD lifted result; psd_violation is a magnitude report, not an assertion.",
+      "extra": {}
+    },
+    {
+      "benchmark_name": "density_pipeline",
+      "family": "macro",
+      "workload": "Batched density-matrix pipeline: hermitize -> PSD-clip -> trace-normalize -> partial trace -> spectral log -> kron lift.",
+      "backend": "numpy",
+      "device": "cpu",
+      "mode": "spacecore_public_none",
+      "check_level": "none",
+      "size_label": "b16_d4",
+      "size_params": {
+        "batch": 16,
+        "d0": 4,
+        "d": 4
+      },
+      "seed": 0,
+      "iterations": 16,
+      "setup_time_ns": 549583.0,
+      "compile_time_ns": null,
+      "run_time_ns": 415125.0,
+      "time_per_iteration_ns": 25945.3125,
+      "throughput": 38542.607648298705,
+      "memory_peak_bytes": 137440,
+      "error_vs_bare": 0.0,
+      "residual": null,
+      "objective": null,
+      "notes": "iterations = batch size. Spectral-log step intentionally produces a non-PSD lifted result; psd_violation is a magnitude report, not an assertion.",
+      "extra": {}
+    },
+    {
+      "benchmark_name": "density_pipeline",
+      "family": "macro",
+      "workload": "Batched density-matrix pipeline: hermitize -> PSD-clip -> trace-normalize -> partial trace -> spectral log -> kron lift.",
+      "backend": "numpy",
+      "device": "cpu",
+      "mode": "spacecore_public_cheap",
+      "check_level": "cheap",
+      "size_label": "b16_d4",
+      "size_params": {
+        "batch": 16,
+        "d0": 4,
+        "d": 4
+      },
+      "seed": 0,
+      "iterations": 16,
+      "setup_time_ns": 549583.0,
+      "compile_time_ns": null,
+      "run_time_ns": 1646917.0,
+      "time_per_iteration_ns": 102932.3125,
+      "throughput": 9715.12225570566,
+      "memory_peak_bytes": 144218,
+      "error_vs_bare": 0.0,
+      "residual": null,
+      "objective": null,
+      "notes": "iterations = batch size. Spectral-log step intentionally produces a non-PSD lifted result; psd_violation is a magnitude report, not an assertion.",
+      "extra": {}
+    },
+    {
+      "benchmark_name": "density_pipeline",
+      "family": "macro",
+      "workload": "Batched density-matrix pipeline: hermitize -> PSD-clip -> trace-normalize -> partial trace -> spectral log -> kron lift.",
+      "backend": "numpy",
+      "device": "cpu",
+      "mode": "spacecore_lowered",
+      "check_level": "none",
+      "size_label": "b16_d4",
+      "size_params": {
+        "batch": 16,
+        "d0": 4,
+        "d": 4
+      },
+      "seed": 0,
+      "iterations": 16,
+      "setup_time_ns": 549583.0,
+      "compile_time_ns": null,
+      "run_time_ns": 442041.0,
+      "time_per_iteration_ns": 27627.5625,
+      "throughput": 36195.73749946272,
+      "memory_peak_bytes": 137440,
+      "error_vs_bare": 0.0,
+      "residual": null,
+      "objective": null,
+      "notes": "iterations = batch size. Spectral-log step intentionally produces a non-PSD lifted result; psd_violation is a magnitude report, not an assertion.",
+      "extra": {}
+    },
+    {
+      "benchmark_name": "operator_stress",
+      "family": "macro",
+      "workload": "Nested operator algebra: A = B_last @ ... @ (alpha1*A1 + alpha2*A2) @ ... @ B1; time apply, rapply, normal_apply.",
+      "backend": "numpy",
+      "device": "cpu",
+      "mode": "bare",
+      "check_level": null,
+      "size_label": "d=256",
+      "size_params": {
+        "d": 256,
+        "chain_depth": 4
+      },
+      "seed": 0,
+      "iterations": 50,
+      "setup_time_ns": 7570166.0,
+      "compile_time_ns": null,
+      "run_time_ns": 780500.0,
+      "time_per_iteration_ns": 15610.0,
+      "throughput": 192184.49711723253,
+      "memory_peak_bytes": 11176,
+      "error_vs_bare": 0.0,
+      "residual": null,
+      "objective": null,
+      "notes": "Operator algebra stress (@, +, *) vs precomputed dense matmul.",
+      "extra": {}
+    },
+    {
+      "benchmark_name": "operator_stress",
+      "family": "macro",
+      "workload": "Nested operator algebra: A = B_last @ ... @ (alpha1*A1 + alpha2*A2) @ ... @ B1; time apply, rapply, normal_apply.",
+      "backend": "numpy",
+      "device": "cpu",
+      "mode": "spacecore_public_none",
+      "check_level": "none",
+      "size_label": "d=256",
+      "size_params": {
+        "d": 256,
+        "chain_depth": 4
+      },
+      "seed": 0,
+      "iterations": 50,
+      "setup_time_ns": 7570166.0,
+      "compile_time_ns": null,
+      "run_time_ns": 5160916.0,
+      "time_per_iteration_ns": 103218.32,
+      "throughput": 29064.607910688723,
+      "memory_peak_bytes": 19584,
+      "error_vs_bare": 0.0,
+      "residual": null,
+      "objective": null,
+      "notes": "Operator algebra stress (@, +, *) vs precomputed dense matmul.",
+      "extra": {}
+    },
+    {
+      "benchmark_name": "operator_stress",
+      "family": "macro",
+      "workload": "Nested operator algebra: A = B_last @ ... @ (alpha1*A1 + alpha2*A2) @ ... @ B1; time apply, rapply, normal_apply.",
+      "backend": "numpy",
+      "device": "cpu",
+      "mode": "spacecore_public_cheap",
+      "check_level": "cheap",
+      "size_label": "d=256",
+      "size_params": {
+        "d": 256,
+        "chain_depth": 4
+      },
+      "seed": 0,
+      "iterations": 50,
+      "setup_time_ns": 7570166.0,
+      "compile_time_ns": null,
+      "run_time_ns": 8176792.0,
+      "time_per_iteration_ns": 163535.84,
+      "throughput": 18344.602626555745,
+      "memory_peak_bytes": 19892,
+      "error_vs_bare": 0.0,
+      "residual": null,
+      "objective": null,
+      "notes": "Operator algebra stress (@, +, *) vs precomputed dense matmul.",
+      "extra": {}
+    },
+    {
+      "benchmark_name": "operator_stress",
+      "family": "macro",
+      "workload": "Nested operator algebra: A = B_last @ ... @ (alpha1*A1 + alpha2*A2) @ ... @ B1; time apply, rapply, normal_apply.",
+      "backend": "numpy",
+      "device": "cpu",
+      "mode": "spacecore_lowered",
+      "check_level": "none",
+      "size_label": "d=256",
+      "size_params": {
+        "d": 256,
+        "chain_depth": 4
+      },
+      "seed": 0,
+      "iterations": 50,
+      "setup_time_ns": 7570166.0,
+      "compile_time_ns": null,
+      "run_time_ns": 750834.0,
+      "time_per_iteration_ns": 15016.68,
+      "throughput": 199777.8470340981,
+      "memory_peak_bytes": 11176,
+      "error_vs_bare": 4.440892098500626e-16,
+      "residual": null,
+      "objective": null,
+      "notes": "Operator algebra stress (@, +, *) vs precomputed dense matmul.",
+      "extra": {}
+    }
+  ],
+  "summaries": [
+    {
+      "benchmark_name": "cg_poisson",
+      "workload": "matrix-free CG on 2D (-Laplacian + lambda I) with Dirichlet BCs",
+      "backend": "numpy",
+      "device": "cpu",
+      "size_label": "n=64",
+      "size_params": {
+        "n": 64,
+        "maxiter": 100,
+        "lambda": 0.01
+      },
+      "mode": "bare",
+      "check_level": null,
+      "iterations": 100,
+      "metrics": {
+        "run_time_ns": {
+          "median": 2856667.0,
+          "mean": 2856667.0,
+          "std": 0.0,
+          "min": 2856667.0,
+          "max": 2856667.0,
+          "n": 1
+        },
+        "setup_time_ns": {
+          "median": 223791.0,
+          "mean": 223791.0,
+          "std": 0.0,
+          "min": 223791.0,
+          "max": 223791.0,
+          "n": 1
+        },
+        "time_per_iteration_ns": {
+          "median": 28566.67,
+          "mean": 28566.67,
+          "std": 0.0,
+          "min": 28566.67,
+          "max": 28566.67,
+          "n": 1
+        },
+        "throughput": {
+          "median": 35005.83022102331,
+          "mean": 35005.83022102331,
+          "std": 0.0,
+          "min": 35005.83022102331,
+          "max": 35005.83022102331,
+          "n": 1
+        },
+        "memory_peak_bytes": {
+          "median": 262792.0,
+          "mean": 262792.0,
+          "std": 0.0,
+          "min": 262792.0,
+          "max": 262792.0,
+          "n": 1
+        },
+        "error_vs_bare": {
+          "median": 0.0,
+          "mean": 0.0,
+          "std": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "n": 1
+        }
+      },
+      "n_seeds": 1
+    },
+    {
+      "benchmark_name": "cg_poisson",
+      "workload": "matrix-free CG on 2D (-Laplacian + lambda I) with Dirichlet BCs",
+      "backend": "numpy",
+      "device": "cpu",
+      "size_label": "n=64",
+      "size_params": {
+        "n": 64,
+        "maxiter": 100,
+        "lambda": 0.01
+      },
+      "mode": "spacecore_lowered",
+      "check_level": "none",
+      "iterations": 100,
+      "metrics": {
+        "run_time_ns": {
+          "median": 5855208.0,
+          "mean": 5855208.0,
+          "std": 0.0,
+          "min": 5855208.0,
+          "max": 5855208.0,
+          "n": 1
+        },
+        "setup_time_ns": {
+          "median": 223791.0,
+          "mean": 223791.0,
+          "std": 0.0,
+          "min": 223791.0,
+          "max": 223791.0,
+          "n": 1
+        },
+        "time_per_iteration_ns": {
+          "median": 58552.08,
+          "mean": 58552.08,
+          "std": 0.0,
+          "min": 58552.08,
+          "max": 58552.08,
+          "n": 1
+        },
+        "throughput": {
+          "median": 17078.81257164562,
+          "mean": 17078.81257164562,
+          "std": 0.0,
+          "min": 17078.81257164562,
+          "max": 17078.81257164562,
+          "n": 1
+        },
+        "memory_peak_bytes": {
+          "median": 330297.0,
+          "mean": 330297.0,
+          "std": 0.0,
+          "min": 330297.0,
+          "max": 330297.0,
+          "n": 1
+        },
+        "error_vs_bare": {
+          "median": 2.439454888092385e-19,
+          "mean": 2.439454888092385e-19,
+          "std": 0.0,
+          "min": 2.439454888092385e-19,
+          "max": 2.439454888092385e-19,
+          "n": 1
+        }
+      },
+      "n_seeds": 1
+    },
+    {
+      "benchmark_name": "cg_poisson",
+      "workload": "matrix-free CG on 2D (-Laplacian + lambda I) with Dirichlet BCs",
+      "backend": "numpy",
+      "device": "cpu",
+      "size_label": "n=64",
+      "size_params": {
+        "n": 64,
+        "maxiter": 100,
+        "lambda": 0.01
+      },
+      "mode": "spacecore_public_cheap",
+      "check_level": "cheap",
+      "iterations": 100,
+      "metrics": {
+        "run_time_ns": {
+          "median": 15351333.0,
+          "mean": 15351333.0,
+          "std": 0.0,
+          "min": 15351333.0,
+          "max": 15351333.0,
+          "n": 1
+        },
+        "setup_time_ns": {
+          "median": 223791.0,
+          "mean": 223791.0,
+          "std": 0.0,
+          "min": 223791.0,
+          "max": 223791.0,
+          "n": 1
+        },
+        "time_per_iteration_ns": {
+          "median": 153513.33,
+          "mean": 153513.33,
+          "std": 0.0,
+          "min": 153513.33,
+          "max": 153513.33,
+          "n": 1
+        },
+        "throughput": {
+          "median": 6514.092294134978,
+          "mean": 6514.092294134978,
+          "std": 0.0,
+          "min": 6514.092294134978,
+          "max": 6514.092294134978,
+          "n": 1
+        },
+        "memory_peak_bytes": {
+          "median": 330985.0,
+          "mean": 330985.0,
+          "std": 0.0,
+          "min": 330985.0,
+          "max": 330985.0,
+          "n": 1
+        },
+        "error_vs_bare": {
+          "median": 2.439454888092385e-19,
+          "mean": 2.439454888092385e-19,
+          "std": 0.0,
+          "min": 2.439454888092385e-19,
+          "max": 2.439454888092385e-19,
+          "n": 1
+        }
+      },
+      "n_seeds": 1
+    },
+    {
+      "benchmark_name": "cg_poisson",
+      "workload": "matrix-free CG on 2D (-Laplacian + lambda I) with Dirichlet BCs",
+      "backend": "numpy",
+      "device": "cpu",
+      "size_label": "n=64",
+      "size_params": {
+        "n": 64,
+        "maxiter": 100,
+        "lambda": 0.01
+      },
+      "mode": "spacecore_public_none",
+      "check_level": "none",
+      "iterations": 100,
+      "metrics": {
+        "run_time_ns": {
+          "median": 6146625.0,
+          "mean": 6146625.0,
+          "std": 0.0,
+          "min": 6146625.0,
+          "max": 6146625.0,
+          "n": 1
+        },
+        "setup_time_ns": {
+          "median": 223791.0,
+          "mean": 223791.0,
+          "std": 0.0,
+          "min": 223791.0,
+          "max": 223791.0,
+          "n": 1
+        },
+        "time_per_iteration_ns": {
+          "median": 61466.25,
+          "mean": 61466.25,
+          "std": 0.0,
+          "min": 61466.25,
+          "max": 61466.25,
+          "n": 1
+        },
+        "throughput": {
+          "median": 16269.090761190084,
+          "mean": 16269.090761190084,
+          "std": 0.0,
+          "min": 16269.090761190084,
+          "max": 16269.090761190084,
+          "n": 1
+        },
+        "memory_peak_bytes": {
+          "median": 330275.0,
+          "mean": 330275.0,
+          "std": 0.0,
+          "min": 330275.0,
+          "max": 330275.0,
+          "n": 1
+        },
+        "error_vs_bare": {
+          "median": 2.439454888092385e-19,
+          "mean": 2.439454888092385e-19,
+          "std": 0.0,
+          "min": 2.439454888092385e-19,
+          "max": 2.439454888092385e-19,
+          "n": 1
+        }
+      },
+      "n_seeds": 1
+    },
+    {
+      "benchmark_name": "density_pipeline",
+      "workload": "Batched density-matrix pipeline: hermitize -> PSD-clip -> trace-normalize -> partial trace -> spectral log -> kron lift.",
+      "backend": "numpy",
+      "device": "cpu",
+      "size_label": "b16_d4",
+      "size_params": {
+        "batch": 16,
+        "d0": 4,
+        "d": 4
+      },
+      "mode": "bare",
+      "check_level": null,
+      "iterations": 16,
+      "metrics": {
+        "run_time_ns": {
+          "median": 457167.0,
+          "mean": 457167.0,
+          "std": 0.0,
+          "min": 457167.0,
+          "max": 457167.0,
+          "n": 1
+        },
+        "setup_time_ns": {
+          "median": 549583.0,
+          "mean": 549583.0,
+          "std": 0.0,
+          "min": 549583.0,
+          "max": 549583.0,
+          "n": 1
+        },
+        "time_per_iteration_ns": {
+          "median": 28572.9375,
+          "mean": 28572.9375,
+          "std": 0.0,
+          "min": 28572.9375,
+          "max": 28572.9375,
+          "n": 1
+        },
+        "throughput": {
+          "median": 34998.15166011545,
+          "mean": 34998.15166011545,
+          "std": 0.0,
+          "min": 34998.15166011545,
+          "max": 34998.15166011545,
+          "n": 1
+        },
+        "memory_peak_bytes": {
+          "median": 178013.0,
+          "mean": 178013.0,
+          "std": 0.0,
+          "min": 178013.0,
+          "max": 178013.0,
+          "n": 1
+        },
+        "error_vs_bare": {
+          "median": 0.0,
+          "mean": 0.0,
+          "std": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "n": 1
+        }
+      },
+      "n_seeds": 1
+    },
+    {
+      "benchmark_name": "density_pipeline",
+      "workload": "Batched density-matrix pipeline: hermitize -> PSD-clip -> trace-normalize -> partial trace -> spectral log -> kron lift.",
+      "backend": "numpy",
+      "device": "cpu",
+      "size_label": "b16_d4",
+      "size_params": {
+        "batch": 16,
+        "d0": 4,
+        "d": 4
+      },
+      "mode": "spacecore_lowered",
+      "check_level": "none",
+      "iterations": 16,
+      "metrics": {
+        "run_time_ns": {
+          "median": 442041.0,
+          "mean": 442041.0,
+          "std": 0.0,
+          "min": 442041.0,
+          "max": 442041.0,
+          "n": 1
+        },
+        "setup_time_ns": {
+          "median": 549583.0,
+          "mean": 549583.0,
+          "std": 0.0,
+          "min": 549583.0,
+          "max": 549583.0,
+          "n": 1
+        },
+        "time_per_iteration_ns": {
+          "median": 27627.5625,
+          "mean": 27627.5625,
+          "std": 0.0,
+          "min": 27627.5625,
+          "max": 27627.5625,
+          "n": 1
+        },
+        "throughput": {
+          "median": 36195.73749946272,
+          "mean": 36195.73749946272,
+          "std": 0.0,
+          "min": 36195.73749946272,
+          "max": 36195.73749946272,
+          "n": 1
+        },
+        "memory_peak_bytes": {
+          "median": 137440.0,
+          "mean": 137440.0,
+          "std": 0.0,
+          "min": 137440.0,
+          "max": 137440.0,
+          "n": 1
+        },
+        "error_vs_bare": {
+          "median": 0.0,
+          "mean": 0.0,
+          "std": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "n": 1
+        }
+      },
+      "n_seeds": 1
+    },
+    {
+      "benchmark_name": "density_pipeline",
+      "workload": "Batched density-matrix pipeline: hermitize -> PSD-clip -> trace-normalize -> partial trace -> spectral log -> kron lift.",
+      "backend": "numpy",
+      "device": "cpu",
+      "size_label": "b16_d4",
+      "size_params": {
+        "batch": 16,
+        "d0": 4,
+        "d": 4
+      },
+      "mode": "spacecore_public_cheap",
+      "check_level": "cheap",
+      "iterations": 16,
+      "metrics": {
+        "run_time_ns": {
+          "median": 1646917.0,
+          "mean": 1646917.0,
+          "std": 0.0,
+          "min": 1646917.0,
+          "max": 1646917.0,
+          "n": 1
+        },
+        "setup_time_ns": {
+          "median": 549583.0,
+          "mean": 549583.0,
+          "std": 0.0,
+          "min": 549583.0,
+          "max": 549583.0,
+          "n": 1
+        },
+        "time_per_iteration_ns": {
+          "median": 102932.3125,
+          "mean": 102932.3125,
+          "std": 0.0,
+          "min": 102932.3125,
+          "max": 102932.3125,
+          "n": 1
+        },
+        "throughput": {
+          "median": 9715.12225570566,
+          "mean": 9715.12225570566,
+          "std": 0.0,
+          "min": 9715.12225570566,
+          "max": 9715.12225570566,
+          "n": 1
+        },
+        "memory_peak_bytes": {
+          "median": 144218.0,
+          "mean": 144218.0,
+          "std": 0.0,
+          "min": 144218.0,
+          "max": 144218.0,
+          "n": 1
+        },
+        "error_vs_bare": {
+          "median": 0.0,
+          "mean": 0.0,
+          "std": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "n": 1
+        }
+      },
+      "n_seeds": 1
+    },
+    {
+      "benchmark_name": "density_pipeline",
+      "workload": "Batched density-matrix pipeline: hermitize -> PSD-clip -> trace-normalize -> partial trace -> spectral log -> kron lift.",
+      "backend": "numpy",
+      "device": "cpu",
+      "size_label": "b16_d4",
+      "size_params": {
+        "batch": 16,
+        "d0": 4,
+        "d": 4
+      },
+      "mode": "spacecore_public_none",
+      "check_level": "none",
+      "iterations": 16,
+      "metrics": {
+        "run_time_ns": {
+          "median": 415125.0,
+          "mean": 415125.0,
+          "std": 0.0,
+          "min": 415125.0,
+          "max": 415125.0,
+          "n": 1
+        },
+        "setup_time_ns": {
+          "median": 549583.0,
+          "mean": 549583.0,
+          "std": 0.0,
+          "min": 549583.0,
+          "max": 549583.0,
+          "n": 1
+        },
+        "time_per_iteration_ns": {
+          "median": 25945.3125,
+          "mean": 25945.3125,
+          "std": 0.0,
+          "min": 25945.3125,
+          "max": 25945.3125,
+          "n": 1
+        },
+        "throughput": {
+          "median": 38542.607648298705,
+          "mean": 38542.607648298705,
+          "std": 0.0,
+          "min": 38542.607648298705,
+          "max": 38542.607648298705,
+          "n": 1
+        },
+        "memory_peak_bytes": {
+          "median": 137440.0,
+          "mean": 137440.0,
+          "std": 0.0,
+          "min": 137440.0,
+          "max": 137440.0,
+          "n": 1
+        },
+        "error_vs_bare": {
+          "median": 0.0,
+          "mean": 0.0,
+          "std": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "n": 1
+        }
+      },
+      "n_seeds": 1
+    },
+    {
+      "benchmark_name": "lanczos",
+      "workload": "K-step Lanczos on -Laplacian + diag(V), matrix-free",
+      "backend": "numpy",
+      "device": "cpu",
+      "size_label": "d=10000_K=50",
+      "size_params": {
+        "d": 10000,
+        "K": 50
+      },
+      "mode": "bare",
+      "check_level": null,
+      "iterations": 50,
+      "metrics": {
+        "run_time_ns": {
+          "median": 3528042.0,
+          "mean": 3528042.0,
+          "std": 0.0,
+          "min": 3528042.0,
+          "max": 3528042.0,
+          "n": 1
+        },
+        "setup_time_ns": {
+          "median": 239792.0,
+          "mean": 239792.0,
+          "std": 0.0,
+          "min": 239792.0,
+          "max": 239792.0,
+          "n": 1
+        },
+        "time_per_iteration_ns": {
+          "median": 70560.84,
+          "mean": 70560.84,
+          "std": 0.0,
+          "min": 70560.84,
+          "max": 70560.84,
+          "n": 1
+        },
+        "throughput": {
+          "median": 14172.166884634593,
+          "mean": 14172.166884634593,
+          "std": 0.0,
+          "min": 14172.166884634593,
+          "max": 14172.166884634593,
+          "n": 1
+        },
+        "memory_peak_bytes": {
+          "median": 4402256.0,
+          "mean": 4402256.0,
+          "std": 0.0,
+          "min": 4402256.0,
+          "max": 4402256.0,
+          "n": 1
+        },
+        "error_vs_bare": {
+          "median": 0.0,
+          "mean": 0.0,
+          "std": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "n": 1
+        }
+      },
+      "n_seeds": 1
+    },
+    {
+      "benchmark_name": "lanczos",
+      "workload": "K-step Lanczos on -Laplacian + diag(V), matrix-free",
+      "backend": "numpy",
+      "device": "cpu",
+      "size_label": "d=10000_K=50",
+      "size_params": {
+        "d": 10000,
+        "K": 50
+      },
+      "mode": "spacecore_lowered",
+      "check_level": "none",
+      "iterations": 50,
+      "metrics": {
+        "run_time_ns": {
+          "median": 52936042.0,
+          "mean": 52936042.0,
+          "std": 0.0,
+          "min": 52936042.0,
+          "max": 52936042.0,
+          "n": 1
+        },
+        "setup_time_ns": {
+          "median": 239792.0,
+          "mean": 239792.0,
+          "std": 0.0,
+          "min": 239792.0,
+          "max": 239792.0,
+          "n": 1
+        },
+        "time_per_iteration_ns": {
+          "median": 1058720.84,
+          "mean": 1058720.84,
+          "std": 0.0,
+          "min": 1058720.84,
+          "max": 1058720.84,
+          "n": 1
+        },
+        "throughput": {
+          "median": 944.536049748487,
+          "mean": 944.536049748487,
+          "std": 0.0,
+          "min": 944.536049748487,
+          "max": 944.536049748487,
+          "n": 1
+        },
+        "memory_peak_bytes": {
+          "median": 12731314.0,
+          "mean": 12731314.0,
+          "std": 0.0,
+          "min": 12731314.0,
+          "max": 12731314.0,
+          "n": 1
+        },
+        "error_vs_bare": {
+          "median": 6.800116025829084e-16,
+          "mean": 6.800116025829084e-16,
+          "std": 0.0,
+          "min": 6.800116025829084e-16,
+          "max": 6.800116025829084e-16,
+          "n": 1
+        }
+      },
+      "n_seeds": 1
+    },
+    {
+      "benchmark_name": "lanczos",
+      "workload": "K-step Lanczos on -Laplacian + diag(V), matrix-free",
+      "backend": "numpy",
+      "device": "cpu",
+      "size_label": "d=10000_K=50",
+      "size_params": {
+        "d": 10000,
+        "K": 50
+      },
+      "mode": "spacecore_public_cheap",
+      "check_level": "cheap",
+      "iterations": 50,
+      "metrics": {
+        "run_time_ns": {
+          "median": 52696625.0,
+          "mean": 52696625.0,
+          "std": 0.0,
+          "min": 52696625.0,
+          "max": 52696625.0,
+          "n": 1
+        },
+        "setup_time_ns": {
+          "median": 239792.0,
+          "mean": 239792.0,
+          "std": 0.0,
+          "min": 239792.0,
+          "max": 239792.0,
+          "n": 1
+        },
+        "time_per_iteration_ns": {
+          "median": 1053932.5,
+          "mean": 1053932.5,
+          "std": 0.0,
+          "min": 1053932.5,
+          "max": 1053932.5,
+          "n": 1
+        },
+        "throughput": {
+          "median": 948.8273679766019,
+          "mean": 948.8273679766019,
+          "std": 0.0,
+          "min": 948.8273679766019,
+          "max": 948.8273679766019,
+          "n": 1
+        },
+        "memory_peak_bytes": {
+          "median": 12731596.0,
+          "mean": 12731596.0,
+          "std": 0.0,
+          "min": 12731596.0,
+          "max": 12731596.0,
+          "n": 1
+        },
+        "error_vs_bare": {
+          "median": 6.800116025829084e-16,
+          "mean": 6.800116025829084e-16,
+          "std": 0.0,
+          "min": 6.800116025829084e-16,
+          "max": 6.800116025829084e-16,
+          "n": 1
+        }
+      },
+      "n_seeds": 1
+    },
+    {
+      "benchmark_name": "lanczos",
+      "workload": "K-step Lanczos on -Laplacian + diag(V), matrix-free",
+      "backend": "numpy",
+      "device": "cpu",
+      "size_label": "d=10000_K=50",
+      "size_params": {
+        "d": 10000,
+        "K": 50
+      },
+      "mode": "spacecore_public_none",
+      "check_level": "none",
+      "iterations": 50,
+      "metrics": {
+        "run_time_ns": {
+          "median": 40406875.0,
+          "mean": 40406875.0,
+          "std": 0.0,
+          "min": 40406875.0,
+          "max": 40406875.0,
+          "n": 1
+        },
+        "setup_time_ns": {
+          "median": 239792.0,
+          "mean": 239792.0,
+          "std": 0.0,
+          "min": 239792.0,
+          "max": 239792.0,
+          "n": 1
+        },
+        "time_per_iteration_ns": {
+          "median": 808137.5,
+          "mean": 808137.5,
+          "std": 0.0,
+          "min": 808137.5,
+          "max": 808137.5,
+          "n": 1
+        },
+        "throughput": {
+          "median": 1237.4131877310483,
+          "mean": 1237.4131877310483,
+          "std": 0.0,
+          "min": 1237.4131877310483,
+          "max": 1237.4131877310483,
+          "n": 1
+        },
+        "memory_peak_bytes": {
+          "median": 12732796.0,
+          "mean": 12732796.0,
+          "std": 0.0,
+          "min": 12732796.0,
+          "max": 12732796.0,
+          "n": 1
+        },
+        "error_vs_bare": {
+          "median": 6.800116025829084e-16,
+          "mean": 6.800116025829084e-16,
+          "std": 0.0,
+          "min": 6.800116025829084e-16,
+          "max": 6.800116025829084e-16,
+          "n": 1
+        }
+      },
+      "n_seeds": 1
+    },
+    {
+      "benchmark_name": "operator_stress",
+      "workload": "Nested operator algebra: A = B_last @ ... @ (alpha1*A1 + alpha2*A2) @ ... @ B1; time apply, rapply, normal_apply.",
+      "backend": "numpy",
+      "device": "cpu",
+      "size_label": "d=256",
+      "size_params": {
+        "d": 256,
+        "chain_depth": 4
+      },
+      "mode": "bare",
+      "check_level": null,
+      "iterations": 50,
+      "metrics": {
+        "run_time_ns": {
+          "median": 780500.0,
+          "mean": 780500.0,
+          "std": 0.0,
+          "min": 780500.0,
+          "max": 780500.0,
+          "n": 1
+        },
+        "setup_time_ns": {
+          "median": 7570166.0,
+          "mean": 7570166.0,
+          "std": 0.0,
+          "min": 7570166.0,
+          "max": 7570166.0,
+          "n": 1
+        },
+        "time_per_iteration_ns": {
+          "median": 15610.0,
+          "mean": 15610.0,
+          "std": 0.0,
+          "min": 15610.0,
+          "max": 15610.0,
+          "n": 1
+        },
+        "throughput": {
+          "median": 192184.49711723253,
+          "mean": 192184.49711723253,
+          "std": 0.0,
+          "min": 192184.49711723253,
+          "max": 192184.49711723253,
+          "n": 1
+        },
+        "memory_peak_bytes": {
+          "median": 11176.0,
+          "mean": 11176.0,
+          "std": 0.0,
+          "min": 11176.0,
+          "max": 11176.0,
+          "n": 1
+        },
+        "error_vs_bare": {
+          "median": 0.0,
+          "mean": 0.0,
+          "std": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "n": 1
+        }
+      },
+      "n_seeds": 1
+    },
+    {
+      "benchmark_name": "operator_stress",
+      "workload": "Nested operator algebra: A = B_last @ ... @ (alpha1*A1 + alpha2*A2) @ ... @ B1; time apply, rapply, normal_apply.",
+      "backend": "numpy",
+      "device": "cpu",
+      "size_label": "d=256",
+      "size_params": {
+        "d": 256,
+        "chain_depth": 4
+      },
+      "mode": "spacecore_lowered",
+      "check_level": "none",
+      "iterations": 50,
+      "metrics": {
+        "run_time_ns": {
+          "median": 750834.0,
+          "mean": 750834.0,
+          "std": 0.0,
+          "min": 750834.0,
+          "max": 750834.0,
+          "n": 1
+        },
+        "setup_time_ns": {
+          "median": 7570166.0,
+          "mean": 7570166.0,
+          "std": 0.0,
+          "min": 7570166.0,
+          "max": 7570166.0,
+          "n": 1
+        },
+        "time_per_iteration_ns": {
+          "median": 15016.68,
+          "mean": 15016.68,
+          "std": 0.0,
+          "min": 15016.68,
+          "max": 15016.68,
+          "n": 1
+        },
+        "throughput": {
+          "median": 199777.8470340981,
+          "mean": 199777.8470340981,
+          "std": 0.0,
+          "min": 199777.8470340981,
+          "max": 199777.8470340981,
+          "n": 1
+        },
+        "memory_peak_bytes": {
+          "median": 11176.0,
+          "mean": 11176.0,
+          "std": 0.0,
+          "min": 11176.0,
+          "max": 11176.0,
+          "n": 1
+        },
+        "error_vs_bare": {
+          "median": 4.440892098500626e-16,
+          "mean": 4.440892098500626e-16,
+          "std": 0.0,
+          "min": 4.440892098500626e-16,
+          "max": 4.440892098500626e-16,
+          "n": 1
+        }
+      },
+      "n_seeds": 1
+    },
+    {
+      "benchmark_name": "operator_stress",
+      "workload": "Nested operator algebra: A = B_last @ ... @ (alpha1*A1 + alpha2*A2) @ ... @ B1; time apply, rapply, normal_apply.",
+      "backend": "numpy",
+      "device": "cpu",
+      "size_label": "d=256",
+      "size_params": {
+        "d": 256,
+        "chain_depth": 4
+      },
+      "mode": "spacecore_public_cheap",
+      "check_level": "cheap",
+      "iterations": 50,
+      "metrics": {
+        "run_time_ns": {
+          "median": 8176792.0,
+          "mean": 8176792.0,
+          "std": 0.0,
+          "min": 8176792.0,
+          "max": 8176792.0,
+          "n": 1
+        },
+        "setup_time_ns": {
+          "median": 7570166.0,
+          "mean": 7570166.0,
+          "std": 0.0,
+          "min": 7570166.0,
+          "max": 7570166.0,
+          "n": 1
+        },
+        "time_per_iteration_ns": {
+          "median": 163535.84,
+          "mean": 163535.84,
+          "std": 0.0,
+          "min": 163535.84,
+          "max": 163535.84,
+          "n": 1
+        },
+        "throughput": {
+          "median": 18344.602626555745,
+          "mean": 18344.602626555745,
+          "std": 0.0,
+          "min": 18344.602626555745,
+          "max": 18344.602626555745,
+          "n": 1
+        },
+        "memory_peak_bytes": {
+          "median": 19892.0,
+          "mean": 19892.0,
+          "std": 0.0,
+          "min": 19892.0,
+          "max": 19892.0,
+          "n": 1
+        },
+        "error_vs_bare": {
+          "median": 0.0,
+          "mean": 0.0,
+          "std": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "n": 1
+        }
+      },
+      "n_seeds": 1
+    },
+    {
+      "benchmark_name": "operator_stress",
+      "workload": "Nested operator algebra: A = B_last @ ... @ (alpha1*A1 + alpha2*A2) @ ... @ B1; time apply, rapply, normal_apply.",
+      "backend": "numpy",
+      "device": "cpu",
+      "size_label": "d=256",
+      "size_params": {
+        "d": 256,
+        "chain_depth": 4
+      },
+      "mode": "spacecore_public_none",
+      "check_level": "none",
+      "iterations": 50,
+      "metrics": {
+        "run_time_ns": {
+          "median": 5160916.0,
+          "mean": 5160916.0,
+          "std": 0.0,
+          "min": 5160916.0,
+          "max": 5160916.0,
+          "n": 1
+        },
+        "setup_time_ns": {
+          "median": 7570166.0,
+          "mean": 7570166.0,
+          "std": 0.0,
+          "min": 7570166.0,
+          "max": 7570166.0,
+          "n": 1
+        },
+        "time_per_iteration_ns": {
+          "median": 103218.32,
+          "mean": 103218.32,
+          "std": 0.0,
+          "min": 103218.32,
+          "max": 103218.32,
+          "n": 1
+        },
+        "throughput": {
+          "median": 29064.607910688723,
+          "mean": 29064.607910688723,
+          "std": 0.0,
+          "min": 29064.607910688723,
+          "max": 29064.607910688723,
+          "n": 1
+        },
+        "memory_peak_bytes": {
+          "median": 19584.0,
+          "mean": 19584.0,
+          "std": 0.0,
+          "min": 19584.0,
+          "max": 19584.0,
+          "n": 1
+        },
+        "error_vs_bare": {
+          "median": 0.0,
+          "mean": 0.0,
+          "std": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "n": 1
+        }
+      },
+      "n_seeds": 1
+    },
+    {
+      "benchmark_name": "pdhg.l1_lsq",
+      "workload": "PDHG L1-regularized least squares",
+      "backend": "numpy",
+      "device": "cpu",
+      "size_label": "(5000,2000)",
+      "size_params": {
+        "m": 5000,
+        "n": 2000,
+        "iterations": 500,
+        "lambda_": 0.01
+      },
+      "mode": "bare",
+      "check_level": null,
+      "iterations": 500,
+      "metrics": {
+        "run_time_ns": {
+          "median": 2920327209.0,
+          "mean": 2920327209.0,
+          "std": 0.0,
+          "min": 2920327209.0,
+          "max": 2920327209.0,
+          "n": 1
+        },
+        "setup_time_ns": {
+          "median": 66337208.0,
+          "mean": 66337208.0,
+          "std": 0.0,
+          "min": 66337208.0,
+          "max": 66337208.0,
+          "n": 1
+        },
+        "time_per_iteration_ns": {
+          "median": 5840654.418,
+          "mean": 5840654.418,
+          "std": 0.0,
+          "min": 5840654.418,
+          "max": 5840654.418,
+          "n": 1
+        },
+        "throughput": {
+          "median": 171.21369086966584,
+          "mean": 171.21369086966584,
+          "std": 0.0,
+          "min": 171.21369086966584,
+          "max": 171.21369086966584,
+          "n": 1
+        },
+        "memory_peak_bytes": {
+          "median": 208880.0,
+          "mean": 208880.0,
+          "std": 0.0,
+          "min": 208880.0,
+          "max": 208880.0,
+          "n": 1
+        },
+        "error_vs_bare": {
+          "median": 0.0,
+          "mean": 0.0,
+          "std": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "n": 1
+        },
+        "objective": {
+          "median": 1521.9073797899673,
+          "mean": 1521.9073797899673,
+          "std": 0.0,
+          "min": 1521.9073797899673,
+          "max": 1521.9073797899673,
+          "n": 1
+        }
+      },
+      "n_seeds": 1
+    },
+    {
+      "benchmark_name": "pdhg.l1_lsq",
+      "workload": "PDHG L1-regularized least squares",
+      "backend": "numpy",
+      "device": "cpu",
+      "size_label": "(5000,2000)",
+      "size_params": {
+        "m": 5000,
+        "n": 2000,
+        "iterations": 500,
+        "lambda_": 0.01
+      },
+      "mode": "spacecore_lowered",
+      "check_level": "none",
+      "iterations": 500,
+      "metrics": {
+        "run_time_ns": {
+          "median": 2911621750.0,
+          "mean": 2911621750.0,
+          "std": 0.0,
+          "min": 2911621750.0,
+          "max": 2911621750.0,
+          "n": 1
+        },
+        "setup_time_ns": {
+          "median": 66337208.0,
+          "mean": 66337208.0,
+          "std": 0.0,
+          "min": 66337208.0,
+          "max": 66337208.0,
+          "n": 1
+        },
+        "time_per_iteration_ns": {
+          "median": 5823243.5,
+          "mean": 5823243.5,
+          "std": 0.0,
+          "min": 5823243.5,
+          "max": 5823243.5,
+          "n": 1
+        },
+        "throughput": {
+          "median": 171.72560275042594,
+          "mean": 171.72560275042594,
+          "std": 0.0,
+          "min": 171.72560275042594,
+          "max": 171.72560275042594,
+          "n": 1
+        },
+        "memory_peak_bytes": {
+          "median": 208880.0,
+          "mean": 208880.0,
+          "std": 0.0,
+          "min": 208880.0,
+          "max": 208880.0,
+          "n": 1
+        },
+        "error_vs_bare": {
+          "median": 0.0,
+          "mean": 0.0,
+          "std": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "n": 1
+        },
+        "objective": {
+          "median": 1521.9073797899673,
+          "mean": 1521.9073797899673,
+          "std": 0.0,
+          "min": 1521.9073797899673,
+          "max": 1521.9073797899673,
+          "n": 1
+        }
+      },
+      "n_seeds": 1
+    },
+    {
+      "benchmark_name": "pdhg.l1_lsq",
+      "workload": "PDHG L1-regularized least squares",
+      "backend": "numpy",
+      "device": "cpu",
+      "size_label": "(5000,2000)",
+      "size_params": {
+        "m": 5000,
+        "n": 2000,
+        "iterations": 500,
+        "lambda_": 0.01
+      },
+      "mode": "spacecore_public_cheap",
+      "check_level": "cheap",
+      "iterations": 500,
+      "metrics": {
+        "run_time_ns": {
+          "median": 2922845958.0,
+          "mean": 2922845958.0,
+          "std": 0.0,
+          "min": 2922845958.0,
+          "max": 2922845958.0,
+          "n": 1
+        },
+        "setup_time_ns": {
+          "median": 66337208.0,
+          "mean": 66337208.0,
+          "std": 0.0,
+          "min": 66337208.0,
+          "max": 66337208.0,
+          "n": 1
+        },
+        "time_per_iteration_ns": {
+          "median": 5845691.916,
+          "mean": 5845691.916,
+          "std": 0.0,
+          "min": 5845691.916,
+          "max": 5845691.916,
+          "n": 1
+        },
+        "throughput": {
+          "median": 171.06614826261057,
+          "mean": 171.06614826261057,
+          "std": 0.0,
+          "min": 171.06614826261057,
+          "max": 171.06614826261057,
+          "n": 1
+        },
+        "memory_peak_bytes": {
+          "median": 209124.0,
+          "mean": 209124.0,
+          "std": 0.0,
+          "min": 209124.0,
+          "max": 209124.0,
+          "n": 1
+        },
+        "error_vs_bare": {
+          "median": 0.0,
+          "mean": 0.0,
+          "std": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "n": 1
+        },
+        "objective": {
+          "median": 1521.9073797899673,
+          "mean": 1521.9073797899673,
+          "std": 0.0,
+          "min": 1521.9073797899673,
+          "max": 1521.9073797899673,
+          "n": 1
+        }
+      },
+      "n_seeds": 1
+    },
+    {
+      "benchmark_name": "pdhg.l1_lsq",
+      "workload": "PDHG L1-regularized least squares",
+      "backend": "numpy",
+      "device": "cpu",
+      "size_label": "(5000,2000)",
+      "size_params": {
+        "m": 5000,
+        "n": 2000,
+        "iterations": 500,
+        "lambda_": 0.01
+      },
+      "mode": "spacecore_public_none",
+      "check_level": "none",
+      "iterations": 500,
+      "metrics": {
+        "run_time_ns": {
+          "median": 2921289750.0,
+          "mean": 2921289750.0,
+          "std": 0.0,
+          "min": 2921289750.0,
+          "max": 2921289750.0,
+          "n": 1
+        },
+        "setup_time_ns": {
+          "median": 66337208.0,
+          "mean": 66337208.0,
+          "std": 0.0,
+          "min": 66337208.0,
+          "max": 66337208.0,
+          "n": 1
+        },
+        "time_per_iteration_ns": {
+          "median": 5842579.5,
+          "mean": 5842579.5,
+          "std": 0.0,
+          "min": 5842579.5,
+          "max": 5842579.5,
+          "n": 1
+        },
+        "throughput": {
+          "median": 171.15727736353438,
+          "mean": 171.15727736353438,
+          "std": 0.0,
+          "min": 171.15727736353438,
+          "max": 171.15727736353438,
+          "n": 1
+        },
+        "memory_peak_bytes": {
+          "median": 208880.0,
+          "mean": 208880.0,
+          "std": 0.0,
+          "min": 208880.0,
+          "max": 208880.0,
+          "n": 1
+        },
+        "error_vs_bare": {
+          "median": 0.0,
+          "mean": 0.0,
+          "std": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "n": 1
+        },
+        "objective": {
+          "median": 1521.9073797899673,
+          "mean": 1521.9073797899673,
+          "std": 0.0,
+          "min": 1521.9073797899673,
+          "max": 1521.9073797899673,
+          "n": 1
+        }
+      },
+      "n_seeds": 1
+    },
+    {
+      "benchmark_name": "power_iteration",
+      "workload": "power method on -Laplacian + diag(V), matrix-free",
+      "backend": "numpy",
+      "device": "cpu",
+      "size_label": "d=10000_K=50",
+      "size_params": {
+        "d": 10000,
+        "K": 50
+      },
+      "mode": "bare",
+      "check_level": null,
+      "iterations": 50,
+      "metrics": {
+        "run_time_ns": {
+          "median": 1055125.0,
+          "mean": 1055125.0,
+          "std": 0.0,
+          "min": 1055125.0,
+          "max": 1055125.0,
+          "n": 1
+        },
+        "setup_time_ns": {
+          "median": 372875.0,
+          "mean": 372875.0,
+          "std": 0.0,
+          "min": 372875.0,
+          "max": 372875.0,
+          "n": 1
+        },
+        "time_per_iteration_ns": {
+          "median": 21102.5,
+          "mean": 21102.5,
+          "std": 0.0,
+          "min": 21102.5,
+          "max": 21102.5,
+          "n": 1
+        },
+        "throughput": {
+          "median": 47387.7502665561,
+          "mean": 47387.7502665561,
+          "std": 0.0,
+          "min": 47387.7502665561,
+          "max": 47387.7502665561,
+          "n": 1
+        },
+        "memory_peak_bytes": {
+          "median": 400544.0,
+          "mean": 400544.0,
+          "std": 0.0,
+          "min": 400544.0,
+          "max": 400544.0,
+          "n": 1
+        },
+        "error_vs_bare": {
+          "median": 0.0,
+          "mean": 0.0,
+          "std": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "n": 1
+        }
+      },
+      "n_seeds": 1
+    },
+    {
+      "benchmark_name": "power_iteration",
+      "workload": "power method on -Laplacian + diag(V), matrix-free",
+      "backend": "numpy",
+      "device": "cpu",
+      "size_label": "d=10000_K=50",
+      "size_params": {
+        "d": 10000,
+        "K": 50
+      },
+      "mode": "spacecore_lowered",
+      "check_level": "none",
+      "iterations": 50,
+      "metrics": {
+        "run_time_ns": {
+          "median": 2196250.0,
+          "mean": 2196250.0,
+          "std": 0.0,
+          "min": 2196250.0,
+          "max": 2196250.0,
+          "n": 1
+        },
+        "setup_time_ns": {
+          "median": 372875.0,
+          "mean": 372875.0,
+          "std": 0.0,
+          "min": 372875.0,
+          "max": 372875.0,
+          "n": 1
+        },
+        "time_per_iteration_ns": {
+          "median": 43925.0,
+          "mean": 43925.0,
+          "std": 0.0,
+          "min": 43925.0,
+          "max": 43925.0,
+          "n": 1
+        },
+        "throughput": {
+          "median": 22766.078542970972,
+          "mean": 22766.078542970972,
+          "std": 0.0,
+          "min": 22766.078542970972,
+          "max": 22766.078542970972,
+          "n": 1
+        },
+        "memory_peak_bytes": {
+          "median": 642224.0,
+          "mean": 642224.0,
+          "std": 0.0,
+          "min": 642224.0,
+          "max": 642224.0,
+          "n": 1
+        },
+        "error_vs_bare": {
+          "median": 8.881784197001252e-16,
+          "mean": 8.881784197001252e-16,
+          "std": 0.0,
+          "min": 8.881784197001252e-16,
+          "max": 8.881784197001252e-16,
+          "n": 1
+        }
+      },
+      "n_seeds": 1
+    },
+    {
+      "benchmark_name": "power_iteration",
+      "workload": "power method on -Laplacian + diag(V), matrix-free",
+      "backend": "numpy",
+      "device": "cpu",
+      "size_label": "d=10000_K=50",
+      "size_params": {
+        "d": 10000,
+        "K": 50
+      },
+      "mode": "spacecore_public_cheap",
+      "check_level": "cheap",
+      "iterations": 50,
+      "metrics": {
+        "run_time_ns": {
+          "median": 5989250.0,
+          "mean": 5989250.0,
+          "std": 0.0,
+          "min": 5989250.0,
+          "max": 5989250.0,
+          "n": 1
+        },
+        "setup_time_ns": {
+          "median": 372875.0,
+          "mean": 372875.0,
+          "std": 0.0,
+          "min": 372875.0,
+          "max": 372875.0,
+          "n": 1
+        },
+        "time_per_iteration_ns": {
+          "median": 119785.0,
+          "mean": 119785.0,
+          "std": 0.0,
+          "min": 119785.0,
+          "max": 119785.0,
+          "n": 1
+        },
+        "throughput": {
+          "median": 8348.290687481738,
+          "mean": 8348.290687481738,
+          "std": 0.0,
+          "min": 8348.290687481738,
+          "max": 8348.290687481738,
+          "n": 1
+        },
+        "memory_peak_bytes": {
+          "median": 642578.0,
+          "mean": 642578.0,
+          "std": 0.0,
+          "min": 642578.0,
+          "max": 642578.0,
+          "n": 1
+        },
+        "error_vs_bare": {
+          "median": 8.881784197001252e-16,
+          "mean": 8.881784197001252e-16,
+          "std": 0.0,
+          "min": 8.881784197001252e-16,
+          "max": 8.881784197001252e-16,
+          "n": 1
+        }
+      },
+      "n_seeds": 1
+    },
+    {
+      "benchmark_name": "power_iteration",
+      "workload": "power method on -Laplacian + diag(V), matrix-free",
+      "backend": "numpy",
+      "device": "cpu",
+      "size_label": "d=10000_K=50",
+      "size_params": {
+        "d": 10000,
+        "K": 50
+      },
+      "mode": "spacecore_public_none",
+      "check_level": "none",
+      "iterations": 50,
+      "metrics": {
+        "run_time_ns": {
+          "median": 2186292.0,
+          "mean": 2186292.0,
+          "std": 0.0,
+          "min": 2186292.0,
+          "max": 2186292.0,
+          "n": 1
+        },
+        "setup_time_ns": {
+          "median": 372875.0,
+          "mean": 372875.0,
+          "std": 0.0,
+          "min": 372875.0,
+          "max": 372875.0,
+          "n": 1
+        },
+        "time_per_iteration_ns": {
+          "median": 43725.84,
+          "mean": 43725.84,
+          "std": 0.0,
+          "min": 43725.84,
+          "max": 43725.84,
+          "n": 1
+        },
+        "throughput": {
+          "median": 22869.772198773084,
+          "mean": 22869.772198773084,
+          "std": 0.0,
+          "min": 22869.772198773084,
+          "max": 22869.772198773084,
+          "n": 1
+        },
+        "memory_peak_bytes": {
+          "median": 642200.0,
+          "mean": 642200.0,
+          "std": 0.0,
+          "min": 642200.0,
+          "max": 642200.0,
+          "n": 1
+        },
+        "error_vs_bare": {
+          "median": 8.881784197001252e-16,
+          "mean": 8.881784197001252e-16,
+          "std": 0.0,
+          "min": 8.881784197001252e-16,
+          "max": 8.881784197001252e-16,
+          "n": 1
+        }
+      },
+      "n_seeds": 1
+    },
+    {
+      "benchmark_name": "qot_barycenter",
+      "workload": "QOT barycenter gradient on Hermitian operators",
+      "backend": "numpy",
+      "device": "cpu",
+      "size_label": "s4_d4",
+      "size_params": {
+        "S": 4,
+        "d0": 4,
+        "d": 4,
+        "epsilon": 0.1
+      },
+      "mode": "bare",
+      "check_level": null,
+      "iterations": 4,
+      "metrics": {
+        "run_time_ns": {
+          "median": 245875.0,
+          "mean": 245875.0,
+          "std": 0.0,
+          "min": 245875.0,
+          "max": 245875.0,
+          "n": 1
+        },
+        "setup_time_ns": {
+          "median": 4581417.0,
+          "mean": 4581417.0,
+          "std": 0.0,
+          "min": 4581417.0,
+          "max": 4581417.0,
+          "n": 1
+        },
+        "time_per_iteration_ns": {
+          "median": 61468.75,
+          "mean": 61468.75,
+          "std": 0.0,
+          "min": 61468.75,
+          "max": 61468.75,
+          "n": 1
+        },
+        "throughput": {
+          "median": 16268.42907981698,
+          "mean": 16268.42907981698,
+          "std": 0.0,
+          "min": 16268.42907981698,
+          "max": 16268.42907981698,
+          "n": 1
+        },
+        "memory_peak_bytes": {
+          "median": 20824.0,
+          "mean": 20824.0,
+          "std": 0.0,
+          "min": 20824.0,
+          "max": 20824.0,
+          "n": 1
+        },
+        "error_vs_bare": {
+          "median": 0.0,
+          "mean": 0.0,
+          "std": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "n": 1
+        }
+      },
+      "n_seeds": 1
+    },
+    {
+      "benchmark_name": "qot_barycenter",
+      "workload": "QOT barycenter gradient on Hermitian operators",
+      "backend": "numpy",
+      "device": "cpu",
+      "size_label": "s4_d4",
+      "size_params": {
+        "S": 4,
+        "d0": 4,
+        "d": 4,
+        "epsilon": 0.1
+      },
+      "mode": "spacecore_lowered",
+      "check_level": "none",
+      "iterations": 4,
+      "metrics": {
+        "run_time_ns": {
+          "median": 170708.0,
+          "mean": 170708.0,
+          "std": 0.0,
+          "min": 170708.0,
+          "max": 170708.0,
+          "n": 1
+        },
+        "setup_time_ns": {
+          "median": 4581417.0,
+          "mean": 4581417.0,
+          "std": 0.0,
+          "min": 4581417.0,
+          "max": 4581417.0,
+          "n": 1
+        },
+        "time_per_iteration_ns": {
+          "median": 42677.0,
+          "mean": 42677.0,
+          "std": 0.0,
+          "min": 42677.0,
+          "max": 42677.0,
+          "n": 1
+        },
+        "throughput": {
+          "median": 23431.825104857417,
+          "mean": 23431.825104857417,
+          "std": 0.0,
+          "min": 23431.825104857417,
+          "max": 23431.825104857417,
+          "n": 1
+        },
+        "memory_peak_bytes": {
+          "median": 19832.0,
+          "mean": 19832.0,
+          "std": 0.0,
+          "min": 19832.0,
+          "max": 19832.0,
+          "n": 1
+        },
+        "error_vs_bare": {
+          "median": 0.0,
+          "mean": 0.0,
+          "std": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "n": 1
+        }
+      },
+      "n_seeds": 1
+    },
+    {
+      "benchmark_name": "qot_barycenter",
+      "workload": "QOT barycenter gradient on Hermitian operators",
+      "backend": "numpy",
+      "device": "cpu",
+      "size_label": "s4_d4",
+      "size_params": {
+        "S": 4,
+        "d0": 4,
+        "d": 4,
+        "epsilon": 0.1
+      },
+      "mode": "spacecore_public_cheap",
+      "check_level": "cheap",
+      "iterations": 4,
+      "metrics": {
+        "run_time_ns": {
+          "median": 237833.0,
+          "mean": 237833.0,
+          "std": 0.0,
+          "min": 237833.0,
+          "max": 237833.0,
+          "n": 1
+        },
+        "setup_time_ns": {
+          "median": 4581417.0,
+          "mean": 4581417.0,
+          "std": 0.0,
+          "min": 4581417.0,
+          "max": 4581417.0,
+          "n": 1
+        },
+        "time_per_iteration_ns": {
+          "median": 59458.25,
+          "mean": 59458.25,
+          "std": 0.0,
+          "min": 59458.25,
+          "max": 59458.25,
+          "n": 1
+        },
+        "throughput": {
+          "median": 16818.523922247965,
+          "mean": 16818.523922247965,
+          "std": 0.0,
+          "min": 16818.523922247965,
+          "max": 16818.523922247965,
+          "n": 1
+        },
+        "memory_peak_bytes": {
+          "median": 20226.0,
+          "mean": 20226.0,
+          "std": 0.0,
+          "min": 20226.0,
+          "max": 20226.0,
+          "n": 1
+        },
+        "error_vs_bare": {
+          "median": 0.0,
+          "mean": 0.0,
+          "std": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "n": 1
+        }
+      },
+      "n_seeds": 1
+    },
+    {
+      "benchmark_name": "qot_barycenter",
+      "workload": "QOT barycenter gradient on Hermitian operators",
+      "backend": "numpy",
+      "device": "cpu",
+      "size_label": "s4_d4",
+      "size_params": {
+        "S": 4,
+        "d0": 4,
+        "d": 4,
+        "epsilon": 0.1
+      },
+      "mode": "spacecore_public_none",
+      "check_level": "none",
+      "iterations": 4,
+      "metrics": {
+        "run_time_ns": {
+          "median": 178334.0,
+          "mean": 178334.0,
+          "std": 0.0,
+          "min": 178334.0,
+          "max": 178334.0,
+          "n": 1
+        },
+        "setup_time_ns": {
+          "median": 4581417.0,
+          "mean": 4581417.0,
+          "std": 0.0,
+          "min": 4581417.0,
+          "max": 4581417.0,
+          "n": 1
+        },
+        "time_per_iteration_ns": {
+          "median": 44583.5,
+          "mean": 44583.5,
+          "std": 0.0,
+          "min": 44583.5,
+          "max": 44583.5,
+          "n": 1
+        },
+        "throughput": {
+          "median": 22429.82269225162,
+          "mean": 22429.82269225162,
+          "std": 0.0,
+          "min": 22429.82269225162,
+          "max": 22429.82269225162,
+          "n": 1
+        },
+        "memory_peak_bytes": {
+          "median": 19832.0,
+          "mean": 19832.0,
+          "std": 0.0,
+          "min": 19832.0,
+          "max": 19832.0,
+          "n": 1
+        },
+        "error_vs_bare": {
+          "median": 0.0,
+          "mean": 0.0,
+          "std": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "n": 1
+        }
+      },
+      "n_seeds": 1
+    }
+  ]
+}
