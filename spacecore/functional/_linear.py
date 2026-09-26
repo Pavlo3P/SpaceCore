@@ -15,6 +15,7 @@ from ..space import Space, TreeElement, TreeSpace
 
 def _convert_space_element(space: Space, value: Any) -> Any:
     """Convert a value recursively into a possibly tree-valued space."""
+    # Tree spaces convert leaf by leaf; other spaces convert the array directly.
     if isinstance(space, TreeSpace):
         if isinstance(value, TreeElement):
             source_spaces = value.space.leaf_spaces
@@ -102,6 +103,7 @@ class InnerProductFunctional(LinearFunctional[Domain]):
         check_level: CheckLevel | bool | None = None,
     ) -> None:
         super().__init__(dom, ctx, check_level=check_level)
+        # Store the representer on the functional's backend, and check it belongs.
         self._c = _convert_space_element(self.domain, c)
         if self._checks_at_least("standard"):
             self.domain._check_member(self._c)
@@ -182,6 +184,7 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
         *,
         cod: Field | None = None,
     ) -> None:
+        # Validate the callables, then bind the domain.
         if not callable(value):
             raise TypeError(f"value must be callable, got {type(value).__name__}.")
         if vvalue is not None and not callable(vvalue):
@@ -245,6 +248,7 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
             Backend array of scalar-like values with shape matching the leading
             batch shape.
         """
+        # Use the supplied batched evaluator, else vmap; check one scalar per input.
         if self.vvalue_fn is None:
             return super().vvalue(xs)
         values = self.vvalue_fn(xs)

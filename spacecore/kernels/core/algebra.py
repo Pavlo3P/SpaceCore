@@ -44,6 +44,7 @@ def compose_chain(op: Any) -> tuple:
 
 def leading_shape(space: Any, value: Any) -> tuple[int, ...]:
     """Infer the leading batch dimensions of ``value`` relative to ``space``."""
+    # Product spaces: batch shape of the first component. Else strip the trailing space shape.
     parts = getattr(space, "spaces", None)
     if parts is not None and isinstance(value, tuple) and value:
         return leading_shape(parts[0], value[0])
@@ -54,6 +55,7 @@ def leading_shape(space: Any, value: Any) -> tuple[int, ...]:
 
 def batched_zeros(space: Any, leading: tuple[int, ...]) -> Any:
     """Return a batched zero element of ``space`` with leading shape ``leading``."""
+    # Product spaces get a tuple of per-component zero batches.
     parts = getattr(space, "spaces", None)
     if parts is not None:
         return tuple(batched_zeros(part, leading) for part in parts)
@@ -112,6 +114,7 @@ def scaled_vapply_core(op: Any, xs: Any) -> Any:
 # Sum — accumulate the operands' cores via the space's check-free add
 # ---------------------------------------------------------------------------
 def sum_apply_core(op: Any, x: Any) -> Any:
+    # A1 x + ... + Ak x, with the codomain's unchecked add when it has one.
     parts = op.ops_tuple
     add = getattr(op.codomain, "_add_core", op.codomain.add)
     acc = parts[0]._apply_core(x)
@@ -121,6 +124,7 @@ def sum_apply_core(op: Any, x: Any) -> Any:
 
 
 def sum_rapply_core(op: Any, y: Any) -> Any:
+    # A1* y + ... + Ak* y, added in the domain.
     parts = op.ops_tuple
     add = getattr(op.domain, "_add_core", op.domain.add)
     acc = parts[0]._rapply_core(y)
@@ -130,6 +134,7 @@ def sum_rapply_core(op: Any, y: Any) -> Any:
 
 
 def sum_vapply_core(op: Any, xs: Any) -> Any:
+    # Row-wise sum of the batched applies.
     parts = op.ops_tuple
     add_batch = op.codomain.add_batch
     acc = parts[0]._vapply_core(xs)

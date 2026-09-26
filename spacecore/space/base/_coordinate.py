@@ -42,6 +42,7 @@ class CoordinateSpace(VectorSpace):
 
     def _space_descriptor(self) -> str:
         """Return a shape-aware descriptor like ``ℝ^5`` or ``ℝ^(2, 3)``."""
+        # repr must never raise: describe the space without a field if it cannot be read.
         try:
             field = self.field
         except Exception:

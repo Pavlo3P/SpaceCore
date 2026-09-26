@@ -34,6 +34,7 @@ def lp_coordinate_grad(ops: Any, vec: Any, p: float) -> Any:
     zero subgradient: there ``|v_i|^{p-1}`` already vanishes for ``p > 1`` and
     ``sign`` vanishes for ``p == 1``.
     """
+    # d/dx_i ||x||_p = sign(x_i) |x_i|^(p-1) / ||x||_p^(p-1); zero at the origin.
     r = ops.abs(vec)
     norm = ops.sum(r**p) ** (1.0 / p)
     safe = ops.where(norm > 0, norm, cast(Any, 1.0))

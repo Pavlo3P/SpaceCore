@@ -57,6 +57,7 @@ class RealifiedFunctional(Functional):
     """
 
     def __init__(self, base: Functional) -> None:
+        # Only complex coordinate spaces can be split into real and imaginary parts.
         X = base.domain
         if not isinstance(X, CoordinateSpace):
             raise TypeError(
@@ -70,6 +71,7 @@ class RealifiedFunctional(Functional):
         ops = X.ops
         # check_level is a property of the bound object, not of the Context, so
         # it is threaded through the constructors rather than the context.
+        # The view's domain: real coordinates of twice the size.
         real_ctx = Context(ops, dtype=ops.real_dtype(X.dtype))
         dom = DenseCoordinateSpace(
             (2 * X.size,), real_ctx, check_level=X.check_level
@@ -110,6 +112,7 @@ class RealifiedFunctional(Functional):
         on any non-Euclidean geometry.
         """
         X, ops = self.complex_space, self.ops
+        # Evaluate the base at v = a + i b, then stack Re and Im of its coordinate gradient.
         val, g = self.base.value_and_grad(self.from_real(w), *args, **kwargs)
         gv = X.flatten(X.riesz(g))
         return val, ops.concatenate([ops.real(gv), ops.imag(gv)])

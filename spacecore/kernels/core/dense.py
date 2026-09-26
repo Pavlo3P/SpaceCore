@@ -29,6 +29,7 @@ class _DenseMode(Enum):
 
 
 def dense_apply_core(op: Any, x: Any) -> Any:
+    # Flat or fused: one matvec. Tensor: reshape around it. Else the spaces' flatten/unflatten.
     if op._mode is _DenseMode.EUCLIDEAN_FLAT:
         return op._A2 @ x
     if op._mode is _DenseMode.EUCLIDEAN_TENSOR:
@@ -41,6 +42,7 @@ def dense_apply_core(op: Any, x: Any) -> Any:
 
 
 def dense_euclidean_rapply_core(op: Any, y: Any) -> Any:
+    # Plain conjugate transpose A^H, no metric.
     if op._mode is _DenseMode.EUCLIDEAN_FLAT:
         return op._A2H @ y
     if op._mode is _DenseMode.EUCLIDEAN_TENSOR:
@@ -51,6 +53,7 @@ def dense_euclidean_rapply_core(op: Any, y: Any) -> Any:
 
 
 def dense_rapply_core(op: Any, y: Any) -> Any:
+    # Euclidean: A^H. Fused: the precomputed weighted adjoint. Else wrap A^H with the metrics.
     if op._mode is _DenseMode.EUCLIDEAN_FLAT or op._mode is _DenseMode.EUCLIDEAN_TENSOR:
         return dense_euclidean_rapply_core(op, y)
     if op._mode is _DenseMode.WEIGHTED_FUSED:
@@ -63,6 +66,7 @@ def dense_rapply_core(op: Any, y: Any) -> Any:
 
 
 def dense_vapply_core(op: Any, xs: Any) -> Any:
+    # A batch of rows: X A^T on flat coordinates, reshaped to the codomain.
     if op._mode is _DenseMode.EUCLIDEAN_FLAT:
         return xs.reshape((-1, op._dom_size)) @ op._A2T
     if op._mode is _DenseMode.EUCLIDEAN_TENSOR:
@@ -78,6 +82,7 @@ def dense_vapply_core(op: Any, xs: Any) -> Any:
 
 
 def dense_euclidean_rvapply_core(op: Any, ys: Any) -> Any:
+    # A batch of rows: Y (A^H)^T.
     if op._mode is _DenseMode.EUCLIDEAN_FLAT:
         return ys.reshape((-1, op._cod_size)) @ op._A2H.T
     if op._mode is _DenseMode.EUCLIDEAN_TENSOR:
@@ -91,6 +96,7 @@ def dense_euclidean_rvapply_core(op: Any, ys: Any) -> Any:
 
 
 def dense_rvapply_core(op: Any, ys: Any) -> Any:
+    # Batched form of dense_rapply_core.
     if op._mode is _DenseMode.EUCLIDEAN_FLAT or op._mode is _DenseMode.EUCLIDEAN_TENSOR:
         return dense_euclidean_rvapply_core(op, ys)
     if op._mode is _DenseMode.WEIGHTED_FUSED:

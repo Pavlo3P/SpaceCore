@@ -30,6 +30,7 @@ class Space(ContextBound):
         check_level: CheckLevel | bool | None = None,
     ) -> None:
         super().__init__(ctx, check_level=check_level)
+        # Spaces hold floating data; a complex scalar field needs complex storage.
         if not self.ops.xp.isdtype(self.dtype, ("real floating", "complex floating")):
             raise TypeError("Spaces require floating storage, not integer or Boolean dtype.")
         if self.scalar_field == "complex" and not self.ops.is_complex_dtype(self.dtype):
@@ -87,6 +88,7 @@ class Space(ContextBound):
         """
         from ._field import RealField, ComplexField
 
+        # Real coefficients keep the storage precision but drop the imaginary part.
         if self.scalar_field == "real":
             ctx = Context(self.ops, self.ops.real_dtype(self.dtype))
             return RealField(ctx, check_level=self.check_level)
@@ -94,6 +96,7 @@ class Space(ContextBound):
 
     def _check_scalar(self, a: Any) -> None:
         """Raise if ``a`` is not an admissible multiplier for this space."""
+        # Only a provably non-real scalar is rejected, so traced scalars pass.
         if self.scalar_field == "real" and is_recognizably_nonreal(a):
             raise SpaceValidationError(
                 f"{self._space_descriptor()} is a vector space over ℝ, so scaling by "
@@ -154,10 +157,12 @@ class Space(ContextBound):
         Subclasses that depend on mutable state (none in 0.4.0) must
         clear ``self._cached_member_checks`` themselves.
         """
+        # Computed once: spaces are immutable after construction.
         cached = self._cached_member_checks
         if cached is not None:
             return cached
         checks: list[SpaceCheck] = []
+        # Base classes first: each contributes its class checks and instance checks.
         for klass in reversed(type(self).__mro__):
             checks.extend(klass.__dict__.get("checks", ()))
             local_checks = klass.__dict__.get("_local_checks")
@@ -174,6 +179,7 @@ class Space(ContextBound):
         ``_check_member`` and ``_run_checks``; precomputing it removes
         per-call MRO walks and per-check ``minimum_level`` comparisons.
         """
+        # Filter the checks this level runs, once per level.
         cached = self._cached_checks_by_level.get(level)
         if cached is not None:
             return cached
@@ -188,6 +194,7 @@ class Space(ContextBound):
         """Raise if ``x`` is not a valid element of this space."""
         # Hot path: use the per-level cached check list and run inline,
         # avoiding the generic ``_run_checks`` MRO walk.
+        # Hot path: run the cached checks for this level, raise on the first failure.
         level = normalize_check_level(getattr(self, "check_level", "standard"))
         for check in self._checks_for_level(level):
             if not check.validate(self, x, allow_leading=False):

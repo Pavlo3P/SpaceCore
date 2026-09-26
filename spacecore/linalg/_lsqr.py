@@ -121,6 +121,7 @@ def lsqr(
     >>> np.allclose(result.x, [1.0, 2.0])
     True
     """
+    # Validate once, up front.
     A = require_linop(A)
     A.codomain.check_member(b)
     maxiter = check_maxiter(maxiter, A)
@@ -135,6 +136,7 @@ def lsqr(
     dom = SpaceCoreOps(A.domain)
     cod = SpaceCoreOps(A.codomain)
 
+    # Golub-Kahan start: beta u = b - A x and alpha v = A.H u.
     x = A.domain.zeros() if x0 is None else x0
     A.domain.check_member(x)
     residual = cod.add(b, cod.scale(-1.0, apply(x)))
@@ -143,11 +145,13 @@ def lsqr(
     u = cod.scale(safe_inverse_nonneg(A.ops, beta), u)
     v = radj(u)
     alpha = dom.norm(v)
+    # Initial normal-equation residual ||A.H r||, exact or from the recurrence.
     if residual_mode == "exact":
         normal_residual_norm = dom.norm(radj(residual))
     else:
         normal_residual_norm = beta * alpha
     v = dom.scale(safe_inverse_nonneg(A.ops, alpha), v)
+    # LSQR state: search direction w and the scalar recurrences phi_bar, rho_bar.
     w = v
     phi_bar = beta
     rho_bar = alpha
@@ -160,6 +164,7 @@ def lsqr(
 
     def body_fun(carry: tuple[Any, ...]) -> tuple[Any, ...]:
         x, u, v, w, alpha, _beta, rho_bar, phi_bar, _residual_norm, _normal_residual, k = carry
+        # Bidiagonalization step: next unit vectors u and v.
         u_next = cod.axpy(-alpha, u, apply(v))
         beta_next = cod.norm(u_next)
         u_next = cod.scale(safe_inverse_nonneg(A.ops, beta_next), u_next)
@@ -168,6 +173,7 @@ def lsqr(
         alpha_next = dom.norm(v_next)
         v_next = dom.scale(safe_inverse_nonneg(A.ops, alpha_next), v_next)
 
+        # Givens rotation (c, s) that eliminates the new subdiagonal entry.
         rho = A.ops.sqrt(rho_bar * rho_bar + beta_next * beta_next)
         inv_rho = safe_inverse_nonneg(A.ops, rho)
         c = rho_bar * inv_rho
@@ -176,13 +182,16 @@ def lsqr(
         rho_bar_next = -c * alpha_next
         phi = c * phi_bar
         phi_bar_next = s * phi_bar
+        # Free residual estimates from the recurrence.
         recurrence_residual_norm = A.ops.abs(phi_bar_next)
         recurrence_normal_residual_norm = alpha_next * A.ops.abs(s * phi)
 
+        # Update the solution and the search direction.
         x_next = dom.axpy(phi * inv_rho, w, x)
         w_next = dom.axpy(-(theta * inv_rho), w, v_next)
         k_next = k + 1
 
+        # Exact mode recomputes the residuals (one forward and one adjoint apply).
         if residual_mode == "exact":
 
             def refresh_residuals(payload: tuple[Any, Any, Any]) -> tuple[Any, Any]:
@@ -199,6 +208,7 @@ def lsqr(
             _x_candidate, old_residual_norm, old_normal_residual = payload
             return old_residual_norm, old_normal_residual
 
+        # Refresh the reported residuals only on check iterations.
         residual_norm_next, normal_residual_norm_next = A.ops.cond(
             should_check_iteration(k_next, maxiter, check_every),
             refresh_residuals,

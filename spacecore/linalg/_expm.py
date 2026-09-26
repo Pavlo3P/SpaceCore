@@ -99,6 +99,7 @@ def expm_multiply(
     >>> np.allclose(result.result, [2.0, 3.0 * np.exp(0.5)], atol=1e-10)
     True
     """
+    # Validate once: square, not provably non-Hermitian, valid parameters.
     A = require_linop(A)
     require_square(A, "expm_multiply")
     if A.is_hermitian() is False:
@@ -109,23 +110,28 @@ def expm_multiply(
     ops = A.ops
     ctx = A.ctx
     real_dtype = ops.real_dtype(ctx.dtype)
+    # Lanczos basis V and tridiagonal T = V* A V.
     basis = _lanczos_basis_and_tridiag(A, v, max_iter, tol, real_dtype, check_every=1)
 
+    # Zero the inactive block of T, so the fixed-size eigh sees only the m-dimensional part.
     m = basis.krylov_dim
     idx = ops.arange(max_iter)
     active_mask = idx < m
     active_matrix_mask = active_mask[:, None] & active_mask[None, :]
     T_safe = ops.where(active_matrix_mask, basis.T, ops.zeros_like(basis.T))
 
+    # exp(t T) e1 from the eigendecomposition of the small T.
     eigvals, eigvecs = ops.eigh(T_safe)
     exp_eigs = ops.exp(t * eigvals)
     expT_e1 = eigvecs @ (exp_eigs * eigvecs[0, :])
     expT_e1 = ops.where(active_mask, expT_e1, ops.zeros_like(expT_e1))
 
+    # exp(t A) v is approximately ||v|| V exp(t T) e1.
     V_reduced = basis.V[:max_iter, :]
     result_flat = basis.initial_norm * ops.einsum("j,jn->n", expT_e1, V_reduced)
     result = A.domain.unflatten(result_flat)
 
+    # Residual estimate beta_m |phi_{m-1}|.
     last_coeff = ops.abs(expT_e1[m - 1])
     residual_estimate = basis.betas[m] * last_coeff
     converged = residual_estimate < basis.tol

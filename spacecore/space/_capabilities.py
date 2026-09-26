@@ -24,6 +24,7 @@ _CAP_EUCLIDEAN_JORDAN = EuclideanJordanAlgebraSpace
 
 def _space_capabilities(space: Space) -> CapabilitySet:
     """Return structural capabilities advertised by one leaf space."""
+    # Capabilities are the capability classes the space is an instance of.
     capabilities: set[type] = set()
     if isinstance(space, CoordinateSpace):
         capabilities.add(_CAP_COORDINATE)
@@ -61,6 +62,7 @@ def probe_element(space: Space, ops: Any, dtype: Any) -> Any | None:
     ``zeros``, which is useless as a probe, so it yields ``None`` and the caller
     skips whatever check it wanted the element for.
     """
+    # Prefer the space's own ones; a coordinate space unflattens a ones vector.
     if isinstance(space, SupportsOnes):
         return space.ones()
     if isinstance(space, CoordinateSpace):

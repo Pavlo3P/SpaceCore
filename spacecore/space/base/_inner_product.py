@@ -68,6 +68,7 @@ class WeightedInnerProduct(InnerProduct):
         self.weights = weights
 
     def __eq__(self, other):
+        # Same class and same weights; any failure to compare means unequal.
         if type(other) is not type(self):
             return False
         try:
@@ -103,6 +104,7 @@ class WeightedInnerProduct(InnerProduct):
 
     def validate_for(self, space: InnerProductSpace) -> None:
         """Validate diagonal weights against a coordinate space."""
+        # Structure first: dense, exact shape, same dtype as the space.
         if not isinstance(space, CoordinateSpace):
             raise TypeError("WeightedInnerProduct requires a CoordinateSpace.")
 
@@ -123,6 +125,7 @@ class WeightedInnerProduct(InnerProduct):
                 "WeightedInnerProduct weights must use the same context dtype as the space; "
                 f"got {dtype}, expected {space.dtype}."
             )
+        # Then values, on the host: real, finite, strictly positive.
         try:
             weights_np = _np.asarray(weights)
         except Exception as exc:

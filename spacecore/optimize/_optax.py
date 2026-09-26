@@ -63,6 +63,7 @@ def _linesearch_steps(opt_state: Any) -> Any:
     several line-search transforms is counted in full rather than only the first.
     Returns ``None`` when no counter is present.
     """
+    # Walk the nested optax state; sum every num_linesearch_steps field found.
     found = []
     stack = [opt_state]
     while stack:
@@ -94,6 +95,7 @@ def _tree_l2_norm(tree: Any) -> Any:
     import jax
     import jax.numpy as jnp
 
+    # sqrt of the summed squared moduli over all leaves.
     leaves = jax.tree_util.tree_leaves(tree)
     if not leaves:
         return jnp.asarray(0.0)
@@ -242,6 +244,7 @@ def minimize_optax(
         res = sc.minimize_optax(F, X.zeros(), optax.adam(1e-1), max_iter=1000, tol=1e-6)
         # res.x_element is approximately (1.0, 2.0); res.success is True
     """
+    # Validate everything before importing optax and jax.
     F = require_functional(F, "minimize_optax")
     X = domain_with_geometry(F, "minimize_optax")
     if getattr(X.ops, "family", None) != "jax":
@@ -274,7 +277,9 @@ def minimize_optax(
 
     verbose = int(verbose)
     project_fn = (lambda p: p) if project is None else project
+    # Tree domains iterate on the canonical pytree of x0.
     params = X.unflatten_tree(X.flatten_tree(x0)) if isinstance(X, TreeSpace) else x0
+    # Lets line-search optimizers receive value, grad and value_fn in update().
     opt = optax.with_extra_args_support(opt)
 
     def evaluate(p: Any):
@@ -285,6 +290,7 @@ def minimize_optax(
     def value_fn(p: Any):  # objective for line-search optimizers (optax minimizes)
         return F.value(p)
 
+    # One optimizer update, then projection, then a fused re-evaluation.
     def step(state: _OptaxState) -> _OptaxState:
         updates, opt_state = opt.update(
             state.grad,
@@ -298,6 +304,7 @@ def minimize_optax(
         value, grad, grad_norm = evaluate(p)  # exactly one value_and_grad per step
         return _OptaxState(p, opt_state, value, grad, grad_norm)
 
+    # History rows: one per history_every steps, plus the first and the last.
     value0, grad0, grad_norm0 = evaluate(params)
     init_state = _OptaxState(params, opt.init(params), value0, grad0, grad_norm0)
     real_dtype = jnp.asarray(jnp.real(value0)).dtype
@@ -312,6 +319,7 @@ def minimize_optax(
         )
 
     def run_loop(init_state: _OptaxState, tol_val):
+        # Preallocated history keeps the loop body's shapes fixed, hence jittable.
         zeros = jnp.zeros((capacity,), real_dtype)
         history = _History(jnp.zeros((capacity,), jnp.int32), zeros, zeros, zeros)
         finite0 = _tree_all_finite(
@@ -330,10 +338,12 @@ def minimize_optax(
             jnp.asarray(0, jnp.int32),
         )
 
+        # Continue while under max_iter, above tol, and finite.
         def cond_fn(ls: _LoopState):
             return (ls.iteration < max_iter) & (ls.state.grad_norm > tol_val) & ls.finite
 
         def body_fn(ls: _LoopState):
+            # Step, count line-search steps, and test convergence and divergence.
             prev_value = ls.state.value
             next_state = step(ls.state)
             iteration = ls.iteration + jnp.asarray(1, jnp.int32)
@@ -349,6 +359,7 @@ def minimize_optax(
             finite = _tree_all_finite((value, next_state.grad)) & jnp.isfinite(grad_norm)
             done_after = (iteration >= max_iter) | (grad_norm <= tol_val) | (~finite)
 
+            # Print from inside the compiled loop, on logging steps only.
             if verbose >= 2:
                 log_now = ((iteration % log_every) == 0) | done_after
                 jax.lax.cond(
@@ -360,6 +371,7 @@ def minimize_optax(
                     lambda: None,
                 )
 
+            # Write a history row on schedule; lax.cond keeps it traced.
             if record_history:
                 do_record = ((iteration % history_every) == 0) | done_after
 
@@ -380,6 +392,7 @@ def minimize_optax(
 
         return jax.lax.while_loop(cond_fn, body_fn, loop0)
 
+    # Compile ahead of time so compile and execution are timed apart.
     run = jax.jit(run_loop)
     tol_arr = jnp.asarray(tol, real_dtype)
 
@@ -396,6 +409,7 @@ def minimize_optax(
     result = jax.device_get(compiled(init_state, tol_arr))
     execution_seconds = perf_counter() - t1
 
+    # Unpack the result on the host.
     final = result.state
     num_iters = int(result.iteration)
     n_linesearch_steps = int(result.nls)
@@ -410,6 +424,7 @@ def minimize_optax(
     # Return the minimizer as an element of F.domain (bound element for a
     # structured space; the raw array is already an element otherwise).
     x_element = X.element(final.params) if isinstance(X, TreeSpace) else final.params
+    # Status 2: diverged; 0: converged; 1: iteration cap.
     finite = bool(np.asarray(result.finite))
     success = finite and final_grad_norm <= tol
     if not finite:
@@ -419,6 +434,7 @@ def minimize_optax(
     else:
         status, message = 1, "maximum iterations reached"
 
+    # Trim the preallocated history to the rows actually written.
     if record_history:
         n = int(result.history_index)
         history = {
@@ -430,6 +446,7 @@ def minimize_optax(
     else:
         history = {}
 
+    # Callbacks run after the compiled loop, replaying the recorded rows.
     if progress_callback is not None and record_history:
         for i in range(len(history["iteration"])):
             progress_callback(

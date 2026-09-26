@@ -9,6 +9,7 @@ from ..types import DenseArray, SparseArray, DType, ArrayLike, Index, T, X, Y, R
 
 class LazyNamespace:
     def __init__(self, module_name: str) -> None:
+        # Set eagerly, so ABC checks and introspection do not trigger the import.
         self.__name__ = module_name
         self.__isabstractmethod__ = False
         self._module_name = module_name
@@ -270,6 +271,7 @@ class BackendOps(ABC):
 
     def _source_is_complex(self, x: Any) -> bool:
         """Return whether ``x`` carries a complex representation."""
+        # Arrays report a dtype; else check Python complex, a sparse .data, then sequences.
         dtype = getattr(x, "dtype", None)
         if dtype is not None:
             return getattr(dtype, "kind", None) == "c" or "complex" in str(dtype)
@@ -294,6 +296,7 @@ class BackendOps(ABC):
         """Reject implicit loss of a complex representation during conversion."""
         if dtype is None:
             return
+        # Complex to real would silently drop the imaginary part.
         target_dtype = self.sanitize_dtype(dtype)
         if not self.is_complex_dtype(target_dtype) and self._source_is_complex(x):
             raise TypeError(
@@ -332,6 +335,7 @@ class BackendOps(ABC):
 
     def _permute_dims(self, x: DenseArray, axes: Sequence[int]) -> DenseArray:
         axes = tuple(axes)
+        # Array API name, then torch's, then NumPy's.
         if hasattr(self.xp, "permute_dims"):
             return self.xp.permute_dims(x, axes)
         if hasattr(self.xp, "permute"):
@@ -344,10 +348,12 @@ class BackendOps(ABC):
         source: int | Sequence[int],
         destination: int | Sequence[int],
     ) -> tuple[int, ...]:
+        # Normalize both axis lists to non-negative tuples.
         src = (source,) if isinstance(source, int) else tuple(source)
         dst = (destination,) if isinstance(destination, int) else tuple(destination)
         src = tuple(axis + ndim if axis < 0 else axis for axis in src)
         dst = tuple(axis + ndim if axis < 0 else axis for axis in dst)
+        # Untouched axes keep their order; each moved axis is inserted at its destination.
         order = [axis for axis in range(ndim) if axis not in src]
         for dest, axis in sorted(zip(dst, src, strict=True)):
             order.insert(dest, axis)
@@ -417,6 +423,7 @@ class BackendOps(ABC):
         dtype = self.sanitize_dtype(dtype)
         if not self.is_complex_dtype(dtype):
             return dtype
+        # complex64 pairs with float32 and complex128 with float64; use the name if there is no itemsize.
         itemsize = getattr(dtype, "itemsize", None)
         if itemsize is None:
             dtype_text = str(dtype)
@@ -435,6 +442,7 @@ class BackendOps(ABC):
         dtype = self.sanitize_dtype(dtype)
         if self.is_complex_dtype(dtype):
             return dtype
+        # The complex dtype whose real part is this dtype; else let promotion decide.
         for candidate in (self.xp.complex64, self.xp.complex128):
             if self.real_dtype(candidate) == dtype:
                 return candidate
@@ -464,6 +472,7 @@ class BackendOps(ABC):
     def asarray(self, x: Any, dtype: DType | None = None, **backend_kwargs: Any) -> DenseArray:
         """Convert input to a dense backend array (delegates to xp.asarray)."""
         self._reject_complex_to_real(x, dtype, operation="asarray")
+        # Densify sparse input, then Array API asarray or torch's as_tensor.
         if self.is_sparse(x) and hasattr(x, "to_dense"):
             x = x.to_dense()
         dtype = self._dtype_arg(dtype)
@@ -477,6 +486,7 @@ class BackendOps(ABC):
             return x
         self._reject_complex_to_real(x, dtype, operation="astype")
         dtype = self.sanitize_dtype(dtype)
+        # NumPy-style astype, else torch's .to.
         if hasattr(x, "astype"):
             return cast(Any, x).astype(dtype, **backend_kwargs)
         return cast(Any, x).to(dtype=dtype, **backend_kwargs)
@@ -514,6 +524,7 @@ class BackendOps(ABC):
     ) -> DenseArray:
         """Create an evenly spaced range (delegates to xp.arange)."""
         dtype = self._dtype_arg(dtype)
+        # Mirror the arange(stop), arange(start, stop), arange(start, stop, step) overloads.
         if stop is None:
             return self.xp.arange(start, dtype=dtype)
         if step is None:
@@ -567,6 +578,7 @@ class BackendOps(ABC):
         """Swap two axes of x."""
         if hasattr(self.xp, "swapaxes"):
             return self.xp.swapaxes(x, axis1, axis2)
+        # No native swapaxes: permute with the two axes exchanged.
         axes = list(range(self.ndim(x)))
         axes[axis1], axes[axis2] = axes[axis2], axes[axis1]
         return self._permute_dims(x, axes)
@@ -577,6 +589,7 @@ class BackendOps(ABC):
             if hasattr(self.xp, "expand_dims"):
                 return self.xp.expand_dims(x, axis=axis)
             return self.xp.unsqueeze(x, axis)
+        # Several axes: insert one at a time, in increasing final position.
         out = x
         ndim = self.ndim(x) + len(axis)
         for ax in sorted(a + ndim if a < 0 else a for a in axis):
@@ -586,6 +599,7 @@ class BackendOps(ABC):
     def squeeze(self, x: DenseArray, axis: int | Sequence[int] | None = None) -> DenseArray:
         """Remove singleton dimensions from x."""
         if axis is None:
+            # All size-1 axes, passed explicitly since not every backend accepts axis=None.
             axis = tuple(i for i, dim in enumerate(self.shape(x)) if dim == 1)
             if not axis:
                 return x
@@ -647,6 +661,8 @@ class BackendOps(ABC):
     ) -> Callable:
         """Vectorize ``fn`` over array axes using a Python-loop fallback."""
 
+        # Fallback vmap: loop over the mapped axis in Python and stack the outputs.
+        # in_axes is one axis for all arguments or one per argument.
         def axis_for_arg(i: int) -> int | Sequence[int | None] | None:
             if isinstance(in_axes, tuple) or isinstance(in_axes, list):
                 return in_axes[i]
@@ -655,6 +671,7 @@ class BackendOps(ABC):
         def normalize_axis(axis: int, ndim: int) -> int:
             return axis + ndim if axis < 0 else axis
 
+        # Batch size of the first mapped leaf; tuples are walked recursively.
         def tree_size(x: Any, axis: Any) -> int | None:
             if axis is None:
                 return None
@@ -669,6 +686,7 @@ class BackendOps(ABC):
             axis = normalize_axis(int(axis), len(shape))
             return int(cast(Any, shape[axis]))
 
+        # The i-th slice of every mapped leaf.
         def tree_take(x: Any, axis: Any, i: int) -> Any:
             if axis is None:
                 return x
@@ -681,6 +699,7 @@ class BackendOps(ABC):
             index[axis] = i
             return x[tuple(index)]
 
+        # Stack the per-index outputs along out_axes, recursing into tuples.
         def tree_stack(xs: Sequence[Any], axis: Any) -> Any:
             first = xs[0]
             if isinstance(first, tuple):
@@ -697,6 +716,7 @@ class BackendOps(ABC):
                 size = tree_size(arg, axis)
                 if size is not None:
                     break
+            # No argument is mapped: one plain call.
             if size is None:
                 return fn(*args)
             outputs = tuple(
@@ -719,6 +739,7 @@ class BackendOps(ABC):
         Uses the backend's native ``vectorize`` when present; the Python-loop fallback does
         not support ``signature``.
         """
+        # Native vectorize when available; otherwise a Python loop.
         if hasattr(self.xp, "vectorize"):
             kwargs: dict[str, Any] = {}
             if excluded is not None:
@@ -744,6 +765,7 @@ class BackendOps(ABC):
         excluded_set = set() if excluded is None else set(excluded)
 
         def vectorized(*args: Any) -> Any:
+            # Broadcast the non-excluded arguments, call pyfunc per element, reshape back.
             positions = [i for i in range(len(args)) if i not in excluded_set]
             if not positions:
                 return self.asarray(pyfunc(*args))
@@ -767,6 +789,7 @@ class BackendOps(ABC):
     @staticmethod
     def _broadcast_shapes(*shapes: Tuple[int, ...]) -> Tuple[int, ...]:
         """Return the NumPy broadcast of several shapes (pure-Python)."""
+        # NumPy rules: align from the right; size 1 stretches, any other mismatch fails.
         ndim = max((len(shape) for shape in shapes), default=0)
         result = [1] * ndim
         for shape in shapes:
@@ -875,6 +898,7 @@ class BackendOps(ABC):
         Matches NumPy, JAX, and Torch ``vdot`` semantics. ``DenseLinOp.rapply``
         relies on this convention for complex inputs. Returns a 0-d array.
         """
+        # Flattened conj(x) . y; vecdot is the Array API spelling of vdot.
         x_flat = self.ravel(x)
         y_flat = self.ravel(y)
         if hasattr(self.xp, "vdot"):
@@ -914,9 +938,11 @@ class BackendOps(ABC):
 
     def _column_phase(self, vectors: DenseArray) -> DenseArray:
         """Return the unit phase of each column's largest entry, shaped ``(..., 1, k)``."""
+        # Per column: the entry of largest modulus and its unit phase.
         magnitude = self.abs(vectors)
         pivot_row = self.xp.argmax(magnitude, axis=-2)
         pivot_row = self.expand_dims(pivot_row, -2)
+        # Gather the pivot with a one-hot mask, which stays jittable.
         rows = self.reshape(self.arange(self.shape(vectors)[-2]), (-1, 1))
         selector = self.astype(rows == pivot_row, self.get_dtype(vectors))
         pivot = self.sum(vectors * selector, axis=-2, keepdims=True)
@@ -936,6 +962,7 @@ class BackendOps(ABC):
         eigenvectors: DenseArray,
     ) -> tuple[DenseArray, DenseArray]:
         """Sort eigenpairs ascending by eigenvalue and gauge the eigenvectors."""
+        # Ascending eigenvalues, columns permuted to match, then a fixed phase gauge.
         order = self.xp.argsort(self.real(eigenvalues), axis=-1)
         eigenvalues = self._take_along_axis(eigenvalues, order, -1)
         eigenvectors = self._take_along_axis(eigenvectors, self.expand_dims(order, -2), -1)
@@ -1021,6 +1048,7 @@ class BackendOps(ABC):
         Vh: DenseArray,
     ) -> tuple[DenseArray, DenseArray, DenseArray]:
         """Sort singular triples descending and gauge them, preserving ``U s Vh``."""
+        # Sort singular values descending; permute the first k columns of U and rows of Vh.
         k = self.shape(s)[-1]
         order = self.xp.argsort(-s, axis=-1)
         s = self._take_along_axis(s, order, -1)
@@ -1029,10 +1057,12 @@ class BackendOps(ABC):
         U_main = self._take_along_axis(U[..., :, :k], column_order, -1)
         Vh_main = self._take_along_axis(Vh[..., :k, :], self.expand_dims(order, -1), -2)
 
+        # Fix the gauge: U columns / phase and Vh rows * phase leave U diag(s) Vh unchanged.
         phase = self._column_phase(U_main)
         U_main = U_main / phase
         Vh_main = Vh_main * self.swapaxes(phase, -1, -2)
 
+        # Columns beyond k (full_matrices=True) are reattached unchanged.
         U = self.concatenate([U_main, U[..., :, k:]], axis=-1)
         Vh = self.concatenate([Vh_main, Vh[..., k:, :]], axis=-2)
         return U, s, Vh
@@ -1056,6 +1086,7 @@ class BackendOps(ABC):
         dtype: DType | None = None,
     ) -> DenseArray:
         """Concatenate arrays along an existing axis (delegates to xp.concat)."""
+        # Array API concat, else NumPy's concatenate.
         if hasattr(self.xp, "concat"):
             result = self.xp.concat(tuple(arrays), axis=axis)
         else:
@@ -1093,6 +1124,7 @@ class BackendOps(ABC):
 
     def __repr__(self) -> str:
         xp = type(self).xp
+        # Report whether the lazy namespace has been imported yet.
         xp_state = ""
         if isinstance(xp, LazyNamespace):
             xp_state = f", xp_loaded={xp.is_loaded!r}"
@@ -1108,6 +1140,7 @@ _PASS_THROUGH = (
 
 
 def _forward_to_xp(name: str) -> Any:
+    # A method calling xp.<name> directly, named and documented like a BackendOps method.
     def method(self: BackendOps, *args: Any, **kwargs: Any) -> Any:
         return getattr(self.xp, name)(*args, **kwargs)
 

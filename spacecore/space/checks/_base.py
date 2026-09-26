@@ -13,6 +13,7 @@ class SpaceValidationError(ValueError, TypeError):
 
 def _shape_of(space: Any, x: Any) -> tuple[int, ...] | None:
     """Return the backend-visible shape of ``x`` when available."""
+    # Ask the backend first, then fall back to the object's own attribute.
     try:
         return tuple(space.ops.shape(x))
     except Exception:
@@ -22,6 +23,7 @@ def _shape_of(space: Any, x: Any) -> tuple[int, ...] | None:
 
 def _dtype_of(space: Any, x: Any) -> Any:
     """Return the backend-visible dtype of ``x`` when available."""
+    # Ask the backend first, then fall back to the object's own attribute.
     try:
         return space.ops.get_dtype(x)
     except Exception:
@@ -57,6 +59,7 @@ class SpaceCheck(ABC):
 
     def leading_dims(self, x: Any, space: Any) -> tuple[int, ...] | None:
         """Return leading batch dimensions before this check's core axes."""
+        # Leading (batch) dims are whatever precedes the element's core shape.
         shape = _shape_of(space, x)
         if shape is None:
             return None
@@ -70,6 +73,7 @@ class SpaceCheck(ABC):
 
     def validate(self, space: Any, x: Any, *, allow_leading: bool) -> bool:
         """Return whether ``x`` is valid under member or batched shape policy."""
+        # Trailing dims must equal the core shape; leading dims only when batched.
         if self.enforce_core_shape:
             shape = _shape_of(space, x)
             core_shape = self.core_shape(space)
@@ -144,6 +148,7 @@ class ShapeCheck(SpaceCheck):
         if shape is None:
             return False
 
+        # Scalars (rank 0) always match; otherwise compare the trailing dims.
         core_shape = self.core_shape(space)
         core_rank = len(core_shape)
         if core_rank == 0:
@@ -203,6 +208,7 @@ class FieldCheck(SpaceCheck):
         dtype = _dtype_of(space, x)
         if dtype is None:
             return False
+        # Complex spaces accept any dtype; real spaces reject complex data.
         return space.field == "complex" or not space.ops.is_complex_dtype(dtype)
 
     def error_message(self, space: Any, x: Any) -> str:
@@ -265,6 +271,7 @@ class HermitianCheck(SpaceCheck):
         if not self.enforce:
             return True
 
+        # Hermitian: x equals its conjugate transpose within the tolerances.
         ops = space.ops
         x_adj = ops.conj(ops.swapaxes(x, -1, -2))
         return bool(ops.allclose(x, x_adj, atol=self.atol, rtol=self.rtol))
@@ -281,6 +288,7 @@ class HermitianCheck(SpaceCheck):
 
 def _run_checks(space: Any, x: Any, *, allow_leading: bool) -> None:
     """Run all membership checks with a shared member/batched shape policy."""
+    # Run every check this level includes, raising on the first failure.
     level = normalize_check_level(getattr(space, "check_level", "standard"))
     for check in space.member_checks():
         if not check_level_at_least(level, check.minimum_level):

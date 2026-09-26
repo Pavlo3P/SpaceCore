@@ -76,6 +76,7 @@ class ContextBound(ABC):
         default). The check level is the explicit one or the lowest among ``children``.
         Typical use: ``self.dom, self.cod = self._bind_context(ctx, dom, cod)``.
         """
+        # An explicit context wins; otherwise infer one from the sources.
         if isinstance(ctx, Context):
             resolved = ctx
         else:
@@ -83,11 +84,13 @@ class ContextBound(ABC):
                 ctx, *(children if sources is None else sources)
             )
         self._ctx = resolved
+        # Explicit level, else the least strict of the children, else ambient.
         if check_level is not None:
             self._check_level = normalize_check_level(check_level)
         else:
             levels = [c._check_level for c in children if isinstance(c, ContextBound)]
             self._check_level = minimum_check_level(tuple(levels)) if levels else get_check_level()
+        # Move every child onto the resolved context.
         return tuple(child.convert(resolved) for child in children)
 
     def _with_check_level(self, level: CheckLevel | bool) -> Self:
@@ -194,6 +197,7 @@ class ContextBound(ABC):
         backend/dtype context, so it is preserved across conversion rather than
         re-seeded from the ambient default.
         """
+        # Same context: nothing to do. Otherwise rebuild, keeping the check level.
         _, new_ctx = enforce_convert_policy(self, new_ctx)
         if self.ctx == new_ctx:
             return self

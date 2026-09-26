@@ -37,6 +37,7 @@ def _block_diagonal_rvapply(parts: Any, y_parts: Any) -> tuple[Any, ...]:
 
 def _validate_blocks(blocks: Sequence[Any], owner: str) -> tuple[LinOp, ...]:
     """Validate a nonempty block collection and its shared execution policy."""
+    # Non-empty, all LinOps, one context and one check level.
     validated = tuple(blocks)
     if not validated:
         raise ValueError(f"{owner} requires at least one block.")
@@ -65,6 +66,7 @@ def _validate_blocks(blocks: Sequence[Any], owner: str) -> tuple[LinOp, ...]:
 
 def _sum_values(space: Any, values: Sequence[Any], *, batched: bool) -> Any:
     """Sum a nonempty sequence through the owning space's vector operation."""
+    # Left fold with the space's (batched) addition.
     iterator = iter(values)
     result = next(iterator)
     add = space.add_batch if batched else space.add
@@ -103,6 +105,7 @@ class BlockDiagonalLinOp(TreeLinOp[TreeSpace, TreeSpace]):
         ctx: Context | str | None = None,
         check_level: CheckLevel | bool | None = None,
     ) -> None:
+        # Legacy form: explicit dom, cod and parts.
         if isinstance(blocks, TreeSpace):
             dom = blocks
             if not isinstance(cod, TreeSpace):
@@ -111,6 +114,7 @@ class BlockDiagonalLinOp(TreeLinOp[TreeSpace, TreeSpace]):
                 raise TypeError("Legacy BlockDiagonalLinOp construction requires component blocks.")
             block_parts = _validate_blocks(parts, type(self).__name__)
         else:
+            # Tree form: flatten the blocks and build both tree spaces from them.
             if cod is not None or parts is not None:
                 raise TypeError(
                     "BlockDiagonalLinOp(blocks) accepts only a block tree; "
@@ -129,6 +133,7 @@ class BlockDiagonalLinOp(TreeLinOp[TreeSpace, TreeSpace]):
 
     def _check_layout(self) -> None:
         """Check that each block maps the corresponding pair of tree leaves."""
+        # One block per leaf, each matching its domain and codomain leaves.
         if not isinstance(self.dom, TreeSpace) or not isinstance(self.cod, TreeSpace):
             raise TypeError("BlockDiagonalLinOp expects dom and cod to be TreeSpace.")
         if len(self.parts) != self.dom.arity or len(self.parts) != self.cod.arity:
@@ -187,6 +192,7 @@ class BlockDiagonalLinOp(TreeLinOp[TreeSpace, TreeSpace]):
     @property
     def H(self) -> BlockDiagonalLinOp:
         """Return a block-diagonal adjoint with every block replaced by ``A_i.H``."""
+        # The adjoint is block diagonal in the blocks' adjoints; cache both ways.
         view = getattr(self, "_adjoint_view", None)
         if view is None:
             view = BlockDiagonalLinOp(
@@ -240,6 +246,7 @@ class BlockMatrixLinOp(TreeLinOp[TreeSpace, TreeSpace]):
         block_rows: Sequence[Sequence[LinOp]],
         check_level: CheckLevel | bool | None = None,
     ) -> None:
+        # Normalize to a rectangular tuple of rows.
         if not isinstance(block_rows, Sequence) or isinstance(block_rows, (str, bytes)):
             raise TypeError("BlockMatrixLinOp block_rows must be a sequence of rows.")
         rows = tuple(block_rows)
@@ -262,6 +269,7 @@ class BlockMatrixLinOp(TreeLinOp[TreeSpace, TreeSpace]):
                     f"row 0 has {column_count} blocks but row {row_index} has {len(row)}."
                 )
 
+        # Validate every block, then check rows share codomains and columns share domains.
         flat_blocks = _validate_blocks(
             tuple(block for row in normalized_rows for block in row), type(self).__name__
         )
@@ -288,6 +296,7 @@ class BlockMatrixLinOp(TreeLinOp[TreeSpace, TreeSpace]):
                         f"0 and {row_index}."
                     )
 
+        # Domain leaves come from the columns, codomain leaves from the rows.
         ctx = flat_blocks[0].ctx
         dom = TreeSpace.from_leaf_spaces(
             tuple(normalized_rows[0][column].domain for column in range(column_count)), ctx
@@ -321,6 +330,7 @@ class BlockMatrixLinOp(TreeLinOp[TreeSpace, TreeSpace]):
         return self._apply_unchecked(x)
 
     def _apply_unchecked(self, x: Any) -> Any:
+        # y_i = sum_j A_ij x_j, row by row.
         x_parts = self.dom._components(x)
         y_parts = []
         for row_index, codomain in enumerate(self.cod.leaf_spaces):
@@ -337,6 +347,7 @@ class BlockMatrixLinOp(TreeLinOp[TreeSpace, TreeSpace]):
         return self._rapply_unchecked(y)
 
     def _rapply_unchecked(self, y: Any) -> Any:
+        # x_j = sum_i A_ij* y_i, column by column.
         y_parts = self.cod._components(y)
         x_parts = []
         for column, domain in enumerate(self.dom.leaf_spaces):
@@ -379,6 +390,7 @@ class BlockMatrixLinOp(TreeLinOp[TreeSpace, TreeSpace]):
         """Transpose the block layout and replace every block by its adjoint."""
         view = getattr(self, "_adjoint_view", None)
         if view is None:
+            # The adjoint is the transposed matrix of block adjoints; cache both ways.
             rows = tuple(
                 tuple(self.block_rows[row][column].H for row in range(self._row_count))
                 for column in range(self._column_count)
@@ -404,6 +416,7 @@ class BlockMatrixLinOp(TreeLinOp[TreeSpace, TreeSpace]):
     @classmethod
     def tree_unflatten(cls, aux: Any, children: Sequence[LinOp]) -> BlockMatrixLinOp:
         """Rebuild a block matrix from row-major pytree children."""
+        # Refold the flat children into rows.
         row_count, column_count = aux
         rows = tuple(
             tuple(children[row * column_count : (row + 1) * column_count])

@@ -23,6 +23,7 @@ def _resolve_elementwise_geometry(
     inner_product: InnerProduct | None = None,
 ) -> InnerProduct:
     """Resolve the public geometry aliases for elementwise coordinate spaces."""
+    # geometry and inner_product are aliases; default Euclidean.
     require_mutually_exclusive(
         "geometry", geometry, "inner_product", inner_product, verb="Specify"
     )
@@ -38,6 +39,7 @@ def _euclidean_elementwise_jordan_incompatibility(
     geometry: InnerProduct,
 ) -> str | None:
     """Return the violated Euclidean-elementwise invariant, if any."""
+    # The Euclidean Jordan variant needs a real field and Euclidean geometry.
     if field != "real":
         return "field"
     if type(geometry) is not EuclideanInnerProduct:
@@ -87,6 +89,7 @@ class DenseVectorSpace(DenseCoordinateSpace, StarSpace):
         check_level: CheckLevel | bool | None = None,
     ) -> None:
         shape = tuple(shape)
+        # Only one-dimensional shapes.
         if len(shape) != 1:
             raise ValueError(f"DenseVectorSpace requires one-dimensional shape, got {shape}.")
         super().__init__(shape, ctx, geometry=geometry, check_level=check_level)
@@ -127,6 +130,7 @@ class ElementwiseJordanSpace(PyTreeNode, JordanAlgebraSpace, DenseCoordinateSpac
         *,
         inner_product: InnerProduct | None = None,
     ):
+        # Real Euclidean contexts construct the Euclidean Jordan subclass instead.
         geometry = _resolve_elementwise_geometry(geometry, inner_product)
         if cls is ElementwiseJordanSpace:
             resolved_ctx = normalize_context(ctx)
@@ -168,6 +172,7 @@ class ElementwiseJordanSpace(PyTreeNode, JordanAlgebraSpace, DenseCoordinateSpac
 
     def from_spectrum(self, eigvals: DenseArray, frame: Any = None) -> DenseArray:
         """Reconstruct an elementwise Jordan element from its spectrum."""
+        # Elementwise: the spectrum is the element itself, so there is no frame.
         if frame is not None:
             raise ValueError(f"{type(self).__name__}.from_spectrum expects frame=None.")
         self._check_unbatched_member(eigvals)
@@ -189,6 +194,7 @@ class ElementwiseJordanSpace(PyTreeNode, JordanAlgebraSpace, DenseCoordinateSpac
 
     def _apply_entrywise(self, x: DenseArray, f: Callable[[DenseArray], DenseArray]) -> DenseArray:
         """Apply ``f`` entrywise and verify that shape is preserved."""
+        # Apply f to the whole array, else elementwise; the shape must not change.
         try:
             y = f(x)
         except Exception:
@@ -243,6 +249,7 @@ class EuclideanElementwiseJordanSpace(ElementwiseJordanSpace, EuclideanJordanAlg
         *,
         inner_product: InnerProduct | None = None,
     ) -> None:
+        # Initialize as a plain coordinate space, then confirm real field and Euclidean geometry.
         resolved_ctx = normalize_context(ctx)
         geometry = _resolve_elementwise_geometry(geometry, inner_product)
         DenseCoordinateSpace.__init__(

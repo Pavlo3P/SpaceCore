@@ -52,6 +52,7 @@ class Functional(Mapping, Generic[Domain]):
         *,
         cod: Field | None = None,
     ) -> None:
+        # Resolve the context from the domain; the codomain defaults to its scalars.
         resolved = resolve_context_priority(ctx, dom)
         dom = dom.convert(resolved)
         if cod is None:

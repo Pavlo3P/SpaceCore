@@ -79,6 +79,8 @@ def _build_tridiagonal(
     real_dtype: Any,
 ) -> DenseArray:
     """Build the fixed-size tridiagonal Lanczos projection."""
+    # Fixed-size T for jit: rows past the Krylov dimension m get a large sentinel
+    # diagonal so their eigenvalues sort above the real ones, and a zero coupling.
     idx = ops.arange(max_iter)
     full_indices = ops.arange(max_iter + 1)
     mask_alpha = idx < m
@@ -90,6 +92,7 @@ def _build_tridiagonal(
     alphas_full = ops.where(mask_alpha, alphas, inactive_sentinel)
     betas_full = ops.where(full_indices == m, ops.asarray(0.0, dtype=real_dtype), betas)
 
+    # Fill the diagonal, then the symmetric off-diagonals.
     T = ops.zeros((max_iter, max_iter), dtype=real_dtype)
 
     def fill_diag(ii: int, T_in: DenseArray) -> DenseArray:
@@ -119,11 +122,13 @@ def _lanczos_basis_and_tridiag(
     ctx = A.ctx
     apply = resolve_apply(A)
     dom = SpaceCoreOps(A.domain)
+    # Plain Euclidean coordinate spaces reorthogonalize with one einsum.
     use_euclidean_reorth = (
         type(A.domain) in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace)
         and A.domain.is_euclidean
     )
 
+    # Preallocate the basis V and coefficients at full size, for jit.
     v0 = A.domain.flatten(initial_vector)
     v0 = ctx.assert_dense(v0)
     n = v0.shape[0]
@@ -135,6 +140,7 @@ def _lanczos_basis_and_tridiag(
     tol_s = ops.asarray(tol, dtype=real_dtype)
     eps_s = ops.asarray(1e-12, dtype=real_dtype)
 
+    # First basis vector: v0 normalized, or e0 if v0 is (numerically) zero.
     v0_norm = A.domain.norm(initial_vector)
 
     e0 = ops.zeros((n,), dtype=ctx.dtype)
@@ -170,6 +176,7 @@ def _lanczos_basis_and_tridiag(
     ) -> tuple[Any, Any, Any, Any, Any, Any, Any]:
         i, V_, alphas_, betas_, beta, m_true, keep_going = state
 
+        # Three-term recurrence: w = A v_i - alpha_i v_i - beta_i v_{i-1}.
         v_i = V_[i]
         v_i_member = A.domain.unflatten(v_i)
         w_member = apply(v_i_member)
@@ -186,6 +193,7 @@ def _lanczos_basis_and_tridiag(
             w,
         )
 
+        # Full reorthogonalization against the basis built so far (masked).
         w_member = A.domain.unflatten(w)
         valid = full_indices < (i + 1)
         mask = ops.where(
@@ -210,18 +218,21 @@ def _lanczos_basis_and_tridiag(
         proj = ops.sum(coeffs_valid[:, None] * V_, axis=0)
         w = w - proj
 
+        # beta_{i+1} = ||w||; below tol the Krylov space is exhausted (breakdown).
         w_member = A.domain.unflatten(w)
         beta_new = dom.norm(w_member)
         betas_ = ops.index_set(betas_, (i + 1,), beta_new, copy=True)
         breakdown = beta_new < tol_s
         m_true_next = ops.where(breakdown & (m_true == max_iter), i + 1, m_true)
 
+        # Store the next unit vector unless breakdown happened.
         def set_next(V_in: DenseArray) -> DenseArray:
             w_unit = A.domain.flatten(dom.scale(safe_inverse_nonneg(ops, beta_new), w_member))
             return ops.index_set(V_in, (i + 1, slice(None)), w_unit, copy=True)
 
         V_ = ops.cond(beta_new >= tol_s, set_next, lambda V_in: V_in, V_)
         i_next = i + 1
+        # Stop only on check iterations, to keep the loop cheap.
         keep_going_next = ops.cond(
             should_check_iteration(i_next, max_iter, check_every),
             lambda _: beta_new >= tol_s,
@@ -234,6 +245,7 @@ def _lanczos_basis_and_tridiag(
     i_final, V, alphas, betas, _beta_final, m_true, _keep_going = ops.while_loop(
         cond_fun, body_fun, (i0, V, alphas, betas, beta0, m_true0, keep_going0)
     )
+    # Krylov dimension actually reached, and the projected tridiagonal T.
     m = ops.minimum(m_true, ops.asarray(i_final))
     T = _build_tridiagonal(ops, alphas, betas, max_iter, m, real_dtype)
     return _LanczosBasisResult(V, T, alphas, betas, m, v0_norm, tol_s, e0_unit)
@@ -303,6 +315,7 @@ def lanczos_smallest(
     >>> np.allclose(result.eigenvalue, 1.0)
     True
     """
+    # Validate once: square, not provably non-Hermitian, valid parameters.
     A = require_linop(A)
     require_square(A, "lanczos_smallest")
     if A.is_hermitian() is False:
@@ -316,12 +329,14 @@ def lanczos_smallest(
     idx = ops.arange(max_iter)
     basis = _lanczos_basis_and_tridiag(A, initial_vector, max_iter, tol, real_dtype, check_every)
 
+    # Smallest eigenpair of T; residual estimate beta_m |y_{m-1}|.
     m = basis.krylov_dim
     _eigvals, eigvecs = ops.eigh(basis.T)
     y_full = eigvecs[:, 0]
     residual_norm = basis.betas[m] * ops.abs(y_full[m - 1])
     converged = residual_norm < basis.tol
 
+    # Ritz vector x = V y, using only the m active basis vectors.
     mask_y = ops.where(
         idx < m,
         ops.asarray(1.0, dtype=real_dtype),
@@ -333,6 +348,7 @@ def lanczos_smallest(
     V_reduced = basis.V[:max_iter, :]
     x_flat = ops.einsum("j,jn->n", y_valid, V_reduced)
 
+    # Normalize x, falling back to e0 if it vanished.
     x_member = A.domain.unflatten(x_flat)
     x_norm = A.domain.norm(x_member)
     x_flat = ops.cond(
@@ -342,6 +358,7 @@ def lanczos_smallest(
         ops.asarray(0.0, dtype=real_dtype),
     )
 
+    # Report the Rayleigh quotient <x, A x> / <x, x> in the original space.
     x = A.domain.unflatten(x_flat)
     Ax = A.apply(x)
 

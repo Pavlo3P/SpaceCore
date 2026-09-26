@@ -72,6 +72,7 @@ class _SelfAdjointAction(NamedTuple):
 
 def _action_from_linop(A: LinOp) -> _SelfAdjointAction:
     """Normalize a square linear operator into a self-adjoint action."""
+    # Wrap a square LinOp as a self-adjoint action with generic diagnostics.
     A = require_linop(A)
     require_square(A, "power_iteration")
     if A.is_hermitian() is False:
@@ -90,6 +91,7 @@ def _action_from_linop(A: LinOp) -> _SelfAdjointAction:
 def _action_from_quadratic_form(q: QuadraticForm) -> _SelfAdjointAction:
     """Normalize a quadratic form into its Hessian action."""
     sops = SpaceCoreOps(q.domain)
+    # Use the form's own Rayleigh quotient and residual when it provides them.
     hess_quad = getattr(q, "hess_quad", None)
     if callable(hess_quad):
 
@@ -173,6 +175,7 @@ def power_iteration(
     >>> np.allclose(result.eigenvalue, 3.0)
     True
     """
+    # Turn either input into one self-adjoint action.
     if isinstance(A, QuadraticForm):
         action = _action_from_quadratic_form(A)
     elif isinstance(A, LinOp):
@@ -183,6 +186,7 @@ def power_iteration(
     maxiter = check_maxiter(maxiter, cast(Any, action))
     check_interval(check_every)
 
+    # Start from normalized ones unless x0 is given.
     x = default_initial_vector(cast(Any, action)) if x0 is None else x0
     action.domain.check_member(x)
     return PowerIterationResult(*_power_iteration_core(action, x, tol, maxiter))
@@ -196,6 +200,7 @@ def _power_iteration_core(
 ) -> tuple[Any, Any, Any, Any, Any]:
     """Run the backend-loop implementation of power iteration."""
     sops = SpaceCoreOps(action.domain)
+    # Normalize x0 and precompute y = A x.
     x, _ = core_normalize(sops, x)
     y = action.apply(x)
     zero = action.ops.asarray(0.0, dtype=action.dtype)
@@ -209,6 +214,7 @@ def _power_iteration_core(
 
     def body_fun(carry: tuple[Any, Any, Any, Any, int]) -> tuple[Any, Any, Any, Any, int]:
         _eigenvalue, _x, y, _residual_norm, k = carry
+        # x <- A x / ||A x||; eigenvalue by the Rayleigh quotient; residual ||A x - lambda x||.
         x_next, _norm_y = core_normalize(sops, y)
         y_next = action.apply(x_next)
         eigenvalue_next = action.rayleigh(x_next, y_next)

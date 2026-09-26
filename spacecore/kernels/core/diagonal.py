@@ -30,6 +30,7 @@ class _DiagonalMode(Enum):
 
 
 def diagonal_apply_core(op: Any, x: Any) -> Any:
+    # Vector-shaped or fused: elementwise product. Else on flat coordinates.
     if op._mode is _DiagonalMode.EUCLIDEAN:
         return op.diagonal * x
     if op._mode is _DiagonalMode.WEIGHTED_FUSED:
@@ -42,6 +43,7 @@ def diagonal_apply_core(op: Any, x: Any) -> Any:
 
 
 def diagonal_euclidean_rapply_core(op: Any, y: Any) -> Any:
+    # The adjoint diagonal, elementwise or on flat coordinates.
     if op._mode is _DiagonalMode.EUCLIDEAN:
         return op._diag_adjoint * y
     if op._mode is _DiagonalMode.WEIGHTED_FUSED:
@@ -54,6 +56,7 @@ def diagonal_euclidean_rapply_core(op: Any, y: Any) -> Any:
 
 
 def diagonal_rapply_core(op: Any, y: Any) -> Any:
+    # Euclidean: conj diagonal. Fused: precomputed. Else wrap it with the metrics.
     if op._mode is _DiagonalMode.EUCLIDEAN:
         return diagonal_euclidean_rapply_core(op, y)
     if op._mode is _DiagonalMode.WEIGHTED_FUSED:
@@ -66,6 +69,7 @@ def diagonal_rapply_core(op: Any, y: Any) -> Any:
 
 
 def diagonal_vapply_core(op: Any, xs: Any) -> Any:
+    # Elementwise, broadcasting over the leading batch axis.
     if op._mode is _DiagonalMode.EUCLIDEAN:
         return op.diagonal * xs
     if op._mode is _DiagonalMode.WEIGHTED_FUSED:
@@ -78,6 +82,7 @@ def diagonal_vapply_core(op: Any, xs: Any) -> Any:
 
 
 def diagonal_euclidean_rvapply_core(op: Any, ys: Any) -> Any:
+    # Adjoint diagonal over the batch.
     if op._mode is _DiagonalMode.EUCLIDEAN:
         return op._diag_adjoint * ys
     if op._mode is _DiagonalMode.WEIGHTED_FUSED:
@@ -90,6 +95,7 @@ def diagonal_euclidean_rvapply_core(op: Any, ys: Any) -> Any:
 
 
 def diagonal_rvapply_core(op: Any, ys: Any) -> Any:
+    # Batched form of diagonal_rapply_core.
     if op._mode is _DiagonalMode.EUCLIDEAN:
         return diagonal_euclidean_rvapply_core(op, ys)
     if op._mode is _DiagonalMode.WEIGHTED_FUSED:

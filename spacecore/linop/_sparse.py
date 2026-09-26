@@ -71,6 +71,7 @@ class SparseLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
         ctx: Context | str | None = None,
         check_level: CheckLevel | bool | None = None,
     ) -> None:
+        # A must be a sparse array of the backend; spaces must be coordinate spaces.
         ctx = resolve_context_priority(ctx, dom, cod)
         ctx.assert_sparse(A)  # Check if A is sparse array of ctx
         if not isinstance(dom, CoordinateSpace) or not isinstance(cod, CoordinateSpace):
@@ -80,12 +81,14 @@ class SparseLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
 
         super(SparseLinOp, self).__init__(dom, cod, ctx, check_level=check_level)
 
+        # Storage is always the flattened 2-D matrix.
         expected = (prod(self.cod.shape), prod(self.dom.shape))
         if tuple(A.shape) != expected:
             raise TypeError(
                 f"Expected A.shape == (prod(cod.shape), prod(dom.shape)) == {expected}, got {A.shape}"
             )
 
+        # Cache A^T and A^H once, and note which spaces are plain dense arrays.
         self._A = A  # No dtype conversion
         self._cod_size = expected[0]
         self._dom_size = expected[1]
@@ -105,6 +108,7 @@ class SparseLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
         )
         self._dom_is_flat = self._dom_dense_array and tuple(self.dom.shape) == (self._dom_size,)
         self._cod_is_flat = self._cod_dense_array and tuple(self.cod.shape) == (self._cod_size,)
+        # Pick the apply strategy once.
         self._mode = self._select_mode()
         if self._mode is _SparseMode.WEIGHTED_FUSED:
             self._dom_weights = self.dom.geometry.weights
@@ -112,6 +116,8 @@ class SparseLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
 
     def _select_mode(self) -> _SparseMode:
         """Select the sparse computation mode once for this operator."""
+        # Weighted flat vectors: fused path; Euclidean dense arrays: plain SpMV;
+        # anything else: the general Riesz-map path.
         if (
             self._dom_is_flat
             and self._cod_is_flat
@@ -132,6 +138,7 @@ class SparseLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
 
     def _sparse_conj(self, A: SparseArray) -> SparseArray:
         """Return the complex conjugate of a backend sparse array."""
+        # Conjugate whatever sparse type the backend uses.
         if hasattr(A, "conj"):
             return A.conj()
         if hasattr(A, "conjugate"):
@@ -197,6 +204,7 @@ class SparseLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
 
         Use :meth:`to_sparse` when sparse storage should be preserved.
         """
+        # Densify with the backend's native method, else by applying to a basis.
         if hasattr(self.A, "toarray"):
             dense = cast(Any, self.A).toarray()
         elif hasattr(self.A, "todense"):
@@ -227,6 +235,7 @@ class SparseLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
             ``True`` or ``False`` when the structure can be checked, otherwise
             ``None``.
         """
+        # Hermitian needs dom == cod; Euclidean compares A with A^H, else test by basis.
         if self.dom != self.cod:
             return False
         if not (
@@ -259,6 +268,7 @@ class SparseLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
         Tries the common spellings: ``nnz`` (scipy/cupy), ``nse`` (jax BCOO),
         and ``_nnz()`` (torch). Returns ``None`` when none is cheaply available.
         """
+        # Stored non-zeros, whatever the backend calls the count.
         A = self._A
         for attr in ("nnz", "nse"):
             value = getattr(A, attr, None)
@@ -284,6 +294,7 @@ class SparseLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
         return cls(A, dom, cod, ctx)
 
     def _convert(self, new_ctx: Context) -> SparseLinOp:
+        # Move the spaces and the matrix, fixing the dtype if conversion kept the old one.
         new_dom = self.dom.convert(new_ctx)
         new_cod = self.cod.convert(new_ctx)
         new_A = new_ctx.assparse(self.A)

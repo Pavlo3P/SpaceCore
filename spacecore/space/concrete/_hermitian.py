@@ -48,6 +48,7 @@ class HermitianSpace(DenseCoordinateSpace, StarSpace, EuclideanJordanAlgebraSpac
         ctx: Context | str | None = None,
         check_level: CheckLevel | bool | None = None,
     ):
+        # An n x n coordinate space plus Hermitian-check tolerances.
         if n <= 0:
             raise ValueError("n must be positive.")
 
@@ -75,6 +76,7 @@ class HermitianSpace(DenseCoordinateSpace, StarSpace, EuclideanJordanAlgebraSpac
 
     def _local_checks(self):
         """Return membership checks local to Hermitian spaces."""
+        # Membership: square, and Hermitian within the tolerances.
         return (
             SquareMatrixCheck(),
             HermitianCheck(
@@ -183,6 +185,7 @@ class HermitianSpace(DenseCoordinateSpace, StarSpace, EuclideanJordanAlgebraSpac
         projects onto the Hermitian part (a no-op up to that skew) so the
         reconstruction is a valid member of this space.
         """
+        # X = U diag(evals) U*, symmetrized to remove rounding skew.
         self.ctx.assert_dense(evals)
         self.ctx.assert_dense(evecs)
         X = self.ops.einsum("...ij,...j,...kj->...ik", evecs, evals, self.ops.conj(evecs))
@@ -196,6 +199,7 @@ class HermitianSpace(DenseCoordinateSpace, StarSpace, EuclideanJordanAlgebraSpac
 
     def _apply_entrywise(self, x: DenseArray, f: Callable[[DenseArray], DenseArray]) -> DenseArray:
         """Apply ``f`` entrywise and verify that shape is preserved."""
+        # Apply f to the whole array, else elementwise; the shape must not change.
         try:
             y = f(x)
         except Exception:
@@ -223,6 +227,7 @@ class HermitianSpace(DenseCoordinateSpace, StarSpace, EuclideanJordanAlgebraSpac
         DenseArray
             The Hermitian matrix :math:`f(X)`.
         """
+        # Transform the eigenvalues, keep the eigenvectors.
         evals, evecs = self.spectral_decompose(x)
         fevals = self._apply_entrywise(evals, f)
 

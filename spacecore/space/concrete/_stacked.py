@@ -32,6 +32,7 @@ _STACKED_REGISTRY: dict[frozenset[type], type[StackedSpace]] = {}
 
 def _validate_stacked_base(base: Any, owner: str = "StackedSpace") -> CoordinateSpace:
     """Validate a stacked-space base before capability-specific access."""
+    # The base must be a coordinate space; trees stack leaf by leaf instead.
     if not isinstance(base, CoordinateSpace):
         raise TypeError(
             f"{owner} requires base to be a CoordinateSpace; base is {type(base).__name__}."
@@ -98,6 +99,7 @@ class StackedSpace(PyTreeNode, CoordinateSpace):
         ctx: Context | str | None = None,
         check_level: CheckLevel | bool | None = None,
     ):
+        # Pick the subclass that carries exactly the base's capabilities.
         if cls is StackedSpace:
             base = _validate_stacked_base(base)
             _validate_count(count)
@@ -112,6 +114,7 @@ class StackedSpace(PyTreeNode, CoordinateSpace):
         ctx: Context | str | None = None,
         check_level: CheckLevel | bool | None = None,
     ) -> None:
+        # Element shape is (count,) + base.shape.
         base = _validate_stacked_base(base, type(self).__name__)
         count = _validate_count(count, type(self).__name__)
         ctx = resolve_context_priority(ctx, base)
@@ -221,6 +224,8 @@ class _StackedInnerProductMixin:
     def inner(self, x: Any, y: Any) -> Any:
         """Return ``sum_i base.inner(x[i], y[i])`` as a scalar."""
         base = cast(InnerProductSpace, self.base)
+        # Euclidean: one vdot over all copies. Otherwise pair x with the base's Riesz map of y,
+        # falling back to vmap over copies if the base cannot batch.
         if base.is_euclidean:
             return self.ops.vdot(x, y)
         try:
@@ -233,6 +238,7 @@ class _StackedInnerProductMixin:
     def riesz(self, x: Any) -> Any:
         """Apply the base Riesz map to every stacked copy."""
         base = cast(InnerProductSpace, self.base)
+        # Identity on Euclidean spaces; else batched Riesz map, or vmap over copies.
         if base.is_euclidean:
             return x
         try:
@@ -243,6 +249,7 @@ class _StackedInnerProductMixin:
     def riesz_inverse(self, x: Any) -> Any:
         """Apply the base inverse Riesz map to every stacked copy."""
         base = cast(InnerProductSpace, self.base)
+        # Identity on Euclidean spaces; else batched inverse Riesz map, or vmap over copies.
         if base.is_euclidean:
             return x
         try:
@@ -269,6 +276,7 @@ class _StackedStarMixin:
     def star(self, x: Any) -> Any:
         """Return the base-space star operation for each stacked copy."""
         base = cast(StarSpace, self.base)
+        # Try the base on the whole stack, else vmap over copies (as in every method below).
         try:
             return base.star(x)
         except _STACKED_FALLBACK_ERRORS:

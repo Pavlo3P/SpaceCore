@@ -15,6 +15,7 @@ _contextual: Contextual | None = None
 
 def _state() -> Contextual:
     """Return the process-wide contextual singleton."""
+    # Create the process-wide state lazily, on first use.
     global _contextual
     if _contextual is None:
         _contextual = Contextual()

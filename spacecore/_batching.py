@@ -33,6 +33,7 @@ def _check_scalar_shape(values: Any, shape: tuple[int, ...]) -> None:
 
 def _leading_batch_size(space: Any, xs: Any) -> int:
     """Return the leading batch size for dense-array batches."""
+    # Tuple batches take the size of their first component.
     if isinstance(xs, tuple) and xs:
         return _leading_batch_size(getattr(space, "spaces", (space,))[0], xs[0])
     shape = tuple(getattr(xs, "shape", ()))
@@ -43,6 +44,7 @@ def _leading_batch_size(space: Any, xs: Any) -> int:
 
 def _warn_vmap_fallback_once(obj: Any, method: str, batch_size: int) -> None:
     """Warn once per class/method for NumPy-style Python-loop batched fallback."""
+    # Warn once per (class, method) when a large batch loops in Python.
     if batch_size <= _VMAP_FALLBACK_WARN_BATCH or obj.ops.has_native_vmap:
         return
     key = (type(obj), method)
@@ -62,6 +64,7 @@ def _batched_inner(space: Any, xs: Any, ys: Any) -> Any:
     """Return ``space.inner(xs[i], ys[i])`` for a leading-axis batch."""
     require(space, _CAP_BATCH, "_batched_inner")
     require(space, _CAP_INNER, "_batched_inner")
+    # Row-wise <x_i, y_i> = conj(x_i) . R y_i on flat coordinates.
     xs_flat = space.flatten_batch(xs)
     ys_dual = ys if space.is_euclidean else space.riesz(ys)
     ys_flat = space.flatten_batch(ys_dual)

@@ -36,14 +36,17 @@ class DenseCoordinateSpace(CoordinateSpace, InnerProductSpace):
         check_level: CheckLevel | bool | None = None,
     ) -> None:
         super().__init__(tuple(shape), ctx, check_level=check_level)
+        # Euclidean geometry unless one is given; validate it against this space.
         self.geometry: InnerProduct = geometry if geometry is not None else EuclideanInnerProduct()
         self.geometry.validate_for(self)
+        # Cache the flat size and whether the shape is already flat.
         self._size = prod(self.shape)
         self._is_flat_shape = self.shape == (self._size,)
 
     def _eq_algebra(self, other: Any) -> bool:
         # Tier 2: geometry kind (structural, also shields the geometry's own
         # allclose). Tier 3: geometry value comparison (weights for weighted).
+        # Equal spaces also need equal geometry.
         return (
             super()._eq_algebra(other)
             and type(self.geometry) is type(other.geometry)

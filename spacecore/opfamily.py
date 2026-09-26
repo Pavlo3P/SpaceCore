@@ -41,6 +41,7 @@ class FunctionalScaledOperator(Mapping, Generic[Domain, Codomain]):
         op: LinOp,
         check_level: CheckLevel | bool | None = None,
     ) -> None:
+        # Validate types and the shared domain; bind with the operator's endpoints.
         if not isinstance(functional, Functional):
             raise TypeError(
                 f"functional must be a Functional, got {type(functional).__name__}."
@@ -99,6 +100,7 @@ class FunctionalScaledOperator(Mapping, Generic[Domain, Codomain]):
         :math:`\langle Ax, w\rangle_Y \nabla F(x) + \overline{F(x)} A^{\#} w`, in the
         codomain geometry.
         """
+        # Precompute F(x), grad F(x) and A x once for the derivative and its adjoint.
         X, Y = self.domain, self.codomain
         value, gradient = self.functional.value_and_grad(x)
         ax = self.op.apply(x)
@@ -167,6 +169,7 @@ def make_functional_scaled_operator(functional: Functional, op: LinOp) -> Any:
     """
     from .functional import ConstantFunctional, ZeroFunctional
 
+    # Validate types and the shared domain.
     if not isinstance(functional, Functional):
         raise TypeError(
             f"functional must be a Functional, got {type(functional).__name__}."
@@ -178,6 +181,7 @@ def make_functional_scaled_operator(functional: Functional, op: LinOp) -> Any:
             "F · A requires functional.domain == op.domain; "
             f"got {functional.domain!r} and {op.domain!r}."
         )
+    # A constant weight is linear: plain scaling. Otherwise the non-linear map.
     if isinstance(functional, ZeroFunctional):
         return make_scaled(0, op)
     if isinstance(functional, ConstantFunctional):

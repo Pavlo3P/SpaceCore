@@ -78,6 +78,7 @@ class LinOpQuadraticForm(QuadraticForm[Domain]):
         ctx: Context | str | None = None,
         check_level: CheckLevel | bool | None = None,
     ) -> None:
+        # Q must be a LinOp; linear, if given, a LinearFunctional.
         if not isinstance(Q, LinOp):
             raise TypeError(f"Q must be a LinOp, got {type(Q).__name__}.")
         if linear is not None and not isinstance(linear, LinearFunctional):
@@ -85,6 +86,7 @@ class LinOpQuadraticForm(QuadraticForm[Domain]):
                 f"linear must be a LinearFunctional or None, got {type(linear).__name__}."
             )
 
+        # Put everything on one context; Q must be square and structurally Hermitian.
         resolved_ctx = resolve_context_priority(ctx, Q.domain, Q, linear)
         Q = Q.convert(resolved_ctx)
         if Q.domain != Q.codomain:
@@ -98,6 +100,7 @@ class LinOpQuadraticForm(QuadraticForm[Domain]):
         super().__init__(Q.domain, resolved_ctx, check_level=check_level)
         self.Q = Q
         self.linear = linear
+        # The constant offset must be a scalar.
         self.a = self.ctx.asarray(a)
         _check_scalar_shape(self.a, ())
 

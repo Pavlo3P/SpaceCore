@@ -79,6 +79,7 @@ def checked_method(
         # TypeError, matching ``require_mutually_exclusive``: both are misuse of
         # the decorator's argument combination, not a bad runtime value.
         raise TypeError("out_batched_scalar requires in_space to locate the batch size.")
+    # Precompute which arguments to check, so the wrapper stays cheap.
     positions = _as_positions(arg_pos, arg_positions)
     # Resolve positions to a single-element fast path or a tuple iteration.
     single_pos = positions[0] if len(positions) == 1 else None
@@ -98,6 +99,7 @@ def checked_method(
             if level == "none":
                 return method(self, *args, **kwargs)
 
+            # Check the selected inputs: element membership, or batch membership.
             if in_space is not None:
                 check_target = self if in_space == "self" else getattr(self, in_space)
                 if in_batched:
@@ -116,6 +118,7 @@ def checked_method(
                         for pos in positions:
                             check_member(args[pos])
 
+            # Run the method, then check its output the same way.
             y = method(self, *args, **kwargs)
 
             if out_space is not None:
@@ -127,6 +130,7 @@ def checked_method(
                 else:
                     out_target._check_member(y)
 
+            # A batched scalar output must have shape (N,).
             if out_batched_scalar and check_level_at_least(level, "standard"):
                 from ._batching import _check_scalar_shape, _leading_batch_size
 

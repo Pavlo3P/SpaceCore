@@ -48,6 +48,7 @@ class Context:
         """
         from ._state import normalize_ops
 
+        # Accept anything normalize_ops understands; the frozen dataclass is set via object.__setattr__.
         try:
             ops = normalize_ops(ops)
         except TypeError:
@@ -88,6 +89,7 @@ class Context:
 
     def convert(self, x: Any) -> ArrayLike:
         """Convert a dense or sparse backend array to this context; raise ``NotImplementedError`` for anything else."""
+        # Dense and sparse arrays convert through their own constructors.
         if self.ops.is_dense(x):
             return self.asarray(x)
         elif self.ops.is_sparse(x):

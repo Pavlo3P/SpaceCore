@@ -113,6 +113,7 @@ class LpNormFunctional(_CoordinateFunctional[Domain]):
         check_level: CheckLevel | bool | None = None,
     ) -> None:
         super().__init__(dom, ctx, check_level=check_level)
+        # p must be finite and at least 1.
         p = float(p)
         if not math.isfinite(p) or p < 1.0:
             raise ValueError(f"LpNormFunctional requires a finite p >= 1, got {p}.")

@@ -15,10 +15,12 @@ _METRIC_HERMITIAN_BASIS_CHECK_MAX_SIZE = 1024
 
 def space_has_riesz_maps(space) -> bool:
     """Return whether ``space`` exposes usable Riesz maps for metric adjoints."""
+    # Tree spaces: every leaf must be Euclidean or have Riesz maps.
     leaves = getattr(space, "leaf_spaces", None)
     if leaves is not None:
         return all(leaf.is_euclidean or space_has_riesz_maps(leaf) for leaf in leaves)
 
+    # Riesz maps exist if the geometry or the space overrides both base methods.
     geometry = getattr(space, "geometry", None)
     if geometry is None or not isinstance(space, InnerProductSpace):
         return False
@@ -36,6 +38,7 @@ def space_has_riesz_maps(space) -> bool:
 
 def _requires_euclidean_or_riesz(dom, cod, opname: str) -> None:
     """Reject non-Euclidean spaces that cannot define metric adjoints."""
+    # Each endpoint must be Euclidean or provide Riesz maps.
     for space, role in ((dom, "domain"), (cod, "codomain")):
         if isinstance(space, InnerProductSpace) and (
             space.is_euclidean or space_has_riesz_maps(space)
@@ -51,6 +54,7 @@ def _requires_euclidean_or_riesz(dom, cod, opname: str) -> None:
 
 def _metric_is_hermitian_by_basis(op) -> bool | None:
     """Check self-adjointness by comparing forward and adjoint basis actions."""
+    # Small square coordinate operators: compare A with A# column by column.
     if not isinstance(op.domain, CoordinateSpace):
         return None
     if op.domain != op.codomain:
@@ -100,6 +104,7 @@ def metric_rapply(domain, codomain, euclidean_rapply, y):
     """
     require(domain, InnerProductSpace, "metric_rapply")
     require(codomain, InnerProductSpace, "metric_rapply")
+    # Euclidean fast path; otherwise A# y = R_X^-1 A^T R_Y y.
     if domain.is_euclidean and codomain.is_euclidean:
         return euclidean_rapply(y)
     return domain.riesz_inverse(euclidean_rapply(codomain.riesz(y)))
@@ -122,6 +127,7 @@ def metric_rvapply(
     falls back to backend ``vmap`` over :func:`metric_rapply` and emits a
     runtime warning.
     """
+    # Batched version; fall back to per-element vmap if batched Riesz maps fail.
     if domain.is_euclidean and codomain.is_euclidean:
         return euclidean_rvapply(ys)
     try:

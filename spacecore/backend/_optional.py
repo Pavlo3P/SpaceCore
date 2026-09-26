@@ -37,6 +37,7 @@ def discover_entry_point_ops() -> list[type[BackendOps]]:
     not a ``BackendOps`` subclass is skipped with a ``UserWarning``.
     """
     discovered: list[type[BackendOps]] = []
+    # Load each plugin; broken or wrongly typed entries warn and are skipped.
     for ep in _entry_points(_ENTRY_POINT_GROUP):
         name = getattr(ep, "name", ep)
         try:
@@ -83,6 +84,7 @@ def import_backend(module: str, dep: str):
     module or None
         The module, or ``None``.
     """
+    # Dependency absent: silently None. Installed but broken: warn, then None.
     try:
         return importlib.import_module(module, package=__package__)
     except ImportError as exc:
@@ -110,6 +112,7 @@ def available_ops() -> tuple[type[BackendOps], ...]:
     tuple of type of BackendOps
         The available classes.
     """
+    # NumPy always, then the importable optional backends, then plugins for new families.
     ops: list[type[BackendOps]] = [NumpyOps]
     for module, attr, dep in _OPTIONAL_OPS:
         mod = import_backend(module, dep)

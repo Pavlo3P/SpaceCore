@@ -51,6 +51,7 @@ class Contextual:
     _baseline_check_level: CheckLevel = "standard"
 
     def __init__(self, ops_registry: OpsRegistry | None = None) -> None:
+        # Baseline: NumPy at the default dtype and check level.
         ops = NumpyOps()
         self._baseline_ctx = Context(ops=ops, dtype=ops.sanitize_dtype(self._default_dtype))
         self._baseline_check_level = type(self)._baseline_check_level
@@ -86,6 +87,7 @@ class Contextual:
         :class:`~contextvars.Token` returned by ``set`` unwinds exactly this
         override, so nesting and concurrent scopes cannot clobber one another.
         """
+        # Set the ContextVar for the block and always restore it.
         resolved = normalize_check_level(level)
         token = _check_override.set(resolved)
         try:
@@ -98,6 +100,7 @@ class Contextual:
         ctx: Context | BackendFamily | str | None = None,
         dtype: Any = None,
     ) -> Context:
+        # None: the ambient context. Context: re-sanitized. Name: looked up in the registry.
         if ctx is None:
             if dtype is not None:
                 warn("Provided context is None; dtype is ignored.", UserWarning)
@@ -146,6 +149,7 @@ class Contextual:
         The override is visible only to the current thread / async task; see
         :meth:`scoped_check_level` for the Token-unwind rationale.
         """
+        # Set the ContextVar for the block and always restore it.
         resolved = self.normalize_context(ctx, dtype=dtype)
         token = _ctx_override.set(resolved)
         try:
@@ -160,6 +164,7 @@ class Contextual:
         registry's job (:meth:`~spacecore.backend.OpsRegistry.match`); turning the
         match into a :class:`Context` is this object's.
         """
+        # A Context, then anything with a .ctx, then a raw array matched to one backend.
         if isinstance(x, Context):
             return x
 
@@ -193,6 +198,7 @@ class Contextual:
         return tuple(out)
 
     def are_compatible_contexts(self, *ctxs: Context) -> bool:
+        # Compatible means same backend; dtypes are reconciled later.
         if len(ctxs) < 2:
             return True
         first = ctxs[0]
@@ -221,6 +227,7 @@ class Contextual:
         *other_ctx: object,
     ) -> Context:
         """Resolve explicit context first, then compatible inferred contexts."""
+        # An explicit context wins; otherwise infer from the operands and join their dtypes.
         if priority_ctx is not None:
             return self.normalize_context(priority_ctx)
 
@@ -239,6 +246,7 @@ class Contextual:
         return self.ctx_from_ops(ops=ops, dtype=dtype)
 
     def _join_dtypes(self, ops: BackendOps, *dtypes: DType | None) -> DType | None:
+        # Promote the dtypes with the operands' own backend.
         clean = [ops.sanitize_dtype(dt) for dt in dtypes if dt is not None]
         if not clean:
             return ops.sanitize_dtype(None)

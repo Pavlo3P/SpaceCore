@@ -39,6 +39,7 @@ def eigenvalue_space(dom: Any, check_level: CheckLevel | bool | None = None) -> 
     """
     from ...space import DenseCoordinateSpace
 
+    # The rank is the length of the spectrum of the zero element.
     if not isinstance(dom, JordanAlgebraSpace):
         raise TypeError(
             "eigenvalue_space requires a Jordan-algebra domain with a spectral "
@@ -96,6 +97,7 @@ class SpectralFunctional(_CoordinateFunctional[Domain]):
         check_level: CheckLevel | bool | None = None,
     ) -> None:
         super().__init__(dom, ctx, check_level=check_level, cod=base.codomain)
+        # Check the domain has a spectrum and base lives on its eigenvalue space.
         domain = cast(Any, self.domain)
         if not isinstance(domain, JordanAlgebraSpace):
             raise TypeError(
@@ -112,6 +114,7 @@ class SpectralFunctional(_CoordinateFunctional[Domain]):
                 f"spectrum of {type(domain).__name__} (rank {expected.shape[0]}); "
                 f"build it on eigenvalue_space(dom)."
             )
+        # Lewis's formula needs the plain coordinate gradient of f.
         if not getattr(base.domain, "is_euclidean", True):
             # Lewis needs the EUCLIDEAN gradient of f. On a Euclidean eigenvalue
             # space base.grad already is that; under any other metric it would be

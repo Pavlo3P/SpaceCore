@@ -17,6 +17,7 @@ from ...space import WeightedInnerProduct
 
 def _diagonal_weights_or_raise(X: Any, fname: str) -> Any:
     """Return diagonal weights (``None`` for Euclidean) or raise on a non-diagonal metric."""
+    # Euclidean gives None, diagonal gives its weights, anything else cannot separate.
     geometry = getattr(X, "geometry", None)
     if geometry is None:
         raise TypeError(
@@ -79,6 +80,7 @@ def generalized_shrinkage(
     Element
         The minimizer.
     """
+    # Validate eps, lam, the metric, the shapes, and nonneg on real spaces only.
     if not isinstance(eps, numbers.Real) or not math.isfinite(eps) or eps <= 0:
         raise ValueError(f"generalized_shrinkage requires a finite eps > 0, got {eps!r}.")
     if not isinstance(lam, numbers.Real) or not math.isfinite(lam) or lam < 0:
@@ -98,6 +100,7 @@ def generalized_shrinkage(
     # cancels here precisely because c is a metric gradient.
     v = x0 - c / (2.0 * eps)
 
+    # Threshold width lam / (2 eps w_i), with w_i = 1 on Euclidean spaces.
     if lam == 0:
         tau: Any = 0.0
     elif weights is None:
@@ -105,6 +108,7 @@ def generalized_shrinkage(
     else:
         tau = lam / (2.0 * eps * weights)
 
+    # On x >= 0 the l1 term is linear, so the step is a one-sided shift.
     if nonneg:
         return ops.maximum(v - tau, cast(Any, 0.0))
     # Soft-threshold; tau == 0 collapses to the identity v.
@@ -139,6 +143,7 @@ def prox_l1(v: Any, t: Any, X: Any, *, nonneg: bool = False) -> Any:
     Element
         The thresholded point.
     """
+    # prox of t ||.||_1 = shrinkage with c = 0, x0 = v, eps = 1/2.
     t = _require_step(t, "prox_l1")
     v = X.ctx.asarray(v)
     _require_member_shape(X, v, "v", "prox_l1")
@@ -165,6 +170,7 @@ def prox_l2sq(v: Any, t: Any, X: Any, *, nonneg: bool = False) -> Any:
     Element
         The shrunk point.
     """
+    # prox of (t/2) ||.||^2 = shrinkage with c = -v, x0 = 0, eps = (1 + t) / 2.
     t = _require_step(t, "prox_l2sq")
     v = X.ctx.asarray(v)
     _require_member_shape(X, v, "v", "prox_l2sq")

@@ -56,6 +56,7 @@ class TorchOps(EagerControlFlowMixin, BackendOps):
 
         from .._container import registry
 
+        # torch's pytree wants flatten -> (list, aux) and unflatten(children, aux).
         def registrar(klass: type) -> None:
             def flatten(obj: Any) -> tuple[list[Any], Any]:
                 children, aux = obj.tree_flatten()
@@ -132,6 +133,7 @@ class TorchOps(EagerControlFlowMixin, BackendOps):
 
     def sanitize_dtype(self, dtype: DType | None) -> DType:
         """Normalize a dtype for torch; ``None`` gives ``torch.get_default_dtype()`` and NumPy dtypes map to their torch equivalents."""
+        # Torch dtypes and Python types map directly; the rest go through NumPy dtype names.
         if dtype is None:
             return self.torch.get_default_dtype()
         if isinstance(dtype, self.torch.dtype):
@@ -182,6 +184,7 @@ class TorchOps(EagerControlFlowMixin, BackendOps):
         """Convert to a torch sparse tensor (COO, CSR or CSC); SciPy inputs go through COO indices and values."""
         self._reject_complex_to_real(x, dtype, operation="assparse")
         dtype = self.sanitize_dtype(dtype) if dtype is not None else None
+        # Already a torch sparse tensor: move/cast, then convert the layout.
         if self.is_sparse(x):
             y = x.to(dtype=dtype, device=device) if dtype is not None or device is not None else x
             if format == "coo":
@@ -192,6 +195,7 @@ class TorchOps(EagerControlFlowMixin, BackendOps):
                 return y.to_sparse_csc()
             raise ValueError(f"Unknown sparse format: {format!r}")
 
+        # SciPy is optional; its sparse input converts via COO triplets, dense input directly.
         try:
             import scipy.sparse as sps
         except Exception:
@@ -209,6 +213,7 @@ class TorchOps(EagerControlFlowMixin, BackendOps):
         else:
             out = cast(Any, self.asarray(x, dtype=dtype, device=device)).to_sparse_coo()
 
+        # Built as COO; convert to the requested layout.
         if format == "coo":
             return out.coalesce()
         if format == "csr":
@@ -228,6 +233,7 @@ class TorchOps(EagerControlFlowMixin, BackendOps):
         **extra_kwargs: Any,
     ) -> DenseArray:
         self._reject_complex_to_real(x, dtype, operation="asarray")
+        # Merge backend kwargs; densify sparse input; copy only on request.
         kwargs = {} if backend_kwargs is None else dict(backend_kwargs)
         kwargs.update(extra_kwargs)
         if device is not None:
@@ -330,6 +336,7 @@ class TorchOps(EagerControlFlowMixin, BackendOps):
         device: Any | None = None,
         requires_grad: bool = False,
     ) -> DenseArray:
+        # NumPy's arange overloads, forwarding torch-only options.
         kwargs = self._defined_kwargs(out=out, layout=layout, device=device)
         kwargs["requires_grad"] = requires_grad
         dtype = self.sanitize_dtype(dtype) if dtype is not None else None
@@ -348,6 +355,7 @@ class TorchOps(EagerControlFlowMixin, BackendOps):
         *,
         out: DenseArray | None = None,
     ) -> DenseArray:
+        # NumPy keyword names mapped to torch's dim/keepdim.
         kwargs = {"dim": self._to_axis_tuple(axis), "keepdim": keepdims}
         if dtype is not None:
             kwargs["dtype"] = self.sanitize_dtype(dtype)
@@ -387,6 +395,7 @@ class TorchOps(EagerControlFlowMixin, BackendOps):
         See:
             https://docs.pytorch.org/docs/stable/generated/torch.sparse.mm.html
         """
+        # torch.sparse.mm wants a matrix: lift a vector to one column, then drop it.
         kwargs = {"reduce": reduce} if reduce != "sum" else {}
         if b.ndim == 1:
             return self.torch.sparse.mm(a, b[:, None], **kwargs)[:, 0]
@@ -399,6 +408,7 @@ class TorchOps(EagerControlFlowMixin, BackendOps):
         out_axes: int | Sequence[int | None] | None = 0,
     ) -> Callable:
         """Vectorize a function using PyTorch's native vmap when available."""
+        # torch.vmap, else torch.func.vmap, else the Python-loop fallback.
         vmap = getattr(self.torch, "vmap", None)
         if vmap is None and hasattr(self.torch, "func"):
             vmap = getattr(self.torch.func, "vmap", None)
@@ -506,8 +516,10 @@ class TorchOps(EagerControlFlowMixin, BackendOps):
     ) -> DenseArray | tuple[DenseArray, DenseArray]:
         """Compute log-sum-exp, with SciPy's ``b`` and ``return_sign`` options, which torch lacks, implemented here."""
         dim = tuple(range(a.ndim)) if axis is None else axis
+        # Fast path: plain torch.logsumexp.
         if b is None and not return_sign:
             return self.torch.logsumexp(a, dim=dim, keepdim=keepdims, out=out)
+        # Weighted form: log|sum b exp(a - m)| + m with m = max a; the sign is kept apart.
         weights = self.ones_like(a) if b is None else b
         m = self.torch.amax(a, dim=dim, keepdim=True)
         total = self.sum(weights * self.torch.exp(a - m), axis=dim, keepdims=True)
@@ -574,6 +586,7 @@ class TorchOps(EagerControlFlowMixin, BackendOps):
         See:
             https://docs.pytorch.org/docs/stable/generated/torch.meshgrid.html
         """
+        # ix_ is meshgrid with 'ij' indexing on 1-D tensors.
         tensors = tuple(
             arg if isinstance(arg, self.torch.Tensor) else self.asarray(arg) for arg in args
         )

@@ -42,6 +42,7 @@ def _reject_args(kw: dict, fname: str) -> None:
 
 def _make_value_and_grad(F: Any, X: Any):
     """Build SciPy ``fun``/``jac`` callables over flat host coordinate vectors."""
+    # SciPy works on flat real host vectors: unflatten into X, flatten the gradient back.
     ctx = X.ctx
 
     def fun(v: np.ndarray) -> float:
@@ -121,11 +122,13 @@ def minimize_scipy(
     """
     import scipy.optimize as sopt
 
+    # A Functional on a real inner-product space, without SciPy's args.
     F = require_functional(F, "minimize_scipy")
     X = domain_with_geometry(F, "minimize_scipy")
     require_real_field(X, "minimize_scipy")
     _reject_args(kw, "minimize_scipy")
 
+    # jac=True: analytic coordinate gradient. Complex step is rejected. Else SciPy's own scheme.
     fun, riesz_jac = _make_value_and_grad(F, X)
     if jac is True:
         jac_arg: Any = riesz_jac
@@ -142,6 +145,7 @@ def minimize_scipy(
     else:
         jac_arg = jac
 
+    # Minimize on flat coordinates; also return the minimizer as an element of X.
     x0_flat = _flat_host(X, x0)
     result = sopt.minimize(fun, x0_flat, method=method, jac=jac_arg, **kw)
     result.x_element = X.unflatten(X.ctx.asarray(np.asarray(result.x)))
@@ -197,11 +201,13 @@ def line_search_scipy(F: Any, x: Any, d: Any, **kw: Any) -> Any:
     """
     import scipy.optimize as sopt
 
+    # A Functional on a real inner-product space, without SciPy's args.
     F = require_functional(F, "line_search_scipy")
     X = domain_with_geometry(F, "line_search_scipy")
     require_real_field(X, "line_search_scipy")
     _reject_args(kw, "line_search_scipy")
 
+    # SciPy's line search on the flat coordinates of x and the direction d.
     fun, jac = _make_value_and_grad(F, X)
     xk = _flat_host(X, x)
     pk = _flat_host(X, d)

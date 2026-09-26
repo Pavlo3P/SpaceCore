@@ -46,6 +46,7 @@ def _validate_leaf_spaces(
     leaf_spaces: Any, owner: str = "TreeSpace"
 ) -> tuple[CoordinateSpace, ...]:
     """Validate ordered finite-coordinate leaf spaces."""
+    # A non-empty sequence of coordinate spaces.
     if not isinstance(leaf_spaces, Sequence):
         raise TypeError(
             f"{owner} requires a sequence of CoordinateSpace leaves; "
@@ -65,6 +66,7 @@ def _validate_leaf_spaces(
 
 def _tree_capabilities(spaces: Sequence[Space]) -> CapabilitySet:
     """Return capabilities shared by every tree leaf."""
+    # A capability is kept only if every leaf has it.
     if not spaces:
         return frozenset()
     for space in spaces:
@@ -78,6 +80,7 @@ def _tree_capabilities(spaces: Sequence[Space]) -> CapabilitySet:
 
 def _format_path(path: tuple[Any, ...]) -> str:
     """Format an optree leaf path as a compact Python-style location."""
+    # JSONPath-like string such as $.point[0], for error messages.
     result = "$"
     for entry in path:
         if isinstance(entry, str) and entry.isidentifier():
@@ -124,6 +127,7 @@ class TreeElement(PyTreeNode):
     leaves: tuple[Any, ...]
 
     def __init__(self, space: "TreeSpace", leaves: Sequence[Any]) -> None:
+        # Leaves must match the space's arity; the fields are frozen.
         if not isinstance(space, TreeSpace):
             raise TypeError(f"TreeElement space must be a TreeSpace, got {type(space).__name__}.")
         leaves_tuple = tuple(leaves)
@@ -186,6 +190,7 @@ class _TreeLeafCheck(SpaceCheck):
         return self.validate(space, x, allow_leading=False)
 
     def validate(self, space: "TreeSpace", x: Any, *, allow_leading: bool) -> bool:
+        # Every leaf must pass its own leaf space's checks.
         try:
             leaves = space._components(x)
         except Exception:
@@ -203,6 +208,7 @@ class _TreeLeafCheck(SpaceCheck):
     def validation_message(
         self, space: "TreeSpace", x: Any, *, allow_leading: bool
     ) -> str:
+        # Report the first failing leaf by its path.
         try:
             leaves = space._components(x)
         except Exception as exc:
@@ -267,6 +273,7 @@ class TreeSpace(PyTreeNode, CoordinateSpace):
         ctx: Context | str | None = None,
         check_level: CheckLevel | str | None = None,
     ):
+        # Pick the subclass matching the capabilities all leaves share.
         if cls is TreeSpace:
             spaces = _validate_leaf_spaces(leaf_spaces)
             resolved_ctx = resolve_context_priority(ctx, *spaces)
@@ -282,6 +289,7 @@ class TreeSpace(PyTreeNode, CoordinateSpace):
         ctx: Context | str | None = None,
         check_level: CheckLevel | str | None = None,
     ) -> None:
+        # The structure must have exactly one leaf per leaf space.
         spaces = _validate_leaf_spaces(leaf_spaces, type(self).__name__)
         resolved_ctx = resolve_context_priority(ctx, *spaces)
         treespec = treedef if isinstance(treedef, optree.PyTreeSpec) else optree.tree_structure(treedef)
@@ -291,6 +299,7 @@ class TreeSpace(PyTreeNode, CoordinateSpace):
                 f"treedef has {treespec.num_leaves} leaves but {len(spaces)} leaf spaces were given."
             )
 
+        # Convert leaves to one context; record flat sizes and slices into the coordinate vector.
         uniform_spaces = tuple(space.convert(resolved_ctx) for space in spaces)
         self._treedef = treespec
         self._leaf_paths = tuple(optree.treespec_paths(treespec))
@@ -303,6 +312,7 @@ class TreeSpace(PyTreeNode, CoordinateSpace):
         self._slices = tuple(
             slice(offsets[index], offsets[index + 1]) for index in range(len(self._dims))
         )
+        # Coordinate shape is the total size; check level: explicit, else the least strict leaf.
         super(TreeSpace, self).__init__((offsets[-1],), resolved_ctx)
         if check_level is not None:
             self._check_level = normalize_check_level(check_level)
@@ -377,6 +387,7 @@ class TreeSpace(PyTreeNode, CoordinateSpace):
 
     def flatten_tree(self, value: Any) -> tuple[Any, ...]:
         """Flatten a matching Python tree value into ordered leaves."""
+        # A bound TreeElement already holds ordered leaves; a plain tree must match the structure.
         if isinstance(value, TreeElement):
             if value.space != self:
                 raise TypeError("TreeElement is bound to a different TreeSpace.")
@@ -408,6 +419,7 @@ class TreeSpace(PyTreeNode, CoordinateSpace):
         return self.unflatten_tree(parts)
 
     def _ones_for_space(self, space: CoordinateSpace) -> Any:
+        # The leaf's own ones if it has them, else an array of ones.
         ones = getattr(space, "ones", None)
         if callable(ones):
             return ones()
@@ -430,6 +442,7 @@ class TreeSpace(PyTreeNode, CoordinateSpace):
     @checked_method(in_space="self", arg_positions=(0, 1))
     def add(self, x: Any, y: Any) -> Any:
         """Return the componentwise sum."""
+        # Leafwise: each leaf space does its own operation.
         return self._from_components(
             tuple(
                 space.add(xi, yi)
@@ -480,6 +493,7 @@ class TreeSpace(PyTreeNode, CoordinateSpace):
     @checked_method(in_space="self")
     def flatten(self, x: Any) -> DenseArray:
         """Concatenate leaf coordinate vectors into one dense vector."""
+        # Concatenate the leaves' flat coordinates in leaf order.
         parts = []
         for space, leaf in zip(self.leaf_spaces, self._components(x)):
             coordinates = space.flatten(leaf)
@@ -492,6 +506,7 @@ class TreeSpace(PyTreeNode, CoordinateSpace):
 
     def unflatten(self, v: DenseArray) -> Any:
         """Split dense coordinates into a tree element."""
+        # Slice the flat vector back into leaves and rebuild the tree.
         if self._checks_at_least("cheap"):
             v = self.ctx.assert_dense(v)
             v = (
@@ -542,6 +557,7 @@ class TreeSpace(PyTreeNode, CoordinateSpace):
         self, x: Any, new_ctx: Context | str | None = None
     ) -> Any:
         """Convert each leaf and preserve the configured tree structure."""
+        # Move each leaf through its flat coordinates onto the target context.
         target = self.convert(new_ctx)
         converted = []
         for source_space, target_space, leaf in zip(
@@ -585,6 +601,7 @@ class _LeafwiseInnerProductMixin(_LeafwiseHostMixin):
     def inner(self, x: Any, y: Any) -> Any:
         """Return the sum of leaf inner products."""
         leaf_spaces = cast("Sequence[InnerProductSpace]", self.leaf_spaces)
+        # Sum of the leaves' inner products.
         accumulator = None
         for space, xi, yi in zip(
             leaf_spaces, self._components(x), self._components(y)
@@ -673,6 +690,7 @@ class TreeSpectralDecomposition(PyTreeNode):
         must not be fed back into space operations. Requires ``treedef`` (set on
         decompositions produced by :meth:`TreeSpace.spectral_decompose`).
         """
+        # Rebuild the eigenvalues in the producing tree's structure.
         if self.treedef is None:
             raise ValueError(
                 "TreeSpectralDecomposition.to_tree() requires 'treedef'; it is set "
@@ -718,6 +736,7 @@ class _LeafwiseJordanMixin(_LeafwiseHostMixin):
         The structured result is a structure-only view — its leaves are
         eigenvalue-shaped, so it is **not** a member of the space.
         """
+        # Per-leaf spectra: as a tree, or concatenated into one vector.
         leaf_spaces = cast("Sequence[JordanAlgebraSpace]", self.leaf_spaces)
         parts = tuple(
             space.spectrum(leaf)
@@ -737,6 +756,7 @@ class _LeafwiseJordanMixin(_LeafwiseHostMixin):
         ``treedef`` lets :meth:`TreeSpectralDecomposition.to_tree` expose the
         eigenvalues in the tree's own structure.
         """
+        # Decompose each leaf and keep the tree structure for to_tree.
         leaf_spaces = cast("Sequence[JordanAlgebraSpace]", self.leaf_spaces)
         decompositions = tuple(
             space.spectral_decompose(leaf)
@@ -754,6 +774,7 @@ class _LeafwiseJordanMixin(_LeafwiseHostMixin):
         frame: Any = None,
     ) -> Any:
         """Reconstruct a tree element from leafwise spectral data."""
+        # Accept only a TreeSpectralDecomposition of matching arity, then rebuild leafwise.
         decomposition = eigvals
         if frame is not None:
             raise TypeError("TreeSpace.from_spectrum expects TreeSpectralDecomposition only.")
@@ -790,6 +811,7 @@ class _LeafwiseJordanMixin(_LeafwiseHostMixin):
     def trace(self, x: Any) -> Any:
         """Return the direct-sum trace: the sum of the leaf traces."""
         leaf_spaces = cast("Sequence[JordanAlgebraSpace]", self.leaf_spaces)
+        # The trace of a direct product is the sum of the leaves' traces.
         total = None
         for space, leaf in zip(leaf_spaces, self._components(x)):
             value = space.trace(leaf)
@@ -799,6 +821,7 @@ class _LeafwiseJordanMixin(_LeafwiseHostMixin):
     def determinant(self, x: Any) -> Any:
         """Return the direct-sum determinant: the product of the leaf determinants."""
         leaf_spaces = cast("Sequence[JordanAlgebraSpace]", self.leaf_spaces)
+        # The determinant of a direct product is the product of the leaves' determinants.
         total = None
         for space, leaf in zip(leaf_spaces, self._components(x)):
             value = space.determinant(leaf)

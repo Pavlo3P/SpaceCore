@@ -59,6 +59,7 @@ class DiagonalLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
         ctx: Context | str | None = None,
         check_level: CheckLevel | bool | None = None,
     ) -> None:
+        # Infer a Euclidean space from the diagonal's shape if none is given.
         ctx = resolve_context_priority(ctx, space)
         ctx.assert_dense(diagonal)
         if space is None:
@@ -70,6 +71,7 @@ class DiagonalLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
             raise TypeError(
                 f"Expected diagonal.shape == space.shape == {expected}, got {diagonal.shape}"
             )
+        # Cache flat and conjugated copies for the kernels, then pick the strategy.
         self.diagonal = diagonal
         self._diag_flat = diagonal.reshape((prod(self.domain.shape),))
         dtype = self.ops.get_dtype(diagonal)
@@ -81,6 +83,7 @@ class DiagonalLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
 
     def _select_mode(self) -> _DiagonalMode:
         """Select the diagonal computation mode once for this operator."""
+        # Euclidean: multiply by the diagonal; weighted: fused path; else general Riesz maps.
         if (
             type(self.domain) in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace)
         ) and cast(Any, self.domain).is_euclidean:
@@ -135,6 +138,7 @@ class DiagonalLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
             ``True`` or ``False`` when the structure can be checked, otherwise
             ``None``.
         """
+        # Euclidean: Hermitian iff the diagonal is real; else test by basis.
         if not cast(Any, self.domain).is_euclidean:
             return _metric_is_hermitian_by_basis(self)
         try:

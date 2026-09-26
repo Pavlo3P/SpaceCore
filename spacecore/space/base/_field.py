@@ -117,6 +117,7 @@ class ComplexField(Field):
     declared_scalar_field = "complex"
 
     def __init__(self, ctx=None, check_level=None):
+        # Default: the ambient backend at its complex precision.
         if ctx is None:
             from ...contextual import normalize_context
 

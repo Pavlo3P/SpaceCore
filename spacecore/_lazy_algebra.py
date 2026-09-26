@@ -102,6 +102,7 @@ def flatten_sum(
     parts:
         Accessor returning the child terms of a sum node.
     """
+    # Recursively splice the parts of nested sums.
     flat: list[T] = []
     for term in terms:
         if is_sum(term):
@@ -146,12 +147,14 @@ def fold_scaled(
     ``unwrap_scaled(operand)`` returns ``(inner_scalar, inner_operand)`` for a
     scaled node, or ``None`` otherwise.
     """
+    # 0 gives zero, 1 gives the operand, a zero operand stays zero.
     if scalar_eq(scalar, 0):
         return make_zero()
     if scalar_eq(scalar, 1):
         return operand
     if is_zero(operand):
         return operand
+    # Fold s * (t * A) into (s t) * A.
     nested = unwrap_scaled(operand)
     if nested is not None:
         inner_scalar, inner = nested

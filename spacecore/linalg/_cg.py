@@ -123,6 +123,7 @@ def cg(
     >>> np.allclose(A.apply(result.x), b)
     True
     """
+    # Validate once, up front: square, not provably non-Hermitian, valid b and parameters.
     A = require_linop(A)
     require_square(A, "cg")
     if A.is_hermitian() is False:
@@ -148,36 +149,43 @@ def cg(
     dom = SpaceCoreOps(A.domain)
     cod = SpaceCoreOps(A.codomain)
 
+    # Initial residual r = b - A x; the first search direction is r.
     x = A.domain.zeros() if x0 is None else x0
     A.domain.check_member(x)
     r = cod.add(b, cod.scale(-1.0, apply(x)))
     p = r
     rs = dom.real_inner(r, r)
     residual_norm = dom.norm(r)
+    # Stop when ||r|| <= atol + tol ||b||; eps guards the divisions below.
     threshold_value = threshold(cod.norm(b), tol, atol)
     eps = A.ops.asarray(A.ops.eps(A.dtype), dtype=A.dtype)
     eps2 = eps * eps
 
     def cond_fun(carry: tuple[Any, Any, Any, Any, Any, int, Any]) -> Any:
         _x, _r, _p, _rs, res_norm, k, active = carry
+        # Continue while under the cap, not converged, and still making progress.
         return (k < maxiter) & (res_norm > threshold_value) & active
 
     def body_fun(
         carry: tuple[Any, Any, Any, Any, Any, int, Any],
     ) -> tuple[Any, Any, Any, Any, Any, int, Any]:
         x, r, p, rs, _residual_norm, k, _active = carry
+        # Step length alpha = <r, r> / <p, A p>; freeze once curvature or residual vanishes.
         Ap = apply(p)
         pAp = dom.real_inner(p, Ap)
         active = (rs > eps2) & (pAp > eps * rs)
         alpha = A.ops.where(active, rs * safe_inverse_nonneg(A.ops, pAp), A.ops.zeros_like(rs))
+        # Move x along p and update the residual without another apply.
         x_next = dom.axpy(alpha, p, x)
         r_next = cod.axpy(-alpha, Ap, r)
         rs_next = dom.real_inner(r_next, r_next)
+        # New direction p = r + beta p, with beta = <r_new, r_new> / <r, r>.
         beta = A.ops.where(
             active, rs_next * safe_inverse_nonneg(A.ops, rs), A.ops.zeros_like(rs_next)
         )
         p_next = dom.axpy(beta, p, r_next)
         k_next = k + 1
+        # Refresh the reported residual norm only on check iterations.
         should_refresh_residual = should_check_iteration(k_next, maxiter, check_every) | (~active)
         residual_norm_next = A.ops.cond(
             should_refresh_residual,
@@ -187,6 +195,7 @@ def cg(
         )
         return x_next, r_next, p_next, rs_next, residual_norm_next, k_next, active
 
+    # One backend while-loop, so the whole solve can be jitted.
     x, _r, _p, _rs, residual_norm, num_iters, _active = A.ops.while_loop(
         cond_fun,
         body_fun,

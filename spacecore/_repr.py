@@ -82,6 +82,7 @@ def summarize_value(value: Any) -> str:
     The function is written to never raise on pathological inputs, so it is safe
     to use from any ``__repr__``.
     """
+    # SpaceCore objects: their short form. Arrays: shape and dtype, or the value if 0-d.
     short = getattr(value, "_short_repr", None)
     if callable(short):
         return cast(str, short())
@@ -110,6 +111,7 @@ def summarize_value(value: Any) -> str:
 
     # Python scalars: keep ints/bools exact, collapse floats/complex to .6g so a
     # Python ``2.0`` and a 0-d backend ``2.0`` array render identically.
+    # Python scalars and containers, formatted recursively.
     if isinstance(value, bool) or isinstance(value, int):
         return repr(value)
     if isinstance(value, (float, complex)):

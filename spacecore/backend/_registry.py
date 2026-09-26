@@ -28,6 +28,7 @@ def backend_key(x: BackendKeyLike) -> str:
     object exposing a ``.ops`` attribute (a ``Context``; duck-typed so this
     module need not import :mod:`spacecore.contextual`, which would be a cycle).
     """
+    # Ops instances and classes, families, names ('pytorch' aliases 'torch'), or anything with .ops.
     if isinstance(x, BackendOps):
         return backend_key(x.family)
     if isinstance(x, type) and issubclass(x, BackendOps):
@@ -72,6 +73,7 @@ class OpsRegistry:
         if not isinstance(ops, type) or not issubclass(ops, BackendOps):
             raise TypeError(f"Expected type[BackendOps], got {type(ops)!r}")
         family = backend_key(ops)
+        # One class per family; registering a family twice is a conflict.
         with self._lock:
             if family in self._ops:
                 raise ContextConflictError(f"BackendOps {family} is already registered.")
@@ -122,6 +124,7 @@ class OpsRegistry:
             return tuple(self._ops)
 
     def __contains__(self, key: BackendKeyLike) -> bool:
+        # Unrecognized key types count as absent.
         try:
             return backend_key(key) in self._ops
         except TypeError:
@@ -135,6 +138,7 @@ class OpsRegistry:
         error, keeping inference conservative: a backend that cannot answer
         simply does not claim the value.
         """
+        # Every backend whose is_array accepts x; one that fails to construct is skipped.
         matched: list[BackendOps] = []
         for cls in tuple(self.classes().values()):
             try:

@@ -24,6 +24,7 @@ def require_square(A: LinOp, name: str) -> None:
 
 def require_strict_cg_preconditions(A: LinOp) -> None:
     """Run expensive development-time Hermitian and positive-curvature probes."""
+    # Strict only: probe positive curvature <x, A x> > 0 on one vector.
     if not A._checks_at_least("strict"):
         return
     if A.is_hermitian() is False:
@@ -104,6 +105,8 @@ def resolve_core(obj: Any, public_name: str, core_name: str) -> Any:
     the class that defines ``core_name`` (so the core cannot silently bypass a
     subclass's custom semantics). Otherwise the bound public method is returned.
     """
+    # Use the check-free _core method unless a subclass overrides the public
+    # method below it, in which case the public method is the real behavior.
     cls = type(obj)
     core_owner = _defining_class(cls, core_name)
     if core_owner is None:
@@ -198,6 +201,7 @@ def core_normalize(sops: SpaceCoreOps, x: Any) -> tuple[Any, Any]:
 
 def default_initial_vector(A: LinOp) -> Any:
     """Return a deterministic unit vector in ``A.domain`` using its geometry."""
+    # Normalized all-ones vector in the domain's geometry.
     size = prod(A.domain.shape)
     flat = A.ops.ones((size,), dtype=A.dtype)
     v = A.domain.unflatten(flat)

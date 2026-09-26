@@ -23,6 +23,7 @@ from ._rules import CoreKernelSet, register_core_kernels
 
 def _broadcast_space_element(space: Any, value: Any, n: int) -> Any:
     """Broadcast a single space element to a leading-axis batch of size ``n``."""
+    # Tree spaces broadcast leaf by leaf; array spaces to (n, *shape).
     if isinstance(space, TreeSpace):
         return space.unflatten_tree(
             tuple(
@@ -41,6 +42,7 @@ def linear_grad_core(op: Any, x: Any) -> Any:
 
 
 def linear_vgrad_core(op: Any, xs: Any) -> Any:
+    # A linear functional's gradient is its representer, repeated per batch row.
     dom = op.dom
     sample = dom.flatten_tree(xs)[0] if isinstance(dom, TreeSpace) else xs
     n = int(getattr(sample, "shape", (0,))[0])
@@ -56,6 +58,7 @@ def inner_product_value_core(op: Any, x: Any) -> Any:
 
 
 def inner_product_vvalue_core(op: Any, xs: Any) -> Any:
+    # <c, x_i> = conj(c) . x_i on flat coordinates; non-Euclidean spaces use R c.
     dom = op.dom
     ops = op.ops
     if dom.is_euclidean and len(tuple(dom.shape)) == 1:
@@ -85,6 +88,7 @@ def matrixfree_linear_vvalue_core(op: Any, xs: Any) -> Any:
 # LinOp quadratic form — 1/2 <x, Qx> + linear(x) + a
 # ---------------------------------------------------------------------------
 def linop_quadratic_value_core(op: Any, x: Any) -> Any:
+    # f(x) = 1/2 <x, Q x> + l(x) + a.
     qx = op.Q._apply_core(x)
     inner = getattr(op.domain, "_inner_core", op.domain.inner)
     value = 0.5 * inner(x, qx)
@@ -94,6 +98,7 @@ def linop_quadratic_value_core(op: Any, x: Any) -> Any:
 
 
 def linop_quadratic_grad_core(op: Any, x: Any) -> Any:
+    # grad f(x) = Q x + the representer of l.
     grad = op.Q._apply_core(x)
     if op.linear is not None:
         add = getattr(op.domain, "_add_core", op.domain.add)
@@ -102,6 +107,7 @@ def linop_quadratic_grad_core(op: Any, x: Any) -> Any:
 
 
 def linop_quadratic_vvalue_core(op: Any, xs: Any) -> Any:
+    # Euclidean arrays: sum conj(x_i) * (Q x_i) over non-batch axes; else the batched inner.
     qxs = op.Q._vapply_core(xs)
     if op.domain.is_euclidean and hasattr(xs, "shape"):
         axes = tuple(range(1, len(tuple(xs.shape))))
@@ -114,6 +120,7 @@ def linop_quadratic_vvalue_core(op: Any, xs: Any) -> Any:
 
 
 def linop_quadratic_vgrad_core(op: Any, xs: Any) -> Any:
+    # Q x_i + grad l, row-wise.
     grads = op.Q._vapply_core(xs)
     if op.linear is not None:
         grads = op.domain.add_batch(grads, op.linear._vgrad_core(xs))

@@ -35,6 +35,7 @@ def _require_same_domain(terms: Any, node: str = "SumFunctional") -> None:
     node : str, optional
         Node name used in the error message; sums and products share this check.
     """
+    # Domain equality includes backend and dtype.
     domain = terms[0].domain
     for i, term in enumerate(terms[1:], start=1):
         if term.domain != domain:
@@ -139,6 +140,7 @@ class SumFunctional(SumNode, Functional):
 
     def _value_core(self, x: Any, *args: Any, **kwargs: Any) -> Any:
         """Check-free sum of term values."""
+        # Sum of the terms' values (plain scalars).
         total = None
         for term in self.terms:
             value = term._value_core(x, *args, **kwargs)
@@ -147,6 +149,7 @@ class SumFunctional(SumNode, Functional):
 
     def grad(self, x: Any, *args: Any, **kwargs: Any) -> Any:
         """Return the domain-sum of the term gradients (combined via ``X.add``)."""
+        # Sum of the terms' gradients, added in the domain (elements may be pytrees).
         domain = self.domain
         terms = iter(self.terms)
         total = next(terms).grad(x, *args, **kwargs)
@@ -156,6 +159,7 @@ class SumFunctional(SumNode, Functional):
 
     def value_and_grad(self, x: Any, *args: Any, **kwargs: Any) -> tuple[Any, Any]:
         """Return ``(sum values, domain-sum grads)`` from one fused pass per term."""
+        # One fused evaluation per term; values add as scalars, gradients in the domain.
         domain = self.domain
         value_total = None
         grad_total = None
@@ -317,6 +321,7 @@ def make_constant_functional(
     Functional
         The constant (or zero) functional.
     """
+    # A zero constant is the additive identity, kept as ZeroFunctional.
     if not is_scalar_like(constant):
         raise TypeError(f"constant must be scalar-like, got {type(constant).__name__}.")
     if scalar_eq(constant, 0):
@@ -344,6 +349,7 @@ class ShiftedFunctional(Functional):
         offset: Any,
         check_level: CheckLevel | bool | None = None,
     ) -> None:
+        # Validate, then bind with the functional's endpoints.
         if not isinstance(functional, Functional):
             raise TypeError(f"functional must be a Functional, got {type(functional).__name__}.")
         if not is_scalar_like(offset):
@@ -410,6 +416,7 @@ def make_shifted_functional(functional: Functional, offset: Any) -> Functional:
     Functional
         The shifted functional.
     """
+    # Zero offsets vanish and nested shifts add up.
     if not isinstance(functional, Functional):
         raise TypeError(f"functional must be a Functional, got {type(functional).__name__}.")
     if not is_scalar_like(offset):
@@ -443,6 +450,7 @@ class ProductFunctional(Functional):
         right: Functional,
         check_level: CheckLevel | bool | None = None,
     ) -> None:
+        # Both factors must be functionals on one domain.
         for name, factor in (("left", left), ("right", right)):
             if not isinstance(factor, Functional):
                 raise TypeError(
@@ -470,6 +478,7 @@ class ProductFunctional(Functional):
 
     def _value_core(self, x: Any, *args: Any, **kwargs: Any) -> Any:
         """Check-free pointwise product of the factor values."""
+        # Pointwise product of the two values.
         return (
             self.left._value_core(x, *args, **kwargs)
             * self.right._value_core(x, *args, **kwargs)
@@ -542,6 +551,7 @@ def make_functional_product(left: Functional, right: Functional) -> Functional:
     Functional
         The product.
     """
+    # Check types and the shared domain before any shortcut can hide a mismatch.
     for name, factor in (("left", left), ("right", right)):
         if not isinstance(factor, Functional):
             raise TypeError(f"{name} must be a Functional, got {type(factor).__name__}.")
@@ -549,6 +559,7 @@ def make_functional_product(left: Functional, right: Functional) -> Functional:
     # the zero/constant shortcuts.
     _require_same_domain((left, right), node="ProductFunctional")
 
+    # Structural shortcuts: a zero factor gives zero, a constant factor gives scaling.
     if isinstance(left, ZeroFunctional) or isinstance(right, ZeroFunctional):
         return ZeroFunctional(left.domain, left.ctx, cod=left.codomain)
     if isinstance(left, ConstantFunctional):

@@ -71,6 +71,7 @@ class NumpyOps(EagerControlFlowMixin, BackendOps):
         See:
             https://docs.scipy.org/doc/scipy/reference/sparse.html
         """
+        # SciPy has spmatrix (legacy) and sparray (newer); accept whichever exist.
         sparse = self.sp.sparse
         types: list[type[Any]] = []
         if hasattr(sparse, "spmatrix"):
@@ -103,6 +104,7 @@ class NumpyOps(EagerControlFlowMixin, BackendOps):
         sparse = self.sp.sparse
         self._reject_complex_to_real(x, dtype, operation="assparse")
 
+        # Already sparse: cast if needed, then convert the format.
         if self.is_sparse(x):
             if dtype is not None and self.get_dtype(x) != self.sanitize_dtype(dtype):
                 x = x.astype(self.sanitize_dtype(dtype))
@@ -114,6 +116,7 @@ class NumpyOps(EagerControlFlowMixin, BackendOps):
                 return x.tocoo()
             raise ValueError(f"Unknown sparse format: {format!r}")
 
+        # Dense input: only 2-D arrays have a SciPy sparse form.
         x_arr = self.asarray(x, dtype=dtype)
 
         if x_arr.ndim != 2:
@@ -193,6 +196,7 @@ class NumpyOps(EagerControlFlowMixin, BackendOps):
         """Compare two SciPy sparse matrices within tolerances, via their CSR difference."""
         self._require_two_sparse(a, b)
 
+        # Compare in CSR: different shapes are never close, an empty difference always is.
         a_csr = cast(Any, a).tocsr()
         b_csr = cast(Any, b).tocsr()
 
@@ -211,6 +215,7 @@ class NumpyOps(EagerControlFlowMixin, BackendOps):
         if self.np.isnan(diff.data).any():
             return False
 
+        # Entrywise max(|a|, |b|) scales the relative tolerance.
         a_abs = abs(a_csr).tocsr()
         b_abs = abs(b_csr).tocsr()
         scale = self.sp.sparse.csr_matrix.maximum(a_abs, b_abs)
@@ -219,5 +224,6 @@ class NumpyOps(EagerControlFlowMixin, BackendOps):
         tol = scale.multiply(rtol)
         tol.data += atol
 
+        # Close iff no stored entry of |a - b| exceeds its tolerance.
         bad = abs(diff) > tol
         return bad.nnz == 0

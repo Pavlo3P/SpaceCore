@@ -55,6 +55,7 @@ class HuberFunctional(_CoordinateFunctional[Domain]):
         check_level: CheckLevel | bool | None = None,
     ) -> None:
         super().__init__(dom, ctx, check_level=check_level)
+        # delta must be finite and positive.
         delta = float(delta)
         if not math.isfinite(delta) or delta <= 0.0:
             raise ValueError(f"HuberFunctional requires a finite delta > 0, got {delta}.")
@@ -63,6 +64,7 @@ class HuberFunctional(_CoordinateFunctional[Domain]):
     @checked_method(in_space="domain", out_space="codomain")
     def value(self, x: Any) -> Any:
         """Return ``sum_i h_delta(x_i)``."""
+        # Quadratic inside |x| <= delta, linear outside.
         o = self.ops
         d = self.delta
         a = o.abs(x)
@@ -72,6 +74,7 @@ class HuberFunctional(_CoordinateFunctional[Domain]):
 
     def _coordinate_grad(self, x: Any) -> Any:
         """Euclidean coordinate gradient: ``x`` (quadratic) or ``delta sign(x)`` (tail)."""
+        # Gradient: x inside, delta sign(x) outside.
         o = self.ops
         d = self.delta
         a = o.abs(x)

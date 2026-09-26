@@ -28,6 +28,7 @@ class EagerControlFlowMixin:
     # -- pytree helpers ----------------------------------------------------
 
     def _tree_map(self, f: Callable[[Any], Any], tree: Any) -> Any:
+        # Recurse into dict/tuple/list containers; anything else is a leaf.
         if isinstance(tree, dict):
             return {k: self._tree_map(f, v) for k, v in tree.items()}
         if isinstance(tree, tuple):
@@ -38,6 +39,7 @@ class EagerControlFlowMixin:
 
     def _tree_multimap(self, f: Callable[..., Any], *trees: Any) -> Any:
         # assumes matching structure
+        # Walk the trees in lockstep, following the structure of the first.
         t0 = trees[0]
         if isinstance(t0, dict):
             return {k: self._tree_multimap(f, *(t[k] for t in trees)) for k in t0.keys()}
@@ -49,6 +51,7 @@ class EagerControlFlowMixin:
 
     def _tree_take0(self, xs: Any) -> Any:
         """Grab a representative leaf to infer leading length."""
+        # The first leaf in depth-first order.
         if isinstance(xs, dict):
             return self._tree_take0(next(iter(xs.values())))
         if isinstance(xs, (tuple, list)):
@@ -130,6 +133,7 @@ class EagerControlFlowMixin:
         """
         carry = init
 
+        # No xs: call f `length` times with None as the input.
         if xs is None:
             if length is None:
                 raise ValueError("scan(xs=None) requires an explicit `length`.")
@@ -155,6 +159,7 @@ class EagerControlFlowMixin:
         else:
             n = int(length)
 
+        # Feed slice i of xs; outputs are restored to forward order when reversed.
         indices = range(n - 1, -1, -1) if reverse else range(n)
         ys_steps = []
         for i in indices:

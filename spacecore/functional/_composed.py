@@ -15,6 +15,7 @@ from ..mapping import register
 
 def _require_composable(F: Functional, A: LinOp) -> None:
     """Raise unless ``F`` can be composed with ``A``."""
+    # F must be a Functional, A a LinOp, and A must land in F's domain.
     if not isinstance(F, Functional):
         raise TypeError(f"F must be a Functional, got {type(F).__name__}.")
     if not isinstance(A, LinOp):
@@ -43,12 +44,14 @@ def make_functional_composed(F: Functional, A: LinOp) -> Functional:
         The pull-back.
     """
     _require_composable(F, A)
+    # Closed forms: <c, A x> = <A* c, x>, and a quadratic form pulls back to A* Q A.
     if isinstance(F, InnerProductFunctional):
         return InnerProductFunctional(A.H.apply(F.representer), A.domain, A.ctx)
     if isinstance(F, LinOpQuadraticForm):
         Q = A.H @ F.Q @ A
         linear = None if F.linear is None else cast(Any, F.linear.compose(A))
         return LinOpQuadraticForm(Q, linear, F.a, A.ctx)
+    # Otherwise a lazy composition.
     return ComposedFunctional(F, A)
 
 
@@ -76,6 +79,7 @@ class ComposedFunctional(Functional):
         check_level: CheckLevel | bool | None = None,
     ) -> None:
         _require_composable(F, A)
+        # The pull-back lives on A's domain and keeps F's scalar codomain.
         if check_level is None:
             check_level = minimum_check_level((F.check_level, A.check_level))
         super().__init__(A.domain, A.ctx, check_level=check_level, cod=F.codomain)

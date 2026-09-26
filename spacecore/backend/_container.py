@@ -48,6 +48,7 @@ class PyTreeRegistry:
         cls : type
             Concrete container class providing ``tree_flatten``/``tree_unflatten``.
         """
+        # Remember the class once, then wire it into every backend seen so far.
         with self._lock:
             if cls not in self._seen:
                 self._seen.add(cls)
@@ -65,6 +66,7 @@ class PyTreeRegistry:
         registrar : callable
             Registers a single class with that backend's pytree system.
         """
+        # Wire the new backend into every class seen so far.
         with self._lock:
             self._backends[name] = registrar
             for cls in self._classes:
@@ -96,10 +98,12 @@ class PyTreeRegistry:
         means, which several backends report by raising) cannot produce repeated
         attempts or warning spam.
         """
+        # Each (backend, class) pair is wired at most once.
         key = (name, cls)
         if key in self._done:
             return
         self._done.add(key)
+        # A failing registrar must not break import; the class then stays an opaque leaf.
         try:
             registrar(cls)
         except Exception as exc:  # noqa: BLE001 - see docstring: import must survive
@@ -166,6 +170,7 @@ class PyTreeNode(ABC):
         class that is never instantiated is harmless.
         """
         super().__init_subclass__(**kwargs)
+        # Abstract bases are skipped; concrete subclasses register on definition.
         if getattr(cls.tree_flatten, "__isabstractmethod__", False):
             return
         registry.register_class(cls)

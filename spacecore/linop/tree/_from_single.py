@@ -37,12 +37,13 @@ class StackedLinOp(TreeLinOp[Domain, TreeSpace]):
         check_level: CheckLevel | bool | None = None,
     ) -> None:
         super().__init__(dom, cod, parts, ctx, check_level=check_level)
-        # ADR-022: memoize the stacked component matrices for the stacked.apply
-        # broadcast fold (built once on first optimized use, NumPy-only).
+        # Cache the parts' flat adjoint matrices once (None unless all are flat dense
+        # Euclidean), so rapply becomes a plain sum of matmuls.
         self._flat_dense_rapply_mats = self._make_flat_dense_rapply_mats()
 
     def _make_flat_dense_rapply_mats(self):
         """Return dense adjoint matrices for the exact flat-vector fast path."""
+        # Only when the domain and every part's codomain are flat dense Euclidean.
         if (
             type(self.dom) not in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace)
             or not self.dom.is_euclidean
@@ -64,6 +65,7 @@ class StackedLinOp(TreeLinOp[Domain, TreeSpace]):
 
     def _check_layout(self) -> None:
         """Check that every component maps the shared domain to one codomain part."""
+        # Part i must map dom to codomain leaf i.
         if not isinstance(self.cod, TreeSpace):
             raise TypeError("StackedLinOp expects cod to be TreeSpace.")
 
@@ -83,6 +85,7 @@ class StackedLinOp(TreeLinOp[Domain, TreeSpace]):
 
     def _apply_unchecked(self, x: Any) -> Any:
         """Apply component operators without checks and rebuild codomain representation."""
+        # Apply each part to the shared input; two parts unrolled.
         if self._num_parts == 2:
             y_parts = (self._apply_parts[0](x), self._apply_parts[1](x))
         else:
@@ -96,6 +99,7 @@ class StackedLinOp(TreeLinOp[Domain, TreeSpace]):
 
     def _rapply_unchecked(self, y: Any) -> Any:
         """Apply component adjoints without membership checks."""
+        # Adjoint: sum of the parts' adjoints, with cached matrices when available.
         y_parts = self.cod._components(y)
         mats = self._flat_dense_rapply_mats
         if mats is not None:
@@ -139,6 +143,7 @@ class StackedLinOp(TreeLinOp[Domain, TreeSpace]):
 
     def _rvapply_unchecked(self, y: Any) -> Any:
         """Apply the adjoint over a product batch without membership checks."""
+        # Batched adjoint: same sum over a leading batch axis.
         y_parts = self.cod._components(y)
         mats = self._flat_dense_rapply_mats
         if mats is not None:

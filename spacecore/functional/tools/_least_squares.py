@@ -58,6 +58,7 @@ def least_squares(
     >>> float(f.value(ctx.asarray([1.0, 2.0])))
     0.0
     """
+    # Validate A and scale.
     if not isinstance(A, LinOp):
         raise TypeError(f"least_squares requires A to be a LinOp, got {type(A).__name__}.")
 
@@ -71,10 +72,12 @@ def least_squares(
     b = ctx.asarray(b)
     two_scale = 2.0 * scale
 
+    # Unweighted: Gram A* A, right-hand side A* b, energy <b, b>.
     if weights is None:
         gram = A.H @ A
         rhs = A.H.apply(b)
         b_energy = Y.inner(b, b)
+    # Weighted: the same with W = diag(w) inserted, after validating w.
     else:
         w = ctx.asarray(weights)
         w_np = _np.asarray(w)
@@ -91,6 +94,7 @@ def least_squares(
         rhs = A.H.apply(Wb)
         b_energy = Y.inner(b, Wb)
 
+    # Assemble 1/2 <x, Q x> + <c, x> + a with Q = 2s Gram, c = -2s rhs, a = s energy.
     Q = gram if two_scale == 1.0 else two_scale * gram
     linear = InnerProductFunctional((-two_scale) * rhs, X, ctx)
     offset = scale * ctx.ops.real(b_energy)

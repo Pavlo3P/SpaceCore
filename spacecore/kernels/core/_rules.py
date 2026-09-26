@@ -53,6 +53,7 @@ class CoreKernelSet:
     notes: str = ""
 
     def __post_init__(self) -> None:
+        # A set needs a name, at least one core, and only callables.
         if not self.name:
             raise ValueError("CoreKernelSet requires a non-empty name.")
         provided = [f for f in _FIELD_TO_METHOD if getattr(self, f) is not None]
@@ -73,6 +74,7 @@ def register_core_kernels(kernel_set: CoreKernelSet) -> CoreKernelSet:
     Re-registering the identical object is a no-op; a different set under an
     existing name is a programming error and raises.
     """
+    # One set per name; re-registering the same object is a no-op.
     existing = _CORE_KERNEL_SETS.get(kernel_set.name)
     if existing is not None and existing is not kernel_set:
         raise ValueError(f"core kernel set name collision: {kernel_set.name!r}")
@@ -107,6 +109,7 @@ def core_kernels(name: str) -> Callable[[_C], _C]:
     """
     kernel_set = _CORE_KERNEL_SETS[name]
 
+    # Install each provided core as the class's method and record the set name.
     def decorate(cls: _C) -> _C:
         for field, method in _FIELD_TO_METHOD.items():
             fn = getattr(kernel_set, field)

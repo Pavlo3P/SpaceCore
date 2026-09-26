@@ -23,6 +23,7 @@ class _SparseMode(Enum):
 
 
 def sparse_apply_core(op: Any, x: Any) -> Any:
+    # Flat or fused: one matvec. Tensor: reshape around it. Else the spaces' flatten/unflatten.
     if op._mode is _SparseMode.EUCLIDEAN_FLAT:
         return op._A @ x
     if op._mode is _SparseMode.EUCLIDEAN_TENSOR:
@@ -35,6 +36,7 @@ def sparse_apply_core(op: Any, x: Any) -> Any:
 
 
 def sparse_euclidean_rapply_core(op: Any, y: Any) -> Any:
+    # Plain conjugate transpose A^H, no metric.
     if op._mode is _SparseMode.EUCLIDEAN_FLAT:
         return op._AH @ y
     if op._mode is _SparseMode.EUCLIDEAN_TENSOR:
@@ -45,6 +47,7 @@ def sparse_euclidean_rapply_core(op: Any, y: Any) -> Any:
 
 
 def sparse_rapply_core(op: Any, y: Any) -> Any:
+    # Euclidean: A^H. Diagonal weights: W_X^{-1} A^H W_Y y. Else wrap A^H with the metrics.
     if op._mode is _SparseMode.EUCLIDEAN_FLAT or op._mode is _SparseMode.EUCLIDEAN_TENSOR:
         return sparse_euclidean_rapply_core(op, y)
     if op._mode is _SparseMode.WEIGHTED_FUSED:
@@ -57,6 +60,7 @@ def sparse_rapply_core(op: Any, y: Any) -> Any:
 
 
 def sparse_vapply_core(op: Any, xs: Any) -> Any:
+    # Sparse @ dense wants the batch as columns: (A X^T)^T.
     if op._mode is _SparseMode.EUCLIDEAN_FLAT:
         return (op._A @ xs.reshape((-1, op._dom_size)).T).T
     if op._mode is _SparseMode.EUCLIDEAN_TENSOR:
@@ -72,6 +76,7 @@ def sparse_vapply_core(op: Any, xs: Any) -> Any:
 
 
 def sparse_euclidean_rvapply_core(op: Any, ys: Any) -> Any:
+    # (A^H Y^T)^T for a batch of rows.
     if op._mode is _SparseMode.EUCLIDEAN_FLAT:
         return (op._AH @ ys.reshape((-1, op._cod_size)).T).T
     if op._mode is _SparseMode.EUCLIDEAN_TENSOR:
@@ -85,6 +90,7 @@ def sparse_euclidean_rvapply_core(op: Any, ys: Any) -> Any:
 
 
 def sparse_rvapply_core(op: Any, ys: Any) -> Any:
+    # Batched form of sparse_rapply_core.
     if op._mode is _SparseMode.EUCLIDEAN_FLAT or op._mode is _SparseMode.EUCLIDEAN_TENSOR:
         return sparse_euclidean_rvapply_core(op, ys)
     if op._mode is _SparseMode.WEIGHTED_FUSED:

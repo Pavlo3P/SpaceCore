@@ -59,6 +59,7 @@ class LinOp(Mapping, Generic[Domain, Codomain]):
         ctx: Context | str | None = None,
         check_level: CheckLevel | bool | None = None,
     ):
+        # Scalar-valued maps are Functionals, not LinOps (ADR-010).
         if isinstance(cod, Field):
             raise TypeError(
                 "LinOp codomain cannot be a Field (ADR-010); use Functional "
@@ -156,6 +157,7 @@ class LinOp(Mapping, Generic[Domain, Codomain]):
     @checked_method(in_space="domain", in_batched=True)
     def vapply(self, xs: Any) -> Any:
         """Apply over a leading batch axis. Input must have shape ``(N,) + domain.shape``; use ``moveaxis`` for other layouts."""
+        # Generic batching: vmap the single-element apply over the leading axis.
         require(self.domain, _CAP_BATCH, "LinOp.vapply")
         require(self.codomain, _CAP_BATCH, "LinOp.vapply")
         _warn_vmap_fallback_once(self, "vapply", _leading_batch_size(self.domain, xs))
@@ -164,6 +166,7 @@ class LinOp(Mapping, Generic[Domain, Codomain]):
     @checked_method(in_space="codomain", in_batched=True)
     def rvapply(self, ys: Any) -> Any:
         """Apply the adjoint over a leading batch axis. Input must have shape ``(N,) + codomain.shape``; use ``moveaxis`` for other layouts."""
+        # Same for the adjoint.
         require(self.domain, _CAP_BATCH, "LinOp.rvapply")
         require(self.codomain, _CAP_BATCH, "LinOp.rvapply")
         _warn_vmap_fallback_once(self, "rvapply", _leading_batch_size(self.codomain, ys))
@@ -181,6 +184,7 @@ class LinOp(Mapping, Generic[Domain, Codomain]):
         """
         from ._algebra import _AdjointViewLinOp
 
+        # Build the adjoint view once and cache it, so A.H is A.H.
         view = getattr(self, "_adjoint_view", None)
         if view is None:
             view = _AdjointViewLinOp(self)
@@ -243,10 +247,12 @@ class LinOp(Mapping, Generic[Domain, Codomain]):
         """
         require(self.domain, _CAP_COORDINATE, "LinOp.to_matrix")
         require(self.codomain, _CAP_COORDINATE, "LinOp.to_matrix")
+        # Apply the operator to every basis vector: its images are the matrix columns.
         domain_size = prod(self.domain.shape)
         codomain_size = prod(self.codomain.shape)
         eye = self.ops.eye(domain_size, dtype=self.dtype)
 
+        # Fast path: one batched apply over the whole identity.
         try:
             xs = self.domain.unflatten_batch(eye)
             ys = self.vapply(xs)
@@ -265,6 +271,7 @@ class LinOp(Mapping, Generic[Domain, Codomain]):
                 stacklevel=2,
             )
 
+        # Fallback: one apply per basis vector.
         columns = []
         for i in range(domain_size):
             basis_vector = eye[:, i]

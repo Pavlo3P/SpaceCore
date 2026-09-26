@@ -44,14 +44,18 @@ class Element(Algebraic, PyTreeNode, ContextBound):
     __array_ufunc__ = None  # NumPy defers to our reflected overloads instead of unwrapping us.
 
     def __init__(self, space: Any, *data: Any) -> None:
+        # Adopt the space's context and check level.
         (self.space,) = self._bind_context(space.ctx, space)
+        # Store the representation's named fields in declared order.
         for name, value in zip(self._children, data, strict=True):
             setattr(self, name, value)
+        # The single membership check an element ever gets.
         self._check()
 
     @classmethod
     def _make(cls, space: Any, *data: Any) -> Element:
         """Build without binding or checks: for results known to be members, and pytree rebuilds."""
+        # Skip __init__: no context binding, no check.
         obj = object.__new__(cls)
         obj.space, obj._ctx, obj._check_level = space, space.ctx, space.check_level
         for name, value in zip(cls._children, data):
@@ -92,6 +96,7 @@ class Element(Algebraic, PyTreeNode, ContextBound):
             dtype = new_ctx.ops.real_dtype(new_ctx.dtype) if real else new_ctx.dtype
             return new_ctx.ops.asarray(a, dtype=dtype)
 
+        # Move every field, then rebuild on the converted space.
         data = (move(getattr(self, name)) for name in self._children)
         return self._make(self.space.convert(new_ctx), *data)
 
@@ -147,10 +152,12 @@ class LowRankElement(Element):
     def _check(self) -> None:
         # ponytail: only HermitianSpace has a spectral low-rank form; widen when a second space does.
         space, ops = self.space, self.space.ops
+        # U diag(d) U* only means a member of a Hermitian space.
         if not isinstance(space, HermitianSpace):
             raise SpaceValidationError(f"LowRankElement needs a HermitianSpace, got {space!r}.")
         if space.check_level == "none":
             return
+        # Cheap checks: factor shapes fit, and d is real.
         if self.U.shape[-2] != space.n or tuple(self.d.shape) != tuple(self.U.shape[-1:]):
             raise SpaceValidationError(
                 f"Factors U{tuple(self.U.shape)}, d{tuple(self.d.shape)} do not fit {space!r}."

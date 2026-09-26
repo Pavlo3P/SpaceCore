@@ -46,6 +46,7 @@ class CuPyOps(EagerControlFlowMixin, BackendOps):
     @property
     def sparse_array(self) -> Tuple[Type[Any], ...]:
         """Sparse CuPy array type tuple."""
+        # Accept whichever CuPy sparse classes this version defines.
         sparse = self.cpx_sparse
         types: list[type[Any]] = []
         for name in ("spmatrix", "csr_matrix", "csc_matrix", "coo_matrix"):
@@ -80,6 +81,7 @@ class CuPyOps(EagerControlFlowMixin, BackendOps):
         sparse = self.cpx_sparse
         self._reject_complex_to_real(x, dtype, operation="assparse")
 
+        # Already sparse: cast if needed, then convert the format.
         if self.is_sparse(x):
             if dtype is not None and self.get_dtype(x) != self.sanitize_dtype(dtype):
                 x = x.astype(self.sanitize_dtype(dtype))
@@ -91,6 +93,7 @@ class CuPyOps(EagerControlFlowMixin, BackendOps):
                 return x.tocoo()
             raise ValueError(f"Unknown sparse format: {format!r}")
 
+        # Dense input: only 2-D arrays have a CuPy sparse form.
         x_arr = self.asarray(x, dtype=dtype)
         if x_arr.ndim != 2:
             raise ValueError("CuPy sparse conversion currently expects a 2D array.")
@@ -148,6 +151,7 @@ class CuPyOps(EagerControlFlowMixin, BackendOps):
         atol: float = 1e-8,
     ) -> bool:
         """Compare two CuPy sparse matrices by dense values."""
+        # Densify on device and compare; equal_nan stays False.
         self._require_two_sparse(a, b, noun="CuPy sparse matrices")
         return bool(
             self.cp.asnumpy(self.cp.allclose(cast(Any, a).toarray(), cast(Any, b).toarray(), rtol=rtol, atol=atol))

@@ -54,6 +54,7 @@ class JaxOps(BackendOps):
 
     def sanitize_dtype(self, dtype: DType | None) -> DType:
         """Normalize a dtype for JAX, rejecting dtypes JAX would silently canonicalize under the active x64 setting."""
+        # Default: float64 if x64 is enabled, else float32 with a warning.
         x64_enabled = bool(self.jax.config.read("jax_enable_x64"))
         if dtype is None:
             if not x64_enabled:
@@ -130,11 +131,13 @@ class JaxOps(BackendOps):
         import scipy.sparse as sps
         self._reject_complex_to_real(x, dtype, operation="assparse")
 
+        # Already a JAX sparse array: cast only.
         if self.is_sparse(x):
             if dtype is not None and self.get_dtype(x) != self.sanitize_dtype(dtype):
                 return x.astype(self.sanitize_dtype(dtype))
             return x
 
+        # SciPy sparse input converts directly, without densifying.
         if sps.issparse(x):
             if format == "bcoo":
                 kwargs = {}
@@ -158,6 +161,7 @@ class JaxOps(BackendOps):
 
             raise ValueError(f"Unknown sparse format: {format!r}")
 
+        # Dense input goes through fromdense.
         x_arr = self.asarray(x, dtype=dtype)
 
         if format == "bcoo":
@@ -312,6 +316,7 @@ class JaxOps(BackendOps):
         """Compare two JAX sparse arrays within tolerances, via SciPy sparse."""
         self._require_two_sparse(a, b)
 
+        # Compare on the host with the SciPy implementation.
         np_ops = NumpyOps()
         a_sp = self._to_scipy_sparse(np_ops, a)
         b_sp = self._to_scipy_sparse(np_ops, b)
@@ -319,6 +324,7 @@ class JaxOps(BackendOps):
         return np_ops.allclose_sparse(a_sp, b_sp, rtol=rtol, atol=atol)
 
     def _to_scipy_sparse(self, np_ops: NumpyOps, x: SparseArray):
+        # Normalize to 2-D unbatched BCOO, then build a SciPy COO from its indices.
         bcoo: Any = x
         if isinstance(x, self.jsparse.BCSR):
             bcoo = bcoo.to_bcoo()

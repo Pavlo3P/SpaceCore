@@ -37,12 +37,13 @@ class SumToSingleLinOp(TreeLinOp[TreeSpace, Codomain]):
         check_level: CheckLevel | bool | None = None,
     ) -> None:
         super().__init__(dom, cod, parts, ctx, check_level=check_level)
-        # ADR-022: memoize the stacked adjoint matrices for the sum_to_single.rapply
-        # broadcast fold (built once on first optimized use, NumPy-only).
+        # Cache the parts' flat matrices once (None unless all are flat dense
+        # Euclidean), so apply becomes a plain sum of matmuls.
         self._flat_dense_apply_mats = self._make_flat_dense_apply_mats()
 
     def _make_flat_dense_apply_mats(self):
         """Return dense matrices for the exact flat-vector fast path."""
+        # Only when the codomain and every part's domain are flat dense Euclidean.
         if (
             type(self.cod) not in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace)
             or not self.cod.is_euclidean
@@ -64,6 +65,7 @@ class SumToSingleLinOp(TreeLinOp[TreeSpace, Codomain]):
 
     def _check_layout(self) -> None:
         """Check that every component maps one product part to the shared codomain."""
+        # Part i must map domain leaf i to cod.
         if not isinstance(self.dom, TreeSpace):
             raise TypeError("SumToSingleLinOp expects dom to be TreeSpace.")
 
@@ -83,6 +85,7 @@ class SumToSingleLinOp(TreeLinOp[TreeSpace, Codomain]):
 
     def _apply_unchecked(self, x: Any) -> Any:
         """Apply component operators without membership checks."""
+        # Forward: sum of the parts' outputs, with cached matrices when available.
         x_parts = self.dom._components(x)
         mats = self._flat_dense_apply_mats
         if mats is not None:
@@ -116,6 +119,7 @@ class SumToSingleLinOp(TreeLinOp[TreeSpace, Codomain]):
 
     def _rapply_unchecked(self, y: Any) -> Any:
         """Apply component adjoints without checks and rebuild domain representation."""
+        # Adjoint: each part's adjoint of the shared input; two parts unrolled.
         if self._num_parts == 2:
             x_parts = (self._rapply_parts[0](y), self._rapply_parts[1](y))
         else:
@@ -129,6 +133,7 @@ class SumToSingleLinOp(TreeLinOp[TreeSpace, Codomain]):
 
     def _vapply_unchecked(self, x: Any) -> Any:
         """Apply over a product batch without membership checks."""
+        # Batched forward: same sum over a leading batch axis.
         x_parts = self.dom._components(x)
         mats = self._flat_dense_apply_mats
         if mats is not None:

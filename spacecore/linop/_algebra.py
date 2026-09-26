@@ -44,6 +44,7 @@ def _require_same_context(ops: Sequence[LinOp]) -> Context:
     surviving ``check_level`` is a property of the resulting bound object and is
     combined (via the minimum) when the container binds its operands, not here.
     """
+    # Every operand must share operand 0's math context.
     ctx = ops[0].ctx
     for i, op in enumerate(ops[1:], start=1):
         if not ctx.same_math(op.ctx):
@@ -113,6 +114,7 @@ def make_composed(left: LinOp, right: LinOp) -> LinOp:
     LinOp
         The composition.
     """
+    # Validate: both LinOps, same context, matching middle space.
     left = _require_linop(left, "left")
     right = _require_linop(right, "right")
     _require_same_context((left, right))
@@ -122,6 +124,7 @@ def make_composed(left: LinOp, right: LinOp) -> LinOp:
             f"got {right.codomain!r} and {left.domain!r}."
         )
 
+    # Local rewrites: identity factors vanish, zero factors give a zero map.
     if isinstance(right, IdentityLinOp):
         return left
     if isinstance(left, IdentityLinOp):
@@ -177,6 +180,7 @@ class ScaledLinOp(ScaledNode, LinOp[Domain, Codomain]):
         """Return ``conj(scalar) * op.rvapply(ys)``."""
         require(self.domain, _CAP_BATCH, "ScaledLinOp.rvapply")
         require(self.codomain, _CAP_BATCH, "ScaledLinOp.rvapply")
+        # Adjoint of s A is conj(s) A*.
         xs = self.op.rvapply(ys)
         return self.domain.scale_batch(_conjugate_scalar(self.scalar), xs)
 
@@ -191,6 +195,7 @@ class ScaledLinOp(ScaledNode, LinOp[Domain, Codomain]):
         """
         from ._dense import DenseLinOp
 
+        # Fuse the operand; a dense result absorbs the scalar into its matrix.
         op = self.op.fuse(materialize=materialize)
         if isinstance(op, DenseLinOp):
             matrix = self.scalar * op.to_matrix()
@@ -260,6 +265,7 @@ class SumLinOp(SumNode, LinOp[Domain, Codomain]):
         """Return ``sum_i ops[i].rvapply(ys)``."""
         require(self.domain, _CAP_BATCH, "SumLinOp.rvapply")
         require(self.codomain, _CAP_BATCH, "SumLinOp.rvapply")
+        # Adjoint of a sum is the sum of adjoints.
         add_batch = self.domain.add_batch
         acc = self.ops_tuple[0].rvapply(ys)
         for op in self.ops_tuple[1:]:
@@ -277,6 +283,8 @@ class SumLinOp(SumNode, LinOp[Domain, Codomain]):
         """
         from ._dense import DenseLinOp
 
+        # Fuse each term, then add up the dense ones into one matrix;
+        # matrix-free terms stay as lazy summands.
         fused = [p.fuse(materialize=materialize) for p in self.parts]
         dense = [p for p in fused if isinstance(p, DenseLinOp)]
         if len(dense) < 2:
@@ -338,6 +346,7 @@ class ComposedLinOp(LinOp[Domain, Codomain]):
         right: LinOp,
         check_level: CheckLevel | bool | None = None,
     ) -> None:
+        # Validate: both LinOps, same context, matching middle space.
         left = _require_linop(left, "left")
         right = _require_linop(right, "right")
         _require_same_context((left, right))
@@ -346,6 +355,7 @@ class ComposedLinOp(LinOp[Domain, Codomain]):
                 "ComposedLinOp requires right.codomain == left.domain; "
                 f"got {right.codomain!r} and {left.domain!r}."
             )
+        # Bind with right's domain and left's codomain.
         if check_level is None:
             check_level = minimum_check_level((left.check_level, right.check_level))
         super().__init__(right.domain, left.codomain, left.ctx, check_level=check_level)
@@ -394,6 +404,7 @@ class ComposedLinOp(LinOp[Domain, Codomain]):
         """
         from ._dense import DenseLinOp
 
+        # Two dense factors multiply into one matrix; otherwise stay lazy.
         left = self.left.fuse(materialize=materialize)
         right = self.right.fuse(materialize=materialize)
         if isinstance(left, DenseLinOp) and isinstance(right, DenseLinOp):
@@ -564,6 +575,7 @@ class IdentityLinOp(LinOp[Domain, Domain]):
         """
         require(self.domain, _CAP_COORDINATE, "IdentityLinOp.to_dense")
         require(self.codomain, _CAP_COORDINATE, "IdentityLinOp.to_dense")
+        # The identity matrix, reshaped to cod.shape + dom.shape.
         size = 1
         for dim in self.domain.shape:
             size *= dim
@@ -656,6 +668,7 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
         *,
         euclidean_adjoint: bool | Any = _ADJOINT_UNSPECIFIED,
     ) -> None:
+        # Validate the callables, then bind the spaces.
         if not callable(apply):
             raise TypeError(f"apply must be callable, got {type(apply).__name__}.")
         if not callable(rapply):
@@ -666,6 +679,7 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
             raise TypeError(f"rvapply must be callable, got {type(rvapply).__name__}.")
         super().__init__(dom, cod, ctx, check_level=check_level)
 
+        # Does the adjoint need Riesz maps? Only on a non-Euclidean inner-product space.
         has_inner = all(
             isinstance(space, InnerProductSpace) for space in (self.domain, self.codomain)
         )
@@ -702,6 +716,7 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
                 stacklevel=2,
             )
 
+        # Store the callables; strict mode also dot-tests the adjoint.
         self.apply_fn = apply
         self.rapply_fn = rapply
         self.vapply_fn = vapply
@@ -715,6 +730,7 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
         coordinate_rvapply: Callable[[Any], Any] | None,
     ) -> tuple[Callable[[Any], Any], Callable[[Any], Any] | None]:
         """Return ``(rapply, rvapply)`` wrapping coordinate adjoints in Riesz maps."""
+        # Wrap coordinate adjoints into metric ones: R_X^-1 A^T R_Y.
         dom, cod, ops = self.domain, self.codomain, self.ctx.ops
 
         def wrapped_rapply(y: Any) -> Any:
@@ -734,6 +750,7 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
 
     def _check_adjoint_consistency(self) -> None:
         """Probe the declared adjoint identity on deterministic space elements."""
+        # Dot test <A x, y> = <x, A* y> on deterministic probe vectors.
         if not all(
             isinstance(space, InnerProductSpace)
             for space in (self.domain, self.codomain)
@@ -800,6 +817,7 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
             Batched coordinate adjoint, wrapped the same way; ``vmap`` of the wrapped
             adjoint by default.
         """
+        # Validate the callables, then build via __init__ with euclidean_adjoint=True.
         if not callable(apply):
             raise TypeError(f"apply must be callable, got {type(apply).__name__}.")
         if not callable(coordinate_rapply):
@@ -880,6 +898,7 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
         """
         require(self.domain, _CAP_BATCH, "MatrixFreeLinOp.vapply")
         require(self.codomain, _CAP_BATCH, "MatrixFreeLinOp.vapply")
+        # Use the supplied batched map, else the generic vmap fallback.
         if self.vapply_fn is None:
             return super().vapply(xs)
         return self.vapply_fn(xs)
@@ -902,6 +921,7 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
         """
         require(self.domain, _CAP_BATCH, "MatrixFreeLinOp.rvapply")
         require(self.codomain, _CAP_BATCH, "MatrixFreeLinOp.rvapply")
+        # Use the supplied batched adjoint, else the generic vmap fallback.
         if self.rvapply_fn is None:
             return super().rvapply(ys)
         return self.rvapply_fn(ys)
@@ -915,6 +935,7 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
         ``to_dense``, the basis sweep) and returned as a :class:`DenseLinOp`,
         letting an enclosing expression collapse to a single dense operator.
         """
+        # Matrix-free stays lazy unless densifying was requested.
         if not materialize:
             return self
         from ._dense import DenseLinOp
@@ -936,6 +957,7 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
         )
 
     def tree_flatten(self):
+        # No array children: the callables and spaces are static data.
         children = ()
         aux = (
             self.apply_fn,
@@ -981,6 +1003,7 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
         # ``euclidean_adjoint=True``. Declaring ``False`` here is therefore both
         # correct (re-wrapping would apply the Riesz maps twice) and quiet: the
         # construction advisory belongs to the original call, not to every convert.
+        # The stored rapply is already the metric adjoint, so no re-wrap.
         return MatrixFreeLinOp(
             self.apply_fn,
             self.rapply_fn,
@@ -1011,6 +1034,7 @@ class _AdjointViewLinOp(LinOp[Codomain, Domain]):
         op: LinOp[Domain, Codomain],
         check_level: CheckLevel | bool | None = None,
     ) -> None:
+        # The view swaps domain and codomain.
         op = _require_linop(op, "op")
         if check_level is None:
             check_level = op.check_level

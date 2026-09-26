@@ -54,6 +54,7 @@ class NegativeEntropyFunctional(_CoordinateFunctional[Domain]):
     @checked_method(in_space="domain", out_space="codomain")
     def value(self, x: Any) -> Any:
         """Return ``sum_i x_i log x_i`` with ``0 log 0 = 0``."""
+        # sum x log x, with 0 log 0 = 0 (log evaluated on a safe input).
         o = self.ops
         positive = x > 0
         safe = o.where(positive, x, cast(Any, 1.0))
@@ -117,6 +118,7 @@ class KLDivergenceFunctional(_CoordinateFunctional[Domain]):
         check_level: CheckLevel | bool | None = None,
     ) -> None:
         super().__init__(dom, ctx, check_level=check_level)
+        # Store the target on the functional's backend and check it belongs.
         self._target = _convert_space_element(self.domain, target)
         if self._checks_at_least("standard"):
             self.domain._check_member(self._target)
@@ -129,6 +131,7 @@ class KLDivergenceFunctional(_CoordinateFunctional[Domain]):
     @checked_method(in_space="domain", out_space="codomain")
     def value(self, x: Any) -> Any:
         """Return ``sum_i x_i log(x_i / t_i)`` with ``0 log 0 = 0``."""
+        # sum x log(x / t), with 0 log 0 = 0.
         o = self.ops
         positive = x > 0
         ratio = o.where(positive, x / self._target, cast(Any, 1.0))

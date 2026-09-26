@@ -64,9 +64,11 @@ class DenseLinOp(LinOp[Domain, Codomain]):
         ctx: Context | str | None = None,
         check_level: CheckLevel | bool | None = None,
     ) -> None:
+        # A must already be a dense array of the resolved backend.
         ctx = resolve_context_priority(ctx, dom, cod)
         ctx.assert_dense(A)  # Check if A is ndarray of ctx
 
+        # Infer a Euclidean codomain from A's leading axes; warn if that is suspect.
         if cod is None:
             cod_shape_len = len(A.shape) - len(dom.shape)
             cod = cast(Codomain, DenseCoordinateSpace(tuple(A.shape[:cod_shape_len]), ctx))
@@ -91,12 +93,14 @@ class DenseLinOp(LinOp[Domain, Codomain]):
 
         super(DenseLinOp, self).__init__(dom, cod, ctx, check_level=check_level)
 
+        # A's shape must be cod.shape + dom.shape.
         expected = tuple(self.cod.shape) + tuple(self.dom.shape)
         if tuple(A.shape) != expected:
             raise TypeError(
                 f"Expected A.shape == cod.shape + dom.shape == {expected}, got {A.shape}"
             )
 
+        # Precompute the 2-D matrix and its (conjugate) transpose once, for the kernels.
         self._A = A  # Intentionally no dtype conversion to avoid extra memory use.
         self._cod_size = prod(self.cod.shape)
         self._dom_size = prod(self.dom.shape)
@@ -108,6 +112,7 @@ class DenseLinOp(LinOp[Domain, Codomain]):
         self._A2H = self._A2.T.conj() if is_complex else self._A2.T
         self._dom_is_flat = tuple(self.dom.shape) == (self._dom_size,)
         self._cod_is_flat = tuple(self.cod.shape) == (self._cod_size,)
+        # Pick the apply strategy once; weighted spaces get a pre-scaled adjoint.
         self._mode = self._select_mode()
         if self._mode is _DenseMode.WEIGHTED_FUSED:
             self._dom_weights = self.dom.geometry.weights
@@ -118,6 +123,8 @@ class DenseLinOp(LinOp[Domain, Codomain]):
 
     def _select_mode(self) -> _DenseMode:
         """Select the dense computation mode once for this operator."""
+        # Weighted flat vectors: fused weighted adjoint; Euclidean: plain matmul;
+        # anything else: the general Riesz-map path.
         vector_dom = type(self.dom) in (
             DenseCoordinateSpace,
             DenseVectorSpace,
@@ -211,6 +218,7 @@ class DenseLinOp(LinOp[Domain, Codomain]):
             ``True`` or ``False`` when the structure can be checked, otherwise
             ``None``.
         """
+        # Hermitian needs dom == cod; Euclidean compares A with A^H, else test by basis.
         if self.dom != self.cod:
             return False
         if not (
@@ -246,6 +254,7 @@ class DenseLinOp(LinOp[Domain, Codomain]):
 
     def _convert(self, new_ctx: Context) -> DenseLinOp:
         """Convert spaces and stored dense tensor to ``new_ctx``."""
+        # Move the spaces and the matrix onto the new context.
         new_dom = self.dom.convert(new_ctx)
         new_cod = self.cod.convert(new_ctx)
         new_A = new_ctx.asarray(self.A)
