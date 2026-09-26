@@ -75,36 +75,24 @@ def _sum_values(space: Any, values: Sequence[Any], *, batched: bool) -> Any:
 
 class BlockDiagonalLinOp(TreeLinOp[TreeSpace, TreeSpace]):
     r"""
-    Represent independent blocks over a finite direct-product tree.
+    Independent blocks acting on the leaves of a direct-product tree.
 
-    ``BlockDiagonalLinOp(blocks)`` infers matching domain and codomain
-    :class:`TreeSpace` objects from the block domains and codomains. The Python
-    tree structure of ``blocks`` is also the element structure on both sides.
-    This is a direct-product operator, not a tensor or Kronecker product.
+    ``BlockDiagonalLinOp(blocks)`` infers both tree spaces from the blocks; the tree of
+    ``blocks`` is the element structure. This is a direct product, not a Kronecker product.
 
     Parameters
     ----------
     blocks : tree of LinOp or TreeSpace
-        Nonempty block tree (one-argument form). Each leaf ``A_i`` maps the
-        corresponding domain leaf ``X_i`` to codomain leaf ``Y_i``. In the legacy
-        four-argument form this is instead the domain :class:`TreeSpace`.
+        Block tree, each leaf mapping ``X_i`` to ``Y_i``. In the legacy
+        ``(dom, cod, parts, ctx)`` form, the domain tree.
     cod : TreeSpace or None, optional
-        Codomain tree for the legacy ``(dom, cod, parts, ctx)`` form; inferred
-        from the blocks otherwise.
+        Codomain tree (legacy form only).
     parts : sequence of LinOp or None, optional
-        Block operators for the legacy form; inferred from ``blocks`` otherwise.
+        Blocks (legacy form only).
     ctx : Context, str, or None, optional
-        Backend context specification. Default is resolved from the blocks.
+        Backend context; resolved from the blocks when omitted.
     check_level : {"none", "cheap", "standard", "strict"}, optional
-        Runtime validation policy for this operator. When omitted, the ambient
-        default (see :func:`spacecore.get_check_level`) is used. Validation
-        policy is a property of the operator, not of the ``Context``.
-
-    Notes
-    -----
-    The legacy ``BlockDiagonalLinOp(dom, cod, blocks, ctx)`` form remains
-    accepted so callers can provide distinct custom domain and codomain tree
-    structures. New code should use the inferred one-argument form.
+        Validation level; the ambient default when omitted.
     """
 
     def __init__(
@@ -237,23 +225,14 @@ class BlockDiagonalLinOp(TreeLinOp[TreeSpace, TreeSpace]):
 
 class BlockMatrixLinOp(TreeLinOp[TreeSpace, TreeSpace]):
     r"""
-    Represent a rectangular matrix of blocks over direct products.
-
-    For blocks ``A_ij : X_j -> Y_i``, the operator maps
-    ``X_0 x ... x X_n`` to ``Y_0 x ... x Y_m`` and computes
-    ``y_i = sum_j A_ij x_j``. These are direct-product blocks, not tensor or
-    Kronecker products.
+    Block matrix over direct products: ``y_i = sum_j A_ij x_j`` for blocks ``A_ij : X_j -> Y_i``.
 
     Parameters
     ----------
     block_rows : sequence of sequences of LinOp
-        Nonempty rectangular block matrix. Blocks in one row must have
-        compatible codomains, and blocks in one column must have compatible
-        domains.
+        Rectangular block matrix; rows share codomains and columns share domains.
     check_level : {"none", "cheap", "standard", "strict"}, optional
-        Runtime validation policy for this operator. When omitted, the ambient
-        default (see :func:`spacecore.get_check_level`) is used. Validation
-        policy is a property of the operator, not of the ``Context``.
+        Validation level; the ambient default when omitted.
     """
 
     def __init__(

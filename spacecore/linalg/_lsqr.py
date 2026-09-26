@@ -10,22 +10,20 @@ from ._utils import safe_inverse_nonneg, should_check_iteration, result_repr, th
 
 class LSQRResult(NamedTuple):
     """
-    Store the result returned by :func:`lsqr`.
+    Result of :func:`lsqr`.
 
     Parameters
     ----------
     x : array-like
-        Approximate least-squares solution in ``A.domain``.
+        Least-squares solution in ``A.domain``.
     converged : bool-like
-        Whether the normal-equation residual satisfied the requested tolerance.
+        Whether the tolerance was met.
     num_iters : int-like
-        Number of LSQR iterations executed.
+        Iterations executed.
     residual_norm : scalar
-        Norm of ``A x - b`` in ``A.codomain`` in exact mode, or the LSQR
-        recurrence estimate in recurrence mode.
+        ``norm(A x - b)``, exact or LSQR's estimate per ``residual_mode``.
     normal_residual_norm : scalar
-        Norm of ``A.H @ (A x - b)`` in ``A.domain`` in exact mode, or the LSQR
-        recurrence estimate in recurrence mode.
+        ``norm(A.H (A x - b))``, exact or estimated likewise.
     """
 
     x: Any
@@ -62,103 +60,50 @@ def lsqr(
     r"""
     Solve :math:`\min_x \|A x - b\|` by LSQR.
 
-    Allow ``A`` to map between distinct ``domain`` and ``codomain`` spaces.
-    The method uses :meth:`LinOp.apply` for forward products and ``A.H.apply``
-    for adjoint products, so the normal equations are represented implicitly
-    and no dense matrix is formed.
+    ``A`` may map between different spaces. Only ``A.apply`` and ``A.H.apply`` are
+    used; the normal equations are never formed.
 
     Parameters
     ----------
     A : LinOp
-        Linear operator with possibly distinct ``domain`` and ``codomain``.
-        For square ``A`` (``A.domain == A.codomain``), :func:`cg` is usually
-        preferred when ``A`` is also Hermitian positive-definite.
+        Operator from ``A.domain`` to ``A.codomain``.
     b : array-like
         Right-hand side in ``A.codomain``.
     x0 : array-like or None, optional
-        Initial guess in ``A.domain``. Default is the zero vector.
+        Initial guess; zero by default.
     tol : float, optional
-        Relative tolerance for the normal-equation residual
-        ``norm(A.H @ (A @ x - b))``. ``result.converged`` is ``True`` when that
-        residual is below ``atol + tol * norm(b)``. Default is 1e-6.
+        Converged when ``norm(A.H @ (A @ x - b))`` is below ``atol + tol * norm(b)``.
     atol : float, optional
-        Absolute tolerance for the normal-equation residual. Default is 0.0.
+        Absolute tolerance on that normal-equation residual.
     maxiter : int or None, optional
-        Maximum number of iterations. Default is ``prod(A.domain.shape)``.
+        Iteration cap; ``prod(A.domain.shape)`` by default.
     check_every : int, optional
-        Refresh residual diagnostics every this many iterations and always on
-        the final iteration. Default is
-        ``DEFAULT_CONVERGENCE_CHECK_INTERVAL``.
+        Refresh residual diagnostics every this many iterations, and on the last one.
     residual_mode : {"exact", "recurrence"}, optional
-        Residual diagnostic mode. ``"exact"`` preserves the historical
-        behavior: every diagnostic refresh recomputes ``A @ x - b`` and
-        ``A.H @ (A @ x - b)``. This costs one additional forward application
-        and one additional adjoint application on each check iteration, so
-        small ``check_every`` values, especially ``check_every=1``, can
-        substantially increase runtime for expensive operators. Use larger
-        values such as ``check_every=10`` or ``check_every=20`` when exact
-        diagnostics are needed for matrix-free, PDE, neural-network, GPU, or
-        JAX workloads. ``"recurrence"`` uses LSQR scalar recurrences for both
-        returned residual diagnostics and avoids those extra applications.
+        ``"exact"`` recomputes both residuals at each check, costing one extra forward
+        and adjoint apply; ``"recurrence"`` uses LSQR's scalar estimates for free.
 
     Returns
     -------
     LSQRResult
-        Named tuple with fields:
-
-        - ``x``: approximate least-squares solution in ``A.domain``
-        - ``converged``: whether the requested tolerance was met
-        - ``num_iters``: number of iterations executed
-        - ``residual_norm``: final residual norm or recurrence estimate
-        - ``normal_residual_norm``: final normal-equation residual norm or
-          recurrence estimate
+        ``(x, converged, num_iters, residual_norm, normal_residual_norm)``.
 
     Raises
     ------
     TypeError
         If ``A`` is not a :class:`LinOp`.
     ValueError
-        If iteration parameters are invalid or ``residual_mode`` is unknown.
+        If an iteration parameter or ``residual_mode`` is invalid.
 
     See Also
     --------
-    cg : Solve square Hermitian positive-definite systems.
-    power_iteration : Estimate a dominant eigenpair.
+    cg : Square Hermitian positive-definite systems.
 
     Notes
     -----
-    Convergence is tested using
-    :math:`\|A^*(A x - b)\| < \text{atol} + \text{tol}\|b\|`.
-    In ``residual_mode="exact"``, exact residual diagnostics are refreshed only
-    every ``check_every`` iterations, and always on the final iteration. Each
-    refresh performs one additional forward product and one additional adjoint
-    product beyond the LSQR recurrence itself.
-
-    In ``residual_mode="recurrence"``, ``residual_norm`` is the standard LSQR
-    estimate ``abs(phi_bar)`` and ``normal_residual_norm`` is the LSQR scalar
-    estimate ``alpha * abs(tau)`` with ``tau = s * phi``. These estimates avoid
-    extra operator applications during checks, including the final check. This
-    function is JIT-compatible on the JAX backend when ``maxiter``,
-    ``check_every``, and ``residual_mode`` are static arguments.
-
-    The normal-equation residual can be much smaller than the solution error
-    for ill-conditioned ``A``. For ill-conditioned problems, use a tighter
-    ``tol`` or check the residual and solution quality directly.
-
-    Works on real and complex operators. For complex operators, ``A.H`` uses
-    the conjugate adjoint.
-
-    Inner products and norms use ``A.domain.inner`` / ``A.domain.norm`` for
-    domain-space quantities and ``A.codomain.norm`` for least-squares
-    residuals. The method is therefore correct on non-Euclidean geometries
-    when the spaces provide Riesz maps and ``A.rapply`` is the true metric
-    adjoint.
-
-    References
-    ----------
-    Paige, C. C. and Saunders, M. A., "LSQR: An Algorithm for Sparse
-    Linear Equations and Sparse Least Squares," ACM Trans. Math. Soft.,
-    8 (1982), 43-71.
+    JIT-compatible on JAX with ``maxiter``, ``check_every`` and ``residual_mode``
+    static. A small normal-equation residual does not imply a small error when ``A`` is
+    ill-conditioned. Paige and Saunders, ACM Trans. Math. Soft. 8 (1982).
 
     Examples
     --------

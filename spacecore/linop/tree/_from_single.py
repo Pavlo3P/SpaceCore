@@ -12,26 +12,20 @@ from ..._check_policy import CheckLevel
 
 class StackedLinOp(TreeLinOp[Domain, TreeSpace]):
     r"""
-    Represent operators from one domain as a tree-valued map.
-
-    If ``dom = X`` and ``cod = Y1 x ... x Yk``, component ``parts[i]`` maps
-    ``X`` to ``Yi``. Forward application returns a value with ``cod.treedef``;
-    adjoint application sums component adjoints in ``X``.
+    Operators from one domain into the leaves of a tree codomain; the adjoint sums the parts' adjoints.
 
     Parameters
     ----------
     dom : Space
-        Shared component domain.
+        Shared domain.
     cod : TreeSpace
-        Tree-structured codomain.
+        Tree codomain.
     parts : sequence of LinOp
-        Operators from ``dom`` to each component of ``cod``.
+        One operator per codomain leaf.
     ctx : Context, str, or None, optional
-        Backend context specification.
+        Backend context.
     check_level : {"none", "cheap", "standard", "strict"}, optional
-        Runtime validation policy for this operator. When omitted, the ambient
-        default (see :func:`spacecore.get_check_level`) is used. Validation
-        policy is a property of the operator, not of the ``Context``.
+        Validation level; the ambient default when omitted.
     """
 
     def __init__(

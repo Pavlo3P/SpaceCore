@@ -49,52 +49,31 @@ def checked_method(
     out_batched_scalar: bool = False,
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """
-    Build a decorator that validates method inputs and outputs against spaces.
+    Build a decorator that checks a method's inputs and outputs against spaces.
+
+    Checks follow ``self.check_level``; at ``"none"`` the wrapper calls the method directly.
 
     Parameters
     ----------
     in_space : str or None, optional
-        Name of the attribute on ``self`` containing the input
-        :class:`~spacecore.space.Space`, ``"self"`` to validate against the
-        receiver itself, or ``None`` to skip input validation.
+        Attribute of ``self`` holding the input space, ``"self"``, or ``None`` for no input check.
     out_space : str or None, optional
-        Name of the attribute on ``self`` containing the output
-        :class:`~spacecore.space.Space`, ``"self"`` to validate against the
-        receiver itself, or ``None`` to skip output validation.
+        Attribute of ``self`` holding the output space, ``"self"``, or ``None`` for no output check.
     arg_pos : int or None, optional
-        Deprecated alias for a single entry in ``arg_positions``.
+        Deprecated alias for a single ``arg_positions`` entry.
     arg_positions : int, tuple of int, or None, optional
-        Zero-based positions in ``*args`` of input values that should be checked
-        against ``in_space``. Defaults to ``(0,)``.
+        Positions in ``*args`` checked against ``in_space``; ``(0,)`` by default.
     in_batched : bool, optional
-        Validate inputs as leading-axis batches instead of single elements.
+        Check inputs as leading-axis batches.
     out_batched : bool, optional
-        Validate outputs as leading-axis batches instead of single elements.
+        Check outputs as leading-axis batches.
     out_batched_scalar : bool, optional
-        Validate that the output is a vector of scalars, one per input element:
-        ``shape == (N,)`` for a leading batch of size ``N``. The batch size is
-        read from the *input* named by ``in_space`` at the first checked
-        position, so this flag requires ``in_space``. Deliberately retained:
-        batched Field membership cannot enforce exactly one leading axis.
+        Check the output has shape ``(N,)`` for an input batch of size ``N``; needs ``in_space``.
 
     Returns
     -------
     Callable[[Callable[..., Any]], Callable[..., Any]]
-        Decorator that wraps a method and performs checks selected by
-        ``self.check_level``. Legacy objects exposing only ``_enable_checks``
-        continue to map ``True`` to ``"standard"`` and ``False`` to ``"none"``.
-
-    Notes
-    -----
-    The fast path is the ``check_level == "none"`` case: the wrapper does
-    a single attribute read and calls the underlying method directly.
-    The validated path resolves ``in_space``/``out_space`` once per call
-    (rather than per argument position) and uses the per-instance
-    ``_check_member`` cache populated by :class:`spacecore.space.Space`.
-
-    The scalar-output checks run at ``standard`` and above, matching the
-    hand-written ``_checks_at_least("standard")`` gating they replace. Shape is
-    static under ``jax.jit``, so they are safe to run while tracing.
+        The decorator.
     """
     if out_batched_scalar and in_space is None:
         # TypeError, matching ``require_mutually_exclusive``: both are misuse of

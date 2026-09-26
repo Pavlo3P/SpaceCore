@@ -31,10 +31,7 @@ class ContextBound(ABC):
     ctx : Context, str, or None, optional
         Context specification used to resolve backend operations and dtype.
     check_level : {"none", "cheap", "standard", "strict"}, optional
-        Runtime validation policy for this object. When omitted, the ambient
-        default (see :func:`spacecore.get_check_level`) is used. Unlike the
-        backend/dtype context, the validation policy is a property of the bound
-        object, not of the :class:`Context`.
+        Validation level; the ambient default when omitted.
     """
 
     def __init__(
@@ -72,34 +69,12 @@ class ContextBound(ABC):
         sources: tuple[Any, ...] | None = None,
         check_level: CheckLevel | bool | None = None,
     ):
-        """Resolve the priority context, store it, and re-bind children onto it.
+        """
+        Resolve the context, store it with the check level, and return ``children`` converted onto it.
 
-        This factors the context-binding prologue shared by every contextual
-        container: it resolves ``ctx`` (taking an explicit context first, then
-        inferring from ``sources``), assigns :attr:`_ctx`, and returns each
-        child converted onto the resolved context. Containers assign the result
-        to their named attributes, e.g.::
-
-            self.dom, self.cod = self._bind_context(ctx, dom, cod)
-
-        Parameters
-        ----------
-        ctx : Context, BackendFamily, str, or None
-            Context specification. An already-resolved :class:`Context` is used
-            as-is, which avoids re-resolving when a subclass has normalized the
-            context early (e.g. to validate stored arrays before ``__init__``).
-        *children : Any
-            Context-bound objects (spaces, operators, functionals) to convert
-            onto the resolved context and return, in order.
-        sources : tuple, optional
-            Objects used to infer the context when ``ctx`` is not explicit.
-            Defaults to ``children``. Use this when the inference sources differ
-            from the attributes being converted.
-
-        Returns
-        -------
-        tuple
-            ``children`` converted onto the resolved context, in order.
+        An explicit ``ctx`` wins; otherwise it is inferred from ``sources`` (``children`` by
+        default). The check level is the explicit one or the lowest among ``children``.
+        Typical use: ``self.dom, self.cod = self._bind_context(ctx, dom, cod)``.
         """
         if isinstance(ctx, Context):
             resolved = ctx

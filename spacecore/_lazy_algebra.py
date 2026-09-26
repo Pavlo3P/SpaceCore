@@ -45,27 +45,12 @@ def conjugate_scalar(value: Any) -> Any:
 
 
 def scalar_eq(a: Any, b: Any) -> bool:
-    """Return whether two scalar-likes are *recognizably* equal, as a real ``bool``.
+    """
+    Return whether two scalars are recognizably equal, as a plain ``bool``.
 
-    Recognizably: the comparison must be decidable from the values themselves.
-    A concrete pair answers truthfully; an **abstract** (traced) scalar has no
-    value at trace time, so no comparison about it can be decided and this
-    returns ``False`` — "not recognizably equal", the conservative answer. The
-    callers are canonicalizers (:func:`fold_scaled`, the ``__eq__`` of scaled
-    nodes), and for them ``False`` means "skip the simplification", which is
-    always sound. Under ``jax.jit`` a traced coefficient therefore builds a
-    larger-but-correct expression tree rather than a folded one.
-
-    That verdict is deliberate, so the catch is narrowed to :class:`TypeError` —
-    the base class of JAX's ``TracerBoolConversionError`` and of any other
-    "cannot reduce to a concrete bool" failure. Every other exception means the
-    operand's ``__eq__`` is itself broken and propagates instead of being
-    silently reported as inequality.
-
-    Two matching NaN scalars compare equal (mirrors ``equal_nan=True``), so a
-    NaN-scaled node equals itself. Always returns a genuine Python ``bool`` — a
-    0-d backend-array ``==`` would yield ``np.bool_``, which leaks through the
-    ``and`` combinator of any container's ``__eq__``.
+    A traced scalar cannot be compared, so the answer is ``False``, and a canonicalizer
+    then skips the simplification, which is always sound. Only ``TypeError`` is caught.
+    Two NaNs compare equal.
     """
     try:
         if bool(a == b):

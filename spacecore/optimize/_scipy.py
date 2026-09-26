@@ -1,24 +1,9 @@
-"""SciPy optimizer adapters (ADR-018).
+"""
+SciPy optimizer adapters (ADR-018): ``scipy.optimize`` on flat real coordinates.
 
-Thin functions that drive ``scipy.optimize`` from a SpaceCore
-:class:`~spacecore.Functional`. They marshal between SpaceCore elements and
-SciPy's flat real coordinate arrays, evaluate the objective through ``F.value``,
-and -- crucially -- convert the metric gradient ``F.grad`` to a coordinate
-gradient with ``X.riesz`` before handing it to SciPy (see
-:func:`spacecore.optimize._common.coordinate_gradient`). The external optimizer
-owns the loop, line search, and convergence; these adapters only translate the
-objective and its geometry.
-
-Information lost at the SciPy boundary
---------------------------------------
-* **Structure.** Elements are flattened to a 1-D coordinate vector with
-  ``X.flatten``/``X.unflatten``; structured (tree/block) layout is not visible to
-  SciPy. Any ``bounds`` or ``constraints`` passed through ``**kw`` are therefore
-  expressed in *flattened coordinates*, not structured elements.
-* **Geometry.** SciPy optimizes in the flat Euclidean coordinate metric. The
-  domain inner-product geometry survives only through the ``X.riesz`` gradient
-  conversion; SciPy's own trust region / quasi-Newton model is Euclidean.
-* **Field.** SciPy works on real vectors, so a complex domain is rejected.
+The gradient passed is ``X.riesz(F.grad(x))``. Structure is flattened away, so
+``bounds`` and ``constraints`` act on coordinates. SciPy's own models are
+Euclidean, and complex domains are rejected.
 """
 from __future__ import annotations
 
@@ -79,67 +64,42 @@ def minimize_scipy(
     **kw: Any,
 ) -> Any:
     r"""
-    Minimize a SpaceCore functional with :func:`scipy.optimize.minimize`.
+    Minimize a functional with :func:`scipy.optimize.minimize`.
 
-    The objective is evaluated through ``F.value`` and the Jacobian through
-    ``X.riesz(F.grad(x))`` -- the metric-to-coordinate gradient handoff that is
-    the identity on a Euclidean space and mandatory on a weighted one. SpaceCore
-    elements are flattened to and from SciPy's flat coordinate array with
-    ``F.domain.flatten``/``unflatten``.
+    SciPy sees flat coordinates: the gradient handed over is ``X.riesz(F.grad(x))``,
+    which is the identity on a Euclidean space and required on a weighted one.
 
     Parameters
     ----------
     F : Functional
-        Objective with a real, inner-product domain ``X = F.domain``. ``F.grad``
-        must be implemented unless a gradient-free ``jac`` is selected.
+        Objective on a real inner-product space ``X = F.domain``.
     x0 : array-like
-        Initial guess, an element of ``F.domain``.
+        Initial guess in ``F.domain``.
     method : str, optional
-        SciPy ``minimize`` method. Default ``"L-BFGS-B"``.
+        SciPy method; ``"L-BFGS-B"`` by default.
     jac : bool, str, callable, or None, optional
-        Gradient policy. ``True`` (default) supplies SpaceCore's
-        ``X.riesz(F.grad(x))`` coordinate gradient. ``False`` or ``None`` lets
-        SciPy approximate the gradient by finite differences. A real
-        finite-difference string (``"2-point"`` or ``"3-point"``) or a callable
-        over the flat coordinate vector is forwarded to SciPy unchanged. The
-        complex-step mode ``"cs"`` is rejected because it evaluates the objective
-        at complex perturbations the real domain cannot represent.
+        ``True`` supplies the coordinate gradient; ``False``/``None`` or a real
+        finite-difference string lets SciPy approximate it; a callable is forwarded.
+        ``"cs"`` is rejected.
     **kw
-        Forwarded to :func:`scipy.optimize.minimize` (e.g. ``bounds``,
-        ``constraints``, ``tol``, ``options``). ``bounds`` and ``constraints``
-        are interpreted in *flattened coordinates*. The SciPy ``args`` parameter
-        is not supported (a ``Functional`` takes only its domain element).
+        Forwarded to SciPy; ``bounds`` and ``constraints`` act on flat coordinates.
+        ``args`` is not supported.
 
     Returns
     -------
     scipy.optimize.OptimizeResult
-        The SciPy result, unchanged, with one added field ``x_element``: the
-        minimizer ``result.x`` unflattened back into an element of ``F.domain``.
-        ``result.x`` stays the flat coordinate array, by SciPy convention.
+        SciPy's result, plus ``x_element``: the minimizer as an element of ``F.domain``.
 
     Raises
     ------
     TypeError
-        If ``F`` is not a :class:`~spacecore.Functional` or its domain has no
-        inner-product geometry.
+        If ``F`` is not a :class:`~spacecore.Functional` or its domain has no inner product.
     ValueError
-        If ``F.domain`` is over the complex field, if ``jac="cs"``, or if the
-        unsupported SciPy ``args`` parameter is passed.
+        If the domain is complex, ``jac="cs"``, or ``args`` is passed.
 
     See Also
     --------
-    line_search_scipy : Wolfe line search along a direction with the same handoff.
-    spacecore.optimize.minimize_optax : Optax loop with pytree pass-through.
-
-    Notes
-    -----
-    The external optimizer owns iteration, line search, and convergence; this
-    adapter only translates the objective and its geometry. The minimizer
-    location of a smooth problem does not depend on the metric (a metric gradient
-    and the coordinate gradient vanish together), but SciPy's *steps* do: feeding
-    SciPy the raw metric gradient ``F.grad`` on a weighted space is inconsistent
-    with ``fun`` and degrades or breaks convergence. ``X.riesz`` removes that
-    trap.
+    line_search_scipy : Wolfe line search with the same gradient handoff.
 
     Examples
     --------
@@ -192,44 +152,32 @@ def line_search_scipy(F: Any, x: Any, d: Any, **kw: Any) -> Any:
     r"""
     Wolfe line search along ``d`` with :func:`scipy.optimize.line_search`.
 
-    Evaluates ``F.value`` and the coordinate gradient ``X.riesz(F.grad(x))`` over
-    the flat coordinate representation, so SciPy's slope
-    ``coordinate_gradient . d`` is the correct directional derivative
-    ``df(d) = <F.grad(x), d>_X`` even on a weighted space.
+    The coordinate gradient ``X.riesz(F.grad(x))`` makes SciPy's slope equal the
+    directional derivative on any geometry.
 
     Parameters
     ----------
     F : Functional
-        Objective with a real, inner-product domain ``X = F.domain``.
+        Objective on a real inner-product space ``X = F.domain``.
     x : array-like
-        Current iterate, an element of ``F.domain``.
+        Current iterate in ``F.domain``.
     d : array-like
-        Search direction, an element of ``F.domain`` interpreted as a coordinate
-        displacement (the new iterate is ``x + alpha * d``). The adapter does not
-        transform ``d``: both ``-F.grad(x)`` (natural/metric steepest descent) and
-        ``-X.riesz(F.grad(x))`` (coordinate steepest descent) are valid descent
-        directions.
+        Search direction; the new iterate is ``x + alpha * d``.
     **kw
-        Forwarded to :func:`scipy.optimize.line_search` (e.g. ``gfk``,
-        ``old_fval``, ``c1``, ``c2``, ``amax``). The SciPy ``args`` parameter is
-        not supported (a ``Functional`` takes only its domain element).
+        Forwarded to SciPy (``gfk``, ``c1``, ``c2``, ``amax``, ...). ``args`` is not supported.
 
     Returns
     -------
     tuple
-        The SciPy ``line_search`` tuple
-        ``(alpha, fc, gc, new_fval, old_fval, new_slope)``. ``alpha`` is the step
-        length and is ``None`` when the line search fails to satisfy the Wolfe
-        conditions.
+        SciPy's ``(alpha, fc, gc, new_fval, old_fval, new_slope)``; ``alpha`` is ``None``
+        when the Wolfe conditions are not met.
 
     Raises
     ------
     TypeError
-        If ``F`` is not a :class:`~spacecore.Functional` or its domain has no
-        inner-product geometry.
+        If ``F`` is not a :class:`~spacecore.Functional` or its domain has no inner product.
     ValueError
-        If ``F.domain`` is over the complex field, or if the unsupported SciPy
-        ``args`` parameter is passed.
+        If the domain is complex or ``args`` is passed.
 
     Examples
     --------

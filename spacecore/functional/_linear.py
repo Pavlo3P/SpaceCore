@@ -36,20 +36,18 @@ def _convert_space_element(space: Space, value: Any) -> Any:
 @core_kernels("functional-linear")
 class LinearFunctional(Functional[Domain]):
     """
-    Represent a linear scalar-valued map.
+    A linear scalar-valued map on ``dom``.
 
     Parameters
     ----------
     dom : Space
-        Domain space.
+        Domain.
     ctx : Context, str, or None, optional
-        Backend context specification. Default is resolved from ``dom``.
-    check_level : {{"none", "cheap", "standard", "strict"}}, optional
-        Runtime validation policy for this object. When omitted, the ambient
-        default (see :func:`spacecore.get_check_level`) is used.
+        Backend context; resolved from ``dom`` when omitted.
+    check_level : {"none", "cheap", "standard", "strict"}, optional
+        Validation level; the ambient default when omitted.
     cod : Field or None, optional
-        Scalar codomain, defaulting to the domain's ``scalars``. Its real or
-        complex field is independent of the domain's storage dtype.
+        Scalar codomain; the domain's ``scalars`` by default.
     """
 
     @property
@@ -82,27 +80,18 @@ class LinearFunctional(Functional[Domain]):
 @core_kernels("inner-product-functional")
 class InnerProductFunctional(LinearFunctional[Domain]):
     r"""
-    Linear functional represented by a domain element.
-
-    ``InnerProductFunctional(c, X)`` evaluates
-    :math:`\ell_c(x) = \langle c, x\rangle_X`.
+    The linear functional :math:`x \mapsto \langle c, x\rangle_X` of a representer ``c``.
 
     Parameters
     ----------
     c : array-like
         Riesz representer in ``dom``.
     dom : Space
-        Domain space.
+        Domain.
     ctx : Context, str, or None, optional
-        Backend context specification. Default is resolved from ``dom``.
-    check_level : {{"none", "cheap", "standard", "strict"}}, optional
-        Runtime validation policy for this object. When omitted, the ambient
-        default (see :func:`spacecore.get_check_level`) is used.
-
-    Attributes
-    ----------
-    representer : array-like
-        Stored domain element ``c``.
+        Backend context; resolved from ``dom`` when omitted.
+    check_level : {"none", "cheap", "standard", "strict"}, optional
+        Validation level; the ambient default when omitted.
     """
 
     def __init__(
@@ -165,37 +154,22 @@ class InnerProductFunctional(LinearFunctional[Domain]):
 @core_kernels("matrixfree-linear-functional")
 class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
     """
-    Linear functional defined by user-supplied evaluation callables.
-
-    ``MatrixFreeLinearFunctional(value, X)`` represents a linear scalar-valued
-    map on ``X`` without storing or materializing a Riesz representer.
+    Linear functional given by an evaluation callable; no Riesz representer is stored.
 
     Parameters
     ----------
     value : callable
-        Callable with signature ``value(x: Any) -> Any`` accepting an element of
-        ``dom`` and returning a scalar-like backend value.
+        ``value(x)`` returning a scalar for ``x`` in ``dom``.
     dom : Space
-        Domain space of the functional.
+        Domain.
     ctx : Context, str, or None, optional
-        Optional context specification. An explicit context wins over inferred
-        and default contexts.
+        Backend context.
     vvalue : callable or None, optional
-        Optional callable with signature ``vvalue(xs: Any) -> Any`` for batched
-        evaluation. If omitted, backend ``vmap`` fallback is used.
-    check_level : {{"none", "cheap", "standard", "strict"}}, optional
-        Runtime validation policy for this object. When omitted, the ambient
-        default (see :func:`spacecore.get_check_level`) is used.
-
+        Batched evaluation; ``vmap`` of ``value`` by default.
+    check_level : {"none", "cheap", "standard", "strict"}, optional
+        Validation level; the ambient default when omitted.
     cod : Field or None, optional
-        Scalar codomain, independent of the domain's coefficient field.
-        Defaults to ``dom.scalars``.
-
-    Returns
-    -------
-    MatrixFreeLinearFunctional
-        Functional using the supplied callable for scalar evaluation and,
-        optionally, batched scalar evaluation.
+        Scalar codomain; ``dom.scalars`` by default.
     """
 
     def __init__(
@@ -208,29 +182,6 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
         *,
         cod: Field | None = None,
     ) -> None:
-        """
-        Initialize a matrix-free linear functional.
-
-        Parameters
-        ----------
-        value:
-            Callable ``value(x)`` accepting an element of ``dom`` and returning
-            a scalar-like value.
-        dom:
-            Domain space of the functional.
-        ctx:
-            Optional context specification for the functional and converted
-            domain.
-        vvalue:
-            Optional callable ``vvalue(xs)`` accepting a batch of domain
-            elements and returning a batch of scalar-like values.
-
-        Returns
-        -------
-        None
-            The initializer stores the callables and converted domain on
-            ``self``.
-        """
         if not callable(value):
             raise TypeError(f"value must be callable, got {type(value).__name__}.")
         if vvalue is not None and not callable(vvalue):

@@ -10,19 +10,14 @@ Shape: TypeAlias = Sequence[int]
 @runtime_checkable
 class ArrayLike(Protocol):
     """
-    Define the minimal array-like object accepted by backend helpers.
-
-    This intentionally only models common metadata. NumPy arrays, JAX arrays,
-    PyTorch tensors, sparse arrays, scalar-like backend arrays, and array
-    wrappers can satisfy this without implementing every dense-array method.
+    Minimal array-like protocol: common metadata only, satisfied by dense, sparse and scalar arrays.
 
     Parameters
     ----------
     *args : Any
-        Construction arguments accepted by concrete array implementations.
+        Construction arguments of the concrete type.
     **kwargs : Any
-        Keyword construction arguments accepted by concrete array
-        implementations.
+        Keyword construction arguments of the concrete type.
     """
 
     @property
@@ -34,21 +29,14 @@ class ArrayLike(Protocol):
 
 class SparseArray(ArrayLike, Protocol):
     """
-    Define the portable sparse-array surface used by sparse operators.
-
-    Backend-specific sparse APIs such as SciPy ``tocsr()``, JAX sparse
-    ``indices``/``data``, and Torch ``to_dense()`` are intentionally not part
-    of this protocol. Concrete backends may use those after checking that the
-    object belongs to their sparse family.
+    Portable sparse-array protocol; backend APIs such as ``tocsr()`` are deliberately excluded.
 
     Parameters
     ----------
     *args : Any
-        Construction arguments accepted by concrete sparse array
-        implementations.
+        Construction arguments of the concrete type.
     **kwargs : Any
-        Keyword construction arguments accepted by concrete sparse array
-        implementations.
+        Keyword construction arguments of the concrete type.
     """
 
     @property
@@ -61,20 +49,14 @@ class SparseArray(ArrayLike, Protocol):
 
 class DenseArray(ArrayLike, Protocol):
     """
-    Define the portable dense-array surface used by core abstractions.
-
-    The protocol includes only operations that SpaceCore core abstractions use
-    directly on dense arrays. Backend-specific metadata such as device,
-    sharding, layout, strides, and gradient state belongs to concrete backend
-    implementations, not to this portable type.
+    Portable dense-array protocol: the operations SpaceCore uses; devices, layout and gradients excluded.
 
     Parameters
     ----------
     *args : Any
-        Construction arguments accepted by concrete dense array implementations.
+        Construction arguments of the concrete type.
     **kwargs : Any
-        Keyword construction arguments accepted by concrete dense array
-        implementations.
+        Keyword construction arguments of the concrete type.
     """
 
     @property

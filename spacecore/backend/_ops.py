@@ -61,24 +61,11 @@ class BackendOps(ABC):
 
     @classmethod
     def install_pytree_protocol(cls) -> None:
-        """Register this backend's tree protocol with the container registry.
+        """
+        Register SpaceCore containers with this backend's pytree machinery; a no-op by default.
 
-        Called once per available backend as it is bound (see
-        :mod:`spacecore.backend`). A backend that implements this teaches its
-        function-transform machinery to see inside SpaceCore containers, so
-        instances can flow through that backend's tracing, batching and
-        differentiation rather than being treated as opaque leaves.
-
-        The default is a no-op, and that is the correct answer for a backend with
-        no transform machinery — NumPy and CuPy have no pytree registry to
-        register with.
-
-        Implementations translate
-        :meth:`~spacecore.backend._container.PyTreeNode.tree_flatten` /
-        ``tree_unflatten`` into whatever shape the backend expects and hand the
-        result to ``spacecore.backend._container.registry.register_backend``. Import the
-        backend's own modules *inside* this method, never at module scope, so an
-        absent or broken dependency cannot break ``import spacecore``.
+        Backends with transforms (JAX, torch) override this and import their modules inside
+        the method, so a missing dependency cannot break ``import spacecore``.
         """
         return
 
@@ -440,26 +427,10 @@ class BackendOps(ABC):
 
     def complex_dtype(self, dtype: DType) -> DType:
         """
-        Return the complex dtype with the same precision as ``dtype``.
+        Return the complex dtype of the same precision as ``dtype`` (``float32 -> complex64``).
 
-        The inverse of :meth:`real_dtype`, and the pairing a caller needs when
-        moving between a complex space and a real view of it. Backend dtype
-        policy belongs here rather than at the call site: promoting through
-        ``result_type(dtype, 1j)`` is *not* portable — NumPy widens ``float32``
-        to ``complex128`` because a Python ``complex`` is double precision, while
-        JAX and Torch give ``complex64``.
-
-        Parameters
-        ----------
-        dtype:
-            Backend or portable dtype specifier.
-
-        Returns
-        -------
-        DType
-            ``dtype`` itself when it is already complex; otherwise the complex
-            dtype whose real component is ``dtype`` (``complex64`` for float32,
-            ``complex128`` for float64).
+        Needed because ``result_type(float32, 1j)`` is ``complex128`` on NumPy but
+        ``complex64`` on JAX and torch.
         """
         dtype = self.sanitize_dtype(dtype)
         if self.is_complex_dtype(dtype):
@@ -742,28 +713,11 @@ class BackendOps(ABC):
         excluded: Sequence[int] | None = None,
         signature: str | None = None,
     ) -> Callable:
-        """Vectorize a scalar Python function over its array arguments.
+        """
+        Vectorize a scalar function over broadcast array arguments, like :func:`numpy.vectorize`.
 
-        Returns a callable that applies ``pyfunc`` elementwise, broadcasting
-        the array arguments against one another and preserving the broadcast
-        shape. Mirrors :func:`numpy.vectorize`.
-
-        Parameters
-        ----------
-        pyfunc:
-            Function called on scalar elements of the (broadcast) inputs.
-        excluded:
-            Positional argument indices passed through to ``pyfunc`` unchanged
-            instead of being vectorized.
-        signature:
-            Generalized-ufunc signature (e.g. ``"(n),(n)->()"``). Supported only
-            on backends that provide a native ``vectorize``.
-
-        Notes
-        -----
-        Delegates to the backend's native ``vectorize`` (NumPy, JAX, CuPy) when
-        available; otherwise applies a portable Python-loop fallback. The
-        fallback does not support ``signature``.
+        Uses the backend's native ``vectorize`` when present; the Python-loop fallback does
+        not support ``signature``.
         """
         if hasattr(self.xp, "vectorize"):
             kwargs: dict[str, Any] = {}

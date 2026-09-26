@@ -1,23 +1,9 @@
-"""Entropy objectives: negative entropy and KL divergence (ADR-019).
+"""
+Entropy objectives: negative entropy and KL divergence (ADR-019).
 
-References
-----------
-.. [Beck] A. Beck, *First-Order Methods in Optimization*, MOS-SIAM, 2017.
-   **§4.4.10** (a worked section, p. 97, not a numbered example) gives the
-   conjugate of the negative entropy over the unit simplex — the log-sum-exp
-   function of §4.4.11; Example 5.27 gives its ``1``-strong convexity over the
-   simplex w.r.t. the ``l_1`` norm — the property that makes it the standard
-   mirror-descent kernel (Example 9.10, entropic mirror descent / the
-   multiplicative-weights update).
-.. [Lifted] Composed with a Jordan spectrum via
-   :func:`~spacecore.spectralize`, the negative entropy becomes the **von Neumann
-   entropy** ``S(rho) = -tr(rho log rho)``; see Aubrun & Szarek, *Alice and Bob
-   Meet Banach*, AMS, 2017, **§1.3.3**, eq. (1.36) for the definition and
-   **Proposition 1.19(i)** for concavity of ``S`` — equivalently convexity of the
-   negative entropy — whose proof uses concavity of ``x -> -x log x`` together
-   with Klein's lemma. The majorization machinery it sits on is §1.3.1,
-   **Proposition 1.12** (``x < y`` iff ``x`` is a convex combination of
-   coordinate permutations of ``y`` iff ``y = Bx`` for a bistochastic ``B``).
+The negative entropy is the standard mirror-descent kernel (Beck, *First-Order
+Methods in Optimization*, 2017, Example 9.10); lifted with
+:func:`~spacecore.spectralize` it becomes the von Neumann entropy.
 """
 from __future__ import annotations
 
@@ -33,21 +19,16 @@ from ._coordinate import _CoordinateFunctional
 
 class NegativeEntropyFunctional(_CoordinateFunctional[Domain]):
     r"""
-    Negative (Shannon) entropy ``F(x) = sum_i x_i log x_i``.
-
-    The natural domain is the positive orthant ``x_i > 0``; the value uses the
-    convention ``0 log 0 = 0`` so the origin and zero coordinates evaluate
-    cleanly, but the gradient ``log x_i + 1`` is only defined for ``x_i > 0``.
+    Negative entropy ``sum_i x_i log x_i``, with ``0 log 0 = 0``; the gradient ``log x_i + 1`` needs ``x_i > 0``.
 
     Parameters
     ----------
     dom : Space
-        Domain space ``X``.
+        Domain.
     ctx : Context, str, or None, optional
-        Backend context specification. Default is resolved from ``dom``.
-    check_level : {{"none", "cheap", "standard", "strict"}}, optional
-        Runtime validation policy for this object. When omitted, the ambient
-        default (see :func:`spacecore.get_check_level`) is used.
+        Backend context; resolved from ``dom`` when omitted.
+    check_level : {"none", "cheap", "standard", "strict"}, optional
+        Validation level; the ambient default when omitted.
 
     Examples
     --------
@@ -99,28 +80,21 @@ class NegativeEntropyFunctional(_CoordinateFunctional[Domain]):
 
 class KLDivergenceFunctional(_CoordinateFunctional[Domain]):
     r"""
-    Kullback--Leibler divergence to a fixed positive ``target``.
+    Kullback-Leibler divergence ``sum_i x_i log(x_i / t_i)`` to a positive target ``t``.
 
-    ``F(x) = sum_i x_i log(x_i / t_i)`` against a strictly positive target ``t``.
-    The natural domain is ``x_i >= 0`` (with ``0 log 0 = 0``) and ``t_i > 0``.
-    With ``target`` equal to the all-ones element this reduces exactly to
-    :class:`NegativeEntropyFunctional`, and the gradient ``log(x_i / t_i) + 1``
-    reduces accordingly.
+    Defined for ``x_i >= 0`` (``0 log 0 = 0``); the gradient is ``log(x_i / t_i) + 1``.
+    With ``t`` all ones it is :class:`NegativeEntropyFunctional`.
 
     Parameters
     ----------
     target : array-like
-        Reference element ``t`` in ``dom`` with strictly positive coordinates.
+        Target ``t`` in ``dom``, strictly positive.
     dom : Space
-        Domain space ``X``. ADR-019 writes ``KLDivergenceFunctional(target)``;
-        the explicit space follows the ``(data, dom, ctx)`` constructor shape
-        used by :class:`~spacecore.functional.InnerProductFunctional`, because a
-        bare element does not carry its space.
+        Domain.
     ctx : Context, str, or None, optional
-        Backend context specification. Default is resolved from ``dom``.
-    check_level : {{"none", "cheap", "standard", "strict"}}, optional
-        Runtime validation policy for this object. When omitted, the ambient
-        default (see :func:`spacecore.get_check_level`) is used.
+        Backend context; resolved from ``dom`` when omitted.
+    check_level : {"none", "cheap", "standard", "strict"}, optional
+        Validation level; the ambient default when omitted.
 
     Examples
     --------

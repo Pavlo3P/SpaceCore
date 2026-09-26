@@ -12,26 +12,20 @@ from ..._check_policy import CheckLevel
 
 class SumToSingleLinOp(TreeLinOp[TreeSpace, Codomain]):
     r"""
-    Represent a sum of leaf operators from a tree domain.
-
-    If ``dom = X1 x ... x Xk`` and ``cod = Y``, component ``parts[i]`` maps
-    ``Xi`` to ``Y``. Forward application sums component outputs in ``Y``;
-    adjoint application returns a value with ``dom.treedef``.
+    Sum of operators from the leaves of a tree domain into one codomain; the adjoint returns a tree.
 
     Parameters
     ----------
     dom : TreeSpace
-        Tree-structured domain.
+        Tree domain.
     cod : Space
         Shared codomain.
     parts : sequence of LinOp
-        Operators from each product component to ``cod``.
+        One operator per domain leaf.
     ctx : Context, str, or None, optional
-        Backend context specification.
+        Backend context.
     check_level : {"none", "cheap", "standard", "strict"}, optional
-        Runtime validation policy for this operator. When omitted, the ambient
-        default (see :func:`spacecore.get_check_level`) is used. Validation
-        policy is a property of the operator, not of the ``Context``.
+        Validation level; the ambient default when omitted.
     """
 
     def __init__(

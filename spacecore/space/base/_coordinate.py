@@ -22,10 +22,7 @@ class CoordinateSpace(VectorSpace):
     ctx : Context, str, or None, optional
         Context specification used for coordinate arrays.
     check_level : {"none", "cheap", "standard", "strict"}, optional
-        Runtime validation policy for this object. When omitted, the ambient
-        default (see :func:`spacecore.get_check_level`) is used. Unlike the
-        backend/dtype context, the validation policy is a property of the bound
-        object, not of the :class:`Context`.
+        Validation level; the ambient default when omitted.
     """
 
     shape: Tuple[int, ...]

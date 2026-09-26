@@ -52,75 +52,38 @@ def expm_multiply(
     tol: float = 1e-10,
 ) -> ExpmMultiplyResult:
     r"""
-    Compute :math:`\exp(t A) v` by Krylov projection.
-
-    Require ``A`` to be square in the SpaceCore sense
-    (``A.domain == A.codomain``) and Hermitian with respect to
-    ``A.domain.inner``. The method builds a Lanczos basis and applies the
-    exponential of the small tridiagonal projection, avoiding dense
-    materialization of ``A``.
+    Compute :math:`\exp(t A) v` by Lanczos projection, without forming ``A``.
 
     Parameters
     ----------
     A : LinOp
-        Linear operator that must be Hermitian/self-adjoint with respect to
-        ``A.domain.inner``. ``A.domain`` must equal ``A.codomain``, including
-        the underlying space type and inner-product geometry. Operators with
-        structurally unknown Hermiticity (``A.is_hermitian()`` returns
-        ``None``) are accepted on trust; the caller is responsible for ensuring
-        Hermiticity. Non-Hermitian inputs produce undefined results.
+        Square operator, Hermitian in the domain's inner product. Known non-Hermitian
+        operators are rejected; unknown ones are trusted.
     v : array-like
-        Initial vector in ``A.domain``.
+        Vector in ``A.domain``.
     t : float or complex, optional
-        Scalar multiplier on ``A``. Complex values require a complex-valued
-        ``ctx.dtype`` such as ``complex64`` or ``complex128``. Using a complex
-        ``t`` with a real-valued context produces backend-dependent results.
-        Default is 1.0.
+        Scalar multiplying ``A``; a complex ``t`` needs a complex ``ctx.dtype``.
     max_iter : int, optional
-        Maximum Krylov dimension. Values around 20-50 are usually sufficient
-        when :math:`|t|\|A\|` is moderate. Must be a Python ``int`` rather
-        than a traced JAX scalar; under ``jax.jit`` it is treated as a static
-        argument and changing it triggers retracing. Default is 30.
+        Maximum Krylov dimension; 20 to 50 usually suffices. Static under ``jax.jit``.
     tol : float, optional
-        Tolerance used both for Lanczos breakdown and for the convergence flag:
-        ``result.converged`` is ``True`` when the projected exponential
-        residual estimate is below ``tol``. Default is 1e-10.
+        Breakdown threshold, and the residual below which ``converged`` is set.
 
     Returns
     -------
     ExpmMultiplyResult
-        Result vector in ``A.domain``, the Krylov dimension used, the standard
-        estimate ``abs(beta[m] * phi[m - 1])``, and a convergence flag.
+        The result vector, the Krylov dimension used, the residual estimate
+        :math:`|\beta_m \phi_{m-1}|`, and the convergence flag.
 
     Raises
     ------
     TypeError
         If ``A`` is not a :class:`LinOp`.
     ValueError
-        If ``A`` is not square, is known to be non-Hermitian, or if
-        ``max_iter`` is invalid.
+        If ``A`` is not square, is known non-Hermitian, or ``max_iter`` is invalid.
 
     See Also
     --------
-    lanczos_smallest : Build the related Hermitian Krylov projection.
-    power_iteration : Estimate a dominant eigenpair.
-
-    Notes
-    -----
-    The projected exponential is computed as
-    :math:`\exp(t T) e_0` using an eigendecomposition of the small real
-    symmetric tridiagonal matrix ``T``. This is JIT-compatible on the JAX
-    backend when ``max_iter`` is static.
-
-    Hermiticity is enforced only when it can be structurally verified: known
-    non-Hermitian operators raise ``ValueError``. Operators with unknown
-    structure, such as many matrix-free operators and operators on custom
-    spaces, are trusted.
-
-    The returned residual estimate is
-    :math:`|\beta_m \phi_{m-1}|`, where ``phi`` is the projected exponential
-    vector. Callers that need the true residual can perform one additional
-    operator application.
+    lanczos_smallest : The same Krylov projection, for eigenpairs.
 
     Examples
     --------

@@ -25,43 +25,26 @@ def least_squares(
     scale: float = 0.5,
 ) -> LinOpQuadraticForm:
     r"""
-    Build the least-squares objective ``scale * ||A x - b||^2`` as a quadratic form.
+    Build ``scale * ||A x - b||^2`` as a :class:`~spacecore.functional.LinOpQuadraticForm`.
 
-    The objective is expanded into the canonical
-    :class:`~spacecore.functional.LinOpQuadraticForm`
-    ``q(x) = 1/2 <x, Q x>_X + <c, x>_X + a`` with
-
-    * ``Q = 2 scale * (A.H @ A)`` (the normal operator, Hermitian by construction),
-    * ``c = -2 scale * A.H(b)`` (a Riesz/metric gradient, the linear term), and
-    * ``a = scale * <b, b>_Y`` (the constant residual energy),
-
-    so that ``q(x)`` equals ``scale * ||A x - b||_Y^2`` exactly on real spaces.
-    With ``scale = 0.5`` (the default) this is the textbook ``1/2 ||A x - b||^2``
-    and ``Q`` is exactly ``A.H @ A``.
-
-    Adjoints and inner products are taken in the operator's declared geometry
-    (ADR-009), so the result is metric-correct on non-Euclidean domains and
-    codomains without any extra work by the caller.
+    It is ``1/2 <x, Q x> + <c, x> + a`` with ``Q = 2 scale A.H A``, ``c = -2 scale A.H b``
+    and ``a = scale <b, b>``, all in the operator's own geometry.
 
     Parameters
     ----------
     A : LinOp
-        Forward operator ``A : X -> Y``.
+        Forward operator ``X -> Y``.
     b : array-like
-        Observation in the codomain ``Y = A.codomain``.
+        Observation in ``A.codomain``.
     weights : array-like or None, optional
-        Diagonal residual weights ``w`` with the codomain shape and strictly
-        positive, finite entries. When given, the objective is the weighted
-        least squares ``scale * <A x - b, W (A x - b)>_Y`` with ``W = diag(w)``.
-        Default ``None`` is the unweighted objective.
+        Positive diagonal residual weights ``w``, giving ``scale <r, diag(w) r>``.
     scale : float, optional
-        Positive scalar multiplying the squared residual. Default ``0.5``.
+        Positive factor; ``0.5`` gives the textbook ``1/2 ||A x - b||^2``.
 
     Returns
     -------
     LinOpQuadraticForm
-        Quadratic form whose ``value`` is the (weighted) least-squares objective
-        and whose ``grad`` is the metric gradient ``2 scale * A.H(W (A x - b))``.
+        The objective; its gradient is ``2 scale A.H (W (A x - b))``.
 
     Examples
     --------

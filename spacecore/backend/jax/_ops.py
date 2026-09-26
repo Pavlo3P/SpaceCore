@@ -11,49 +11,11 @@ from ...types import DenseArray, ArrayLike, SparseArray, DType, Index, X, T, Y, 
 
 class JaxOps(BackendOps):
     """
-    BackendOps implementation for the JAX ecosystem.
+    Backend operations on JAX arrays (``jax.Array``; sparse ``BCOO`` and ``BCSR``).
 
-    This backend uses JAX for dense array operations and JAX experimental
-    sparse arrays for sparse operations.
-
-    Dense arrays
-        jax.Array
-
-    Sparse arrays
-        jax.experimental.sparse.BCOO
-        jax.experimental.sparse.BCSR
-
-    Methods
-    -------
-        Most methods mirror the corresponding JAX public API signatures and
-        delegate to `jax.numpy`, `jax.numpy.linalg`, `jax.scipy`, or
-        `jax.experimental.sparse`. Backend-specific behavior, tracing rules,
-        dtype canonicalization, device placement, sharding, and error modes
-        therefore follow JAX semantics.
-
-    Backend handles
-      - jax : module
-            JAX module stored on the class and available through instances as
-            `ops.jax`. Advanced users may use it when SpaceCore's portable API
-            does not expose a required JAX feature.
-
-      - jnp : module
-            `jax.numpy` module stored on the class and available through
-            instances as `ops.jnp`.
-
-      - jsparse : module
-            `jax.experimental.sparse` module stored on the class and available
-            through instances as `ops.jsparse`.
-
-    Notes
-    -----
-        Code intended to remain backend-portable should prefer `BackendOps`
-        methods. Direct use of `ops.jax`, `ops.jnp`, or `ops.jsparse` is an
-        explicit JAX-specific escape hatch.
-
-        Some parameters are accepted for JAX signature compatibility even when
-        JAX ignores them. Array-creation routines may expose `device` and
-        `out_sharding` for explicit placement or sharding.
+    Methods delegate to ``jax.numpy`` and related modules, so dtypes, tracing, devices
+    and sharding follow JAX. ``ops.jax``, ``ops.jnp`` and ``ops.jsparse`` expose the
+    modules as an explicit JAX-only escape hatch.
     """
 
     import jax as _jax
@@ -91,21 +53,7 @@ class JaxOps(BackendOps):
         registry.register_backend("jax", jax.tree_util.register_pytree_node_class)
 
     def sanitize_dtype(self, dtype: DType | None) -> DType:
-        """
-        Normalize a dtype specifier using JAX.
-
-        Input:
-            dtype: Optional dtype requested by SpaceCore or the caller.
-
-        Output:
-            Backend dtype object accepted by array constructors.
-
-        See:
-            https://docs.jax.dev/en/latest/_autosummary/jax.numpy.dtype.html
-
-        Backend-specific notes:
-            SpaceCore rejects dtypes that JAX would silently canonicalize under the active x64 setting.
-        """
+        """Normalize a dtype for JAX, rejecting dtypes JAX would silently canonicalize under the active x64 setting."""
         x64_enabled = bool(self.jax.config.read("jax_enable_x64"))
         if dtype is None:
             if not x64_enabled:
@@ -178,21 +126,7 @@ class JaxOps(BackendOps):
         nse: int | None = None,
         dtype: DType | None = None,
     ) -> SparseArray:
-        """
-        Convert input to a sparse array using JAX.
-
-        Input:
-            x: Dense, sparse, or array-like input plus sparse-format options.
-
-        Output:
-            Sparse backend array.
-
-        See:
-            https://docs.jax.dev/en/latest/jax.experimental.sparse.html
-
-        Backend-specific notes:
-            Dense inputs are converted with JAX sparse BCOO/BCSR constructors; SciPy sparse inputs use from_scipy_sparse.
-        """
+        """Convert to a JAX sparse array (BCOO/BCSR); SciPy inputs go through ``from_scipy_sparse``."""
         import scipy.sparse as sps
         self._reject_complex_to_real(x, dtype, operation="assparse")
 
@@ -247,21 +181,7 @@ class JaxOps(BackendOps):
         raise ValueError(f"Unknown sparse format: {format!r}")
 
     def sparse_matmul(self, a: SparseArray, b: DenseArray) -> DenseArray:
-        """
-        Multiply sparse and dense arrays using JAX.
-
-        Input:
-            a: Sparse backend array; b: Dense backend array.
-
-        Output:
-            Dense backend array containing the product.
-
-        See:
-            https://docs.jax.dev/en/latest/jax.experimental.sparse.html
-
-        Backend-specific notes:
-            Uses JAX sparse matmul and returns a JAX array; sparse support remains experimental in JAX.
-        """
+        """Multiply a JAX sparse array by a dense one, returning a dense ``jax.Array``."""
         return a @ b
 
     def vmap(
@@ -304,21 +224,7 @@ class JaxOps(BackendOps):
         )
 
     def index_set(self, x: DenseArray, index: Index, values: ArrayLike, *, copy: bool = True):
-        """
-        Set indexed values using JAX.
-
-        Input:
-            x: Dense backend array; index: Selection; values: Replacement values; copy controls mutation policy.
-
-        Output:
-            Dense backend array with indexed values set.
-
-        See:
-            https://docs.jax.dev/en/latest/_autosummary/jax.Array.at.html
-
-        Backend-specific notes:
-            JAX arrays are immutable; copy=False raises NotImplementedError.
-        """
+        """Return ``x`` with ``x[index] = values`` via ``x.at[index].set``; ``copy=False`` raises, as JAX arrays are immutable."""
         if not copy:
             raise NotImplementedError("JAX arrays are immutable; copy=False is not supported.")
         return cast(Any, x).at[index].set(values)
@@ -347,21 +253,7 @@ class JaxOps(BackendOps):
         *,
         unroll: int | bool | None = None,
     ) -> T:
-        """
-        Run a counted loop primitive using JAX.
-
-        Input:
-            lower, upper: Loop bounds; body_fun: Loop body; init_val: Initial carry value.
-
-        Output:
-            Final carry value after loop execution.
-
-        See:
-            https://docs.jax.dev/en/latest/_autosummary/jax.lax.fori_loop.html
-
-        Backend-specific notes:
-            Loop bounds and unroll behavior follow JAX tracing and compilation rules.
-        """
+        """Run ``jax.lax.fori_loop``."""
         return self.jax.lax.fori_loop(lower, upper, body_fun, init_val, unroll=unroll)
 
     def while_loop(
@@ -370,21 +262,7 @@ class JaxOps(BackendOps):
         body_fun: Callable[[T], T],
         init_val: T,
     ) -> T:
-        """
-        Run a while-loop primitive using JAX.
-
-        Input:
-            cond_fun: Loop condition; body_fun: Loop body; init_val: Initial carry value.
-
-        Output:
-            Final carry value after loop execution.
-
-        See:
-            https://docs.jax.dev/en/latest/_autosummary/jax.lax.while_loop.html
-
-        Backend-specific notes:
-            Condition and body are staged according to JAX lax control-flow semantics.
-        """
+        """Run ``jax.lax.while_loop``."""
         return self.jax.lax.while_loop(cond_fun, body_fun, init_val)
 
     def scan(
@@ -397,21 +275,7 @@ class JaxOps(BackendOps):
         unroll: int = 1,
         _split_transpose: bool = False,
     ) -> Tuple[Carry, Y]:
-        """
-        Run a scan primitive using JAX.
-
-        Input:
-            f: Scan body; init: Initial carry; xs: Per-step inputs plus scan options.
-
-        Output:
-            Tuple of final carry and stacked outputs.
-
-        See:
-            https://docs.jax.dev/en/latest/_autosummary/jax.lax.scan.html
-
-        Backend-specific notes:
-            Inputs and outputs may be pytrees and are staged according to JAX lax.scan semantics.
-        """
+        """Run ``jax.lax.scan``; carries and outputs may be pytrees."""
         return self.jax.lax.scan(
             f,
             init,
@@ -429,39 +293,11 @@ class JaxOps(BackendOps):
         false_fun: Callable[[T], R],
         *operands: Any,
     ) -> R:
-        """
-        Run conditional branch selection using JAX.
-
-        Input:
-            pred: Predicate; true_fun and false_fun: Branch functions; operands: Branch inputs.
-
-        Output:
-            Result returned by the selected branch.
-
-        See:
-            https://docs.jax.dev/en/latest/_autosummary/jax.lax.cond.html
-
-        Backend-specific notes:
-            Branches are staged according to JAX lax.cond semantics rather than Python eager branching.
-        """
+        """Run ``jax.lax.cond``: both branches are traced, not chosen eagerly in Python."""
         return self.jax.lax.cond(pred, true_fun, false_fun, *operands)
 
     def index_add(self, x: DenseArray, index: Index, values: DenseArray, *, copy: bool = True):
-        """
-        Add into indexed values using JAX.
-
-        Input:
-            x: Dense backend array; index: Selection; values: Values to add; copy controls mutation policy.
-
-        Output:
-            Dense backend array with indexed values incremented.
-
-        See:
-            https://docs.jax.dev/en/latest/_autosummary/jax.Array.at.html
-
-        Backend-specific notes:
-            JAX arrays are immutable; copy=False raises NotImplementedError and repeated indices follow JAX scatter-add semantics.
-        """
+        """Return ``x`` with ``values`` added at ``index`` via ``x.at[index].add``; repeated indices accumulate, and ``copy=False`` raises."""
         if not copy:
             raise NotImplementedError("JAX arrays are immutable; copy=False is not supported.")
         return cast(Any, x).at[index].add(values)
@@ -473,21 +309,7 @@ class JaxOps(BackendOps):
         rtol: float = 1e-5,
         atol: float = 1e-8,
     ) -> bool:
-        """
-        Compare sparse arrays elementwise within tolerances using JAX.
-
-        Input:
-            a, b: Sparse backend arrays; rtol and atol configure comparison.
-
-        Output:
-            Boolean indicating whether sparse arrays are close.
-
-        See:
-            https://docs.jax.dev/en/latest/jax.experimental.sparse.html
-
-        Backend-specific notes:
-            SpaceCore converts JAX sparse arrays through SciPy sparse arrays for comparison.
-        """
+        """Compare two JAX sparse arrays within tolerances, via SciPy sparse."""
         self._require_two_sparse(a, b)
 
         np_ops = NumpyOps()

@@ -10,44 +10,11 @@ from ...types import ArrayLike, DenseArray, SparseArray, DType, Index
 
 class NumpyOps(EagerControlFlowMixin, BackendOps):
     """
-    BackendOps implementation for the NumPy/SciPy ecosystem.
+    Backend operations on NumPy arrays, with SciPy sparse matrices and arrays.
 
-    This backend uses NumPy for dense array operations and SciPy for sparse
-    array operations.
-
-    Dense arrays
-        numpy.ndarray
-
-    Sparse arrays
-        scipy.sparse.spmatrix
-        scipy.sparse.sparray
-
-    Methods
-    -------
-        Most methods mirror the corresponding NumPy or SciPy signatures and
-        delegate directly to NumPy/SciPy implementations. Backend-specific
-        behavior, dtype promotion, broadcasting, memory layout, and error modes
-        therefore follow NumPy/SciPy semantics.
-
-    Backend handles
-      - np : module
-        NumPy module stored on the class and available through instances as
-        `ops.np`. Advanced users may use it when SpaceCore's portable API
-        does not expose a required NumPy feature.
-
-      - sp : module
-        SciPy module stored on the class and available through instances as
-        `ops.sp`. Advanced users may use it for SciPy-specific functionality.
-
-    Notes
-    -----
-        Code intended to remain backend-portable should prefer `BackendOps`
-        methods. Direct use of `ops.np` or `ops.sp` is an explicit
-        NumPy/SciPy-specific escape hatch.
-
-        NumPy's `device` keyword is present for Array API interoperability.
-        When supplied, it must be `"cpu"` or `None`; see the corresponding NumPy
-        documentation for each method.
+    Methods delegate to NumPy and SciPy and follow their semantics; a ``device``
+    argument must be ``"cpu"`` or ``None``. ``ops.np`` and ``ops.sp`` are an explicit
+    escape hatch.
     """
 
     import numpy as _np
@@ -132,21 +99,7 @@ class NumpyOps(EagerControlFlowMixin, BackendOps):
     def assparse(
         self, x: Any, *, format: Literal["csr", "csc", "coo"] = "csr", dtype: DType | None = None
     ) -> SparseArray:
-        """
-        Convert input to a sparse array using SciPy.
-
-        Input:
-            x: Dense, sparse, or array-like input plus sparse-format options.
-
-        Output:
-            Sparse backend array.
-
-        See:
-            https://docs.scipy.org/doc/scipy/reference/sparse.html
-
-        Backend-specific notes:
-            SpaceCore currently converts dense inputs to 2-D SciPy sparse matrices in the requested format.
-        """
+        """Convert to a 2-D SciPy sparse matrix in the requested format."""
         sparse = self.sp.sparse
         self._reject_complex_to_real(x, dtype, operation="assparse")
 
@@ -176,21 +129,7 @@ class NumpyOps(EagerControlFlowMixin, BackendOps):
         raise ValueError(f"Unknown sparse format: {format!r}")
 
     def sparse_matmul(self, a: SparseArray, b: DenseArray) -> DenseArray:
-        """
-        Multiply sparse and dense arrays using SciPy.
-
-        Input:
-            a: Sparse backend array; b: Dense backend array.
-
-        Output:
-            Dense backend array containing the product.
-
-        See:
-            https://docs.scipy.org/doc/scipy/reference/sparse.html
-
-        Backend-specific notes:
-            Uses SciPy sparse multiplication before returning a dense NumPy result when applicable.
-        """
+        """Multiply a SciPy sparse matrix by a dense array."""
         if not self.is_sparse(a):
             raise TypeError("sparse_matmul expects `a` to be a SciPy sparse matrix/array.")
         if not self.is_dense(b):
@@ -251,21 +190,7 @@ class NumpyOps(EagerControlFlowMixin, BackendOps):
         rtol: float = 1e-5,
         atol: float = 1e-8,
     ) -> bool:
-        """
-        Compare sparse arrays elementwise within tolerances using SciPy.
-
-        Input:
-            a, b: Sparse backend arrays; rtol and atol configure comparison.
-
-        Output:
-            Boolean indicating whether sparse arrays are close.
-
-        See:
-            https://docs.scipy.org/doc/scipy/reference/sparse.html
-
-        Backend-specific notes:
-            Sparse inputs are converted to CSR and compared by logical sparse difference.
-        """
+        """Compare two SciPy sparse matrices within tolerances, via their CSR difference."""
         self._require_two_sparse(a, b)
 
         a_csr = cast(Any, a).tocsr()

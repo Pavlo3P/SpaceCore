@@ -43,8 +43,7 @@ class Field(InnerProductSpace):
     ctx : Context, str, or None, optional
         Backend context specification. Default is the ambient context.
     check_level : {"none", "cheap", "standard", "strict"}, optional
-        Runtime validation policy for this space. When omitted, the ambient
-        default (see :func:`spacecore.get_check_level`) is used.
+        Validation level; the ambient default when omitted.
     """
 
     checks = (ScalarShapeCheck(),)
@@ -93,8 +92,7 @@ class RealField(Field):
     ctx : Context, str, or None, optional
         Backend context specification. Default is the ambient context.
     check_level : {"none", "cheap", "standard", "strict"}, optional
-        Runtime validation policy for this space. When omitted, the ambient
-        default (see :func:`spacecore.get_check_level`) is used.
+        Validation level; the ambient default when omitted.
     """
 
     declared_scalar_field = "real"
@@ -113,8 +111,7 @@ class ComplexField(Field):
     ctx : Context, str, or None, optional
         Backend context specification. Default is the ambient context.
     check_level : {"none", "cheap", "standard", "strict"}, optional
-        Runtime validation policy for this space. When omitted, the ambient
-        default (see :func:`spacecore.get_check_level`) is used.
+        Validation level; the ambient default when omitted.
     """
 
     declared_scalar_field = "complex"

@@ -62,93 +62,49 @@ def cg(
     r"""
     Solve :math:`A x = b` by conjugate gradients.
 
-    Require ``A`` to be square in the SpaceCore sense
-    (``A.domain == A.codomain``), Hermitian, and positive-definite with respect
-    to ``A.domain.inner``. The implementation uses only :meth:`LinOp.apply` and
-    the domain-space inner product; it never materializes a dense matrix.
+    ``A`` must be square (``A.domain == A.codomain``), Hermitian and positive-definite
+    in the domain's inner product. Only ``A.apply`` and that inner product are used.
 
     Parameters
     ----------
     A : LinOp
-        Linear operator that must be Hermitian positive-definite with respect
-        to ``A.domain.inner``. ``A.domain`` must equal ``A.codomain``,
-        including the underlying space type and inner-product geometry. An
-        operator that is *provably* non-self-adjoint in this geometry
-        (``A.is_hermitian() is False``) is rejected at entry with a
-        ``ValueError``. Operators whose Hermiticity is unknown
-        (``A.is_hermitian() is None``, e.g. matrix-free operators) are accepted
-        unchecked; positive-definiteness is likewise not validated, so
-        indefinite or otherwise unsuitable operators can still diverge or
-        produce NaN outputs without an explicit error.
+        Hermitian positive-definite operator. One that is provably not Hermitian is
+        rejected; definiteness is not checked.
     b : array-like
         Right-hand side in ``A.codomain``.
     x0 : array-like or None, optional
-        Initial guess in ``A.domain``. Default is the zero vector.
+        Initial guess; zero by default.
     tol : float, optional
-        Relative tolerance on the linear-system residual. ``result.converged``
-        is ``True`` when the residual norm is below
-        ``atol + tol * norm(b)``. Default is 1e-6.
+        Converged when the residual norm is below ``atol + tol * norm(b)``.
     atol : float, optional
-        Absolute residual tolerance. Default is 0.0.
+        Absolute residual tolerance.
     maxiter : int or None, optional
-        Maximum number of iterations. Default is ``prod(A.domain.shape)``.
+        Iteration cap; ``prod(A.domain.shape)`` by default.
     check_every : int, optional
-        Refresh convergence diagnostics every this many iterations and always
-        on the final iteration. Default is
-        ``DEFAULT_CONVERGENCE_CHECK_INTERVAL``.
+        Test convergence every this many iterations, and on the last one.
 
     Returns
     -------
     CGResult
-        Named tuple with fields:
-
-        - ``x``: approximate solution in ``A.domain``
-        - ``converged``: whether the requested tolerance was met
-        - ``num_iters``: number of iterations executed
-        - ``residual_norm``: final residual norm
+        ``(x, converged, num_iters, residual_norm)``.
 
     Raises
     ------
     TypeError
         If ``A`` is not a :class:`LinOp`.
     ValueError
-        If ``A`` is not square or if iteration parameters are invalid.
+        If ``A`` is not square or an iteration parameter is invalid.
 
     See Also
     --------
-    lsqr : Solve least-squares systems for rectangular operators.
-    lanczos_smallest : Approximate the smallest eigenpair of a Hermitian
-        operator.
+    lsqr : Least squares for rectangular operators.
 
     Notes
     -----
-    The residual norm is compared with
-    :math:`\text{atol} + \text{tol} \| b \|` only every ``check_every``
-    iterations, and always on the final iteration. This keeps convergence
-    checks out of the hot loop while remaining compatible with JAX JIT control
-    flow. ``maxiter`` and ``check_every`` should be treated as static JAX
-    arguments.
-
-    Iteration also stops when no numerically useful CG update remains: either
-    the squared residual is at machine-precision scale or the curvature
-    ``inner(p, A p)`` is nonpositive/tiny relative to the residual scale. The
-    residual is refreshed before this early exit, so ``converged`` still
-    reflects the returned iterate.
-
-    For complex operators, residual norms and step sizes are computed from the
-    real part of ``A.domain.inner(x, y)``. SpaceCore's complex inner-product
-    convention conjugates the first argument; custom :class:`Space` subclasses
-    must follow that convention for CG to converge correctly.
-
-    Inner products and norms use ``A.domain.inner`` and ``A.domain.norm``.
-    The method is correct on non-Euclidean geometries when the space supplies
-    Riesz maps and ``A`` is Hermitian positive-definite in that geometry.
-
-    References
-    ----------
-    Hestenes, M. R. and Stiefel, E., "Methods of Conjugate Gradients
-    for Solving Linear Systems," J. Res. Natl. Bur. Stand., 49 (1952),
-    409-436.
+    JIT-compatible on JAX with ``maxiter`` and ``check_every`` static. Stops early when
+    no useful update remains (residual at machine precision, or non-positive
+    curvature). Complex inner products conjugate their first argument. Hestenes and
+    Stiefel, J. Res. Natl. Bur. Stand. 49 (1952).
 
     Examples
     --------

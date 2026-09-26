@@ -29,20 +29,12 @@ def _entry_points(group: str) -> list:
 
 
 def discover_entry_point_ops() -> list[type[BackendOps]]:
-    """Discover backend ops classes advertised by installed packages.
+    """
+    Return the backend classes advertised through ``spacecore.backends`` entry points.
 
-    A third-party package registers a SpaceCore backend by declaring a
-    ``spacecore.backends`` entry point pointing at a :class:`BackendOps`
-    subclass, e.g. in its ``pyproject.toml``::
-
-        [project.entry-points."spacecore.backends"]
-        mlx = "spacecore_mlx:MLXOps"
-
-    This makes the backend layer *open for extension* — a new backend is added by
-    installing a package, not by editing SpaceCore. Each entry point is loaded
-    defensively: a load failure, or a target that is not a ``BackendOps``
-    subclass, is skipped with a :class:`UserWarning` rather than aborting
-    ``import spacecore`` — the same non-fatal contract as :func:`import_backend`.
+    A package adds a backend with, e.g., ``mlx = "spacecore_mlx:MLXOps"`` under
+    ``[project.entry-points."spacecore.backends"]``. An entry that fails to load or is
+    not a ``BackendOps`` subclass is skipped with a ``UserWarning``.
     """
     discovered: list[type[BackendOps]] = []
     for ep in _entry_points(_ENTRY_POINT_GROUP):
@@ -73,32 +65,23 @@ def _backend_absent(exc: ModuleNotFoundError, dep: str) -> bool:
 
 
 def import_backend(module: str, dep: str):
-    """Import an optional backend submodule of ``spacecore.backend``.
+    """
+    Import an optional backend submodule, or return ``None`` if its dependency is absent.
+
+    A missing dependency returns ``None`` silently; any other import failure also
+    returns ``None``, but warns, so a broken install is visible.
 
     Parameters
     ----------
     module : str
-        Submodule to import, relative to ``spacecore.backend`` (for example
-        ``".jax"``).
+        Submodule relative to ``spacecore.backend``, e.g. ``".jax"``.
     dep : str
-        Import name of the optional third-party dependency the submodule
-        needs (for example ``"jax"``).
+        Import name of the third-party dependency, e.g. ``"jax"``.
 
     Returns
     -------
     module or None
-        The imported module, or ``None`` when ``dep`` is not installed.
-
-    Notes
-    -----
-    An *absent* dependency (``dep`` not installed) is turned into ``None``
-    silently — that is the normal "backend not present" case. Any *other*
-    import failure means the backend is installed but cannot load: broken
-    against a mismatched runtime, shadowed by a namespace shim, a partial
-    install, or a missing transitive dependency. Those are also non-fatal
-    (an optional backend must never abort ``import spacecore``) but they are
-    surfaced with a :class:`UserWarning` rather than hidden, so a genuinely
-    broken install is diagnosable instead of invisible.
+        The module, or ``None``.
     """
     try:
         return importlib.import_module(module, package=__package__)
@@ -115,33 +98,17 @@ def import_backend(module: str, dep: str):
 
 @lru_cache(maxsize=1)
 def available_ops() -> tuple[type[BackendOps], ...]:
-    """Backend ops classes whose optional dependency is importable.
+    """
+    Return the importable backend classes, NumPy first, then built-ins, then entry-point plugins.
 
-    NumPy is always present. Each built-in optional backend is attempted; a
-    missing dependency is skipped, while any *other* import failure warns and is
-    skipped. External backends advertised via ``spacecore.backends`` entry points
-    (see :func:`discover_entry_point_ops`) are appended last; a built-in family
-    takes precedence, so a plugin cannot shadow (for example) ``"numpy"``.
-
-    **Cached for the process.** Discovery is not free — it attempts a real import
-    per optional backend and scans packaging metadata for entry points — and it is
-    called from several places during ``import spacecore``. Without the cache a
-    present-but-broken backend emits its warning once per call, so one broken
-    install reads as several distinct problems.
-
-    The result is a tuple, not a list, precisely because it is shared: a cached
-    mutable sequence would let one caller's edit reach every other caller.
-
-    Availability is a property of the environment and does not change within a
-    process, so the cache never needs invalidating in normal use. Registering a
-    backend at runtime goes to :class:`~spacecore.backend.OpsRegistry` and does not
-    pass through here. Tests that monkeypatch the import machinery or the entry
-    points must call ``available_ops.cache_clear()``.
+    A built-in family cannot be shadowed by a plugin. The result is cached for the
+    process, since discovery imports modules and would otherwise repeat its warnings;
+    tests that patch imports call ``available_ops.cache_clear()``.
 
     Returns
     -------
     tuple of type of BackendOps
-        Available ops classes, always starting with :class:`NumpyOps`.
+        The available classes.
     """
     ops: list[type[BackendOps]] = [NumpyOps]
     for module, attr, dep in _OPTIONAL_OPS:
@@ -188,23 +155,23 @@ def is_available(family: str) -> bool:
 
 
 def require_backend(family: str) -> type[BackendOps]:
-    """Return the ops class for ``family`` or raise an actionable error.
+    """
+    Return the backend class for ``family``, or raise ``ImportError`` naming the extra to install.
 
     Parameters
     ----------
     family : str
-        Lowercase backend family name (for example ``"jax"``).
+        Lowercase family name, e.g. ``"jax"``.
 
     Returns
     -------
     type of BackendOps
-        The ops class for ``family``.
+        The backend class.
 
     Raises
     ------
     ImportError
-        If the family's optional dependency is not installed, with a message
-        pointing at the corresponding ``spacecore`` extra.
+        If the family's dependency is not installed.
     """
     for o in available_ops():
         if o._family == family:

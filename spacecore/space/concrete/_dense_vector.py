@@ -65,22 +65,18 @@ def _validate_euclidean_elementwise_jordan(
 
 class DenseVectorSpace(DenseCoordinateSpace, StarSpace):
     """
-    Plain one-dimensional dense vectors with no Jordan capability by default.
+    One-dimensional dense vectors, without Jordan structure by default.
 
     Parameters
     ----------
     shape : tuple of int
-        One-dimensional dense vector shape.
+        One-dimensional shape.
     ctx : Context, str, or None, optional
-        Context specification used for dense arrays.
+        Backend context.
     geometry : InnerProduct or None, optional
-        Inner-product geometry. If omitted, Euclidean coordinate geometry is
-        used.
+        Inner product; Euclidean when omitted.
     check_level : {"none", "cheap", "standard", "strict"}, optional
-        Runtime validation policy for this object. When omitted, the ambient
-        default (see :func:`spacecore.get_check_level`) is used. Unlike the
-        backend/dtype context, the validation policy is a property of the bound
-        object, not of the :class:`Context`.
+        Validation level; the ambient default when omitted.
     """
 
     def __init__(
@@ -106,22 +102,18 @@ class DenseVectorSpace(DenseCoordinateSpace, StarSpace):
 
 class ElementwiseJordanSpace(PyTreeNode, JordanAlgebraSpace, DenseCoordinateSpace, StarSpace):
     """
-    Elementwise Jordan algebra for real or complex dense coordinates.
+    Dense coordinates with the elementwise Jordan product, real or complex.
 
     Parameters
     ----------
     shape : tuple of int
-        Canonical dense array shape for one element.
+        Element shape.
     ctx : Context, str, or None, optional
-        Context specification used for dense arrays.
+        Backend context.
     geometry : InnerProduct or None, optional
-        Inner-product geometry. If omitted, Euclidean coordinate geometry is
-        used.
+        Inner product; Euclidean when omitted.
     check_level : {"none", "cheap", "standard", "strict"}, optional
-        Runtime validation policy for this object. When omitted, the ambient
-        default (see :func:`spacecore.get_check_level`) is used. Unlike the
-        backend/dtype context, the validation policy is a property of the bound
-        object, not of the :class:`Context`.
+        Validation level; the ambient default when omitted.
     inner_product : InnerProduct or None, optional
         Alias for ``geometry``.
     """
@@ -226,22 +218,18 @@ class ElementwiseJordanSpace(PyTreeNode, JordanAlgebraSpace, DenseCoordinateSpac
 
 class EuclideanElementwiseJordanSpace(ElementwiseJordanSpace, EuclideanJordanAlgebraSpace):
     """
-    Real elementwise Euclidean Jordan algebra.
+    Real elementwise Jordan algebra with Euclidean geometry, selected automatically for that case.
 
     Parameters
     ----------
     shape : tuple of int
-        Canonical dense array shape for one element.
+        Element shape.
     ctx : Context, str, or None, optional
-        Context specification used for dense arrays.
+        Backend context.
     geometry : InnerProduct or None, optional
-        Inner-product geometry. This class is selected only for real contexts
-        with Euclidean coordinate geometry.
+        Inner product; Euclidean when omitted.
     check_level : {"none", "cheap", "standard", "strict"}, optional
-        Runtime validation policy for this object. When omitted, the ambient
-        default (see :func:`spacecore.get_check_level`) is used. Unlike the
-        backend/dtype context, the validation policy is a property of the bound
-        object, not of the :class:`Context`.
+        Validation level; the ambient default when omitted.
     inner_product : InnerProduct or None, optional
         Alias for ``geometry``.
     """

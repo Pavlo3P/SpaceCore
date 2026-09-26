@@ -12,46 +12,11 @@ from ...types import ArrayLike, DenseArray, DType, Index, SparseArray
 
 class TorchOps(EagerControlFlowMixin, BackendOps):
     """
-    BackendOps implementation for PyTorch tensors.
+    Backend operations on PyTorch tensors (strided dense, or any sparse layout).
 
-    This backend uses PyTorch for dense and sparse tensor operations.
-
-    Dense arrays
-        torch.Tensor with strided layout
-
-    Sparse arrays
-        torch.Tensor with a PyTorch sparse layout
-
-    Methods
-    -------
-        Most methods mirror the corresponding PyTorch public API signatures and
-        delegate to ``torch`` or ``torch.linalg``. Backend-specific behavior,
-        dtype promotion, broadcasting, device placement, autograd tracking, and
-        error modes therefore follow PyTorch semantics.
-
-    Backend handles
-      - torch : module
-            PyTorch module stored on the class and available through instances
-            as ``ops.torch``. Advanced users may use it when SpaceCore's
-            portable API does not expose a required PyTorch feature.
-
-    Notes
-    -----
-        Code intended to remain backend-portable should prefer ``BackendOps``
-        methods. Direct use of ``ops.torch`` is an explicit PyTorch-specific
-        escape hatch.
-
-        ``TorchOps`` follows PyTorch dtype defaults. When no dtype is provided,
-        ``sanitize_dtype(None)`` returns ``torch.get_default_dtype()``. Python
-        ``complex`` maps to ``torch.complex64`` or ``torch.complex128`` based
-        on the active default floating dtype, and NumPy dtype specifiers are
-        mapped to their corresponding PyTorch dtypes when supported.
-
-        Array creation and conversion methods may accept a backend-specific
-        ``device=`` keyword. Existing tensors stay on their device unless an
-        explicit device conversion is requested. Dense conversion and ordinary
-        math operations do not detach tensors; autograd metadata is preserved
-        according to normal PyTorch rules.
+    Methods delegate to ``torch`` and ``torch.linalg``, so dtypes, devices and autograd
+    follow PyTorch; ``sanitize_dtype(None)`` is ``torch.get_default_dtype()``.
+    ``ops.torch`` is an explicit PyTorch-only escape hatch.
     """
 
     import torch as _torch
@@ -79,24 +44,13 @@ class TorchOps(EagerControlFlowMixin, BackendOps):
 
     @classmethod
     def install_pytree_protocol(cls) -> None:
-        """Register SpaceCore containers as Torch pytree nodes.
+        """
+        Register SpaceCore containers as torch pytree nodes.
 
-        Unlike the JAX adapter, this one has real translating to do: Torch's
-        registry expects children as a ``list`` and calls ``unflatten(children,
-        context)``, the reverse of the ``(aux, children)`` order
-        :class:`~spacecore.backend._container.PyTreeNode` defines (which follows
-        JAX). Absorbing that mismatch here is the point of a per-backend adapter
-        — no container class has to know either convention.
-
-        Registering with ``torch.utils._pytree`` also covers
-        ``torch.utils._cxx_pytree`` (the optree-backed implementation selected by
-        ``PYTORCH_USE_CXX_PYTREE=1``): Torch mirrors registrations across the two,
-        so a single call serves both and registering twice would raise.
-
-        ``torch.utils._pytree`` is private API — there is no public alias in
-        Torch 2.x — so this is a deliberate coupling to a Torch internal. It is
-        confined to this adapter, and a breaking change there degrades to a
-        warning from the registry rather than an import failure.
+        Torch takes children as a list and calls ``unflatten(children, context)``, the
+        reverse of :class:`~spacecore.backend._container.PyTreeNode`'s order; this adapter
+        translates. ``torch.utils._pytree`` is private API. Registering there also covers
+        the C++ pytree, and a breaking change degrades to a registry warning.
         """
         import torch.utils._pytree as torch_pytree
 
@@ -177,22 +131,7 @@ class TorchOps(EagerControlFlowMixin, BackendOps):
         return isinstance(x, self.torch.Tensor) and x.layout in self._sparse_layouts
 
     def sanitize_dtype(self, dtype: DType | None) -> DType:
-        """
-        Normalize a dtype specifier using PyTorch.
-
-        Input:
-            dtype: Optional dtype requested by SpaceCore or the caller.
-
-        Output:
-            Backend dtype object accepted by PyTorch tensor constructors.
-
-        See:
-            https://docs.pytorch.org/docs/stable/tensor_attributes.html#torch-dtype
-
-        Backend-specific notes:
-            ``None`` follows ``torch.get_default_dtype()``. NumPy dtype
-            specifiers are mapped to equivalent PyTorch dtypes when supported.
-        """
+        """Normalize a dtype for torch; ``None`` gives ``torch.get_default_dtype()`` and NumPy dtypes map to their torch equivalents."""
         if dtype is None:
             return self.torch.get_default_dtype()
         if isinstance(dtype, self.torch.dtype):
@@ -240,22 +179,7 @@ class TorchOps(EagerControlFlowMixin, BackendOps):
         dtype: DType | None = None,
         device: Any | None = None,
     ) -> SparseArray:
-        """
-        Convert input to a sparse tensor using PyTorch.
-
-        Input:
-            x: Dense, sparse, or SciPy sparse input plus sparse format, dtype, and device.
-
-        Output:
-            Sparse backend tensor in COO, CSR, or CSC format.
-
-        See:
-            https://docs.pytorch.org/docs/stable/sparse.html
-
-        Backend-specific notes:
-            SciPy sparse inputs are converted through COO indices and values.
-            Dense inputs are converted through PyTorch's sparse COO conversion.
-        """
+        """Convert to a torch sparse tensor (COO, CSR or CSC); SciPy inputs go through COO indices and values."""
         self._reject_complex_to_real(x, dtype, operation="assparse")
         dtype = self.sanitize_dtype(dtype) if dtype is not None else None
         if self.is_sparse(x):
@@ -580,23 +504,7 @@ class TorchOps(EagerControlFlowMixin, BackendOps):
         *,
         out: DenseArray | None = None,
     ) -> DenseArray | tuple[DenseArray, DenseArray]:
-        """
-        Compute log-sum-exp using PyTorch.
-
-        Input:
-            a: Dense backend tensor; axis, b, keepdims, return_sign: Reduction controls.
-
-        Output:
-            Dense backend tensor, or ``(value, sign)`` when ``return_sign`` is true.
-
-        See:
-            https://docs.pytorch.org/docs/stable/generated/torch.logsumexp.html
-
-        Backend-specific notes:
-            Weighted and signed variants are implemented in SpaceCore because
-            PyTorch's public ``logsumexp`` does not expose SciPy-style ``b`` or
-            ``return_sign`` parameters.
-        """
+        """Compute log-sum-exp, with SciPy's ``b`` and ``return_sign`` options, which torch lacks, implemented here."""
         dim = tuple(range(a.ndim)) if axis is None else axis
         if b is None and not return_sign:
             return self.torch.logsumexp(a, dim=dim, keepdim=keepdims, out=out)
@@ -674,21 +582,6 @@ class TorchOps(EagerControlFlowMixin, BackendOps):
     def allclose_sparse(
         self, a: SparseArray, b: SparseArray, rtol: float = 1e-5, atol: float = 1e-8
     ) -> bool:
-        """
-        Compare sparse tensors elementwise within tolerances using PyTorch.
-
-        Input:
-            a, b: Sparse backend tensors; rtol and atol: Comparison controls.
-
-        Output:
-            Boolean indicating whether sparse tensors are close.
-
-        See:
-            https://docs.pytorch.org/docs/stable/sparse.html
-
-        Backend-specific notes:
-            Sparse tensors are compared by converting both operands to dense
-            tensors before calling ``allclose``.
-        """
+        """Compare two torch sparse tensors within tolerances, by densifying both."""
         self._require_two_sparse(a, b, noun="sparse tensors")
         return self.allclose(cast(Any, a).to_dense(), cast(Any, b).to_dense(), rtol=rtol, atol=atol)

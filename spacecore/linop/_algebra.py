@@ -63,74 +63,55 @@ def _require_linop(op: Any, name: str) -> LinOp:
 
 def make_sum(ops: Sequence[LinOp]) -> LinOp:
     """
-    Return a locally simplified lazy sum of linear operators.
-
-    This factory performs only local algebraic canonicalization: nested
-    ``SumLinOp`` nodes are flattened and ``ZeroLinOp`` terms are removed. It
-    does not collect like terms, reorder operands, or attempt full symbolic
-    optimization. All operands must have the same context, domain, and codomain
-    before a simplified operator is returned.
+    Return the lazy sum of operators, with nested sums flattened and zero terms dropped.
 
     Parameters
     ----------
     ops : sequence of LinOp
-        Nonempty sequence of operators with common domain and codomain.
+        Operators sharing context, domain and codomain.
 
     Returns
     -------
     LinOp
-        Simplified lazy sum, a single operand, or a zero operator.
+        The sum, the single remaining operand, or a zero operator.
     """
     return make_sum_of(LinOp, ops)
 
 
 def make_scaled(scalar: Any, op: LinOp) -> LinOp:
     """
-    Return a locally simplified scalar multiple of a linear operator.
-
-    This factory performs only local algebraic canonicalization: zero and unit
-    scalars are simplified, and nested ``ScaledLinOp`` nodes are folded into one
-    scalar. It does not distribute scaling over sums or perform full symbolic
-    optimization. Complex scalars retain the usual conjugated coefficient in
-    ``rapply`` through ``ScaledLinOp``.
+    Return ``scalar * op``: ``0`` gives zero, ``1`` gives ``op``, nested scalars fold.
 
     Parameters
     ----------
     scalar : scalar-like
-        Scalar coefficient multiplying ``op``.
+        Coefficient.
     op : LinOp
         Operator to scale.
 
     Returns
     -------
     LinOp
-        Simplified scalar multiple.
+        The scaled operator.
     """
     return make_scaled_of(LinOp, scalar, op)
 
 
 def make_composed(left: LinOp, right: LinOp) -> LinOp:
     """
-    Return a locally simplified composition of two linear operators.
-
-    This factory performs only local algebraic canonicalization: identity
-    factors are removed and compositions with zero maps become zero maps. It
-    preserves the binary ``ComposedLinOp`` representation and does not flatten
-    multi-factor chains or attempt full symbolic optimization. Operands must
-    have the same context and compatible middle spaces before a simplified
-    operator is returned.
+    Return ``left @ right``, dropping identity factors and collapsing zero factors.
 
     Parameters
     ----------
     left : LinOp
         Operator applied second.
     right : LinOp
-        Operator applied first.
+        Operator applied first; ``right.codomain`` must equal ``left.domain``.
 
     Returns
     -------
     LinOp
-        Simplified lazy composition representing ``left @ right``.
+        The composition.
     """
     left = _require_linop(left, "left")
     right = _require_linop(right, "right")
@@ -155,34 +136,16 @@ def make_composed(left: LinOp, right: LinOp) -> LinOp:
 @core_kernels("scaled")
 class ScaledLinOp(ScaledNode, LinOp[Domain, Codomain]):
     r"""
-    Lazy scalar multiple of a linear operator.
-
-    ``ScaledLinOp(alpha, A)`` represents the mathematical operator
-    ``alpha * A``. Its context is exactly ``A.ctx``; its domain is ``A.domain``
-    and its codomain is ``A.codomain``. No dense matrix representation is
-    formed.
-
-    The forward action is ``apply(x) = alpha * A.apply(x)`` for
-    ``x in A.domain``. The reverse action is
-    ``rapply(y) = conj(alpha) * A.rapply(y)`` for ``y in A.codomain``, so
-    complex scalars use the conjugated coefficient.
+    Lazy ``scalar * op``; its adjoint is ``conj(scalar) * op.H``.
 
     Parameters
     ----------
     scalar : scalar-like
-        Scalar multiplier.
+        Coefficient.
     op : LinOp
-        Operator being scaled.
+        Operator to scale.
     check_level : {"none", "cheap", "standard", "strict"}, optional
-        Runtime validation policy for this object. When omitted, the ambient
-        default (see :func:`spacecore.get_check_level`) is used. Unlike the
-        backend/dtype context, the validation policy is a property of the bound
-        object, not of the :class:`Context`.
-
-    Attributes
-    ----------
-    scalar : scalar-like
-        Stored scalar multiplier.
+        Validation level; the ambient default when omitted.
     """
 
     def __init__(self, scalar: Any, op: LinOp[Domain, Codomain], check_level: CheckLevel | bool | None = None) -> None:
@@ -239,19 +202,12 @@ class ScaledLinOp(ScaledNode, LinOp[Domain, Codomain]):
 
     def is_hermitian(self) -> bool | None:
         """
-        Return whether this scaled operator is structurally Hermitian.
-
-        For a real scalar ``s`` the adjoint satisfies ``(s A)* = s A*``, so
-        ``s A`` is self-adjoint exactly when ``A`` is; the operand's verdict is
-        propagated faithfully. For a non-real scalar the relation becomes
-        ``(s A)* = conj(s) A* != s A`` in general, so Hermiticity cannot be
-        decided cheaply and ``None`` is returned.
+        Return ``op.is_hermitian()`` for a real scalar, else ``None`` (undecided).
 
         Returns
         -------
         bool | None
-            ``self.op.is_hermitian()`` when ``self.scalar`` is real, otherwise
-            ``None`` for unknown.
+            Structural Hermiticity, or ``None`` when unknown.
         """
         if _conjugate_scalar(self.scalar) == self.scalar:
             return self.op.is_hermitian()
@@ -264,32 +220,14 @@ class ScaledLinOp(ScaledNode, LinOp[Domain, Codomain]):
 @core_kernels("sum")
 class SumLinOp(SumNode, LinOp[Domain, Codomain]):
     r"""
-    Lazy finite sum of linear operators with common spaces.
-
-    ``SumLinOp((A1, ..., Ak))`` represents ``A1 + ... + Ak`` for a nonempty
-    sequence of ``LinOp`` instances. All operands must have the same ``ctx``,
-    the same domain, and the same codomain before construction. The resulting
-    operator has that shared context, domain, and codomain.
-
-    The forward action is ``apply(x) = sum_i Ai.apply(x)`` for the shared
-    domain element ``x``. The reverse action is
-    ``rapply(y) = sum_i Ai.rapply(y)`` for the shared codomain element ``y``.
+    Lazy sum of operators sharing context, domain and codomain.
 
     Parameters
     ----------
     ops : sequence of LinOp
-        Nonempty sequence of operators with common context, domain, and
-        codomain.
+        The summands.
     check_level : {"none", "cheap", "standard", "strict"}, optional
-        Runtime validation policy for this object. When omitted, the ambient
-        default (see :func:`spacecore.get_check_level`) is used. Unlike the
-        backend/dtype context, the validation policy is a property of the bound
-        object, not of the :class:`Context`.
-
-    Attributes
-    ----------
-    parts : tuple of LinOp
-        Stored operands in the lazy sum.
+        Validation level; the ambient default when omitted.
     """
 
     def __init__(self, ops: Sequence[LinOp[Domain, Codomain]], check_level: CheckLevel | bool | None = None) -> None:
@@ -382,35 +320,16 @@ class SumLinOp(SumNode, LinOp[Domain, Codomain]):
 @core_kernels("composed")
 class ComposedLinOp(LinOp[Domain, Codomain]):
     r"""
-    Lazy composition of two linear operators.
-
-    ``ComposedLinOp(A, B)`` represents ``A @ B = A circ B``. The operands must
-    have the same ``ctx`` before construction, and ``B.codomain`` must equal
-    ``A.domain``. The resulting operator has domain ``B.domain`` and codomain
-    ``A.codomain``.
-
-    The forward action is ``apply(x) = A.apply(B.apply(x))`` for
-    ``x in B.domain``. The reverse action is ``rapply(z) = B.rapply(A.rapply(z))``
-    for ``z in A.codomain``.
+    Lazy composition ``left @ right``; the adjoint is ``right.H @ left.H``.
 
     Parameters
     ----------
     left : LinOp
         Operator applied second.
     right : LinOp
-        Operator applied first.
+        Operator applied first; ``right.codomain`` must equal ``left.domain``.
     check_level : {"none", "cheap", "standard", "strict"}, optional
-        Runtime validation policy for this object. When omitted, the ambient
-        default (see :func:`spacecore.get_check_level`) is used. Unlike the
-        backend/dtype context, the validation policy is a property of the bound
-        object, not of the :class:`Context`.
-
-    Attributes
-    ----------
-    left : LinOp
-        Left operand.
-    right : LinOp
-        Right operand.
+        Validation level; the ambient default when omitted.
     """
 
     def __init__(
@@ -488,19 +407,12 @@ class ComposedLinOp(LinOp[Domain, Codomain]):
 
     def is_hermitian(self) -> bool | None:
         """
-        Return whether this composition is structurally Hermitian.
-
-        A Gram product ``R* @ R`` (equivalently ``L @ L*``) is self-adjoint in
-        any geometry, since ``<R* R x, y> = <R x, R y> = <x, R* R y>``. This is
-        detected structurally when ``self.left == self.right.H`` (the adjoint
-        view compares its wrapped operand, so this also matches ``L @ L*``).
-        Any other composition is not cheaply decidable and returns ``None``;
-        non-Hermiticity is never asserted.
+        Return ``True`` for a Gram product ``R.H @ R`` (or ``L @ L.H``), else ``None``.
 
         Returns
         -------
         bool | None
-            ``True`` for a Gram product, otherwise ``None``.
+            ``True`` when structurally Hermitian, ``None`` when unknown.
         """
         if self.left == self.right.H:
             return True
@@ -535,29 +447,18 @@ class ComposedLinOp(LinOp[Domain, Codomain]):
 @core_kernels("zero")
 class ZeroLinOp(ZeroNode, LinOp[Domain, Codomain]):
     r"""
-    Lazy zero map between two spaces.
-
-    ``ZeroLinOp(X, Y)`` represents the linear map ``0 : X -> Y``. The context is
-    resolved from the optional ``ctx`` argument and the two spaces, then both
-    spaces are converted to that context. Its domain is ``X`` and its codomain
-    is ``Y`` in the resolved context.
-
-    The forward action is ``apply(x) = 0_Y`` for ``x in X``. The reverse action
-    is ``rapply(y) = 0_X`` for ``y in Y``.
+    Lazy zero map from ``dom`` to ``cod``.
 
     Parameters
     ----------
     dom : Space
-        Domain space.
+        Domain.
     cod : Space
-        Codomain space.
+        Codomain.
     ctx : Context, str, or None, optional
-        Backend context specification. Default is resolved from the spaces.
+        Backend context; resolved from the spaces when omitted.
     check_level : {"none", "cheap", "standard", "strict"}, optional
-        Runtime validation policy for this object. When omitted, the ambient
-        default (see :func:`spacecore.get_check_level`) is used. Unlike the
-        backend/dtype context, the validation policy is a property of the bound
-        object, not of the :class:`Context`.
+        Validation level; the ambient default when omitted.
     """
 
     @checked_method(in_space="domain", out_space="codomain")
@@ -611,26 +512,16 @@ class ZeroLinOp(ZeroNode, LinOp[Domain, Codomain]):
 @core_kernels("identity")
 class IdentityLinOp(LinOp[Domain, Domain]):
     r"""
-    Lazy identity map on a space.
-
-    ``IdentityLinOp(X)`` represents the identity operator ``I_X : X -> X``. The
-    context is resolved from the optional ``ctx`` argument and the space, and the
-    resulting operator has domain and codomain equal to ``X`` in that context.
-
-    The forward action is ``apply(x) = x`` for ``x in X``. The reverse action is
-    ``rapply(x) = x`` for ``x in X``.
+    Lazy identity map on ``space``.
 
     Parameters
     ----------
     space : Space
-        Domain and codomain space.
+        Domain and codomain.
     ctx : Context, str, or None, optional
-        Backend context specification. Default is resolved from ``space``.
+        Backend context; resolved from ``space`` when omitted.
     check_level : {"none", "cheap", "standard", "strict"}, optional
-        Runtime validation policy for this object. When omitted, the ambient
-        default (see :func:`spacecore.get_check_level`) is used. Unlike the
-        backend/dtype context, the validation policy is a property of the bound
-        object, not of the :class:`Context`.
+        Validation level; the ambient default when omitted.
     """
 
     def __init__(
@@ -721,83 +612,35 @@ class IdentityLinOp(LinOp[Domain, Domain]):
 @core_kernels("matrixfree")
 class MatrixFreeLinOp(LinOp[Domain, Codomain]):
     """
-    Linear operator defined by user-supplied forward and reverse callables.
+    Linear operator given by forward and adjoint callables; no matrix is stored.
 
-    ``MatrixFreeLinOp(apply, rapply, X, Y)`` represents a matrix-free map
-    ``A : X -> Y`` without storing or materializing a matrix. The context is
-    resolved from the optional ``ctx`` argument and the spaces, then the spaces
-    are converted to that context.
-
-    The forward action is ``apply(x) = apply_fn(x)`` for ``x in X``. The
-    reverse action is ``rapply(y) = rapply_fn(y)`` for ``y in Y``. The supplied
-    ``rapply`` callable must already be the true adjoint with respect to the
-    declared domain and codomain inner products:
-    ``<apply(x), y>_Y = <x, rapply(y)>_X``. It is not automatically corrected
-    with Riesz maps. If you only have a Euclidean coordinate adjoint in
-    non-Euclidean spaces, compute the metric adjoint outside SpaceCore and pass
-    that callable as ``rapply``. When checks are enabled, inputs and callable
-    outputs are validated against the corresponding domain and codomain, but
-    construction does not run adjoint dot-tests.
+    ``rapply`` must be the adjoint in the declared inner products,
+    ``<apply(x), y>_Y = <x, rapply(y)>_X``. It is used as given unless
+    ``euclidean_adjoint=True``, and no adjoint test runs at construction.
 
     Parameters
     ----------
     apply : callable
-        Callable with signature ``apply(x: Any) -> Any`` implementing the
-        forward map from ``dom`` to ``cod``.
+        Forward map ``apply(x)`` from ``dom`` to ``cod``.
     rapply : callable
-        Callable with signature ``rapply(y: Any) -> Any`` implementing the
-        true space adjoint map from ``cod`` back to ``dom``. For
-        non-Euclidean spaces this is generally not the same as the Euclidean
-        coordinate adjoint.
+        Adjoint map ``rapply(y)`` from ``cod`` to ``dom``.
     dom : Space
-        Domain space containing valid inputs for ``apply`` and outputs from
-        ``rapply``.
+        Domain.
     cod : Space
-        Codomain space containing outputs from ``apply`` and valid inputs for
-        ``rapply``.
+        Codomain.
     ctx : Context, str, or None, optional
-        Optional context specification. An explicit context wins over inferred
-        contexts from ``dom`` and ``cod``.
+        Backend context; inferred from ``dom`` and ``cod`` when omitted.
     vapply : callable or None, optional
-        Optional callable with signature ``vapply(xs: Any) -> Any`` for batched
-        forward application. If omitted, backend ``vmap`` fallback is used.
+        Batched forward map; ``vmap`` of ``apply`` by default.
     rvapply : callable or None, optional
-        Optional callable with signature ``rvapply(ys: Any) -> Any`` for
-        batched adjoint application. If omitted, backend ``vmap`` fallback is
-        used.
+        Batched adjoint; ``vmap`` of ``rapply`` by default.
     check_level : {"none", "cheap", "standard", "strict"}, optional
-        Runtime validation policy for this object. When omitted, the ambient
-        default (see :func:`spacecore.get_check_level`) is used. Unlike the
-        backend/dtype context, the validation policy is a property of the bound
-        object, not of the :class:`Context`.
+        Validation level; the ambient default when omitted.
     euclidean_adjoint : bool, optional
-        How ``rapply`` is interpreted. Omitted or ``False`` (the default): the
-        callable **is** the metric adjoint and is stored verbatim -- the design
-        choice that lets a caller supply a hand-derived adjoint no wrapper could
-        produce. ``True``: the callable is the *Euclidean coordinate* adjoint
-        ``A^dagger``, wrapped once into ``R_X^-1 A^dagger R_Y``; this is exactly
-        what :meth:`from_coordinate_adjoint` does, and it requires usable Riesz
-        maps on any non-Euclidean space.
-
-        Because verbatim storage is trusted and unverifiable, *omitting* the
-        argument on a non-Euclidean geometry emits a ``UserWarning``: there a
-        coordinate adjoint is silently wrong and nothing downstream detects it.
-        Passing ``False`` **explicitly** asserts that the supplied adjoint
-        already carries the geometry and silences the advisory -- the
-        distinction drawn is between "never considered" and "considered and
-        declared".
-
-    Returns
-    -------
-    MatrixFreeLinOp
-        Operator using the supplied callables for forward, adjoint, and
-        optionally batched actions.
-
-    Notes
-    -----
-    See ``docs/dev/adr/009_metric_adjoint.md`` for the full design rationale
-    for metric adjoints and the distinction between direct matrix-free adjoints
-    and coordinate-adjoint wrapping.
+        ``True``: ``rapply`` is the coordinate adjoint and is wrapped into
+        ``R_X^-1 A^T R_Y`` (see :meth:`from_coordinate_adjoint`). ``False``: it is the
+        metric adjoint. Omitting it on a non-Euclidean space warns, because a
+        coordinate adjoint there is silently wrong.
     """
 
     def __init__(
@@ -813,40 +656,6 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
         *,
         euclidean_adjoint: bool | Any = _ADJOINT_UNSPECIFIED,
     ) -> None:
-        """
-        Initialize a matrix-free linear operator.
-
-        Parameters
-        ----------
-        apply:
-            Callable ``apply(x)`` that accepts an element of ``dom`` and returns
-            an element of ``cod``.
-        rapply:
-            Callable ``rapply(y)`` that accepts an element of ``cod`` and
-            returns an element of ``dom``.
-        dom:
-            Domain space of the operator.
-        cod:
-            Codomain space of the operator.
-        ctx:
-            Optional context specification for the operator and converted
-            spaces.
-        vapply:
-            Optional callable for batched forward application over ``dom``
-            batches.
-        rvapply:
-            Optional callable for batched adjoint application over ``cod``
-            batches.
-        check_level:
-            Optional runtime validation policy for this operator. When omitted,
-            the ambient default is used.
-
-        Returns
-        -------
-        None
-            The initializer stores the callables and converted spaces on
-            ``self``.
-        """
         if not callable(apply):
             raise TypeError(f"apply must be callable, got {type(apply).__name__}.")
         if not callable(rapply):
@@ -971,44 +780,25 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
         r"""
         Build a matrix-free operator from a Euclidean coordinate adjoint.
 
-        ``coordinate_rapply`` is interpreted as the Euclidean coordinate
-        adjoint ``A^dagger`` of ``apply``. The stored ``rapply`` callable is the
-        metric adjoint
-
-        ``A^sharp(y) = R_X^-1 A^dagger R_Y y``
-
-        for the declared domain ``X`` and codomain ``Y``. Euclidean spaces have
-        identity Riesz maps, so this degenerates to the supplied coordinate
-        adjoint. Non-Euclidean spaces must expose usable Riesz maps at
-        construction time; otherwise the constructor rejects the operator rather
-        than storing an incoherent adjoint.
-
-        When ``coordinate_rvapply`` is provided, it is treated as the batched
-        Euclidean coordinate adjoint and wrapped with batched Riesz maps. If
-        batched Riesz application is unavailable, the public metric-adjoint
-        helper falls back to vectorized scalar ``rapply`` consistently. When
-        ``coordinate_rvapply`` is omitted, ``rvapply_fn`` remains ``None`` and
-        the normal ``rvapply`` fallback vectorizes the wrapped scalar adjoint.
-
-        See ``docs/dev/adr/009_metric_adjoint.md`` for the full design
-        rationale.
+        The stored adjoint is the metric one, ``R_X^-1 A^T R_Y``, which is the given
+        callable itself on Euclidean spaces. A non-Euclidean space without usable Riesz
+        maps is rejected.
 
         Parameters
         ----------
         apply : callable
-            Forward coordinate action from ``dom`` to ``cod``.
+            Forward map from ``dom`` to ``cod``.
         coordinate_rapply : callable
-            Euclidean coordinate adjoint from ``cod`` coordinates to ``dom``
-            coordinates.
+            Euclidean coordinate adjoint of ``apply``.
         dom, cod : Space
-            Domain and codomain spaces.
+            Domain and codomain.
         ctx : Context, str, or None, optional
-            Optional context specification.
+            Backend context.
         vapply : callable or None, optional
-            Optional batched forward application.
+            Batched forward map.
         coordinate_rvapply : callable or None, optional
-            Optional batched Euclidean coordinate adjoint. If omitted, batched
-            adjoints use backend ``vmap`` over the wrapped scalar ``rapply``.
+            Batched coordinate adjoint, wrapped the same way; ``vmap`` of the wrapped
+            adjoint by default.
         """
         if not callable(apply):
             raise TypeError(f"apply must be callable, got {type(apply).__name__}.")
@@ -1206,24 +996,14 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
 @core_kernels("adjoint")
 class _AdjointViewLinOp(LinOp[Codomain, Domain]):
     """
-    Hermitian-adjoint view of a linear operator.
-
-    ``A.H`` represents the adjoint view ``A*``. Its context is exactly
-    ``A.ctx``; its domain is ``A.codomain`` and its codomain is ``A.domain``.
-    ``A.H.H`` returns ``A`` rather than constructing another wrapper.
-
-    The forward action is ``apply(y) = A.rapply(y)`` for ``y in A.codomain``.
-    The reverse action is ``rapply(x) = A.apply(x)`` for ``x in A.domain``.
+    Adjoint view ``op.H``: ``apply`` is ``op.rapply`` and ``rapply`` is ``op.apply``; ``op.H.H is op``.
 
     Parameters
     ----------
     op : LinOp
         Operator whose adjoint is viewed.
     check_level : {"none", "cheap", "standard", "strict"}, optional
-        Runtime validation policy for this object. When omitted, the ambient
-        default (see :func:`spacecore.get_check_level`) is used. Unlike the
-        backend/dtype context, the validation policy is a property of the bound
-        object, not of the :class:`Context`.
+        Validation level; the ambient default when omitted.
     """
 
     def __init__(

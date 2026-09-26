@@ -24,9 +24,7 @@ class TreeLinOp(LinOp[Domain, Codomain]):
         Backend context specification. Default is resolved from ``dom`` and
         ``cod``.
     check_level : {"none", "cheap", "standard", "strict"}, optional
-        Runtime validation policy for this operator. When omitted, the ambient
-        default (see :func:`spacecore.get_check_level`) is used. Validation
-        policy is a property of the operator, not of the ``Context``.
+        Validation level; the ambient default when omitted.
     """
 
     parts: Tuple[LinOp, ...]

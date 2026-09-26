@@ -1,45 +1,10 @@
-"""Closed-form proximal / projection primitive (ADR-019).
+"""
+Closed-form proximal steps in the space metric (ADR-019).
 
-This module carries ADR-019's most important correctness finding. A proximal
-step must be taken *in the space metric*: a hand-written Euclidean soft-threshold
-paired with a metric gradient converges to the wrong fixed point. The fix is a
-single separable solver of the forward--backward subproblem that folds the
-metric into the threshold, plus three named wrappers.
-
-:func:`generalized_shrinkage` solves, coordinatewise,
-
-.. code-block:: text
-
-    argmin_x  <c, x>_X + eps * ||x - x0||^2_X + lam * ||x||_1   (optionally x >= 0)
-
-where ``c`` is a *metric gradient* (e.g. ``F.grad(x)``), consistent with
-[ADR-010](010_functional_contract.md). Under a diagonal weighted metric
-``G = diag(w)`` the per-coordinate soft-threshold is ``tau_i = lam / (2 eps w_i)``
--- the weight enters the threshold even though it cancels in the data step
-``x0 - c / (2 eps)``. The closed form is separable only on Euclidean or diagonal
-metrics; on a non-diagonal metric the subproblem does not separate, so the
-primitive **raises** rather than returning a wrong (separable) answer
-(ADR-019 / ADR-020 diagonal-metric rule).
-
-References
-----------
-.. [Beck] A. Beck, *First-Order Methods in Optimization*, MOS-SIAM, 2017.
-   Definition 6.1 (the proximal mapping ``prox_f(v) = argmin_u f(u) + 1/2||u-v||^2``)
-   and Theorem 6.3 (existence and uniqueness for closed proper convex ``f``).
-   §6.2.4 (``g_2``) gives the scalar soft-threshold
-   ``T_lambda(x) = [|x| - lambda]_+ sgn(x)``, which is ``prox`` of
-   ``lambda|.|``; separability (Theorem 6.6, in §6.3) lifts it coordinatewise,
-   and Example 6.8 states the resulting ``l_1``-norm prox directly. The ``prox``
-   of ``t/2 ||.||^2`` is the linear shrinkage ``v/(1+t)``: **§6.2.3** (Convex
-   Quadratic, p. 132) — a worked section that carries no numbered result, so it
-   is cited as a section. (Not "Example 6.9", which is the negative sum of
-   logs.)
-.. [BC] H. H. Bauschke and P. L. Combettes, *Convex Analysis and Monotone
-   Operator Theory in Hilbert Spaces*, 2nd ed., Springer, 2017, Ch. 24
-   (proximity operators): §24.2 basic properties, §24.4 functions on the real
-   line, §24.5 proximal thresholding — the Hilbert-space statement, which is the
-   setting SpaceCore actually works in (the threshold below is metric-aware for
-   exactly this reason).
+A prox must be taken in the metric that the gradient uses: a Euclidean
+soft-threshold paired with a metric gradient converges to the wrong point. Only
+Euclidean or diagonal metrics separate; other metrics raise. See Beck,
+*First-Order Methods in Optimization*, 2017, chapter 6.
 """
 from __future__ import annotations
 
@@ -89,41 +54,30 @@ def generalized_shrinkage(
     nonneg: bool = False,
 ) -> Any:
     r"""
-    Solve the separable forward--backward subproblem in the space metric.
+    Solve ``min_x <c, x>_X + eps ||x - x0||_X^2 + lam ||x||_1`` coordinatewise, optionally with ``x >= 0``.
 
-    Returns the coordinatewise minimizer of
-
-    .. code-block:: text
-
-        <c, x>_X + eps * ||x - x0||^2_X + lam * ||x||_1   (optionally x >= 0)
-
-    The smooth part has unconstrained minimizer ``v = x0 - c / (2 eps)`` (the
-    metric weight cancels, because ``c`` is a metric gradient). The ``l1`` term
-    then applies a soft-threshold with the metric-aware width
-    ``tau_i = lam / (2 eps w_i)`` for a diagonal weight ``w`` (``w_i = 1`` on a
-    Euclidean space); with ``nonneg=True`` the nonnegative-orthant constraint
-    turns the step into ``max(v - tau, 0)``.
+    The smooth minimizer is ``v = x0 - c / (2 eps)``; the l1 term soft-thresholds it
+    with width ``lam / (2 eps w_i)`` for diagonal metric weights ``w``.
 
     Parameters
     ----------
     X : Space
-        Ambient inner-product space. Must be Euclidean or have a diagonal
-        (weighted) metric; a non-diagonal metric raises.
+        Euclidean or diagonal-metric space; other metrics raise.
     c : array-like
-        Metric gradient (linear-term coefficient) in ``X``.
+        Metric gradient in ``X``.
     x0 : array-like
         Proximal center in ``X``.
     eps : float
-        Strictly positive, finite quadratic weight.
+        Positive quadratic weight.
     lam : float, optional
-        Nonnegative, finite ``l1`` weight. Default ``0.0`` (no thresholding).
+        Non-negative l1 weight; ``0`` disables thresholding.
     nonneg : bool, optional
-        Constrain the solution to ``x >= 0`` (real spaces only). Default ``False``.
+        Constrain to ``x >= 0`` (real spaces only).
 
     Returns
     -------
     Element
-        The minimizer, an element of ``X``.
+        The minimizer.
     """
     if not isinstance(eps, numbers.Real) or not math.isfinite(eps) or eps <= 0:
         raise ValueError(f"generalized_shrinkage requires a finite eps > 0, got {eps!r}.")
@@ -166,39 +120,24 @@ def _require_step(t: float, fname: str) -> float:
 
 def prox_l1(v: Any, t: Any, X: Any, *, nonneg: bool = False) -> Any:
     r"""
-    Proximal operator of ``t * ||.||_1`` in the space metric (soft-threshold).
-
-    Returns ``argmin_x  1/2 ||x - v||^2_X + t ||x||_1``, i.e. the metric-aware
-    soft-threshold with per-coordinate width ``t / w_i`` on a diagonal metric.
-
-    With ``nonneg=True`` the minimization is additionally constrained to
-    ``x >= 0``, giving ``argmin_{x >= 0} 1/2 ||x - v||^2_X + t ||x||_1``. On the
-    nonnegative orthant ``||x||_1 = sum_i x_i`` is *linear*, so the subproblem
-    ``1/2 w_i (x_i - v_i)^2 + t x_i`` has the one-sided solution
-    ``max(v_i - t / w_i, 0)`` — derived without the sign/absolute-value form of
-    the unconstrained soft-threshold. The two nevertheless agree numerically:
-    clipping the symmetric threshold at zero gives the same result for every
-    ``t >= 0`` (for ``v_i <= 0`` both are ``0``; for ``v_i > 0`` the symmetric
-    form already reduces to ``max(v_i - t / w_i, 0)``). The equality is pinned by
-    a test rather than relied on, since it does not hold for proximal operators
-    in general.
+    Prox of ``t ||.||_1`` in the space metric: soft-threshold with width ``t / w_i``.
 
     Parameters
     ----------
     v : array-like
-        Point in ``X`` to be thresholded.
+        Point in ``X``.
     t : float
-        Nonnegative threshold / step size.
+        Non-negative threshold.
     X : Space
-        Ambient inner-product space (Euclidean or diagonal metric).
+        Euclidean or diagonal-metric space.
     nonneg : bool, optional
-        Constrain the solution to ``x >= 0`` (real spaces only). Default
-        ``False``. With ``t = 0`` this degenerates to :func:`project_nonneg`.
+        Constrain to ``x >= 0``, giving ``max(v_i - t / w_i, 0)``; at ``t = 0`` this is
+        :func:`project_nonneg`.
 
     Returns
     -------
     Element
-        The soft-thresholded element.
+        The thresholded point.
     """
     t = _require_step(t, "prox_l1")
     v = X.ctx.asarray(v)
@@ -208,35 +147,23 @@ def prox_l1(v: Any, t: Any, X: Any, *, nonneg: bool = False) -> Any:
 
 def prox_l2sq(v: Any, t: Any, X: Any, *, nonneg: bool = False) -> Any:
     r"""
-    Proximal operator of ``t * (1/2) ||.||_X^2`` (linear shrinkage ``v / (1 + t)``).
-
-    Returns ``argmin_x  1/2 ||x - v||^2_X + t (1/2) ||x||^2_X = v / (1 + t)``.
-
-    Completing the square casts this into the primitive's form: it is the
-    minimizer of ``<-v, x>_X + ((1 + t)/2) ||x||^2_X``, i.e.
-    ``generalized_shrinkage`` with ``c = -v``, ``x0 = 0`` and ``eps = (1 + t)/2``.
-
-    With ``nonneg=True`` the minimization is constrained to ``x >= 0``. The
-    objective is separable and strictly convex, so the constrained minimizer is
-    the unconstrained one clipped coordinatewise:
-    ``max(v_i / (1 + t), 0) = max(v_i, 0) / (1 + t)`` since ``1 + t > 0``.
+    Prox of ``(t / 2) ||.||_X^2``: the shrinkage ``v / (1 + t)``.
 
     Parameters
     ----------
     v : array-like
-        Point in ``X`` to be shrunk.
+        Point in ``X``.
     t : float
-        Nonnegative step size.
+        Non-negative step size.
     X : Space
-        Ambient inner-product space (Euclidean or diagonal metric).
+        Euclidean or diagonal-metric space.
     nonneg : bool, optional
-        Constrain the solution to ``x >= 0`` (real spaces only). Default
-        ``False``. With ``t = 0`` this degenerates to :func:`project_nonneg`.
+        Constrain to ``x >= 0``, giving ``max(v, 0) / (1 + t)``.
 
     Returns
     -------
     Element
-        The shrunk element ``v / (1 + t)``.
+        The shrunk point.
     """
     t = _require_step(t, "prox_l2sq")
     v = X.ctx.asarray(v)
@@ -248,23 +175,19 @@ def prox_l2sq(v: Any, t: Any, X: Any, *, nonneg: bool = False) -> Any:
 
 def project_nonneg(v: Any, X: Any) -> Any:
     r"""
-    Metric projection onto the nonnegative orthant: coordinatewise ``max(v, 0)``.
-
-    This is the proximal operator of the indicator of ``{x : x >= 0}``. On a
-    diagonal metric the projection is still coordinatewise (the orthant is
-    separable), and a non-diagonal metric raises via the shared primitive.
+    Project onto ``x >= 0`` in the space metric: coordinatewise ``max(v, 0)``.
 
     Parameters
     ----------
     v : array-like
-        Point in ``X`` to project.
+        Point in ``X``.
     X : Space
-        Ambient inner-product space (Euclidean or diagonal metric).
+        Euclidean or diagonal-metric space.
 
     Returns
     -------
     Element
-        The projected element ``max(v, 0)``.
+        ``max(v, 0)``.
     """
     v = X.ctx.asarray(v)
     _require_member_shape(X, v, "v", "project_nonneg")

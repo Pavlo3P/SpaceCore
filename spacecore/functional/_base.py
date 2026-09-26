@@ -27,34 +27,21 @@ Domain = TypeVar("Domain", bound=CoordinateSpace)
 
 class Functional(Mapping, Generic[Domain]):
     r"""
-    Scalar-valued map on a space.
+    A scalar-valued map ``F : X -> K``; subclasses implement ``value`` and optionally ``grad``.
 
-    ``Functional`` represents a map ``F : X -> K`` without assuming any storage
-    model. It mirrors the minimal ``LinOp`` contract: the domain is converted
-    into the resolved context, value checks follow this object's ``check_level``,
-    and batched evaluation is implemented by a backend ``vmap`` fallback.
+    ``grad`` is the Riesz gradient, an element of ``X``. Batched evaluation falls back
+    to ``vmap``.
 
     Parameters
     ----------
     dom : Space
-        Domain space ``X``.
+        Domain ``X``.
     ctx : Context, str, or None, optional
-        Backend context specification. Default is resolved from ``dom``.
+        Backend context; resolved from ``dom`` when omitted.
     check_level : {"none", "cheap", "standard", "strict"}, optional
-        Runtime validation policy for this functional. When omitted, the ambient
-        default (see :func:`spacecore.get_check_level`) is used. Validation
-        policy is a property of the functional, not of the ``Context``.
-
+        Validation level; the ambient default when omitted.
     cod : Field or None, optional
-        Scalar codomain, defaulting to the converted domain's ``scalars``.
-        Its real or complex field is independent of the domain storage dtype.
-
-    Attributes
-    ----------
-    dom : Space
-        Domain space converted to ``ctx``.
-    ctx : Context
-        Resolved backend context.
+        Scalar codomain; the domain's ``scalars`` by default.
     """
 
     def __init__(

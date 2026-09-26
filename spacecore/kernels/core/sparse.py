@@ -1,22 +1,9 @@
-"""Concrete core kernels for :class:`spacecore.linop.SparseLinOp`.
+"""
+Core kernels for :class:`spacecore.linop.SparseLinOp`.
 
-A sparse coordinate operator stores a sparse matrix (and its Hermitian adjoint)
-and applies them in Euclidean coordinates; the adjoint is metric-aware. The mode
-is chosen once at construction (:class:`_SparseMode`); the per-apply cores branch
-on ``op._mode`` plus the cached matrices and (for the weighted-fused mode) the
-diagonal metric weights.
-
-Metric helpers are imported lazily (general-metric path only), so this module has
-no module-level dependency on :mod:`spacecore.linop` and no import cycle forms.
-
-Every direction is already a *single* optimal backend
-call: ``apply``/``rapply`` are one SpMV (``op._A @ x`` / ``op._AH @ y``) and
-``vapply``/``rvapply`` are one batched SpMV over the stacked right-hand side
-(``(op._A @ xs.reshape((-1, n)).T).T``), never an ``O(batch)`` Python loop. There
-is no faster bit-exact path to route to, so a dispatch spec would add only the
-``applicable``/walk overhead for no win — exactly the over-fitting ADR-016's
-profitability rule forbids. (A future format- or device-aware SpMV variant, if
-one is ever benchmarked to win, would register under that reserved key.)
+Each direction is one SpMV, or one batched SpMV over the stacked right-hand sides,
+with the metric mode fixed at construction. Metric helpers are imported lazily to
+avoid an import cycle.
 """
 from __future__ import annotations
 

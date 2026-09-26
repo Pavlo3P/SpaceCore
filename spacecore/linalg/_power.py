@@ -120,100 +120,45 @@ def power_iteration(
     check_every: int = DEFAULT_CONVERGENCE_CHECK_INTERVAL,
 ) -> PowerIterationResult:
     r"""
-    Estimate the dominant eigenpair of a self-adjoint action.
-
-    Accept a square :class:`LinOp` or a :class:`QuadraticForm` exposing
-    ``hess_apply``. Public dispatch converts either input into a fixed
-    self-adjoint action before entering the numerical loop. Power iteration
-    still requires ``hess_apply`` for quadratic forms because the vector update
-    is ``x_next = normalize(H x)``. Optional two-sided scalar diagnostics such
-    as ``hess_quad(x, Hx=None)`` can improve Rayleigh quotient evaluation, but
-    they cannot replace the Hessian-vector action. "Dominant" means largest
-    eigenvalue in absolute value, not necessarily the largest positive
-    eigenvalue.
+    Estimate the dominant eigenpair (largest in absolute value) of a self-adjoint action.
 
     Parameters
     ----------
     A : LinOp or QuadraticForm
-        Square operator or quadratic form whose dominant eigenpair, largest in
-        absolute value, is sought. Linear-operator inputs must satisfy
-        ``A.domain == A.codomain``; this includes the underlying space type and
-        inner-product geometry.
-        Quadratic-form inputs must provide ``hess_apply``. If they also expose
-        ``hess_quad(x, Hx=None)``, it is used for the Rayleigh quotient and
-        must be compatible with being called as ``hess_quad(x, Hx=Hx)``. The
-        ``Hx`` argument is the cached Hessian-vector product already computed
-        by power iteration. If the quadratic form exposes
-        ``hess_residual_norm(x, Hx, eigenvalue)``, it is used for the residual
-        diagnostic. Otherwise generic space inner-product and norm diagnostics
-        are used.
-        For spectral-norm estimates of a rectangular operator, pass
-        ``A.H @ A``.
+        Square operator, or quadratic form with ``hess_apply``. A form may also supply
+        ``hess_quad(x, Hx=None)`` and ``hess_residual_norm(x, Hx, eigenvalue)`` for the
+        diagnostics. For a spectral norm of a rectangular ``B``, pass ``B.H @ B``.
     x0 : array-like or None, optional
-        Initial vector in the action domain. Default is a normalized all-ones
-        vector in the domain geometry.
+        Initial vector; normalized ones by default.
     tol : float, optional
-        Residual-norm tolerance. ``result.converged`` is ``True`` when
-        ``norm(A @ x - lambda * x) < tol``. Default is 1e-6.
+        Converged when ``norm(A @ x - eigenvalue * x) < tol``.
     maxiter : int or None, optional
-        Maximum number of iterations. Default is ``prod(A.domain.shape)``.
+        Iteration cap; ``prod(A.domain.shape)`` by default.
     check_every : int, optional
-        Accepted for backward compatibility. Residual diagnostics are now
-        refreshed every iteration because the loop already carries ``A @ x``;
-        this argument is ignored and may be removed in a future release.
+        Ignored; kept for backward compatibility.
 
     Returns
     -------
     PowerIterationResult
-        Named tuple with fields:
-
-        - ``eigenvalue``: Rayleigh-quotient eigenvalue estimate
-        - ``eigenvector``: normalized eigenvector estimate
-        - ``converged``: whether ``residual_norm < tol``
-        - ``num_iters``: number of iterations executed
-        - ``residual_norm``: norm of ``A x - eigenvalue * x``
+        ``(eigenvalue, eigenvector, converged, num_iters, residual_norm)``.
 
     Raises
     ------
     TypeError
         If ``A`` is neither a :class:`LinOp` nor a :class:`QuadraticForm`.
     ValueError
-        If a linear-operator input is not square, is known to be non-Hermitian,
-        or if iteration parameters are invalid.
+        If a linear operator is not square or known non-Hermitian, or an iteration
+        parameter is invalid.
 
     See Also
     --------
-    lanczos_smallest : Approximate the smallest eigenpair of a Hermitian
-        operator.
-    cg : Solve Hermitian positive-definite systems.
+    lanczos_smallest : The smallest eigenpair.
 
     Notes
     -----
-    The residual-based stopping criterion uses
-    :math:`\|A x - \lambda x\|` and is refreshed every iteration. The
-    ``check_every`` argument is accepted for backward compatibility but is no
-    longer used. This function is JIT-compatible on the JAX backend when
-    ``maxiter`` is static.
-
-    Inner products and norms use ``domain.inner`` and ``domain.norm`` through
-    the normalized self-adjoint action. The method is correct on
-    non-Euclidean geometries when the space supplies Riesz maps and the action
-    is self-adjoint in that geometry.
-
-    For operators with eigenvalues of mixed sign, the dominant eigenvalue is
-    the one with largest absolute value, which may be negative. Convergence
-    requires that this eigenvalue be separated from the rest in absolute value.
-    If the dominant modulus is degenerate, for example both ``lambda`` and
-    ``-lambda`` have maximum modulus, the iteration may oscillate between
-    subspaces.
-
-    For most dense vector-space problems, the generic Rayleigh quotient
-    ``real(inner(x, Hx))`` is already cheap. Specialized quadratic-form scalar
-    diagnostics are mainly useful when a subclass can evaluate ``<x, Hx>`` or
-    the residual norm more accurately or with less overhead than reconstructing
-    the scalar from generic space operations. A specialized ``hess_quad`` must
-    accept the cached Hessian-vector product as ``hess_quad(x, Hx=Hx)``;
-    implementations may ignore ``Hx`` or use it to avoid recomputation.
+    Convergence needs the dominant modulus to be separated; with both ``lambda`` and
+    ``-lambda`` dominant the iterate oscillates. JIT-compatible on JAX with ``maxiter``
+    static.
 
     Examples
     --------

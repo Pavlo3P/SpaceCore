@@ -32,42 +32,24 @@ _VECTOR_SPACE_ONLY = (
 @core_kernels("sparse")
 class SparseLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
     r"""
-    Represent a sparse coordinate matrix-backed linear operator.
+    Linear operator stored as a sparse matrix of shape ``(cod.size, dom.size)``.
 
-    ``SparseLinOp(A, dom, cod)`` represents a sparse coordinate matrix between
-    vector spaces. Subclasses of :class:`VectorSpace` are supported, but product
-    spaces and other non-vector spaces are intentionally rejected. The
-    conceptual operator tensor has shape ``cod.shape + dom.shape`` while
-    storage uses a two-dimensional sparse matrix with shape
-    ``(prod(cod.shape), prod(dom.shape))``.
-
-    Forward application is the raw coordinate matrix action. Adjoint
-    application is metric-aware: Euclidean spaces use the conjugate transpose
-    fast path, while non-Euclidean spaces use their Riesz maps as
-    ``R_X^{-1} A^dagger R_Y``.
+    Domain and codomain must be vector spaces. The adjoint is the conjugate transpose
+    on Euclidean spaces and ``R_X^{-1} A^dagger R_Y`` otherwise. The matrix is used as
+    given.
 
     Parameters
     ----------
     A : SparseArray
-        Sparse backend matrix with shape ``(prod(cod.shape), prod(dom.shape))``.
+        Sparse matrix of shape ``(prod(cod.shape), prod(dom.shape))``.
     dom : CoordinateSpace
-        Domain vector space, or a subclass of ``VectorSpace``.
+        Domain.
     cod : CoordinateSpace
-        Codomain vector space, or a subclass of ``VectorSpace``.
+        Codomain.
     ctx : Context, str, or None, optional
-        Backend context specification. Default is resolved from the spaces.
+        Backend context; resolved from the spaces when omitted.
     check_level : {"none", "cheap", "standard", "strict"}, optional
-        Runtime validation policy for this object. When omitted, the ambient
-        default (see :func:`spacecore.get_check_level`) is used. Unlike the
-        backend/dtype context, the validation policy is a property of the bound
-        object, not of the :class:`Context`.
-
-    Attributes
-    ----------
-    A : SparseArray
-        Stored sparse matrix representation. The constructor keeps this object
-        without sparse conversion or copying; explicit conversion happens only
-        through :meth:`_convert`.
+        Validation level; the ambient default when omitted.
 
     Examples
     --------

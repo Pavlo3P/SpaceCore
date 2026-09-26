@@ -1,38 +1,9 @@
-"""Spectral lift of coordinate functionals over a Jordan-algebra spectrum (ADR-019).
+"""
+Spectral lift ``F(X) = f(lambda(X))`` of a symmetric coordinate functional (ADR-019).
 
-A *spectral function* is ``F(X) = f(lambda(X))`` for a symmetric ``f`` of the
-eigenvalues. By Lewis's theorem its gradient is ``U diag(grad f(lambda)) U^*``,
-which is exactly ``from_spectrum(grad f(lambda), frame)`` on the
-[ADR-012](012_jordan_spectrum.md) Jordan spectral API. Building on
-``spectrum`` / ``spectral_decompose`` / ``from_spectrum`` rather than reaching
-for a backend ``eigh`` keeps it correct on every Jordan space; on an elementwise
-Jordan space the spectrum *is* the coordinates, so a lifted functional coincides
-with its coordinate original.
-
-:class:`SpectralFunctional` implements that lift once, for **any** coordinate
-functional. There is deliberately no per-formula spectral class: a Schatten
-``p``-norm is ``spectralize(X, lambda s: LpNormFunctional(s, p))``, the von
-Neumann entropy is ``spectralize(X, NegativeEntropyFunctional)``, and so on. The
-alternative — one hand-written class per formula — duplicates the value, the
-gradient and the validation of its coordinate twin, which is how the retired
-``SpectralLpNormFunctional`` came to re-check ``p >= 1`` that
-``LpNormFunctional`` already enforced.
-
-References
-----------
-.. [Lewis] A. S. Lewis, Theorem 2.3.2 in H. Wolkowicz, R. Saigal, L. Vandenberghe
-   (eds.), *Handbook of Semidefinite Programming*, Kluwer, 2000, §2.3.2
-   "Smoothness of eigenvalues", pp. 18-19: for a *permutation-invariant* ``f``,
-   ``F(X) = f(lambda(X))`` is (Frechet) differentiable at ``X`` **if and only if**
-   ``f`` is differentiable at ``lambda(X)``, and then
-   ``DF(X) = U^T Diag(f'(lambda(X))) U`` for any orthogonal ``U`` diagonalizing
-   ``X``. Permutation-invariance is the hypothesis, not a convenience — it is why
-   :class:`SpectralFunctional` states symmetry as a caller contract.
-.. [Beck7] A. Beck, *First-Order Methods in Optimization*, MOS-SIAM, 2017,
-   Ch. 7: Definition 7.11 (spectral functions over ``S^n``), Definition 7.12
-   (symmetric spectral functions), Theorem 7.9 (symmetric conjugate theorem) and
-   §7.2.2 (the proximal operator of a symmetric spectral function) — the modern
-   optimization treatment, including the conjugate and prox of the lift.
+Its gradient is ``from_spectrum(grad f(lambda), frame)`` (Lewis, *Handbook of
+Semidefinite Programming*, 2000, Thm 2.3.2), so one wrapper serves every formula:
+Schatten norms, von Neumann entropy, and so on.
 """
 from __future__ import annotations
 
@@ -49,25 +20,22 @@ from ._norms import LpNormFunctional
 
 def eigenvalue_space(dom: Any, check_level: CheckLevel | bool | None = None) -> Any:
     r"""
-    Return the real coordinate space the spectrum of ``dom`` lives in.
+    Return the real Euclidean space of shape ``(rank,)`` that the spectrum of ``dom`` lives in.
 
-    The spectrum of a Jordan-algebra element is a real vector of length equal to
-    the algebra's rank, regardless of whether the element itself is stored with
-    complex entries (a Hermitian matrix has real eigenvalues). Rank is read off
-    the zero element rather than declared, so this works for any Jordan space
-    without a ``rank`` attribute.
+    Eigenvalues are real even when entries are complex. The rank is read off the zero
+    element.
 
     Parameters
     ----------
     dom : JordanAlgebraSpace
-        Domain whose spectrum is to be modelled.
+        Domain whose spectrum is modelled.
     check_level : {"none", "cheap", "standard", "strict"}, optional
-        Validation policy for the returned space. Defaults to ``dom``'s.
+        Validation level; ``dom``'s by default.
 
     Returns
     -------
     DenseCoordinateSpace
-        Euclidean real space of shape ``(rank,)``.
+        The eigenvalue space.
     """
     from ...space import DenseCoordinateSpace
 
@@ -85,43 +53,27 @@ def eigenvalue_space(dom: Any, check_level: CheckLevel | bool | None = None) -> 
 
 class SpectralFunctional(_CoordinateFunctional[Domain]):
     r"""
-    Lift a **symmetric** coordinate functional onto a Jordan spectrum.
+    Lift a symmetric coordinate functional onto a Jordan spectrum: :math:`F(X) = f(\lambda(X))`.
 
-    Given ``f`` on :math:`\mathbb{R}^r` and a Jordan space of rank :math:`r`,
-    this is the spectral function :math:`F(X) = f(\lambda(X))`. By Lewis's
-    theorem its gradient is :math:`U \operatorname{diag}(\nabla f(\lambda)) U^*`,
-    which is exactly ``from_spectrum(grad f(lambda), frame)`` on the ADR-012
-    spectral API.
-
-    Any coordinate functional gains a spectral counterpart by wrapping rather
-    than by being re-implemented: ``LpNormFunctional`` lifts to the Schatten
-    ``p``-norm (nuclear at ``p = 1``, Frobenius at ``p = 2``),
-    ``NegativeEntropyFunctional`` to the **von Neumann entropy**,
-    ``SquaredL2NormFunctional`` to the squared Frobenius norm, and
-    ``HuberFunctional`` to its spectral analogue.
+    ``LpNormFunctional`` lifts to the Schatten norm and ``NegativeEntropyFunctional`` to
+    the von Neumann entropy.
 
     .. warning::
 
-        ``f`` **must be symmetric** (permutation-invariant). This is not a
-        technicality about gradients: eigenvalues have no canonical order, so for
-        a non-symmetric ``f`` the composition :math:`f(\lambda(X))` is not even a
-        well-defined function of :math:`X` — its value would depend on the
-        backend's sort convention. Symmetry cannot be checked programmatically,
-        so it is a contract the caller must honour.
-        :class:`~spacecore.KLDivergenceFunctional` is the notable member of the
-        toolbox that does **not** qualify, being weighted by a fixed target.
+        ``f`` must be permutation-invariant; otherwise ``f(lambda(X))`` depends on the
+        eigenvalue order and is not a function of ``X``. This cannot be checked, and
+        :class:`~spacecore.KLDivergenceFunctional` does not qualify.
 
     Parameters
     ----------
     dom : JordanAlgebraSpace
-        Domain with a spectral decomposition (e.g. :class:`~spacecore.HermitianSpace`).
+        Domain with a spectral decomposition, e.g. :class:`~spacecore.HermitianSpace`.
     base : Functional
-        Symmetric functional on the Euclidean real space of shape ``(rank,)``;
-        see :func:`eigenvalue_space`.
+        Symmetric functional on the ``(rank,)`` eigenvalue space; see :func:`eigenvalue_space`.
     ctx : Context, str, or None, optional
-        Backend context specification. Default is resolved from ``dom``.
+        Backend context; resolved from ``dom`` when omitted.
     check_level : {"none", "cheap", "standard", "strict"}, optional
-        Validation policy for this functional.
+        Validation level.
 
     Examples
     --------
@@ -212,23 +164,18 @@ def spectralize(
     check_level: CheckLevel | bool | None = None,
 ) -> "SpectralFunctional[Domain]":
     r"""
-    Build the spectral counterpart of a coordinate functional.
-
-    Constructs the eigenvalue space for ``dom``, hands it to ``make_base``, and
-    wraps the result — so a caller never has to derive the rank or build the
-    intermediate space by hand.
+    Build the spectral lift of ``make_base(eigenvalue_space(dom))`` on ``dom``.
 
     Parameters
     ----------
     dom : JordanAlgebraSpace
         Domain with a spectral decomposition.
     make_base : callable
-        ``make_base(eigenvalue_space) -> Functional``; the functional must be
-        symmetric (see :class:`SpectralFunctional`).
+        ``make_base(eigenvalue_space) -> Functional``, symmetric.
     ctx : Context, str, or None, optional
-        Backend context specification.
+        Backend context.
     check_level : {"none", "cheap", "standard", "strict"}, optional
-        Validation policy.
+        Validation level.
 
     Returns
     -------
@@ -255,27 +202,21 @@ def NuclearNormFunctional(
     check_level: CheckLevel | bool | None = None,
 ) -> "SpectralFunctional[Domain]":
     r"""
-    Nuclear (trace) norm ``sum_i |lambda_i(X)|`` — the Schatten-1 norm.
-
-    Kept as a named constructor because the nuclear norm is a concept in its own
-    right (the convex envelope of rank, and the workhorse of low-rank recovery),
-    not because the formula needs its own class: it is exactly
-    ``spectralize(dom, lambda s: LpNormFunctional(s, 1.0))``, and ``p >= 1`` is
-    validated once, by :class:`~spacecore.LpNormFunctional`.
+    Nuclear norm ``sum_i |lambda_i(X)|``, i.e. the Schatten-1 lift of the 1-norm.
 
     Parameters
     ----------
     dom : JordanAlgebraSpace
-        Domain space with a spectral decomposition.
+        Domain with a spectral decomposition.
     ctx : Context, str, or None, optional
-        Backend context specification. Default is resolved from ``dom``.
+        Backend context; resolved from ``dom`` when omitted.
     check_level : {"none", "cheap", "standard", "strict"}, optional
-        Validation policy for the constructed functional.
+        Validation level.
 
     Returns
     -------
     SpectralFunctional
-        The Schatten-1 lift of the coordinate 1-norm.
+        The Schatten-1 lift.
 
     Examples
     --------

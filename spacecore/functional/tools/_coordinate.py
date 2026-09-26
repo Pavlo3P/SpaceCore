@@ -1,27 +1,10 @@
-"""Shared base and helpers for coordinate-defined toolbox functionals.
+"""
+Base for coordinate-defined functionals: value plus Euclidean coordinate gradient.
 
-A coordinate functional ``F(x) = phi(x)`` is specified by its scalar value and
-its *Euclidean coordinate gradient* ``d phi / d x_i``. The metric-correct Riesz
-gradient required by [ADR-010](010_functional_contract.md) is obtained once, in
-:class:`_CoordinateFunctional`, by Riesz-correcting that coordinate gradient with
-``domain.riesz_inverse``. Centralizing the correction is the single defense
-against the [ADR-019](019_everyday_toolbox.md) trap of pairing a Euclidean
-gradient with a non-Euclidean metric.
-
-The correction is the Riesz representation theorem: the differential ``DF(x)``
-is a bounded linear functional on ``X``, so it is represented by a *unique*
-``g`` with ``DF(x)[h] = <g, h>_X`` for all ``h`` — and that ``g``, not the array
-of partials, is what ``grad`` returns. The two coincide only when ``X`` is
-Euclidean.
-
-References
-----------
-.. [Riesz] A. V. Balakrishnan, *Applied Functional Analysis*, 2nd ed.,
-   Springer, 1981, §1.7 (Riesz representation theorem) — existence and
-   uniqueness of the representer in a Hilbert space. See also Brezis,
-   *Functional Analysis, Sobolev Spaces and PDE*, Springer, 2011, Thm. 5.5.
-.. [ADR010] The library contract: ``grad`` is the metric (Riesz) gradient, an
-   element of ``X``; ``X.riesz`` maps it back to coordinates.
+:class:`_CoordinateFunctional` turns the coordinate gradient into the Riesz gradient
+``domain.riesz_inverse(d phi / d x)`` once. That is the one guard against pairing a
+Euclidean gradient with a non-Euclidean metric (ADR-010, ADR-019). The two coincide
+only on Euclidean spaces.
 """
 from __future__ import annotations
 

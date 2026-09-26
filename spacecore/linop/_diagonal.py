@@ -25,32 +25,21 @@ from ..kernels.core.diagonal import _DiagonalMode
 @core_kernels("diagonal")
 class DiagonalLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
     r"""
-    Represent a coordinatewise diagonal linear operator.
+    Coordinatewise map ``x -> diagonal * x`` on one space.
 
-    ``DiagonalLinOp(diagonal, space)`` maps ``x`` to ``diagonal * x`` in
-    coordinates. The adjoint is metric-aware: Euclidean spaces use the complex
-    conjugate of the diagonal, while non-Euclidean spaces use their Riesz maps
-    as ``R_X^{-1} D^dagger R_X``.
+    The adjoint conjugates the diagonal on Euclidean spaces and is
+    ``R_X^{-1} D^dagger R_X`` otherwise.
 
     Parameters
     ----------
     diagonal : DenseArray
-        Dense backend array with shape ``space.shape``.
+        Diagonal of shape ``space.shape``.
     space : Space or None, optional
-        Domain and codomain space. If omitted, a vector space is inferred from
-        ``diagonal.shape``.
+        Domain and codomain; a vector space of ``diagonal.shape`` when omitted.
     ctx : Context, str, or None, optional
-        Backend context specification. Default is resolved from ``space``.
+        Backend context; resolved from ``space`` when omitted.
     check_level : {"none", "cheap", "standard", "strict"}, optional
-        Runtime validation policy for this object. When omitted, the ambient
-        default (see :func:`spacecore.get_check_level`) is used. Unlike the
-        backend/dtype context, the validation policy is a property of the bound
-        object, not of the :class:`Context`.
-
-    Attributes
-    ----------
-    diagonal : DenseArray
-        Stored diagonal values.
+        Validation level; the ambient default when omitted.
 
     Examples
     --------

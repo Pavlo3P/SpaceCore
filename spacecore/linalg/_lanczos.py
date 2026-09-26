@@ -248,104 +248,47 @@ def lanczos_smallest(
     check_every: int = DEFAULT_CONVERGENCE_CHECK_INTERVAL,
 ) -> LanczosResult:
     r"""
-    Approximate the smallest eigenpair of a Hermitian operator.
+    Approximate the smallest eigenpair of a Hermitian operator by Lanczos.
 
-    The operator is supplied as a square ``LinOp`` in the SpaceCore sense
-    (``A.domain == A.codomain``), and ``initial_vector`` is an element of
-    ``A.domain``. The implementation keeps fixed-size coordinate arrays for JAX
-    compatibility, safely handles zero initial vectors, and refines the
-    returned eigenvalue with the Rayleigh quotient of the reconstructed Ritz
-    vector in the original space.
-
-    Mathematically, Lanczos builds an orthonormal Krylov basis ``V`` for
-    ``span{v, A v, A^2 v, ...}`` and a tridiagonal projection
-    :math:`T_k = V^* A V`. The returned vector is the Ritz vector reconstructed
-    in the original coordinates, and the returned scalar is the Rayleigh
-    quotient :math:`\langle x, A x \rangle_X / \langle x, x \rangle_X`.
+    The eigenvalue returned is the Rayleigh quotient of the Ritz vector, reconstructed
+    in ``A.domain``.
 
     Parameters
     ----------
     A : LinOp
-        Linear operator that must be Hermitian/self-adjoint with respect to
-        ``A.domain.inner``. ``A.domain`` must equal ``A.codomain``, including
-        the underlying space type and inner-product geometry. Operators with
-        structurally unknown Hermiticity (``A.is_hermitian()`` returns
-        ``None``) are accepted on trust; the caller is responsible for ensuring
-        Hermiticity. Non-Hermitian inputs produce undefined results.
+        Square operator, Hermitian in the domain's inner product. Known non-Hermitian
+        operators are rejected; unknown ones are trusted.
     initial_vector : array-like
-        Starting vector in ``A.domain``. If it is numerically zero, the
-        algorithm falls back to a deterministic coordinate vector.
+        Starting vector in ``A.domain``; a zero vector falls back to a coordinate vector.
     max_iter : int, optional
-        Maximum Krylov dimension. Must be a Python ``int`` rather than a
-        traced JAX scalar; under ``jax.jit`` it is treated as a static argument
-        and changing it triggers retracing. Default is 100.
+        Maximum Krylov dimension; a static argument under ``jax.jit``.
     tol : float, optional
-        Tolerance used for two purposes. Iteration stops at a check point when
-        the off-diagonal Lanczos coefficient falls below ``tol``; the returned
-        ``converged`` flag is ``True`` when the Ritz residual estimate is below
-        ``tol``. Default is 1e-6.
+        Breakdown threshold, and the residual below which ``converged`` is set.
     check_every : int, optional
-        Refresh the breakdown-based stopping decision every this many
-        iterations and always on the final iteration. Default is
-        ``DEFAULT_CONVERGENCE_CHECK_INTERVAL``.
+        Test for breakdown every this many iterations, and on the last one.
 
     Returns
     -------
     LanczosResult
-        Named tuple with fields:
-
-        - ``eigenvalue``: smallest Ritz eigenvalue estimate
-        - ``eigenvector``: associated Ritz vector in ``A.domain``
-        - ``residual_norm``: standard Ritz residual estimate
-        - ``krylov_dim``: actual Krylov dimension reached
-        - ``converged``: whether ``residual_norm < tol``
+        ``(eigenvalue, eigenvector, residual_norm, krylov_dim, converged)``.
 
     Raises
     ------
     TypeError
         If ``A`` is not a :class:`LinOp`.
     ValueError
-        If ``A`` is not square, is known to be non-Hermitian, or if
-        ``max_iter`` is invalid.
+        If ``A`` is not square, is known non-Hermitian, or ``max_iter`` is invalid.
 
     See Also
     --------
-    power_iteration : Estimate the dominant eigenpair.
-    expm_multiply : Apply a matrix exponential using the Lanczos basis.
+    power_iteration : The dominant eigenpair.
 
     Notes
     -----
-    The residual estimate is computed from the tridiagonal recurrence as
-    :math:`\beta_m |y_{m-1}|`. Callers that need the true residual can evaluate
-    ``A.apply(eigenvector) - eigenvalue * eigenvector`` once more in the
-    original space.
-
-    The "smallest Ritz value" is the smallest eigenvalue of the projected
-    tridiagonal matrix, not necessarily a good approximation of the smallest
-    eigenvalue of ``A``. Convergence to the actual smallest eigenvalue requires
-    the bottom of the spectrum to be separated and the initial vector to have
-    nonzero projection onto the corresponding eigenspace. For clustered low
-    eigenvalues, increase ``max_iter`` or use multiple initial vectors.
-
-    Hermiticity is enforced only when it can be structurally verified: known
-    non-Hermitian operators raise ``ValueError``. Operators with unknown
-    structure, such as many matrix-free operators and operators on custom
-    spaces, are trusted.
-
-    This function is JIT-compatible on the JAX backend when ``max_iter`` and
-    ``check_every`` are static arguments. For plain :class:`VectorSpace`
-    domains, Euclidean reorthogonalization is vectorized; custom spaces use
-    :meth:`Space.inner` to preserve the declared geometry.
-
-    Inner products and norms use ``A.domain.inner`` and ``A.domain.norm``.
-    The method is correct on non-Euclidean geometries when the space supplies
-    Riesz maps and ``A`` is self-adjoint in that geometry.
-
-    References
-    ----------
-    Lanczos, C., "An Iteration Method for the Solution of the Eigenvalue
-    Problem of Linear Differential and Integral Operators," J. Res. Natl.
-    Bur. Stand., 45 (1950), 255-282.
+    ``residual_norm`` is the recurrence estimate :math:`\beta_m |y_{m-1}|`. The smallest
+    Ritz value approaches the smallest eigenvalue only if the bottom of the spectrum is
+    separated and ``initial_vector`` overlaps its eigenspace. JIT-compatible on JAX with
+    ``max_iter`` and ``check_every`` static. Lanczos, J. Res. Natl. Bur. Stand. 45 (1950).
 
     Examples
     --------

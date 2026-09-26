@@ -26,52 +26,24 @@ from ..kernels.core.dense import _DenseMode
 @core_kernels("dense")
 class DenseLinOp(LinOp[Domain, Codomain]):
     r"""
-    Represent a dense coordinate tensor-backed linear operator.
+    Linear operator stored as a dense array of shape ``cod.shape + dom.shape``.
 
-    ``DenseLinOp(A, dom, cod)`` represents a linear map
-    :math:`A \colon X \to Y` where the stored dense array has shape
-    ``cod.shape + dom.shape``. Forward application is the raw coordinate
-    matrix action. Adjoint application is metric-aware: Euclidean spaces use
-    the conjugate transpose fast path, while non-Euclidean spaces use their
-    Riesz maps as ``R_X^{-1} A^dagger R_Y``.
-
-    DenseLinOp does not copy or cast the input array. The caller is responsible
-    for passing an array compatible with `ctx`. This avoids duplicating large dense
-    operators in memory.
+    The adjoint is the conjugate transpose on Euclidean spaces and
+    ``R_X^{-1} A^dagger R_Y`` otherwise. The array is used as given, not copied or cast.
 
     Parameters
     ----------
     A : DenseArray
-        Dense backend array with shape ``cod.shape + dom.shape``.
+        Operator tensor of shape ``cod.shape + dom.shape``.
     dom : Space
-        Domain space.
+        Domain.
     cod : Space or None, optional
-        Codomain space. If omitted, it is inferred from the leading axes of
-        ``A`` — as a **Euclidean** :class:`DenseCoordinateSpace`. Only the
-        *shape* is inferred, never the geometry.
-
-        .. warning::
-
-           On a non-Euclidean domain this is almost certainly not the operator
-           you meant. ``DenseLinOp(M, X)`` with square ``M`` and weighted ``X``
-           builds ``X -> Y_euclidean``, **not** an endomorphism of ``X``: the
-           adjoint is then ``R_X^{-1} M^T`` rather than ``R_X^{-1} M^T R_X``, and
-           ``is_hermitian()`` reports ``False`` for a matrix that is self-adjoint
-           with respect to ``X``. Pass ``cod=X`` explicitly. Note the asymmetry
-           with :class:`~spacecore.DiagonalLinOp` and
-           :class:`~spacecore.IdentityLinOp`, which do reuse the given space.
+        Codomain. When omitted it is a *Euclidean* space of ``A``'s leading shape, so for
+        an endomorphism of a weighted ``X`` pass ``cod=X`` explicitly.
     ctx : Context, str, or None, optional
-        Backend context specification. Default is resolved from the spaces.
+        Backend context; resolved from the spaces when omitted.
     check_level : {"none", "cheap", "standard", "strict"}, optional
-        Runtime validation policy for this object. When omitted, the ambient
-        default (see :func:`spacecore.get_check_level`) is used. Unlike the
-        backend/dtype context, the validation policy is a property of the bound
-        object, not of the :class:`Context`.
-
-    Attributes
-    ----------
-    A : DenseArray
-        Stored dense operator tensor.
+        Validation level; the ambient default when omitted.
 
     Examples
     --------

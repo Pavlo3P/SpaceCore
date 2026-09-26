@@ -1,34 +1,9 @@
-"""Compiled optax optimizer driver (ADR-018, 0.4.2 W1).
+"""
+Compiled optax driver for SpaceCore functionals (ADR-018).
 
-Minimizes a SpaceCore :class:`~spacecore.Functional` with an
-`optax <https://optax.readthedocs.io>`_ optimizer. The whole optimization runs
-inside a single ``jax.jit(jax.lax.while_loop(...))``: the fused
-``F.value_and_grad`` is evaluated exactly once per iteration and cached in
-``_OptaxState``, so the stopping test ``grad_norm <= tol`` and the progress log
-reuse cached values with no recomputation and no per-iteration host sync. Cadence
-parameters (``log_every`` / ``history_every``) govern logging only, never
-convergence.
-
-As with the SciPy adapters, the gradient handed to optax is the coordinate
-gradient ``X.riesz(F.grad(x))`` -- optax applies coordinate updates
-(``params - lr * grad``), so the metric-to-coordinate conversion is mandatory on
-a weighted space and the identity on a Euclidean one (ADR-018).
-
-``optax`` is an optional dependency, imported lazily so that ``import spacecore``
-does not require it. The domain must be JAX-backed (the loop is compiled with
-``jax.jit``); build it with ``check_level="none"`` so the traced ``F.value`` /
-``F.grad`` do not perform data-dependent host checks (ADR-018, ergonomics run-02).
-
-Information lost at the optax boundary
---------------------------------------
-* **Geometry.** optax updates are taken in the flat coordinate metric; the domain
-  geometry survives only through the ``X.riesz`` gradient conversion.
-* **Representation.** ``x0`` may be a raw array or a tuple/list/dict of arrays; a
-  bound ``TreeElement`` is normalized to its raw pytree at entry so that
-  ``optax.apply_updates`` matches it against the converted gradient's structure.
-* **Field.** A complex domain is not rejected -- optax's updates are
-  complex-capable -- so the correctness of complex-valued descent is the caller's
-  responsibility.
+The loop runs in one ``jax.jit(jax.lax.while_loop(...))`` on the coordinate gradient
+``X.riesz(F.grad(x))``. ``optax`` is imported lazily. Build the domain with
+``check_level="none"`` so traced evaluations skip data-dependent checks.
 """
 from __future__ import annotations
 
@@ -150,41 +125,25 @@ class OptaxResult:
     Parameters
     ----------
     success : bool
-        ``True`` iff the run stopped with ``grad_norm <= tol`` and stayed finite.
+        Whether the run reached ``grad_norm <= tol`` and stayed finite.
     status : int
-        ``0`` converged, ``1`` maximum iterations, ``2`` nonfinite (diverged).
+        ``0`` converged, ``1`` iteration cap, ``2`` non-finite.
     message : str
-        Human-readable status.
+        Readable status.
     num_iters : int
         Iterations executed.
     nfev, njev : int
-        Value and gradient evaluations the driver itself performs: one fused
-        ``value_and_grad`` per iteration plus one initial evaluation, i.e.
-        ``num_iters + 1``. This does not include evaluations a line-search
-        optimizer makes internally -- those are reported separately as
-        ``n_linesearch_steps``.
+        Evaluations by the driver itself: ``num_iters + 1`` each.
     n_linesearch_steps : int
-        Cumulative line-search iterations, summed over the run from the optimizer's
-        per-update ``num_linesearch_steps`` (e.g. ``optax.lbfgs``; a chain of several
-        line-search transforms is summed in full). ``0`` when the optimizer performs
-        no line search. This is an *approximate* count of the extra internal
-        objective evaluations: each line-search step corresponds to roughly one
-        evaluation, but the exact per-step count is optax-internal and
-        line-search-dependent, so treat it as an estimate rather than an exact
-        ``nfev`` contribution. The driver does not reuse these values via
-        ``optax.value_and_grad_from_state``: that would substitute the autodiff
-        gradient of ``F.value`` for the ``X.riesz(F.grad)`` gradient the SpaceCore
-        contract requires, so line-search values are recomputed rather than cached.
+        Line-search steps summed over the run; about one extra evaluation each.
     final_value, final_grad_norm : float
         Objective and coordinate-gradient norm at the final point.
     x_element : Any
-        The minimizer, an element of ``F.domain`` (a bound element for a
-        structured space such as ``TreeSpace``; a raw array otherwise).
+        The minimizer, an element of ``F.domain``.
     history : dict
-        Arrays ``iteration``/``value``/``value_delta``/``grad_norm`` (empty when
-        ``record_history=False``).
+        ``iteration``, ``value``, ``value_delta`` and ``grad_norm`` arrays.
     compile_seconds, execution_seconds, average_iteration_ms : float
-        Compile (AOT) time, steady-state execution time, and per-iteration mean.
+        Compile time, execution time, and mean time per iteration.
     """
 
     success: bool
@@ -218,62 +177,49 @@ def minimize_optax(
     progress_callback: Callable[[dict], None] | None = None,
 ) -> OptaxResult:
     r"""
-    Minimize a SpaceCore functional with a compiled, convergence-aware optax loop.
+    Minimize a functional with an optax optimizer inside one ``jax.jit`` while-loop.
 
-    The whole loop runs inside ``jax.jit(jax.lax.while_loop(...))``. The fused
-    ``F.value_and_grad`` is evaluated once per iteration and cached, so the
-    stopping test ``grad_norm <= tol`` and the progress log reuse cached values
-    with no recomputation and no per-iteration host sync. Cadence parameters
-    (``log_every`` / ``history_every``) govern logging only, never convergence.
-
-    Progress columns: ``iteration``, functional value ``F(x)``, objective delta
-    ``ΔF = F_k - F_{k-1}``, and the coordinate-gradient norm.
+    Each iteration evaluates ``F.value_and_grad`` once and hands optax the coordinate
+    gradient ``X.riesz(F.grad(x))``. It stops when that gradient's norm is at most
+    ``tol``.
 
     Parameters
     ----------
     F : Functional
-        Objective with an inner-product, JAX-backed domain ``X = F.domain`` and an
-        implemented ``F.grad`` (hence ``F.value_and_grad``).
+        Objective on a JAX-backed inner-product space, with ``grad`` implemented.
     x0 : pytree
-        Initial parameters, an element of ``F.domain``. A raw array or
-        tuple/list/dict of arrays is used as-is; a bound ``TreeElement`` is
-        normalized to its raw pytree.
+        Initial parameters in ``F.domain``.
     opt : optax.GradientTransformation
-        An optax optimizer such as ``optax.adam(1e-2)`` or ``optax.lbfgs()``.
+        The optimizer, e.g. ``optax.adam(1e-2)`` or ``optax.lbfgs()``.
     max_iter : int
-        Iteration cap (non-negative).
+        Iteration cap.
     tol : float
-        Convergence tolerance on the coordinate-gradient L2 norm (non-negative).
+        Tolerance on the coordinate-gradient norm.
     project : callable, optional
-        Optional retraction applied to the parameters after each optax update
-        (e.g. projection onto a constraint set). Default: identity.
+        Map applied to the parameters after each update, e.g. a projection.
     verbose : int
-        ``0`` silent, ``1`` final summary, ``2`` per-``log_every`` progress rows.
+        ``0`` silent, ``1`` summary, ``2`` a row every ``log_every`` iterations.
     log_every, history_every : int
-        Live-logging and history-sampling cadences. ``history_every`` defaults to
-        ``log_every``.
+        Logging and history cadences; neither affects convergence.
     record_history : bool
-        Whether to record the iteration/value/value_delta/grad_norm history.
+        Whether to record value, value change and gradient norm.
     progress_callback : callable, optional
-        Called once per recorded row *after* the loop (compiled loops cannot call
-        Python callbacks live) as ``progress_callback(row_dict)``.
+        Called with each recorded row after the loop finishes.
 
     Returns
     -------
     OptaxResult
-        Final statistics, the minimizer ``x_element``, the recorded history, and
-        compile-vs-execution timing.
+        Final statistics, the minimizer ``x_element``, the history and timings.
 
     Raises
     ------
     TypeError
-        If ``F`` is not a :class:`~spacecore.Functional`, its domain has no
-        inner-product geometry, or its domain is not JAX-backed.
+        If ``F`` is not a :class:`~spacecore.Functional`, or its domain has no inner
+        product or is not JAX-backed.
     ValueError
-        If ``max_iter``/``tol`` are negative or ``log_every``/``history_every`` are
-        non-positive.
+        If ``max_iter`` or ``tol`` is negative, or a cadence is not positive.
     ImportError
-        If ``optax`` is not installed (``pip install spacecore[optax]``).
+        If ``optax`` is not installed.
 
     See Also
     --------

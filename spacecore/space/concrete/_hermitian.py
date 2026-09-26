@@ -13,42 +13,25 @@ from ...contextual import Context
 
 class HermitianSpace(DenseCoordinateSpace, StarSpace, EuclideanJordanAlgebraSpace):
     r"""
-    Represent dense Hermitian matrices with Frobenius geometry.
+    Dense ``n x n`` Hermitian matrices with the Frobenius inner product.
 
-    Elements are backend-native dense arrays with shape ``(n, n)``.
-    Membership enforces Hermitian structure up to tolerances.
-
-    The inner product is Frobenius / Hilbert-Schmidt:
-    ``<X, Y> = vdot(vec(X), vec(Y))``, where ``vdot`` conjugates the
-    first argument according to backend rules.
-
-    ``HermitianSpace`` currently uses Euclidean/Frobenius geometry in flattened
-    coordinates and does not expose custom geometry injection. Metric-aware
-    Hermitian geometries should be introduced as a separate class or explicit
-    extension.
+    A real vector space: scaling by a non-real number is rejected. Membership checks
+    Hermitian structure up to ``atol``/``rtol``.
 
     Parameters
     ----------
     n : int
         Matrix dimension.
     atol : float, optional
-        Absolute tolerance for Hermitian membership checks.
+        Absolute tolerance of the Hermitian check.
     rtol : float, optional
-        Relative tolerance for Hermitian membership checks.
+        Relative tolerance of the Hermitian check.
     enforce_herm : bool, optional
-        Whether membership checks enforce Hermitian structure.
+        Whether membership checks Hermitian structure at all.
     ctx : Context, str, or None, optional
-        Backend context specification.
+        Backend context.
     check_level : {"none", "cheap", "standard", "strict"}, optional
-        Runtime validation policy for this object. When omitted, the ambient
-        default (see :func:`spacecore.get_check_level`) is used. Unlike the
-        backend/dtype context, the validation policy is a property of the bound
-        object, not of the :class:`Context`.
-
-    Attributes
-    ----------
-    n : int
-        Matrix dimension.
+        Validation level; the ambient default when omitted.
     """
 
     # Hermitian matrices with complex entries form a *real* vector space of
@@ -224,57 +207,21 @@ class HermitianSpace(DenseCoordinateSpace, StarSpace, EuclideanJordanAlgebraSpac
     @checked_method(in_space="self")
     def spectral_apply(self, x: DenseArray, f: Callable[[DenseArray], DenseArray]) -> DenseArray:
         r"""
-        Apply a scalar function to a Hermitian matrix via spectral calculus.
+        Return :math:`f(X) = U \operatorname{diag}(f(\lambda)) U^*`, with ``f`` applied to the eigenvalues.
 
-        For a Hermitian matrix
-        $$
-        X \in \mathbb{H}^n,
-        $$
-        with eigendecomposition
-        $$
-        X = U \operatorname{diag}(\lambda) U^*,
-        $$
-        this method returns
-        $$
-        f(X) = U \operatorname{diag}(f(\lambda)) U^*,
-        $$
-        where ``f`` is applied entrywise to the eigenvalue vector
-        $$
-        \lambda \in \mathbb{R}^n.
-        $$
+        This is spectral calculus, not an entrywise map: eigenvectors are kept.
 
         Parameters
         ----------
-        x:
-            Hermitian matrix in this space. Must have shape ``(n, n)`` and
-            satisfy the Hermitian membership conditions of the space.
-        f:
-            Callable applied to the eigenvalues of ``x``. It should accept a
-            dense backend array of eigenvalues and return an array of the same
-            shape.
+        x : DenseArray
+            Hermitian matrix in this space.
+        f : callable
+            Map from an eigenvalue array to an array of the same shape.
 
         Returns
         -------
         DenseArray
-            The Hermitian matrix obtained by spectral application of ``f`` to
-            ``x``.
-
-        Raises
-        ------
-        TypeError
-            If ``x`` is not a valid Hermitian element of this space.
-
-        Notes
-        -----
-        This is not an entrywise matrix transformation. The function is applied
-        to the spectrum of ``x``, not to its matrix entries.
-
-        In particular, if
-        $$
-        X = U \operatorname{diag}(\lambda) U^*,
-        $$
-        then the eigenvectors are preserved and only the eigenvalues are
-        transformed.
+            The Hermitian matrix :math:`f(X)`.
         """
         evals, evecs = self.spectral_decompose(x)
         fevals = self._apply_entrywise(evals, f)

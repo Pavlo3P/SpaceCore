@@ -28,20 +28,19 @@ def _require_composable(F: Functional, A: LinOp) -> None:
 
 def make_functional_composed(F: Functional, A: LinOp) -> Functional:
     """
-    Return the pull-back ``F o A`` with local specializations.
+    Return the pull-back ``F o A``, specialized where a closed form exists.
 
     Parameters
     ----------
     F : Functional
-        Functional defined on ``A.codomain``.
+        Functional on ``A.codomain``.
     A : LinOp
-        Linear operator whose codomain is ``F.domain``.
+        Operator into ``F.domain``.
 
     Returns
     -------
     Functional
-        Specialized pull-back when available, otherwise
-        :class:`ComposedFunctional`.
+        The pull-back.
     """
     _require_composable(F, A)
     if isinstance(F, InnerProductFunctional):
@@ -67,9 +66,7 @@ class ComposedFunctional(Functional):
     A : LinOp
         Linear operator whose codomain is ``F.domain``.
     check_level : {"none", "cheap", "standard", "strict"}, optional
-        Runtime validation policy for this functional. When omitted, the ambient
-        default (see :func:`spacecore.get_check_level`) is used. Validation
-        policy is a property of the functional, not of the ``Context``.
+        Validation level; the ambient default when omitted.
     """
 
     def __init__(
@@ -105,35 +102,20 @@ class ComposedFunctional(Functional):
     @checked_method(in_space="domain", out_space="domain")
     def grad(self, x: Any) -> Any:
         r"""
-        Return the Riesz gradient of ``F o A`` by the chain rule.
+        Return :math:`\nabla (F \circ A)(x) = A^{\#} \nabla F(A x)`.
 
-        For :math:`G = F \circ A`, differentiating gives
-        :math:`DG(x)[h] = DF(Ax)[Ah] = \langle \nabla F(Ax), Ah\rangle_Y`.
-        Moving ``A`` across the pairing with the adjoint's defining identity
-        :math:`\langle Au, v\rangle_Y = \langle u, A^{\#}v\rangle_X` (and
-        conjugate symmetry) turns that into
-        :math:`\langle A^{\#}\nabla F(Ax), h\rangle_X`, so
-
-        .. math::
-
-            \nabla (F \circ A)(x) = A^{\#}\, \nabla F(A x).
-
-        ``LinOp.rapply`` **is** :math:`A^{\#}`, the metric adjoint (ADR-009), so
-        the geometry of both spaces is already accounted for; applying a Riesz
-        map on top would count it twice. Correspondingly there is no explicit
-        conjugation here — the adjoint identity absorbs it.
-
-        Raises :class:`NotImplementedError` when the inner ``F`` has no gradient.
+        ``A.rapply`` is already the metric adjoint, so no Riesz map is added. Raises
+        :class:`NotImplementedError` when ``F`` has no gradient.
 
         Parameters
         ----------
-        x:
+        x : Any
             Element of ``A.domain``.
 
         Returns
         -------
         Any
-            Riesz gradient in ``A.domain``.
+            The gradient, in ``A.domain``.
         """
         return self._grad_core(x)
 

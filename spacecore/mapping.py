@@ -1,22 +1,13 @@
-"""``Mapping``: the common parent of ``LinOp`` and ``Functional``, owning the lazy algebra.
+"""
+``Mapping``, the parent of ``LinOp`` and ``Functional``, and the shared lazy algebra.
 
-The operator overloads live here once, on :class:`Algebraic`, which ``Mapping`` and
-``spacecore.space.Element`` both inherit. What ``a + b``, ``a * b`` and ``a @ b`` *build*
-is looked up in a rule table keyed by the two operand kinds, so a family plugs into
-the algebra by registering rules — the way a backend plugs in by supplying ops.
-
-Families register three primitive operations: ``"add"``, ``"mul"`` and ``"matmul"``.
-Subtraction, negation, the reflected forms and ``0 + m == m`` (so builtin ``sum``
-works) are derived here. Same-family and cross-family rules are the same mechanism:
-``(LinOp, LinOp)`` and ``(Functional, LinOp)`` are just different keys. A pair with no
-rule returns ``NotImplemented``, so Python raises ``TypeError``.
-
-The lazy nodes are written here once too: :class:`ScaledNode`, :class:`SumNode` and
-:class:`ZeroNode`, with the factories :func:`make_sum_of` and :func:`make_scaled_of`.
-A family mixes them into its own node classes, which add only evaluation
-(``apply``/``rapply`` or ``value``/``grad``). The family supplies three hooks:
-``_family`` (its base class), ``_init_map(domain, codomain, ctx, check_level)``, and
-``_Sum``/``_Scaled``/``_Zero`` (its node classes).
+:class:`Algebraic` holds the operator overloads for ``Mapping`` and ``Element``.
+What ``a + b``, ``a * b`` and ``a @ b`` build is looked up in a rule table keyed by
+the operand kinds. A family registers ``add``, ``mul`` and ``matmul`` rules, and
+subtraction, negation and ``sum()`` are derived; a pair with no rule raises
+``TypeError``. :class:`ScaledNode`, :class:`SumNode` and :class:`ZeroNode` are the
+shared lazy nodes. A family provides ``_family``, ``_init_map`` and its
+``_Sum``/``_Scaled``/``_Zero`` classes.
 """
 from __future__ import annotations
 
@@ -133,8 +124,7 @@ class Mapping(Algebraic, PyTreeNode, ContextBound):
     ctx : Context, str, or None, optional
         Backend context specification.
     check_level : {"none", "cheap", "standard", "strict"}, optional
-        Runtime validation policy for this object. When omitted, the ambient
-        default (see :func:`spacecore.get_check_level`) is used.
+        Validation level; the ambient default when omitted.
     """
 
     @property

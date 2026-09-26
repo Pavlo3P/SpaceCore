@@ -32,23 +32,16 @@ _check_override: ContextVar[CheckLevel | None] = ContextVar(
 
 
 class Contextual:
-    """Resolve which context and validation level are currently in effect.
+    """
+    The ambient context and check level: a process-wide baseline, overridable per thread/task.
 
-    Holds **ambient policy only** — the process-wide baseline context and check
-    level, each read through a scoped :class:`~contextvars.ContextVar` override
-    before falling back to the baseline stored here.
-
-    *Which backends exist* is a different kind of state and lives in
-    :class:`~spacecore.backend.OpsRegistry`: a registry is shared by every thread
-    and must never be scoped (a backend registered inside a ``with`` block that
-    vanished on exit would be a bug), whereas ambient policy is swappable by
-    design. This object consults the registry; it does not own it.
+    Which backends exist is separate state in :class:`~spacecore.backend.OpsRegistry`,
+    which is never scoped; this object only consults it.
 
     Parameters
     ----------
     ops_registry : OpsRegistry, optional
-        Backend registry to resolve names against. Defaults to the process-wide
-        instance; injectable so tests can resolve against their own.
+        Registry used to resolve backend names; the process-wide one by default.
     """
 
     _baseline_ctx: Context

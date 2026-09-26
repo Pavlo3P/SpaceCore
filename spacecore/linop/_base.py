@@ -20,58 +20,24 @@ Codomain = TypeVar("Codomain", bound=VectorSpace)
 
 class LinOp(Mapping, Generic[Domain, Codomain]):
     r"""
-    Represent a linear map between two spaces.
+    A linear map from ``dom`` to ``cod``; subclasses supply ``apply`` and ``rapply``.
 
-    This class is intentionally small. It defines no storage assumptions and
-    requires subclasses to provide forward and adjoint actions.
-
-    The adjoint :math:`A^*` satisfies
-    :math:`\langle A x, y\rangle_Y = \langle x, A^* y\rangle_X` for
-    :math:`x \in X` and :math:`y \in Y`. For complex operators this is the
-    conjugate adjoint.
-
-    This is the **Hilbert-space adjoint** [Conway]_, defined by the pairing of
-    each space's own inner product — *not* the coordinate transpose, and not the
-    Banach (dual-space) adjoint. On a non-Euclidean geometry the two differ: see
-    :func:`~spacecore.linop._metric.metric_rapply` for the
-    :math:`R_X^{-1} A^\dagger R_Y` formula that realizes it.
+    ``rapply`` is the Hilbert-space adjoint in each space's own inner product,
+    :math:`\langle A x, y\rangle_Y = \langle x, A^* y\rangle_X`, not the coordinate
+    transpose. On a non-Euclidean space it is :math:`R_X^{-1} A^\dagger R_Y`
+    (:func:`~spacecore.linop._metric.metric_rapply`). Conway, *A Course in Functional
+    Analysis*, II.2.4.
 
     Parameters
     ----------
     dom : Space
-        Domain space ``X``.
+        Domain ``X``.
     cod : Space
-        Codomain space ``Y``.
+        Codomain ``Y``.
     ctx : Context, str, or None, optional
-        Backend context specification. Default is resolved from ``dom`` and
-        ``cod``.
+        Backend context; resolved from ``dom`` and ``cod`` when omitted.
     check_level : {"none", "cheap", "standard", "strict"}, optional
-        Runtime validation policy for this object. When omitted, the ambient
-        default (see :func:`spacecore.get_check_level`) is used. Unlike the
-        backend/dtype context, the validation policy is a property of the bound
-        object, not of the :class:`Context`.
-
-    Attributes
-    ----------
-    dom : Space
-        Domain space converted to ``ctx``.
-    cod : Space
-        Codomain space converted to ``ctx``.
-    ctx : Context
-        Resolved backend context.
-
-    References
-    ----------
-    .. [Conway] J. B. Conway, *A Course in Functional Analysis*, 2nd ed.,
-       Springer, 1990, II.2.4: for ``A`` in ``B(H,K)`` there is a **unique**
-       ``A*`` in ``B(K,H)`` with ``<Ah,k> = <h,A*k>``; existence rests on the
-       Riesz representation theorem (I.3.4), which is why a metric-aware adjoint
-       needs the Riesz maps. Theorem II.2.6 gives the algebra this class and
-       ``linop/_algebra.py`` implement:
-       ``(aA + B)* = conj(a) A* + B*``, ``(AB)* = B* A*`` (**order reverses**),
-       ``A** = A``. II.2.2 is the uniqueness statement behind "the" adjoint.
-       Conway II.3 (``def-adjoint-banach``) is the *different*, dual-space
-       adjoint — not what SpaceCore means by ``rapply``.
+        Validation level; the ambient default when omitted.
 
     Examples
     --------
@@ -227,38 +193,20 @@ class LinOp(Mapping, Generic[Domain, Codomain]):
 
     def fuse(self, *, materialize: bool = False) -> LinOp:
         r"""
-        Return an equivalent operator with fusible sub-expressions multiplied out.
+        Return an equivalent operator with dense sub-expressions multiplied out (ADR-021).
 
-        Tier-2 lazy-algebra simplification ([ADR-021](021_lazy_operator_algebra_and_simplification.md)):
-        collapse each maximal subtree of densely-fusible operators into a single
-        materialized operator — for example, a composition of dense operators
-        becomes one :class:`DenseLinOp` holding the matrix product
-        :math:`M_A M_B` — while leaving matrix-free and other
-        non-materializable leaves intact.
-
-        This is an **explicit, opt-in materialization**. The result is
-        mathematically equal to ``self`` but only *within floating-point
-        rounding*: fusing reassociates the arithmetic (multiplying matrices then
-        applying differs from applying in sequence at the ulp level), so equality
-        holds up to tolerance, not bit-for-bit. The fused operator preserves the
-        domain, codomain, context, and scalar-field/dtype identity. A leaf
-        operator returns itself.
+        Each maximal run of dense operators becomes one :class:`DenseLinOp`; other leaves
+        stay lazy. The result equals ``self`` up to rounding. A leaf returns itself.
 
         Parameters
         ----------
         materialize : bool, optional
-            With the default ``False``, a matrix-free operand
-            ([ADR-008](008_linop_subclasses.md)) is **never** densified: it
-            remains a lazy leaf and only breaks a fusible run. With ``True`` the
-            caller explicitly accepts giving up the matrix-free contract: a
-            matrix-free operand is densified into a :class:`DenseLinOp` (via its
-            ``to_dense`` basis probe, which may be expensive), allowing the
-            enclosing expression to collapse to a single dense operator.
+            Also densify matrix-free operands, which may be costly; by default they stay lazy.
 
         Returns
         -------
         LinOp
-            A fused operator with the same action as ``self`` (up to rounding).
+            The fused operator.
         """
         return self
 

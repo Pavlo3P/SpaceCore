@@ -1,60 +1,11 @@
-r"""Real-coordinate view of a complex-domain functional.
+r"""
+Real-coordinate view of a complex-domain functional.
 
-Optimizers and line searches that assume a real vector space cannot consume a
-functional whose domain is complex — ``spacecore.optimize`` flattens to real
-coordinates, and a complex iterate has no ordering, no real inner product to
-descend in, and no meaningful ``result_type`` against a real step size. The usual
-workaround is to hand-write a real wrapper per objective, re-deriving the
-Cauchy-Riemann bookkeeping each time and getting the conjugate wrong.
-
-:class:`RealifiedFunctional` does it once. A real-valued ``F`` on a complex
-coordinate space has differential ``dF = Re<g, dv>`` with metric gradient ``g``,
-so writing ``v = a + i b`` gives
-
-.. math::
-
-    \partial F/\partial a = \operatorname{Re} g_v, \qquad
-    \partial F/\partial b = \operatorname{Im} g_v,
-
-where ``g_v = flatten(X.riesz(g))`` is the *coordinate* gradient. The real
-gradient is therefore exactly the stacked pair — no Wirtinger calculus at the
-call site, and the metric correction stays where ADR-010 put it.
-
-References
-----------
-.. [Realification] Treating ``C^m`` as ``R^{2m}`` by ``v = a + i b`` is the
-   standard realification of a complex vector space, and ``Re<., .>_C`` is a
-   real inner product on ``R^{2m}`` inducing the same norm, so the two views are
-   isometric.
-
-   This is **derived**, from the axioms of Conway, *A Course in Functional
-   Analysis*, 2nd ed., Springer, 1990, **Definition I.1.1** — stated uniformly
-   over ``F = R`` or ``C``, with the note that ``conj(alpha) = alpha`` when
-   ``F = R``. Each property of a real inner product needs a different axiom:
-
-   * *real-bilinearity* — (a) and (b) restricted to **real** scalars, where the
-     conjugation in (b) is the identity; ``Re`` of a real-linear map is
-     real-linear;
-   * *symmetry* — (d), since ``Re conj(z) = Re z``, so
-     ``Re<x, y> = Re<y, x>``;
-   * *positive-definiteness* — (c) for ``<v, v> >= 0`` **and** the extra
-     inner-product axiom (f), ``<v, v> = 0 => v = 0``. Without these two,
-     ``Re<., .>`` would only be a symmetric real bilinear form;
-   * *same norm* — (c) and (d) make ``<v, v>`` real and nonnegative, so
-     ``Re<v, v> = <v, v> = ||v||^2``.
-
-   Convention caveat: Conway's I.1.1 is linear in the **first** argument and
-   conjugate-linear in the second; SpaceCore's ``Space.inner`` conjugates the
-   **first**. The realification is unaffected — ``Re<., .>`` is symmetric either
-   way — but do not transcribe the axioms slot-for-slot into this codebase.
-
-.. [Wirtinger] For a **real-valued** ``F`` the Wirtinger derivatives satisfy
-   ``dF/d(conj v) = conj(dF/dv)``, so the real gradient is
-   ``2 dF/d(conj v)`` — the same stacked pair derived above. See Kreutz-Delgado,
-   "The complex gradient operator and the CR-calculus", arXiv:0906.4835, 2009,
-   §4 (the real-valued case and the steepest-ascent direction). The conjugate is
-   where hand-written wrappers usually go wrong, which is the reason this view
-   exists once rather than per objective.
+For real-valued ``F`` with metric gradient ``g`` and ``v = a + i b``, the real
+gradient is ``(Re g_v, Im g_v)`` where ``g_v = flatten(X.riesz(g))``. The view
+writes that bookkeeping once, so optimizers that need a real space can use it.
+Realification is an isometry, since ``Re<.,.>`` is a real inner product with the
+same norm (Kreutz-Delgado, arXiv:0906.4835, section 4).
 """
 from __future__ import annotations
 
@@ -68,16 +19,9 @@ from ._base import Functional
 
 class RealifiedFunctional(Functional):
     r"""
-    View of a complex-domain functional over stacked real coordinates.
+    View of a complex-domain functional over stacked real coordinates ``(Re v, Im v)``.
 
-    For a base functional :math:`F` on a coordinate space :math:`X` with complex
-    flattened coordinates :math:`v \in \mathbb{C}^m`, this functional acts on
-    :math:`w = (\operatorname{Re} v, \operatorname{Im} v) \in \mathbb{R}^{2m}`.
-
-    Because a real-valued :math:`F` has differential
-    :math:`dF = \operatorname{Re}\langle g, dv \rangle` with metric gradient
-    :math:`g`, the real coordinate gradient is exactly
-    :math:`(\operatorname{Re} g_v, \operatorname{Im} g_v)` where
+    The real gradient is :math:`(\operatorname{Re} g_v, \operatorname{Im} g_v)` with
     :math:`g_v = \operatorname{flatten}(X.\operatorname{riesz}(g))`.
 
     Parameters
@@ -88,27 +32,15 @@ class RealifiedFunctional(Functional):
     Raises
     ------
     TypeError
-        If the base domain is not a coordinate space (there are no flattened
-        coordinates to split).
+        If the base domain is not a coordinate space.
     ValueError
-        If the base domain is already real — use the functional directly rather
-        than paying for a no-op view.
+        If the base domain is already real.
 
     Notes
     -----
-    The domain is classified by ``Space.field``, which is derived from the dtype.
-    That is exact for a genuinely complex coordinate space, but **over-reports**
-    for a space whose complex storage is constrained — most importantly
-    :class:`~spacecore.HermitianSpace`, where Hermitian matrices form a *real*
-    vector space of dimension :math:`n^2` yet ``field`` reads ``"complex"``.
-
-    Realifying such a space is *safe but redundant*: ``unflatten`` symmetrizes,
-    so ``from_real`` always lands back on the manifold and no step can escape it,
-    but the view carries :math:`2n^2` real coordinates for :math:`n^2` real
-    dimensions. ``flatten . unflatten`` is then a projection rather than the
-    identity, so the realified problem has a rank-deficient Hessian with
-    :math:`n^2` null directions — harmless for first-order methods, degenerate
-    for Newton-type ones. Prefer optimizing such a space directly.
+    :class:`~spacecore.HermitianSpace` stores complex entries but is a real space of
+    dimension :math:`n^2`. Realifying it works but doubles the coordinates and leaves
+    :math:`n^2` null Hessian directions, so optimize it directly instead.
 
     Examples
     --------

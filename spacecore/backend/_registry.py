@@ -1,29 +1,9 @@
-"""Registry of backend implementations, keyed by backend family.
+"""
+Registry of backend classes by family: which backends exist in this process.
 
-The single answer to "which ``BackendOps`` classes exist in this process". It is
-seeded at construction from :func:`~spacecore.backend._optional.available_ops`
-— what is *importable* in this environment — and can then be extended at runtime
-via :meth:`OpsRegistry.register`, which is how a third-party backend joins
-without an entry point.
-
-Separation of concerns: this module answers *what backends exist*;
-:mod:`spacecore.contextual` answers *which one is currently in effect*. Those are
-different kinds of state — a registry is process-wide and shared by every thread,
-while ambient policy is scoped and swappable — and holding them in one object
-made the registry impossible to test without the ambient singleton. Compare
-:mod:`spacecore.backend._container`, which applies the same split to pytree
-registration.
-
-Two deliberate differences from :class:`~spacecore.backend._container.PyTreeRegistry`:
-
-* **Duplicate registration raises** here rather than being idempotent. Two
-  different classes claiming ``"numpy"`` is a genuine conflict a caller should
-  hear about, whereas re-wiring an already-wired ``(backend, class)`` pair is a
-  no-op by construction.
-* **Removal is supported** (:meth:`unregister`). ``PyTreeRegistry`` must stay
-  monotonic because its two-axis back-fill depends on it; this registry is a
-  plain keyed lookup with no derived state, so removing an entry is safe. It
-  exists for tests and for backends registered dynamically.
+Seeded from :func:`~spacecore.backend._optional.available_ops` and extendable at
+runtime. Which backend is currently in effect lives in :mod:`spacecore.contextual`.
+Unlike the pytree registry, a duplicate registration raises and removal is allowed.
 """
 from __future__ import annotations
 
@@ -83,27 +63,11 @@ class OpsRegistry:
             self.register(cls)
 
     def register(self, ops: type[BackendOps]) -> type[BackendOps]:
-        """Register a backend class under its family name.
+        """
+        Register a backend class under its family name; usable as a decorator.
 
-        Parameters
-        ----------
-        ops : type of BackendOps
-            Backend class to register.
-
-        Returns
-        -------
-        type of BackendOps
-            The class, so this can be used as a decorator.
-
-        Raises
-        ------
-        TypeError
-            If ``ops`` is not a ``BackendOps`` subclass.
-        ContextConflictError
-            If the family is already registered — including by this same class.
-            Re-registration is treated as a conflict rather than a no-op because
-            it almost always means two implementations are competing for one
-            family name.
+        Raises ``TypeError`` for a non-``BackendOps`` class and ``ContextConflictError`` if the
+        family is taken, even by the same class.
         """
         if not isinstance(ops, type) or not issubclass(ops, BackendOps):
             raise TypeError(f"Expected type[BackendOps], got {type(ops)!r}")

@@ -19,20 +19,18 @@ from ..linop import LinOp
 
 class QuadraticForm(Functional[Domain]):
     """
-    Represent a scalar quadratic objective on a space.
+    A scalar quadratic objective on ``dom``.
 
     Parameters
     ----------
     dom : Space
-        Domain space.
+        Domain.
     ctx : Context, str, or None, optional
-        Backend context specification. Default is resolved from ``dom``.
-    check_level : {{"none", "cheap", "standard", "strict"}}, optional
-        Runtime validation policy for this object. When omitted, the ambient
-        default (see :func:`spacecore.get_check_level`) is used.
+        Backend context; resolved from ``dom`` when omitted.
+    check_level : {"none", "cheap", "standard", "strict"}, optional
+        Validation level; the ambient default when omitted.
     cod : Field or None, optional
-        Scalar codomain, defaulting to the domain's ``scalars``. Its real or
-        complex field is independent of the domain's storage dtype.
+        Scalar codomain; the domain's ``scalars`` by default.
     """
 
     def hess_apply(self, x: Any) -> Any:
@@ -53,43 +51,23 @@ class QuadraticForm(Functional[Domain]):
 @core_kernels("linop-quadratic-form")
 class LinOpQuadraticForm(QuadraticForm[Domain]):
     r"""
-    Represent a quadratic form backed by a linear operator.
+    Quadratic form ``1/2 <x, Q x> + linear(x) + a`` for a Hermitian ``Q``, so ``grad = Q x + ...``.
 
-    Assumption:
-        Q is Hermitian/self-adjoint. Under this assumption,
-        grad f(x) = Q x.
-
-    Non-Hermitian operators are not supported here. If users need the
-    Hermitian part, they must construct 0.5 * (Q + Q.H) explicitly.
-
-    The full objective is ``q(x) = 1/2 * <x, Qx> + linear(x) + a`` with
-    ``Q : X -> X``. Structurally available dense and diagonal operators are
-    checked at construction. Matrix-free operators are not validated; correctness
-    is the caller's responsibility.
+    Hermiticity is checked where the operator's structure allows; matrix-free ``Q``
+    is trusted. For a non-Hermitian ``Q``, pass its Hermitian part ``0.5 * (Q + Q.H)``.
 
     Parameters
     ----------
     Q : LinOp
         Hermitian operator from a space to itself.
     linear : LinearFunctional or None, optional
-        Optional linear term on ``Q.domain``.
+        Linear term on ``Q.domain``.
     a : scalar-like, optional
-        Constant scalar offset. Default is 0.
+        Constant offset.
     ctx : Context, str, or None, optional
-        Backend context specification. Default is resolved from ``Q`` and
-        ``linear``.
-    check_level : {{"none", "cheap", "standard", "strict"}}, optional
-        Runtime validation policy for this object. When omitted, the ambient
-        default (see :func:`spacecore.get_check_level`) is used.
-
-    Attributes
-    ----------
-    Q : LinOp
-        Stored Hermitian operator.
-    linear : LinearFunctional or None
-        Stored linear term.
-    a : scalar-like
-        Stored scalar offset.
+        Backend context; resolved from ``Q`` and ``linear`` when omitted.
+    check_level : {"none", "cheap", "standard", "strict"}, optional
+        Validation level; the ambient default when omitted.
     """
 
     def __init__(

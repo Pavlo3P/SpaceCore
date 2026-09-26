@@ -74,26 +74,21 @@ def _require_base(base: Space, capability: type, owner: str) -> None:
 
 class StackedSpace(PyTreeNode, CoordinateSpace):
     """
-    Leading-axis copies of a coordinate leaf space.
+    ``count`` leading-axis copies of a coordinate space; operations ``vmap`` over the copies.
 
-    Baseline ``StackedSpace`` exposes only coordinate-space operations. Direct
-    construction dispatches to a more specific class that preserves the base
-    space's inner-product, star, Jordan, and Euclidean-Jordan capabilities.
+    Construction picks a subclass that keeps the base space's inner-product, star and
+    Jordan capabilities.
 
     Parameters
     ----------
     base : Space
-        Coordinate leaf space to repeat along a leading axis.
+        Coordinate space to repeat.
     count : int
-        Number of leading-axis copies.
+        Number of copies.
     ctx : Context, str, or None, optional
-        Context specification. If omitted, the context is resolved from
-        ``base``.
+        Backend context; resolved from ``base`` when omitted.
     check_level : {"none", "cheap", "standard", "strict"}, optional
-        Runtime validation policy for this object. When omitted, the ambient
-        default (see :func:`spacecore.get_check_level`) is used. Unlike the
-        backend/dtype context, the validation policy is a property of the bound
-        object, not of the :class:`Context`.
+        Validation level; the ambient default when omitted.
     """
 
     def __new__(

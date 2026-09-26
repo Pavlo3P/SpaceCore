@@ -90,38 +90,23 @@ def _format_path(path: tuple[Any, ...]) -> str:
 @dataclass(frozen=True, eq=False)
 class TreeElement(PyTreeNode):
     r"""
-    Bind ordered leaves to a :class:`TreeSpace`.
+    Leaves bound to a :class:`TreeSpace`; plain trees of the right structure work too.
 
-    ``TreeElement`` is an explicit binding helper. Ordinary tuple, list,
-    dictionary, named-tuple, and registered optree values with the configured
-    structure are also valid TreeSpace elements.
+    Leaves are not coerced; the leaf spaces check them.
 
     Parameters
     ----------
     space : TreeSpace
-        Finite direct-product space that defines leaf order and structure.
+        The space fixing leaf order and structure.
     leaves : sequence
         Leaf values in ``space.leaf_paths`` order.
-
-    Attributes
-    ----------
-    space : TreeSpace
-        Bound tree space.
-    leaves : tuple
-        Ordered leaf values.
 
     Raises
     ------
     TypeError
         If ``space`` is not a TreeSpace.
     ValueError
-        If the leaf count does not match ``space.arity``.
-
-    Notes
-    -----
-    The wrapper does not coerce leaf backend, dtype, field, or shape. Those
-    contracts are inherited from the leaf spaces and enforced by
-    :meth:`TreeSpace.check` according to ``space.check_level``.
+        If the leaf count differs from ``space.arity``.
 
     Examples
     --------
@@ -235,60 +220,29 @@ class _TreeLeafCheck(SpaceCheck):
 
 class TreeSpace(PyTreeNode, CoordinateSpace):
     r"""
-    Represent a finite direct product as a Python tree.
+    Finite direct product :math:`\prod_\ell X_\ell` whose elements are Python trees.
 
-    ``TreeSpace`` represents
-    :math:`X = \prod_{\ell \in L} X_\ell`, where each leaf space
-    :math:`X_\ell` is a finite-coordinate SpaceCore space. The optree
-    definition records the Python organization of an element; it does not
-    define a tensor product. Tuple, list, dictionary, named-tuple, and
-    registered optree structures are supported.
+    Any tuple, list, dict, named-tuple or optree-registered structure works. Vector
+    operations, conversion, checks and batching act leaf by leaf, and a capability
+    (inner product, star, Jordan) is offered only when every leaf has it.
 
     Parameters
     ----------
     treedef : optree.PyTreeSpec or tree
-        Immutable structure definition or example tree. Its deterministic leaf
-        order is paired with ``leaf_spaces``.
+        Structure, or an example tree; its leaf order pairs with ``leaf_spaces``.
     leaf_spaces : sequence of CoordinateSpace
-        Nonempty ordered spaces for the tree leaves.
+        Leaf spaces, in leaf order.
     ctx : Context, str, or None, optional
-        Backend context. If omitted, it is resolved from ``leaf_spaces``.
+        Backend context; resolved from ``leaf_spaces`` when omitted.
     check_level : {"none", "cheap", "standard", "strict"}, optional
-        Validation policy override. Leaf backend, dtype, field, and shape checks
-        retain their normal minimum levels.
-
-    Attributes
-    ----------
-    treedef : optree.PyTreeSpec
-        Tree structure independent of element values.
-    leaf_spaces : tuple of CoordinateSpace
-        Ordered leaf spaces converted to ``ctx``.
-    leaf_paths : tuple of tuple
-        Deterministic paths corresponding to ``leaf_spaces``.
-    shape : tuple of int
-        Dense coordinate shape ``(sum(leaf.size),)``.
+        Validation level; the ambient default when omitted.
 
     Raises
     ------
     TypeError
-        If ``leaf_spaces`` is not a sequence of coordinate spaces.
+        If ``leaf_spaces`` are not coordinate spaces.
     ValueError
-        If there are no leaf spaces or the tree leaf count does not match.
-
-    See Also
-    --------
-    TreeElement
-        Optional explicit binding of leaves to a TreeSpace.
-
-    Notes
-    -----
-    Vector operations, conversion, validation, and batching are leafwise.
-    Batches are trees of leaves with leading batch dimensions. The TreeSpace
-    advertises inner-product, star, Jordan, and Euclidean-Jordan capabilities
-    only when every leaf advertises the same mathematically valid capability.
-    Leaf spaces are converted to one resolved context, so the TreeSpace field
-    and representation dtype are inherited uniformly from those leaves. Each
-    leaf performs the actual field and exact-dtype membership checks.
+        If there are no leaves or the leaf count does not match the tree.
 
     Examples
     --------
@@ -365,22 +319,7 @@ class TreeSpace(PyTreeNode, CoordinateSpace):
         *,
         check_level: CheckLevel | str | None = None,
     ) -> "TreeSpace":
-        """Build a tuple-structured tree from ordered leaf spaces.
-
-        Parameters
-        ----------
-        leaf_spaces : sequence of CoordinateSpace
-            Nonempty ordered spaces for tuple leaves.
-        ctx : Context, str, or None, optional
-            Backend context resolved from the leaves when omitted.
-        check_level : {"none", "cheap", "standard", "strict"}, optional
-            Validation policy override.
-
-        Returns
-        -------
-        TreeSpace
-            Tuple-structured finite direct product.
-        """
+        """Build a tuple-structured ``TreeSpace`` from ordered leaf spaces."""
         spaces = _validate_leaf_spaces(leaf_spaces)
         return cls(tuple(range(len(spaces))), spaces, ctx=ctx, check_level=check_level)
 
@@ -698,25 +637,18 @@ class _LeafwiseStarMixin(_LeafwiseHostMixin):
 @dataclass(frozen=True)
 class TreeSpectralDecomposition(PyTreeNode):
     """
-    Store leafwise Jordan spectral data in deterministic leaf order.
+    Leafwise Jordan spectral data, in leaf order.
 
     Parameters
     ----------
     eigvals : tuple
-        Eigenvalue data for each TreeSpace leaf.
+        Eigenvalues of each leaf.
     frames : tuple
-        Spectral frame data for each TreeSpace leaf.
+        Spectral frames of each leaf.
     treedef : optree.PyTreeSpec or None, optional
-        The producing space's ``treedef``, tagged on by
-        :meth:`TreeSpace.spectral_decompose` so :meth:`to_tree` can expose the
-        eigenvalues in the tree's own structure. ``None`` for hand-built
-        decompositions.
-
-    Notes
-    -----
-    ``treedef`` is static JAX pytree aux, so decompositions combined in a single
-    ``jax.lax.cond`` / ``while_loop`` must all be tagged (or all ``None``);
-    otherwise JAX raises a pytree-structure mismatch.
+        The producing space's structure, used by :meth:`to_tree`; ``None`` for hand-built
+        data. It is static pytree data, so decompositions merged in one ``lax.cond`` or
+        ``while_loop`` must agree on it.
     """
 
     eigvals: tuple[Any, ...]

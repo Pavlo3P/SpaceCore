@@ -13,23 +13,18 @@ from ._coordinate import _CoordinateFunctional, _inner_core, lp_coordinate_grad,
 
 class SquaredL2NormFunctional(_CoordinateFunctional[Domain]):
     r"""
-    Half the squared space norm ``F(x) = 1/2 ||x||_X^2 = 1/2 <x, x>_X``.
+    Half the squared space norm ``<x, x>_X / 2``; its gradient is ``x``.
 
-    This is the smooth quadratic energy whose Riesz gradient is ``x`` and whose
-    proximal operator is the clean shrinkage ``v / (1 + t)`` (see
-    :func:`~spacecore.functional.prox_l2sq`). It is intentionally distinct from
-    ``LpNormFunctional(X, 2)``, which is the *un-squared* coordinate 2-norm
-    ``(sum_i |x_i|^2)^{1/2}``.
+    Not ``LpNormFunctional(X, 2)``, which is the unsquared coordinate norm.
 
     Parameters
     ----------
     dom : Space
-        Domain space ``X``.
+        Domain.
     ctx : Context, str, or None, optional
-        Backend context specification. Default is resolved from ``dom``.
-    check_level : {{"none", "cheap", "standard", "strict"}}, optional
-        Runtime validation policy for this object. When omitted, the ambient
-        default (see :func:`spacecore.get_check_level`) is used.
+        Backend context; resolved from ``dom`` when omitted.
+    check_level : {"none", "cheap", "standard", "strict"}, optional
+        Validation level; the ambient default when omitted.
 
     Examples
     --------
@@ -83,26 +78,21 @@ class SquaredL2NormFunctional(_CoordinateFunctional[Domain]):
 
 class LpNormFunctional(_CoordinateFunctional[Domain]):
     r"""
-    Coordinate ``p``-norm ``F(x) = (sum_i |x_i|^p)^{1/p}`` for ``p >= 1``.
+    Coordinate ``p``-norm ``(sum_i |x_i|^p)^(1/p)`` for ``p >= 1``.
+
+    The gradient is ``sign(x_i) |x_i|^(p-1) / ||x||_p^(p-1)``, Riesz-corrected; at the
+    origin the zero subgradient is returned.
 
     Parameters
     ----------
     dom : Space
-        Domain space ``X``.
+        Domain.
     p : float
-        Norm order; must be finite and ``>= 1``.
+        Finite order, at least 1.
     ctx : Context, str, or None, optional
-        Backend context specification. Default is resolved from ``dom``.
-    check_level : {{"none", "cheap", "standard", "strict"}}, optional
-        Runtime validation policy for this object. When omitted, the ambient
-        default (see :func:`spacecore.get_check_level`) is used.
-
-    Notes
-    -----
-    The gradient at ``x != 0`` is
-    ``d/dx_i ||x||_p = sign(x_i) |x_i|^{p-1} / ||x||_p^{p-1}`` (Riesz-corrected).
-    At the origin the function is not differentiable; this returns the zero
-    subgradient there. For ``p = 1`` the gradient is ``sign(x)``.
+        Backend context; resolved from ``dom`` when omitted.
+    check_level : {"none", "cheap", "standard", "strict"}, optional
+        Validation level; the ambient default when omitted.
 
     Examples
     --------
@@ -158,21 +148,20 @@ def L1NormFunctional(
     check_level: CheckLevel | bool | None = None,
 ) -> "LpNormFunctional[Domain]":
     r"""
-    Coordinate 1-norm ``||x||_1`` -- a thin wrapper for ``LpNormFunctional(X, 1)``.
+    Coordinate 1-norm: ``LpNormFunctional(dom, 1)``.
 
     Parameters
     ----------
     dom : Space
-        Domain space ``X``.
+        Domain.
     ctx : Context, str, or None, optional
-        Backend context specification. Default is resolved from ``dom``.
+        Backend context; resolved from ``dom`` when omitted.
     check_level : {"none", "cheap", "standard", "strict"}, optional
-        Runtime validation policy for the returned functional. When omitted, the
-        ambient default (see :func:`spacecore.get_check_level`) is used.
+        Validation level; the ambient default when omitted.
 
     Returns
     -------
     LpNormFunctional
-        The ``p = 1`` instance of :class:`LpNormFunctional`.
+        The ``p = 1`` norm.
     """
     return LpNormFunctional(dom, 1.0, ctx, check_level=check_level)

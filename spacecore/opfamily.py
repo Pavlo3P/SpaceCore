@@ -1,34 +1,8 @@
-r"""Point-indexed families of linear operators, and the functional-weighted map.
+r"""
+The functional-weighted map ``m(x) = F(x) A x``: a :class:`~spacecore.Mapping` that is not linear.
 
-A :class:`~spacecore.linop.LinOp` is a *single* linear map. Several constructions
-that look like operators are really a **family** of them, one per point of the
-domain: the object is linear once a point is fixed, but the point-to-operator
-assignment is not.
-
-The motivating case is the functional-weighted map
-
-.. math::
-
-    m(x) = F(x) \, A x,
-
-with ``F`` a scalar-valued :class:`~spacecore.functional.Functional` and ``A`` a
-linear operator. This is **not** linear in ``x`` — both the scale ``F(x)`` and the
-direction ``A x`` move with ``x`` — so it cannot be a ``LinOp`` without breaking
-the contract that ``rapply``, ``compose_chain``, and the kernel fusion rules rely
-on. It *is* linear the moment ``x`` is frozen, and that is exactly what
-:meth:`FunctionalScaledOperator.at` returns.
-
-Two different linear operators are attached to each point, and conflating them is
-the easy mistake:
-
-* :meth:`FunctionalScaledOperator.at` — the **frozen member** :math:`A_x`. For the
-  functional-weighted family that is ``F(x) · A``, so ``at(x).apply(x) == m(x)``.
-* :meth:`FunctionalScaledOperator.linearize_at` — the **derivative** :math:`Dm(x)`, the
-  linear map ``h -> Dm(x)[h]`` used by Newton/Gauss-Newton. These coincide only
-  when the family is constant (i.e. ``F`` is constant).
-
-This module deliberately sits outside both ``linop`` and ``functional``: it
-depends on both, and neither depends on it.
+``at(x)`` is the frozen member ``F(x) A``, with ``at(x).apply(x) == m(x)``;
+``linearize_at(x)`` is the derivative ``Dm(x)``. The two agree only for constant ``F``.
 """
 from __future__ import annotations
 
@@ -49,29 +23,16 @@ Codomain = TypeVar("Codomain", bound=Space)
 
 class FunctionalScaledOperator(Mapping, Generic[Domain, Codomain]):
     r"""
-    The functional-weighted map :math:`m(x) = F(x)\, A x`.
-
-    ``F`` and ``A`` must share a domain. The family member at ``x`` is the
-    ordinary scalar multiple ``F(x) · A``, built through
-    :func:`~spacecore.linop.make_scaled`, so it folds and canonicalizes like any
-    other scaled operator.
+    The functional-weighted map :math:`m(x) = F(x)\, A x`; ``F`` and ``A`` share a domain.
 
     Parameters
     ----------
     functional : Functional
-        Scalar weight ``F``, defined on ``op.domain``.
+        Weight ``F`` on ``op.domain``.
     op : LinOp
-        Linear operator ``A``.
+        Operator ``A``.
     check_level : {"none", "cheap", "standard", "strict"}, optional
-        Runtime validation policy. When omitted, the least-strict of the two
-        operands is used, matching the functional algebra's combinator rule.
-
-    Attributes
-    ----------
-    functional : Functional
-        The scalar weight.
-    op : LinOp
-        The scaled operator.
+        Validation level; the less strict of the two operands' when omitted.
     """
 
     def __init__(
@@ -131,31 +92,12 @@ class FunctionalScaledOperator(Mapping, Generic[Domain, Codomain]):
 
     @checked_method(in_space="domain")
     def linearize_at(self, x: Any) -> LinOp:
-        r"""Return the derivative of ``m(x) = F(x) A x`` at ``x``.
+        r"""
+        Return the derivative :math:`Dm(x)[h] = \langle \nabla F(x), h\rangle A x + F(x) A h` as a ``LinOp``.
 
-        By the product rule, for a direction ``h``
-
-        .. math::
-
-            Dm(x)[h] = DF(x)[h] \; A x \;+\; F(x)\, A h
-                     = \langle \nabla F(x), h\rangle \, Ax + F(x)\, A h,
-
-        using the library's Riesz convention ``<grad F(x), h> = DF(x)[h]``. The
-        first term is a **rank-one** operator (its output is always a multiple of
-        the fixed vector ``Ax``), the second the frozen member — so the
-        derivative and :meth:`at` differ by exactly that rank-one correction, and
-        coincide when ``F`` is constant.
-
-        The adjoint follows from
-        :math:`\langle Dm(x)h, w\rangle_Y = \langle h, Dm(x)^{\#}w\rangle_X`:
-
-        .. math::
-
-            Dm(x)^{\#}[w] = \langle Ax, w\rangle_Y \, \nabla F(x)
-                          + \overline{F(x)}\, A^{\#} w .
-
-        Both coefficients are inner products in the *codomain* geometry, not
-        coordinate dot products, so this is the metric adjoint (ADR-009).
+        It differs from :meth:`at` by the rank-one first term. Its adjoint is
+        :math:`\langle Ax, w\rangle_Y \nabla F(x) + \overline{F(x)} A^{\#} w`, in the
+        codomain geometry.
         """
         X, Y = self.domain, self.codomain
         value, gradient = self.functional.value_and_grad(x)
@@ -209,29 +151,19 @@ class FunctionalScaledOperator(Mapping, Generic[Domain, Codomain]):
 
 def make_functional_scaled_operator(functional: Functional, op: LinOp) -> Any:
     """
-    Return ``F · A`` as a :class:`LinOp` when possible, else as a family.
-
-    A :class:`~spacecore.functional.ConstantFunctional` weight is a constant
-    family, so the result collapses to an ordinary
-    :class:`~spacecore.linop.ScaledLinOp` — the linear case is not forced through
-    the non-linear type. Everything else builds a
-    :class:`FunctionalScaledOperator`.
-
-    As in the functional algebra, the collapse is **structural**: a functional
-    that merely happens to be constant is not recognized, because that is a fact
-    about values, not about the expression.
+    Return ``F * A``: a ``ScaledLinOp`` when ``F`` is a constant (or zero) functional, else a :class:`FunctionalScaledOperator`.
 
     Parameters
     ----------
     functional : Functional
-        Scalar weight ``F``.
+        Weight ``F``.
     op : LinOp
-        Linear operator ``A``.
+        Operator ``A``.
 
     Returns
     -------
     LinOp or FunctionalScaledOperator
-        ``ScaledLinOp`` for a constant weight, otherwise the family.
+        The product.
     """
     from .functional import ConstantFunctional, ZeroFunctional
 

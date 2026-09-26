@@ -1,42 +1,10 @@
-"""Backend-neutral container protocol and the registry that wires it to backends.
+"""
+Registry wiring SpaceCore's pytree containers into each backend's tree protocol.
 
-A SpaceCore ``LinOp``/``Functional``/``Space`` is a *structured container*: it
-decomposes into ``(children, aux)`` — dynamic array-bearing children plus static
-metadata — and rebuilds from that pair. Every backend with function-transform
-machinery needs to know that structure in order to see inside our objects:
-``jax.jit``/``grad``/``vmap`` and ``lax.while_loop`` consult ``jax.tree_util``'s
-pytree registry, ``torch.compile``/``torch.func`` consult Torch's. There is **no
-shared cross-framework registry** — registering with one does nothing for the
-other — so supporting N backends means N registration calls per class.
-
-That is the bookkeeping no pytree library hands you, and it is all this module
-does. Two sets grow independently and in an order nobody controls:
-
-* **container classes**, as ``linop``/``functional``/``space`` modules import;
-* **backends with a tree protocol**, as each ``BackendOps`` is loaded.
-
-:class:`PyTreeRegistry` keeps both and, whenever either side gains a member,
-wires it against everything currently on the other side (*two-axis back-fill*).
-Registration therefore does not depend on import order, which is what lets a
-backend loaded late still pick up classes defined early, and vice versa.
-
-The flatten protocol itself lives on :class:`PyTreeNode`, the capability mixin
-concrete containers inherit; the per-backend translation lives in each backend's
-adapter.
-
-This module sits in :mod:`spacecore.backend` — the backend-*neutral* abstraction
-layer, beside the :class:`~spacecore.backend.BackendOps` contract whose
-``install_pytree_protocol`` feeds the registry — and imports **nothing**, not even
-from its own package. No individual backend is named here; each one reaches in
-from its own adapter. So the concept stays backend-agnostic while living next to
-the layer it serves, and the module is safe to import from anywhere without
-risking a cycle.
-
-Note on global state: ``registry`` is a process-wide singleton, but a *monotonic*
-one — classes and backends are only ever added, wiring is idempotent, and the
-final state is a function of what got imported rather than of the order it got
-imported in. That grow-only property is what makes a shared instance safe here;
-do not add removal or reset to it (tests construct their own instance instead).
+JAX and torch keep separate pytree registries, so every container class must be
+registered with every backend. :class:`PyTreeRegistry` records both sides and wires
+each new class or backend against the other, whatever the import order. It only
+grows, and this module imports nothing, so it cannot form an import cycle.
 """
 from __future__ import annotations
 
@@ -191,23 +159,11 @@ class PyTreeNode(ABC):
         """
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
-        """Register subclasses that provide the flatten protocol.
+        """
+        Register each subclass that implements ``tree_flatten``, even if abstract otherwise.
 
-        Gates on the *protocol method* rather than on :func:`inspect.isabstract`
-        because the two ask different questions. ``isabstract`` asks "is anything
-        still unimplemented?"; the registry only needs "is this class flattenable
-        yet?". They disagree for a class that supplies ``tree_flatten`` but stays
-        abstract for an unrelated reason — say a ``LinOp`` subclass that factors
-        out flattening while leaving ``apply`` to its own subclasses. Such a class
-        is perfectly registrable: a registrar records the type and consults the
-        two protocol methods, nothing else. Registering it is also harmless, since
-        it is never instantiated.
-
-        (``inspect.isabstract`` *does* report correctly from inside
-        ``__init_subclass__``. ``__abstractmethods__`` is not populated until
-        ``ABCMeta.__new__`` returns, but CPython detects that and falls back to
-        scanning for abstract methods manually. The choice here is about which
-        question to ask, not a workaround for a broken one.)
+        The test is whether the class can flatten, not ``inspect.isabstract``; registering a
+        class that is never instantiated is harmless.
         """
         super().__init_subclass__(**kwargs)
         if getattr(cls.tree_flatten, "__isabstractmethod__", False):
