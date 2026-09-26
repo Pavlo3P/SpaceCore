@@ -87,6 +87,9 @@ from .optimize import (
     minimize_scipy,
 )
 from .space import (
+    DenseElement,
+    Element,
+    LowRankElement,
     BackendCheck,
     DTypeCheck,
     FieldCheck,
@@ -201,6 +204,9 @@ __all__ = [
     "SpectralFunctional",
     "NuclearNormFunctional",
     "Mapping",
+    "DenseElement",
+    "Element",
+    "LowRankElement",
     "eigenvalue_space",
     "realify",
     "spectralize",

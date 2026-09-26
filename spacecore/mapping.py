@@ -1,6 +1,7 @@
 """``Mapping``: the common parent of ``LinOp`` and ``Functional``, owning the lazy algebra.
 
-The operator overloads live here once. What ``a + b``, ``a * b`` and ``a @ b`` *build*
+The operator overloads live here once, on :class:`Algebraic`, which ``Mapping`` and
+``spacecore.space.Element`` both inherit. What ``a + b``, ``a * b`` and ``a @ b`` *build*
 is looked up in a rule table keyed by the two operand kinds, so a family plugs into
 the algebra by registering rules — the way a backend plugs in by supplying ops.
 
@@ -38,13 +39,13 @@ def register(op: str, left: type, right: type, rule: Callable[[Any, Any], Any]) 
 
 
 def _kinds(x: Any) -> tuple[type, ...]:
-    if not isinstance(x, Mapping) and is_scalar_like(x):
+    if not isinstance(x, Algebraic) and is_scalar_like(x):
         return (Scalar,)
     return type(x).__mro__
 
 
 def _is_zero(x: Any) -> bool:
-    return not isinstance(x, Mapping) and is_scalar_like(x) and scalar_eq(x, 0)
+    return not isinstance(x, Algebraic) and is_scalar_like(x) and scalar_eq(x, 0)
 
 
 def _combine(op: str, a: Any, b: Any) -> Any:
@@ -63,33 +64,15 @@ def _combine(op: str, a: Any, b: Any) -> Any:
 
 
 def _negate(x: Any) -> Any:
-    if isinstance(x, Mapping):
+    if isinstance(x, Algebraic):
         return _combine("mul", -1, x)
     return -x if is_scalar_like(x) else NotImplemented
 
 
-class Mapping(PyTreeNode, ContextBound):
-    """
-    A map from ``domain`` to ``codomain``, with the lazy algebra of the family.
+class Algebraic:
+    """Operator overloads driven by the rule table; shared by ``Mapping`` and ``Element``."""
 
-    Parameters
-    ----------
-    ctx : Context, str, or None, optional
-        Backend context specification.
-    check_level : {"none", "cheap", "standard", "strict"}, optional
-        Runtime validation policy for this object. When omitted, the ambient
-        default (see :func:`spacecore.get_check_level`) is used.
-    """
-
-    @property
-    @abstractmethod
-    def domain(self) -> Any:
-        """Domain space."""
-
-    @property
-    @abstractmethod
-    def codomain(self) -> Any:
-        """Codomain: a space for operators, a :class:`~spacecore.space.Field` for functionals."""
+    __slots__ = ()
 
     def __add__(self, other: Any) -> Any:
         """Return ``self + other`` per the registered ``add`` rule."""
@@ -131,6 +114,30 @@ class Mapping(PyTreeNode, ContextBound):
     def __rmatmul__(self, other: Any) -> Any:
         """Return the composition ``other @ self`` per the registered ``matmul`` rule."""
         return _combine("matmul", other, self)
+
+
+class Mapping(Algebraic, PyTreeNode, ContextBound):
+    """
+    A map from ``domain`` to ``codomain``, with the lazy algebra of the family.
+
+    Parameters
+    ----------
+    ctx : Context, str, or None, optional
+        Backend context specification.
+    check_level : {"none", "cheap", "standard", "strict"}, optional
+        Runtime validation policy for this object. When omitted, the ambient
+        default (see :func:`spacecore.get_check_level`) is used.
+    """
+
+    @property
+    @abstractmethod
+    def domain(self) -> Any:
+        """Domain space."""
+
+    @property
+    @abstractmethod
+    def codomain(self) -> Any:
+        """Codomain: a space for operators, a :class:`~spacecore.space.Field` for functionals."""
 
     def __eq__(self, other: Any) -> bool:
         """No algebraic equality here; ``NotImplemented`` falls back to identity symmetrically."""

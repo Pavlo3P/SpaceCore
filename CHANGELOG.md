@@ -56,6 +56,11 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- `Element`, a formal member of a space: context-bound, a pytree, checked
+  against its space once at construction, with arithmetic that stays in the
+  space. Representations are subclasses — `DenseElement` and the factored
+  Hermitian `LowRankElement` — and a pair without its own rule densifies. `A @ x`
+  applies an operator to an element.
 - `Mapping`, the common parent of `LinOp` and `Functional`. It owns the operator
   overloads: each family registers `add`, `mul` and `matmul` rules, and
   subtraction, negation and `sum()` are derived. `F @ A` now composes a

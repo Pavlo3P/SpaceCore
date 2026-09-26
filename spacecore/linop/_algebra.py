@@ -5,6 +5,7 @@ from typing import Any, Callable, Sequence, cast
 
 from ._base import LinOp, Domain, Codomain
 from ..mapping import Scalar, register
+from ..space import DenseElement, Element
 from ._metric import _requires_euclidean_or_riesz, metric_rapply, metric_rvapply
 from .._check_policy import CheckLevel, minimum_check_level
 from .._checks import checked_method
@@ -1470,3 +1471,4 @@ register("add", LinOp, LinOp, lambda a, b: make_sum((a, b)))
 register("mul", Scalar, LinOp, make_scaled)
 register("mul", LinOp, Scalar, lambda op, s: make_scaled(s, op))
 register("matmul", LinOp, LinOp, make_composed)
+register("matmul", LinOp, Element, lambda A, x: DenseElement._make(A.codomain, A.apply(x.densify())))

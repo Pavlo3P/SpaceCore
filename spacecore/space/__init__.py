@@ -37,8 +37,12 @@ from .concrete import (
     TreeSpace,
     TreeSpectralDecomposition,
 )
+from ._element import DenseElement, Element, LowRankElement
 
 __all__ = [
+    "DenseElement",
+    "Element",
+    "LowRankElement",
     "BackendCheck",
     "DTypeCheck",
     "FieldCheck",
