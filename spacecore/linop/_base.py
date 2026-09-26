@@ -4,24 +4,21 @@ import warnings
 from abc import abstractmethod
 from functools import cached_property
 from math import prod
-from numbers import Number
 from typing import Any, Generic, TypeVar
 
 from .._batching import _leading_batch_size, _warn_vmap_fallback_once
 from .._check_policy import CheckLevel
 from .._checks import checked_method
 from ..space._capabilities import _CAP_BATCH, _CAP_COORDINATE, require
-from ..backend import PyTreeNode
-from .._repr import describe_space
 from ..space import VectorSpace, Field
 from ..contextual import Context
-from ..contextual import ContextBound
+from ..mapping import Mapping
 
 Domain = TypeVar("Domain", bound=VectorSpace)
 Codomain = TypeVar("Codomain", bound=VectorSpace)
 
 
-class LinOp(PyTreeNode, ContextBound, Generic[Domain, Codomain]):
+class LinOp(Mapping, Generic[Domain, Codomain]):
     r"""
     Represent a linear map between two spaces.
 
@@ -220,72 +217,6 @@ class LinOp(PyTreeNode, ContextBound, Generic[Domain, Codomain]):
             self._adjoint_view = view
         return view
 
-    def __add__(self, other: Any) -> LinOp:
-        """Return the lazy sum ``self + other`` of two compatible operators."""
-        from ._algebra import make_sum
-
-        if not isinstance(other, LinOp):
-            return NotImplemented
-        return make_sum((self, other))
-
-    def __radd__(self, other: Any) -> LinOp:
-        """Return the lazy sum ``other + self`` of two compatible operators."""
-        from ._algebra import make_sum
-
-        if isinstance(other, Number) and other == 0:
-            return self
-        if not isinstance(other, LinOp):
-            return NotImplemented
-        return make_sum((other, self))
-
-    def __neg__(self) -> LinOp:
-        """Return the lazy negation ``-self``."""
-        from ._algebra import make_scaled
-
-        return make_scaled(-1, self)
-
-    def __sub__(self, other: Any) -> LinOp:
-        """Return the lazy difference ``self - other`` of two compatible operators."""
-        from ._algebra import make_scaled, make_sum
-
-        if not isinstance(other, LinOp):
-            return NotImplemented
-        return make_sum((self, make_scaled(-1, other)))
-
-    def __rsub__(self, other: Any) -> LinOp:
-        """Return the lazy difference ``other - self`` of two compatible operators."""
-        from ._algebra import make_scaled, make_sum
-
-        if isinstance(other, Number) and other == 0:
-            return make_scaled(-1, self)
-        if not isinstance(other, LinOp):
-            return NotImplemented
-        return make_sum((other, make_scaled(-1, self)))
-
-    def __mul__(self, scalar: Any) -> LinOp:
-        """Return the lazy right scalar multiple ``self * scalar``."""
-        from ._algebra import is_scalar_like, make_scaled
-
-        if not is_scalar_like(scalar):
-            return NotImplemented
-        return make_scaled(scalar, self)
-
-    def __rmul__(self, scalar: Any) -> LinOp:
-        """Return the lazy left scalar multiple ``scalar * self``."""
-        from ._algebra import is_scalar_like, make_scaled
-
-        if not is_scalar_like(scalar):
-            return NotImplemented
-        return make_scaled(scalar, self)
-
-    def __matmul__(self, other: Any) -> LinOp:
-        """Return the lazy composition ``self @ other`` of two compatible operators."""
-        from ._algebra import make_composed
-
-        if not isinstance(other, LinOp):
-            return NotImplemented
-        return make_composed(self, other)
-
     def adjoint(self) -> LinOp:
         """Return the Hermitian-adjoint view of this linear operator."""
         return self.H
@@ -397,25 +328,6 @@ class LinOp(PyTreeNode, ContextBound, Generic[Domain, Codomain]):
     def assert_codomain(self, y: Any) -> None:
         """Raise if ``y`` is not in the codomain."""
         self.cod.check_member(y)
-
-    def __eq__(self, other: Any) -> bool:
-        """Return structural equality when implemented by a subclass."""
-        return NotImplemented
-
-    def _arrow(self) -> str:
-        """Return the ``domain → codomain`` descriptor for this operator."""
-        return f"{describe_space(self.dom)} → {describe_space(self.cod)}"
-
-    def _repr_body(self) -> str:
-        return self._arrow()
-
-    def _short_repr(self) -> str:
-        """Return a bounded ``ClassName(domain → codomain)`` form for nesting.
-
-        Algebra operators show their operands in the full :meth:`__repr__` but
-        collapse to this arrow form when nested, so deep trees never explode.
-        """
-        return f"{type(self).__name__}({self._arrow()})"
 
     # tree_flatten / tree_unflatten are inherited from PyTreeNode, which owns the
     # flatten contract for every SpaceCore container and auto-registers concrete

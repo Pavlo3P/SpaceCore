@@ -16,14 +16,14 @@ linear operator. This is **not** linear in ``x`` — both the scale ``F(x)`` and
 direction ``A x`` move with ``x`` — so it cannot be a ``LinOp`` without breaking
 the contract that ``rapply``, ``compose_chain``, and the kernel fusion rules rely
 on. It *is* linear the moment ``x`` is frozen, and that is exactly what
-:meth:`OperatorFamily.at` returns.
+:meth:`FunctionalScaledOperator.at` returns.
 
 Two different linear operators are attached to each point, and conflating them is
 the easy mistake:
 
-* :meth:`OperatorFamily.at` — the **frozen member** :math:`A_x`. For the
+* :meth:`FunctionalScaledOperator.at` — the **frozen member** :math:`A_x`. For the
   functional-weighted family that is ``F(x) · A``, so ``at(x).apply(x) == m(x)``.
-* :meth:`OperatorFamily.linearize_at` — the **derivative** :math:`Dm(x)`, the
+* :meth:`FunctionalScaledOperator.linearize_at` — the **derivative** :math:`Dm(x)`, the
   linear map ``h -> Dm(x)[h]`` used by Newton/Gauss-Newton. These coincide only
   when the family is constant (i.e. ``F`` is constant).
 
@@ -32,15 +32,14 @@ depends on both, and neither depends on it.
 """
 from __future__ import annotations
 
-from abc import abstractmethod
 from typing import Any, Generic, TypeVar
 
 from ._checks import checked_method
 from ._check_policy import CheckLevel, minimum_check_level
-from .backend import PyTreeNode
-from .contextual import Context, ContextBound
+from .contextual import Context
 from .functional import Functional
 from .linop import LinOp, MatrixFreeLinOp
+from .mapping import Mapping, register
 from .linop._algebra import make_scaled
 from .space import Space
 
@@ -48,104 +47,7 @@ Domain = TypeVar("Domain", bound=Space)
 Codomain = TypeVar("Codomain", bound=Space)
 
 
-class OperatorFamily(PyTreeNode, ContextBound, Generic[Domain, Codomain]):
-    r"""
-    A point-indexed family of linear operators :math:`x \mapsto A_x \in L(X, Y)`.
-
-    Not a :class:`~spacecore.linop.LinOp`, and deliberately not a subclass of one:
-    the map :meth:`apply` is non-linear in general. A ``LinOp`` is the special
-    case of a *constant* family, and every member of a family is a genuine
-    ``LinOp`` obtained with :meth:`at`.
-
-    Subclasses implement :meth:`at`. Everything else is derived from it, though
-    subclasses may override :meth:`apply` with a fused evaluation that avoids
-    building the intermediate node.
-
-    Parameters
-    ----------
-    dom : Space
-        Domain space ``X`` — both the index set of the family and the domain of
-        each member.
-    cod : Space
-        Codomain space ``Y`` of each member.
-    ctx : Context, str, or None, optional
-        Backend context specification.
-    check_level : {"none", "cheap", "standard", "strict"}, optional
-        Runtime validation policy for this object. When omitted, the ambient
-        default (see :func:`spacecore.get_check_level`) is used.
-    """
-
-    def __init__(
-        self,
-        dom: Domain,
-        cod: Codomain,
-        ctx: Context | str | None = None,
-        check_level: CheckLevel | bool | None = None,
-    ) -> None:
-        self.dom, self.cod = self._bind_context(ctx, dom, cod, check_level=check_level)
-
-    @property
-    def domain(self) -> Domain:
-        """Domain space of every member of this family."""
-        return self.dom
-
-    @property
-    def codomain(self) -> Codomain:
-        """Codomain space of every member of this family."""
-        return self.cod
-
-    @abstractmethod
-    def at(self, x: Any) -> LinOp:
-        """Return the family member at ``x`` — a genuine :class:`LinOp`.
-
-        Freezing the index point is what recovers linearity, so the result
-        supports the whole operator algebra: ``@``, ``+``, ``.H``, ``fuse()``.
-        """
-
-    def apply(self, x: Any) -> Any:
-        """Evaluate the map ``x -> A_x x`` at ``x``.
-
-        Note the double role of ``x``: it selects the member *and* is the vector
-        the member is applied to. That coupling is precisely what makes this
-        non-linear. To apply one member to a *different* vector, use
-        ``family.at(x).apply(h)``.
-        """
-        return self.at(x).apply(x)
-
-    def __call__(self, x: Any) -> Any:
-        """Evaluate the map at ``x``."""
-        return self.apply(x)
-
-    def linearize_at(self, x: Any) -> LinOp:
-        r"""Return the derivative :math:`Dm(x)` as a :class:`LinOp`.
-
-        The Fréchet derivative of ``m(x) = A_x x`` at a fixed ``x``, i.e. the
-        linear map ``h -> Dm(x)[h]``. This is **not** :meth:`at`: ``at(x)``
-        ignores how the family varies, while ``linearize_at(x)`` accounts for it.
-        They agree exactly when the family is constant.
-
-        Override in subclasses that can differentiate; the base raises
-        :class:`NotImplementedError`.
-        """
-        raise NotImplementedError(
-            f"{type(self).__name__} does not implement linearize_at()."
-        )
-
-    def _arrow(self) -> str:
-        """Return the ``domain ⇝ codomain`` descriptor (``⇝``: not linear)."""
-        from ._repr import describe_space
-
-        return f"{describe_space(self.dom)} ⇝ {describe_space(self.cod)}"
-
-    def _repr_body(self) -> str:
-        return self._arrow()
-
-    def _short_repr(self) -> str:
-        """Return a bounded ``ClassName(domain ⇝ codomain)`` form for nesting."""
-        return f"{type(self).__name__}({self._arrow()})"
-
-
-class FunctionalScaledOperator(OperatorFamily[Domain, Codomain]):
+class FunctionalScaledOperator(Mapping, Generic[Domain, Codomain]):
     r"""
     The functional-weighted map :math:`m(x) = F(x)\, A x`.
 
@@ -191,9 +93,31 @@ class FunctionalScaledOperator(OperatorFamily[Domain, Codomain]):
             )
         if check_level is None:
             check_level = minimum_check_level((functional.check_level, op.check_level))
-        super().__init__(op.domain, op.codomain, op.ctx, check_level=check_level)
+        self.dom, self.cod = self._bind_context(
+            op.ctx, op.domain, op.codomain, check_level=check_level
+        )
         self.functional = functional.convert(self.ctx)
         self.op = op.convert(self.ctx)
+
+    @property
+    def domain(self) -> Domain:
+        """Domain space ``X``: the index set of the family and each member's domain."""
+        return self.dom
+
+    @property
+    def codomain(self) -> Codomain:
+        """Codomain space ``Y`` of each member."""
+        return self.cod
+
+    def __call__(self, x: Any) -> Any:
+        """Evaluate the map at ``x``."""
+        return self.apply(x)
+
+    def _arrow(self) -> str:
+        """Return the ``domain ⇝ codomain`` descriptor (``⇝``: not linear)."""
+        from ._repr import describe_space
+
+        return f"{describe_space(self.dom)} ⇝ {describe_space(self.cod)}"
 
     @checked_method(in_space="domain")
     def at(self, x: Any) -> LinOp:
@@ -327,3 +251,7 @@ def make_functional_scaled_operator(functional: Functional, op: LinOp) -> Any:
     if isinstance(functional, ConstantFunctional):
         return make_scaled(functional.constant, op)
     return FunctionalScaledOperator(functional, op)
+
+
+register("mul", Functional, LinOp, make_functional_scaled_operator)
+register("mul", LinOp, Functional, lambda op, f: make_functional_scaled_operator(f, op))

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from abc import abstractmethod
-from numbers import Number
 from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
 from .._batching import _leading_batch_size, _warn_vmap_fallback_once
@@ -14,9 +13,7 @@ from .._batching import (  # noqa: F401
     _check_scalar_shape,
 )
 from .._checks import checked_method
-from ..backend import PyTreeNode
-from .._repr import describe_space
-from ..contextual import ContextBound
+from ..mapping import Mapping
 from ..contextual import Context, resolve_context_priority
 from .._check_policy import CheckLevel
 from ..space import CoordinateSpace, Field
@@ -28,7 +25,7 @@ if TYPE_CHECKING:
 Domain = TypeVar("Domain", bound=CoordinateSpace)
 
 
-class Functional(PyTreeNode, ContextBound, Generic[Domain]):
+class Functional(Mapping, Generic[Domain]):
     r"""
     Scalar-valued map on a space.
 
@@ -163,95 +160,6 @@ class Functional(PyTreeNode, ContextBound, Generic[Domain]):
 
         return make_functional_composed(self, A)
 
-    def __add__(self, other: Any) -> "Functional":
-        """Return ``self + other`` — a lazy sum (functional) or affine shift (scalar)."""
-        from ._algebra import is_scalar_like, make_functional_sum, make_shifted_functional
-
-        if isinstance(other, Functional):
-            return make_functional_sum((self, other))
-        if is_scalar_like(other):
-            return make_shifted_functional(self, other)
-        return NotImplemented
-
-    def __radd__(self, other: Any) -> "Functional":
-        """Return ``other + self`` (``0 + self`` enables builtin ``sum``)."""
-        from ._algebra import is_scalar_like, make_functional_sum, make_shifted_functional
-
-        if isinstance(other, Number) and other == 0:
-            return self
-        if isinstance(other, Functional):
-            return make_functional_sum((other, self))
-        if is_scalar_like(other):
-            return make_shifted_functional(self, other)
-        return NotImplemented
-
-    def __sub__(self, other: Any) -> "Functional":
-        """Return ``self - other`` — a lazy difference (functional) or shift (scalar)."""
-        from ._algebra import is_scalar_like, make_functional_sum, make_scaled_functional
-        from ._algebra import make_shifted_functional
-
-        if isinstance(other, Functional):
-            return make_functional_sum((self, make_scaled_functional(-1, other)))
-        if is_scalar_like(other):
-            return make_shifted_functional(self, -other)
-        return NotImplemented
-
-    def __rsub__(self, other: Any) -> "Functional":
-        """Return ``other - self`` — a lazy difference (functional) or shift (scalar)."""
-        from ._algebra import is_scalar_like, make_functional_sum, make_scaled_functional
-        from ._algebra import make_shifted_functional
-
-        if isinstance(other, Number) and other == 0:
-            return make_scaled_functional(-1, self)
-        if isinstance(other, Functional):
-            return make_functional_sum((other, make_scaled_functional(-1, self)))
-        if is_scalar_like(other):
-            return make_shifted_functional(make_scaled_functional(-1, self), other)
-        return NotImplemented
-
-    def __neg__(self) -> "Functional":
-        """Return the lazy negation ``-self``."""
-        from ._algebra import make_scaled_functional
-
-        return make_scaled_functional(-1, self)
-
-    def __mul__(self, other: Any) -> Any:
-        """Return ``self * other``.
-
-        Three cases, by operand type: a scalar gives a ``ScaledFunctional``,
-        another ``Functional`` the pointwise product, and a ``LinOp`` the
-        functional-weighted map ``x -> F(x) A x``. The last is **not** a
-        ``LinOp`` — it is non-linear — so it returns an
-        :class:`~spacecore.opfamily.OperatorFamily`; see that module.
-        """
-        from ..linop import LinOp
-        from ._algebra import is_scalar_like, make_functional_product, make_scaled_functional
-
-        if isinstance(other, Functional):
-            return make_functional_product(self, other)
-        if isinstance(other, LinOp):
-            from ..opfamily import make_functional_scaled_operator
-
-            return make_functional_scaled_operator(self, other)
-        if is_scalar_like(other):
-            return make_scaled_functional(other, self)
-        return NotImplemented
-
-    def __rmul__(self, other: Any) -> Any:
-        """Return ``other * self`` — see :meth:`__mul__` for the operand cases."""
-        from ..linop import LinOp
-        from ._algebra import is_scalar_like, make_functional_product, make_scaled_functional
-
-        if isinstance(other, Functional):
-            return make_functional_product(other, self)
-        if isinstance(other, LinOp):
-            from ..opfamily import make_functional_scaled_operator
-
-            return make_functional_scaled_operator(self, other)
-        if is_scalar_like(other):
-            return make_scaled_functional(other, self)
-        return NotImplemented
-
     @checked_method(in_space="domain", in_batched=True, out_batched_scalar=True)
     def vvalue(self, xs: Any) -> Any:
         """Evaluate over a leading batch axis. Input must have shape ``(N,) + domain.shape``; use ``moveaxis`` for other layouts."""
@@ -261,26 +169,6 @@ class Functional(PyTreeNode, ContextBound, Generic[Domain]):
     def assert_domain(self, x: Any) -> None:
         """Raise if ``x`` is not in the domain."""
         self.dom.check_member(x)
-
-    def __eq__(self, other: Any) -> bool:
-        """Return structural equality when implemented by a subclass.
-
-        Mirrors :class:`~spacecore.linop.LinOp`: the base provides no algebraic
-        equality and returns ``NotImplemented`` so Python tries the reflected
-        comparison and falls back to identity symmetrically.
-        """
-        return NotImplemented
-
-    def _arrow(self) -> str:
-        """Return the ``domain → scalar-field`` descriptor for this functional."""
-        return f"{describe_space(self.dom)} → {describe_space(self.cod)}"
-
-    def _repr_body(self) -> str:
-        return self._arrow()
-
-    def _short_repr(self) -> str:
-        """Return a bounded ``ClassName(domain → field)`` form for nesting."""
-        return f"{type(self).__name__}({self._arrow()})"
 
     # tree_flatten / tree_unflatten are inherited from PyTreeNode, which owns the
     # flatten contract for every SpaceCore container and auto-registers concrete

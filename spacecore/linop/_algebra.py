@@ -4,6 +4,7 @@ import warnings
 from typing import Any, Callable, Sequence, cast
 
 from ._base import LinOp, Domain, Codomain
+from ..mapping import Scalar, register
 from ._metric import _requires_euclidean_or_riesz, metric_rapply, metric_rvapply
 from .._check_policy import CheckLevel, minimum_check_level
 from .._checks import checked_method
@@ -1463,3 +1464,9 @@ class _AdjointViewLinOp(LinOp[Codomain, Domain]):
 
     def _convert(self, new_ctx: Context) -> _AdjointViewLinOp:
         return _AdjointViewLinOp(self.op.convert(new_ctx))
+
+
+register("add", LinOp, LinOp, lambda a, b: make_sum((a, b)))
+register("mul", Scalar, LinOp, make_scaled)
+register("mul", LinOp, Scalar, lambda op, s: make_scaled(s, op))
+register("matmul", LinOp, LinOp, make_composed)

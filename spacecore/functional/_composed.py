@@ -10,6 +10,7 @@ from .._check_policy import CheckLevel, minimum_check_level
 from ..contextual import Context
 from ..kernels import core_kernels
 from ..linop import LinOp
+from ..mapping import register
 
 
 def _require_composable(F: Functional, A: LinOp) -> None:
@@ -177,3 +178,6 @@ class ComposedFunctional(Functional):
     def _convert(self, new_ctx: Context) -> ComposedFunctional:
         """Convert the composed functional and operator to ``new_ctx``."""
         return ComposedFunctional(self.F.convert(new_ctx), self.A.convert(new_ctx))
+
+
+register("matmul", Functional, LinOp, make_functional_composed)

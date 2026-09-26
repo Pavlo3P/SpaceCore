@@ -63,9 +63,9 @@ from .functional import (
     prox_l1,
     prox_l2sq,
 )
+from .mapping import Mapping
 from .opfamily import (
     FunctionalScaledOperator,
-    OperatorFamily,
     make_functional_scaled_operator,
 )
 from .linalg import (
@@ -200,7 +200,7 @@ __all__ = [
     "RealifiedFunctional",
     "SpectralFunctional",
     "NuclearNormFunctional",
-    "OperatorFamily",
+    "Mapping",
     "eigenvalue_space",
     "realify",
     "spectralize",

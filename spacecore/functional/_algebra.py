@@ -24,6 +24,7 @@ from __future__ import annotations
 from typing import Any
 
 from ._base import Functional
+from ..mapping import Scalar, register
 from ..space import Field
 from .._checks import checked_method
 from .._check_policy import CheckLevel, minimum_check_level
@@ -776,3 +777,11 @@ def make_functional_product(left: Functional, right: Functional) -> Functional:
     if isinstance(right, ConstantFunctional):
         return make_scaled_functional(right.constant, left)
     return ProductFunctional(left, right)
+
+
+register("add", Functional, Functional, lambda f, g: make_functional_sum((f, g)))
+register("add", Functional, Scalar, make_shifted_functional)
+register("add", Scalar, Functional, lambda s, f: make_shifted_functional(f, s))
+register("mul", Scalar, Functional, make_scaled_functional)
+register("mul", Functional, Scalar, lambda f, s: make_scaled_functional(s, f))
+register("mul", Functional, Functional, make_functional_product)

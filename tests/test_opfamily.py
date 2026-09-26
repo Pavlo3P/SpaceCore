@@ -75,7 +75,7 @@ class TestFunctionalWeightedMap:
         """The whole point: it must not enter code that assumes linearity."""
         X, A, F = _euclidean(numpy_ctx)
         m = F * A
-        assert isinstance(m, sc.OperatorFamily)
+        assert isinstance(m, sc.Mapping)
         assert not isinstance(m, sc.LinOp)
 
     def test_is_genuinely_nonlinear(self, numpy_ctx):
@@ -198,25 +198,6 @@ class TestLinearization:
         np.testing.assert_allclose(
             to_numpy(m.linearize_at(x).apply(h)), to_numpy(m.at(x).apply(h))
         )
-
-    def test_base_class_has_no_linearization(self, numpy_ctx):
-        X, A, F = _euclidean(numpy_ctx)
-
-        class Bare(sc.OperatorFamily):
-            """A family that only implements ``at`` — the minimal subclass."""
-
-            def at(self, x):
-                return A
-
-            def tree_flatten(self):
-                return (), (self.domain, self.codomain, self.ctx)
-
-            @classmethod
-            def tree_unflatten(cls, aux, children):
-                return cls(*aux)
-
-        with pytest.raises(NotImplementedError, match="linearize_at"):
-            Bare(X, X, numpy_ctx).linearize_at(numpy_ctx.asarray([1.0, 2.0, -1.0]))
 
 
 # ===========================================================================

@@ -62,14 +62,15 @@ Operator families (``F · A``)
 .. autosummary::
    :nosignatures:
 
-   spacecore.OperatorFamily
+   spacecore.Mapping
    spacecore.FunctionalScaledOperator
    spacecore.make_functional_scaled_operator
 
 ``F * A`` for a ``Functional`` and a ``LinOp`` is the functional-weighted map
 :math:`m(x) = F(x)\,Ax`. This is **not** linear — both the scale and the
-direction move with ``x`` — so it is *not* a ``LinOp``; it is an
-``OperatorFamily``, a point-indexed family :math:`x \mapsto A_x`.
+direction move with ``x`` — so it is *not* a ``LinOp``; it is a
+``Mapping``, the common parent of ``LinOp`` and ``Functional``, read as a
+point-indexed family :math:`x \mapsto A_x`.
 
 Each point carries two different linear operators, and they are not the same:
 

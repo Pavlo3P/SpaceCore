@@ -7,6 +7,12 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Removed
+
+- **`OperatorFamily`** (breaking). `FunctionalScaledOperator` is now a `Mapping`
+  and keeps `at`, `apply` and `linearize_at`; the base-class defaults went with
+  the class.
+
 ### Changed
 
 - Functionals now expose a `Field` codomain, defaulting to `domain.scalars`,
@@ -50,6 +56,10 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- `Mapping`, the common parent of `LinOp` and `Functional`. It owns the operator
+  overloads: each family registers `add`, `mul` and `matmul` rules, and
+  subtraction, negation and `sum()` are derived. `F @ A` now composes a
+  functional with an operator, and `A + 0` returns `A`.
 - Public `Field`, `RealField`, and `ComplexField` scalar spaces with Euclidean
   geometry, and `Space.scalars` for accessing the coefficient field on the
   same backend. Real coefficients over complex storage use the corresponding
