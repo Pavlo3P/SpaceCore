@@ -600,10 +600,6 @@ class BackendOps(ABC):
         axes[axis1], axes[axis2] = axes[axis2], axes[axis1]
         return self._permute_dims(x, axes)
 
-    def broadcast_to(self, x: DenseArray, shape: Tuple[int, ...]) -> DenseArray:
-        """Broadcast x to shape (delegates to xp.broadcast_to)."""
-        return self.xp.broadcast_to(x, shape)
-
     def expand_dims(self, x: DenseArray, axis: int | Sequence[int]) -> DenseArray:
         """Insert singleton dimensions into x."""
         if isinstance(axis, int):
@@ -831,30 +827,6 @@ class BackendOps(ABC):
                     raise ValueError(f"shapes {shapes} are not broadcast-compatible")
         return tuple(result)
 
-    def conj(self, x: DenseArray) -> DenseArray:
-        """Complex conjugate of x (delegates to xp.conj)."""
-        return self.xp.conj(x)
-
-    def real(self, x: DenseArray) -> DenseArray:
-        """Real component of x (delegates to xp.real)."""
-        return self.xp.real(x)
-
-    def imag(self, x: DenseArray) -> DenseArray:
-        """Imaginary component of x (delegates to xp.imag)."""
-        return self.xp.imag(x)
-
-    def abs(self, x: DenseArray) -> DenseArray:
-        """Absolute value of x (delegates to xp.abs)."""
-        return self.xp.abs(x)
-
-    def sign(self, x: DenseArray) -> DenseArray:
-        """Elementwise sign of x (delegates to xp.sign)."""
-        return self.xp.sign(x)
-
-    def sqrt(self, x: DenseArray) -> DenseArray:
-        """Elementwise square root of x (delegates to xp.sqrt)."""
-        return self.xp.sqrt(x)
-
     def sum(
         self,
         x: DenseArray,
@@ -963,14 +935,6 @@ class BackendOps(ABC):
     ) -> DenseArray:
         """Matrix product (delegates to xp.matmul)."""
         return self.xp.matmul(a, b, **({} if backend_kwargs is None else backend_kwargs))
-
-    def kron(self, a: DenseArray, b: DenseArray) -> DenseArray:
-        """Kronecker product (delegates to xp.kron)."""
-        return self.xp.kron(a, b)
-
-    def einsum(self, subscripts: str, *operands: DenseArray) -> DenseArray:
-        """Einstein summation (delegates to xp.einsum)."""
-        return self.xp.einsum(subscripts, *operands)
 
     # -- Spectral presentation conventions ---------------------------------
     #
@@ -1127,37 +1091,9 @@ class BackendOps(ABC):
         """Cholesky factorization (delegates to xp.linalg.cholesky)."""
         return self.xp.linalg.cholesky(A, **({} if backend_kwargs is None else backend_kwargs))
 
-    def exp(self, x: DenseArray) -> DenseArray:
-        """Elementwise exponential (delegates to xp.exp)."""
-        return self.xp.exp(x)
-
-    def log(self, x: DenseArray) -> DenseArray:
-        """Elementwise natural logarithm (delegates to xp.log)."""
-        return self.xp.log(x)
-
     def where(self, condition: DenseArray | bool, x: ArrayLike, y: ArrayLike) -> DenseArray:
         """Select between x and y by condition (delegates to xp.where)."""
         return self.xp.where(condition, x, y)
-
-    def maximum(self, x: ArrayLike, y: ArrayLike) -> DenseArray:
-        """Elementwise maximum (delegates to xp.maximum)."""
-        return self.xp.maximum(x, y)
-
-    def minimum(self, x: ArrayLike, y: ArrayLike) -> DenseArray:
-        """Elementwise minimum (delegates to xp.minimum)."""
-        return self.xp.minimum(x, y)
-
-    def clip(self, x: DenseArray, a_min: ArrayLike, a_max: ArrayLike) -> DenseArray:
-        """Clip x into [a_min, a_max] (delegates to xp.clip)."""
-        return self.xp.clip(x, a_min, a_max)
-
-    def isfinite(self, x: DenseArray) -> DenseArray:
-        """Elementwise finite check (delegates to xp.isfinite)."""
-        return self.xp.isfinite(x)
-
-    def isnan(self, x: DenseArray) -> DenseArray:
-        """Elementwise NaN check (delegates to xp.isnan)."""
-        return self.xp.isnan(x)
 
     def concatenate(
         self,
@@ -1181,10 +1117,6 @@ class BackendOps(ABC):
         """Take entries from x by integer indices (delegates to xp.take)."""
         return self.xp.take(x, indices, axis=axis)
 
-    def diag(self, x: DenseArray) -> DenseArray:
-        """Extract or construct a diagonal (delegates to xp.diag)."""
-        return self.xp.diag(x)
-
     def diagonal(self, x: DenseArray) -> DenseArray:
         """Return the main diagonal over the **trailing two axes**.
 
@@ -1193,14 +1125,6 @@ class BackendOps(ABC):
         across the batch axis. Identical to the library default for 2-D input.
         """
         return self.xp.diagonal(x, axis1=-2, axis2=-1)
-
-    def tril(self, x: DenseArray) -> DenseArray:
-        """Lower triangle of x (delegates to xp.tril)."""
-        return self.xp.tril(x)
-
-    def triu(self, x: DenseArray) -> DenseArray:
-        """Upper triangle of x (delegates to xp.triu)."""
-        return self.xp.triu(x)
 
     def allclose(
         self,
@@ -1219,3 +1143,24 @@ class BackendOps(ABC):
         if isinstance(xp, LazyNamespace):
             xp_state = f", xp_loaded={xp.is_loaded!r}"
         return f"{type(self).__name__}(family={self.family!r}{xp_state})"
+
+
+#: Methods that hand their arguments unchanged to the same-named ``xp`` function. Wrappers
+#: that normalize a convention (dtype defaults, axes, ordering) stay written out above.
+_PASS_THROUGH = (
+    'broadcast_to', 'conj', 'real', 'imag', 'abs', 'sign', 'sqrt', 'kron', 'einsum', 'exp',
+    'log', 'maximum', 'minimum', 'clip', 'isfinite', 'isnan', 'diag', 'tril', 'triu',
+)
+
+
+def _forward_to_xp(name: str) -> Any:
+    def method(self: BackendOps, *args: Any, **kwargs: Any) -> Any:
+        return getattr(self.xp, name)(*args, **kwargs)
+
+    method.__name__, method.__qualname__ = name, f"BackendOps.{name}"
+    method.__doc__ = f"Return ``xp.{name}(...)`` unchanged."
+    return method
+
+
+for _name in _PASS_THROUGH:
+    setattr(BackendOps, _name, _forward_to_xp(_name))
