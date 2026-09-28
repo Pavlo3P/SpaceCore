@@ -24,6 +24,12 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- `InnerProductSpace.geometry` is optional: a native space overrides `inner`,
+  its Riesz maps are the identity, and `MatrixFreeLinOp` no longer warns about
+  coordinate adjoints on it. `least_squares` keeps native members native.
+- `Element` builds no dense form at `check_level="none"`, and `densify` is an
+  optional capability: without it, fallback arithmetic raises `CapabilityError`
+  instead of failing obscurely.
 - Proximal helpers accept dynamic scalar steps at `check_level="none"` and use
   real thresholds for complex diagonal geometry. Thresholding works on Torch
   without passing Python scalars to its tensor-only `maximum` primitive.

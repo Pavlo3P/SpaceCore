@@ -12,7 +12,7 @@ from ..space import DenseElement, Element
 from ._metric import _requires_euclidean_or_riesz, metric_rapply, metric_rvapply
 from .._check_policy import CheckLevel, minimum_check_level
 from .._checks import checked_method
-from ..space.base import InnerProductSpace
+from ..space.base import CoordinateSpace, InnerProductSpace
 from ..space._capabilities import _CAP_BATCH, _CAP_COORDINATE, probe_element, require
 from .._repr import summarize_value
 from ..contextual import Context
@@ -717,11 +717,14 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
         super().__init__(dom, cod, ctx, check_level=check_level)
 
         # Does the adjoint need Riesz maps? Only on a non-Euclidean inner-product space.
+        # Without coordinates there is no coordinate adjoint to confuse with, so a
+        # native space never warns.
         has_inner = all(
             isinstance(space, InnerProductSpace) for space in (self.domain, self.codomain)
         )
-        non_euclidean = has_inner and not (
-            self.domain.is_euclidean and self.codomain.is_euclidean
+        non_euclidean = has_inner and any(
+            isinstance(space, CoordinateSpace) and not space.is_euclidean
+            for space in (self.domain, self.codomain)
         )
         if euclidean_adjoint is True:
             # The caller supplied the *coordinate* adjoint A^dagger; wrap it into

@@ -177,16 +177,25 @@ class InnerProductSpace(VectorSpace):
         Validation level; the ambient default when omitted.
     """
 
+    #: Optional. A space without one overrides :meth:`inner`, and its elements are
+    #: their own Riesz representers (identity Riesz maps).
     geometry: InnerProduct
 
     def inner(self, x: Any, y: Any) -> Any:
-        return self.geometry.inner(self.ops, x, y)
+        geometry = getattr(self, "geometry", None)
+        if geometry is None:
+            raise NotImplementedError(
+                f"{type(self).__name__} has no geometry; override inner() or set one."
+            )
+        return geometry.inner(self.ops, x, y)
 
     def riesz(self, x: Any) -> Any:
-        return self.geometry.riesz(self.ops, x)
+        geometry = getattr(self, "geometry", None)
+        return x if geometry is None else geometry.riesz(self.ops, x)
 
     def riesz_inverse(self, x: Any) -> Any:
-        return self.geometry.riesz_inverse(self.ops, x)
+        geometry = getattr(self, "geometry", None)
+        return x if geometry is None else geometry.riesz_inverse(self.ops, x)
 
     def norm(self, x: Any) -> Any:
         value = self.ops.real(self.inner(x, x))
@@ -194,4 +203,6 @@ class InnerProductSpace(VectorSpace):
 
     @property
     def is_euclidean(self) -> bool:
-        return self.geometry.is_euclidean
+        # Without a geometry there is no coordinate inner product to coincide with.
+        geometry = getattr(self, "geometry", None)
+        return geometry is not None and geometry.is_euclidean

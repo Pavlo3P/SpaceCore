@@ -8,14 +8,16 @@ stores Hermitian factors — and each subclass names its own data fields.
 Arithmetic runs through the same rule table as the operator algebra
 (:mod:`spacecore.mapping`). A pair of representations with its own rule uses it
 (``LowRank + LowRank`` concatenates factors); any other pair falls back to
-``(Element, Element)``, which densifies both and adds in the space. Element times
-element is not an operation and raises ``TypeError``.
+``(Element, Element)``, which converts both to the space's own member (``densify``)
+and adds in the space. A representation with no such member raises
+``CapabilityError`` there instead of faking it. Element times element is not an
+operation and raises ``TypeError``.
 """
 from __future__ import annotations
 
-from abc import abstractmethod
 from typing import Any, ClassVar
 
+from .._errors import CapabilityError
 from ..backend import PyTreeNode
 from ..contextual import Context, ContextBound
 from ..mapping import Algebraic, Scalar, register
@@ -29,8 +31,9 @@ class Element(Algebraic, PyTreeNode, ContextBound):
 
     The context and check level are the space's. Membership is checked once, by
     the public constructor; results of arithmetic are members by closure and are
-    not re-checked. A subclass declares its data fields in ``_children`` and
-    implements :meth:`densify`.
+    not re-checked. A subclass declares its data fields in ``_children``, and
+    implements :meth:`densify` when it has a plain member form; otherwise it
+    overrides :meth:`_check` and registers its own arithmetic rules.
 
     Parameters
     ----------
@@ -62,12 +65,18 @@ class Element(Algebraic, PyTreeNode, ContextBound):
             setattr(obj, name, value)
         return obj
 
-    @abstractmethod
     def densify(self) -> Any:
-        """Return the dense backend array this element denotes."""
+        """Return the space's own member this element denotes: a dense array on
+        coordinate spaces, the native object on a native space. Optional."""
+        raise CapabilityError(
+            f"{type(self).__name__} has no plain member form; register a rule for this operation."
+        )
 
     def _check(self) -> None:
         """Raise unless this element is a member of its space; subclasses may check cheaper."""
+        # Skip before building anything: check_level "none" must not pay for densify.
+        if self.space.check_level == "none":
+            return
         self.space.check_member(self.densify())
 
     def _scale(self, s: Any) -> Element:

@@ -12,7 +12,7 @@ from __future__ import annotations
 import numpy as _np
 from typing import Any
 
-from .._linear import InnerProductFunctional
+from .._linear import InnerProductFunctional, _convert_space_element
 from .._quadratic import LinOpQuadraticForm
 from ...linop import DiagonalLinOp, LinOp
 
@@ -74,7 +74,7 @@ def least_squares(
     X = A.domain
     Y = A.codomain
     ctx = A.ctx
-    b = ctx.asarray(b)
+    b = _convert_space_element(Y, b)  # native members pass through untouched
     two_scale = 2.0 * scale
 
     # Unweighted: Gram A* A, right-hand side A* b, energy <b, b>.
@@ -101,6 +101,6 @@ def least_squares(
 
     # Assemble 1/2 <x, Q x> + <c, x> + a with Q = 2s Gram, c = -2s rhs, a = s energy.
     Q = gram if two_scale == 1.0 else two_scale * gram
-    linear = InnerProductFunctional((-two_scale) * rhs, X, ctx)
+    linear = InnerProductFunctional(X.scale(-two_scale, rhs), X, ctx)
     offset = scale * ctx.ops.real(b_energy)
     return LinOpQuadraticForm(Q, linear, offset, ctx)
