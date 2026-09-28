@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, NamedTuple
 
 from ..linop import LinOp
-from ._lanczos import _check_lanczos_max_iter, _lanczos_basis_and_tridiag
+from ._lanczos import _KrylovBasis, _check_lanczos_max_iter, _lanczos_basis_and_tridiag
 from ._utils import require_linop, require_square, result_repr
 
 
@@ -60,7 +60,7 @@ def expm_multiply(
         Square operator, Hermitian in the domain's inner product. Known non-Hermitian
         operators are rejected; unknown ones are trusted.
     v : array-like
-        Vector in ``A.domain``.
+        Element in ``A.domain``; zero returns zero without applying ``A``.
     t : float or complex, optional
         Scalar multiplying ``A``; a complex ``t`` needs a complex ``ctx.dtype``.
     max_iter : int, optional
@@ -129,9 +129,8 @@ def expm_multiply(
     expT_e1 = ops.where(active_mask, expT_e1, ops.zeros_like(expT_e1))
 
     # exp(t A) v is approximately ||v|| V exp(t T) e1.
-    V_reduced = basis.V[:max_iter, :]
-    result_flat = basis.initial_norm * ops.einsum("j,jn->n", expT_e1, V_reduced)
-    result = A.domain.unflatten(result_flat)
+    vectors = _KrylovBasis(A.domain, v, max_iter + 1)
+    result = A.domain.scale(basis.initial_norm, vectors.lincomb(basis.V, expT_e1, m))
 
     # Residual estimate beta_m |phi_{m-1}|.
     last_coeff = ops.abs(expT_e1[m - 1])

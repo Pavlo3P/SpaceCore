@@ -1,5 +1,13 @@
 """Backend-agnostic vector spaces, linear operators, and solvers."""
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .backend.jax import JaxOps as JaxOps
+    from .backend.torch import TorchOps as TorchOps
+    from .backend.cupy import CuPyOps as CuPyOps
+
+
 from ._version import __version__
 
 from .contextual import Context
@@ -36,6 +44,7 @@ from .functional import (
     ConstantFunctional,
     HuberFunctional,
     InnerProductFunctional,
+    IndicatorFunctional,
     KLDivergenceFunctional,
     L1NormFunctional,
     LinearFunctional,
@@ -63,6 +72,7 @@ from .functional import (
     prox_l2sq,
 )
 from .mapping import Mapping
+from .sets import Set, NonnegativeOrthant
 from .opfamily import (
     FunctionalScaledOperator,
     make_functional_scaled_operator,
@@ -147,6 +157,9 @@ for _cls in _optional_ops:
     globals().setdefault(_cls.__name__, _cls)
 
 __all__ = [
+    "Set",
+    "NonnegativeOrthant",
+    "IndicatorFunctional",
     "__version__",
     "Context",
     "CheckLevel",
@@ -274,4 +287,7 @@ __all__ = [
     "normalize_context",
 ]
 
-__all__ += [_cls.__name__ for _cls in _optional_ops if _cls.__name__ != "NumpyOps"]
+if TYPE_CHECKING:
+    __all__ += ["JaxOps", "CuPyOps", "TorchOps"]
+else:
+    __all__ += [_cls.__name__ for _cls in _optional_ops if _cls.__name__ != "NumpyOps"]

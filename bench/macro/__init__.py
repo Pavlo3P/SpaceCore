@@ -37,6 +37,7 @@ from . import qot_barycenter  # noqa: F401
 from . import density_pipeline  # noqa: F401
 from . import operator_stress  # noqa: F401
 from . import jax_full_loop  # noqa: F401
+from . import proximal_contract  # noqa: F401
 
 __all__ = [
     "MacroBenchmark",

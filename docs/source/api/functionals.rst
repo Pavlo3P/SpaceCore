@@ -8,8 +8,78 @@ differentiable functional, ``grad(x)`` satisfies
 Beck, *First-Order Methods in Optimization*, Remark 3.32; on complex domains
 use the real inner product as in :doc:`../design/geometry`.
 
+Differentials
+-------------
+
+``f.derivative_at(x)`` returns a ``LinearFunctional`` acting on directions:
+``df(h)`` evaluates :math:`Df(x)[h]`. ``f.value_and_derivative(x)`` returns the
+value and differential together, reusing an existing fused
+``value_and_grad`` implementation when adapting a gradient-based functional.
+
+.. code-block:: python
+
+   import numpy as np
+   import spacecore as sc
+
+   ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+   X = sc.DenseCoordinateSpace((2,), ctx,
+       geometry=sc.WeightedInnerProduct(ctx.asarray([2., 5.])))
+   f = sc.SquaredL2NormFunctional(X)
+   value, df = f.value_and_derivative(ctx.asarray([1., 2.]))
+   slope = df(ctx.asarray([3., 4.]))  # 46.0
+   gradient = df.representer         # [1., 2.], in X's metric
+
+Existing ``grad`` implementations remain valid. New functionals can implement
+``derivative_at`` directly. The default ``grad`` then requests the derivative's
+``representer``; a callable-only differential raises ``NotImplementedError``
+instead of reconstructing a dense gradient. Implement both fused methods when
+a native evaluator needs to share work in both interfaces.
+
+Sums, scalar multiples, and pullbacks of linear functionals remain
+``LinearFunctional`` objects. Products of objectives use the product rule.
+A callable differential can be pulled back through ``A`` using only forward
+application: :math:`(Df(x)\circ A)[h]=Df(x)[Ah]`. Retrieving its gradient may
+additionally require a representer and the metric adjoint.
+
+``df.scalar_field`` records whether the differential is real- or complex-linear.
+An ``InnerProductFunctional`` with a real codomain, or with
+``real_linear=True``, evaluates :math:`\operatorname{Re}\langle c,h\rangle`.
+For ``MatrixFreeLinearFunctional``, ``real_linear=True`` declares the callable's
+linearity; its output is not projected to its real part. This also permits
+complex-valued, real-linear derivatives such as complex conjugation.
+
+The default gradient adapter assumes complex linearity for a complex codomain.
+Real-valued built-in coordinate objectives explicitly select the real pairing,
+even when their legacy scalar codomain is complex. General complex-valued,
+real-linear derivatives may have no single Riesz representer. Complex-valued
+spectral objectives require an explicit differential implementation.
+At a nonsmooth point, a chosen subgradient does not become a Frechet derivative;
+use these interfaces where the objective is differentiable.
+
+This API composes with existing linear operators. General nonlinear-map
+linearization and manifold tangent spaces are separate extensions.
+
 Base and composition
 --------------------
+
+Optional proximal methods
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``Functional.prox(x, step)`` computes a registered closed-form prox in the
+domain metric. ``conjugate_prox`` uses Hilbert-space Moreau decomposition.
+``IndicatorFunctional`` connects a closed convex set's projection to this API.
+See :doc:`../design/proximal_contract` for conventions, supported rules,
+compiled execution, and custom representations.
+
+.. autosummary::
+   :nosignatures:
+
+   spacecore.IndicatorFunctional
+   spacecore.Set
+   spacecore.NonnegativeOrthant
+
+Scalar maps
+~~~~~~~~~~~
 
 .. autosummary::
    :nosignatures:
@@ -102,7 +172,8 @@ Linear functionals
 
 * ``LinearFunctional`` is the base class for linear maps to scalars.
 * ``InnerProductFunctional`` stores a Riesz representer ``c`` and evaluates ``<c, x>``.
-* ``MatrixFreeLinearFunctional`` wraps callable value and gradient logic.
+* ``MatrixFreeLinearFunctional`` wraps a callable evaluator; a stored gradient is optional
+  and is not inferred from the callable.
 
 Quadratic functionals
 ---------------------

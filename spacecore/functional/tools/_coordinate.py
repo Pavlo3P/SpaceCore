@@ -54,6 +54,14 @@ class _CoordinateFunctional(Functional[Domain]):
     weights on a diagonal metric, ``G^{-1}`` in general).
     """
 
+    def _derivative_from_gradient(self, gradient: Any):
+        from .._linear import InnerProductFunctional
+
+        return InnerProductFunctional(
+            gradient, self.domain, self.ctx, check_level=self.check_level,
+            cod=self.codomain, real_linear=True,
+        )
+
     @checked_method(in_space="domain", out_space="domain")
     def grad(self, x: Any) -> Any:
         """Return the Riesz gradient under the domain geometry."""

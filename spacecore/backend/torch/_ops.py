@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Callable, Literal, Sequence, Tuple, Type, cast
+from typing import TYPE_CHECKING, Any, Callable, Literal, Sequence, Tuple, Type, cast
 
 import numpy as np
 
@@ -10,7 +10,14 @@ from .._ops import BackendOps, LazyNamespace
 from ...types import ArrayLike, DenseArray, DType, Index, SparseArray
 
 
-class TorchOps(EagerControlFlowMixin, BackendOps):
+if TYPE_CHECKING:
+    from torch import Tensor
+    NativeArray = Tensor
+else:
+    NativeArray = DenseArray
+
+
+class TorchOps(EagerControlFlowMixin, BackendOps[NativeArray]):
     """
     Backend operations on PyTorch tensors (strided dense, or any sparse layout).
 
@@ -231,7 +238,7 @@ class TorchOps(EagerControlFlowMixin, BackendOps):
         copy: bool | None = None,
         backend_kwargs: dict[str, Any] | None = None,
         **extra_kwargs: Any,
-    ) -> DenseArray:
+    ) -> NativeArray:
         self._reject_complex_to_real(x, dtype, operation="asarray")
         # Merge backend kwargs; densify sparse input; copy only on request.
         kwargs = {} if backend_kwargs is None else dict(backend_kwargs)
@@ -254,9 +261,9 @@ class TorchOps(EagerControlFlowMixin, BackendOps):
         memory_format: Any | None = None,
         backend_kwargs: dict[str, Any] | None = None,
         **extra_kwargs: Any,
-    ) -> DenseArray:
+    ) -> NativeArray:
         if dtype is None:
-            return x
+            return cast(NativeArray, x)
         self._reject_complex_to_real(x, dtype, operation="astype")
         kwargs = {} if backend_kwargs is None else dict(backend_kwargs)
         kwargs.update(extra_kwargs)
@@ -279,7 +286,7 @@ class TorchOps(EagerControlFlowMixin, BackendOps):
         requires_grad: bool = False,
         pin_memory: bool = False,
         memory_format: Any | None = None,
-    ) -> DenseArray:
+    ) -> NativeArray:
         return self.torch.empty(
             shape,
             out=out,
@@ -298,7 +305,7 @@ class TorchOps(EagerControlFlowMixin, BackendOps):
         layout: Any | None = None,
         device: Any | None = None,
         requires_grad: bool = False,
-    ) -> DenseArray:
+    ) -> NativeArray:
         return self.torch.zeros(
             shape,
             out=out,
@@ -316,7 +323,7 @@ class TorchOps(EagerControlFlowMixin, BackendOps):
         device: Any | None = None,
         requires_grad: bool = False,
         memory_format: Any | None = None,
-    ) -> DenseArray:
+    ) -> NativeArray:
         return self.torch.zeros_like(
             x,
             dtype=self.sanitize_dtype(dtype) if dtype is not None else None,
@@ -335,7 +342,7 @@ class TorchOps(EagerControlFlowMixin, BackendOps):
         layout: Any | None = None,
         device: Any | None = None,
         requires_grad: bool = False,
-    ) -> DenseArray:
+    ) -> NativeArray:
         # NumPy's arange overloads, forwarding torch-only options.
         kwargs = self._defined_kwargs(out=out, layout=layout, device=device)
         kwargs["requires_grad"] = requires_grad
@@ -354,7 +361,7 @@ class TorchOps(EagerControlFlowMixin, BackendOps):
         dtype: DType | None = None,
         *,
         out: DenseArray | None = None,
-    ) -> DenseArray:
+    ) -> NativeArray:
         # NumPy keyword names mapped to torch's dim/keepdim.
         kwargs = {"dim": self._to_axis_tuple(axis), "keepdim": keepdims}
         if dtype is not None:
@@ -370,7 +377,7 @@ class TorchOps(EagerControlFlowMixin, BackendOps):
         backend_kwargs: dict[str, Any] | None = None,
         *,
         out: DenseArray | None = None,
-    ) -> DenseArray:
+    ) -> NativeArray:
         kwargs = {} if backend_kwargs is None else dict(backend_kwargs)
         if out is not None:
             kwargs["out"] = out
@@ -382,7 +389,7 @@ class TorchOps(EagerControlFlowMixin, BackendOps):
         b: DenseArray,
         *,
         reduce: Literal["sum", "mean", "amax", "amin"] = "sum",
-    ) -> DenseArray:
+    ) -> NativeArray:
         """
         Matrix-multiply a sparse tensor by a dense tensor using PyTorch.
 
@@ -428,7 +435,7 @@ class TorchOps(EagerControlFlowMixin, BackendOps):
         UPLO: Literal["L", "U"] = "L",
         *,
         out: tuple[DenseArray, DenseArray] | None = None,
-    ) -> tuple[DenseArray, DenseArray]:
+    ) -> tuple[NativeArray, NativeArray]:
         if self.is_sparse(x):
             raise TypeError("eigh requires a dense array; sparse input is not supported.")
         kwargs = {} if backend_kwargs is None else dict(backend_kwargs)
@@ -447,7 +454,7 @@ class TorchOps(EagerControlFlowMixin, BackendOps):
         *,
         dtype: DType | None = None,
         out: DenseArray | None = None,
-    ) -> DenseArray:
+    ) -> NativeArray:
         return self.torch.linalg.norm(
             x,
             ord=ord,
@@ -457,12 +464,12 @@ class TorchOps(EagerControlFlowMixin, BackendOps):
             out=out,
         )
 
-    def diagonal(self, x: DenseArray) -> DenseArray:
+    def diagonal(self, x: DenseArray) -> NativeArray:
         # torch.diagonal spells the axes dim1/dim2; same trailing-two-axes
         # convention as the neutral method.
         return self.torch.diagonal(x, dim1=-2, dim2=-1)
 
-    def _take_along_axis(self, x: DenseArray, indices: DenseArray, axis: int) -> DenseArray:
+    def _take_along_axis(self, x: DenseArray, indices: DenseArray, axis: int) -> NativeArray:
         return self.torch.take_along_dim(x, indices, dim=axis)
 
     def solve(
@@ -473,7 +480,7 @@ class TorchOps(EagerControlFlowMixin, BackendOps):
         *,
         left: bool = True,
         out: DenseArray | None = None,
-    ) -> DenseArray:
+    ) -> NativeArray:
         kwargs = {} if backend_kwargs is None else dict(backend_kwargs)
         kwargs.update(self._defined_kwargs(out=out))
         return self.torch.linalg.solve(A, b, left=left, **kwargs)
@@ -486,7 +493,7 @@ class TorchOps(EagerControlFlowMixin, BackendOps):
         *,
         driver: str | None = None,
         out: DenseArray | tuple[DenseArray, DenseArray, DenseArray] | None = None,
-    ) -> tuple[DenseArray, DenseArray, DenseArray]:
+    ) -> tuple[NativeArray, NativeArray, NativeArray]:
         kwargs = {} if backend_kwargs is None else dict(backend_kwargs)
         kwargs.update(self._defined_kwargs(driver=driver, out=out))
         U, s, Vh = self.torch.linalg.svd(A, full_matrices=full_matrices, **kwargs)
@@ -499,7 +506,7 @@ class TorchOps(EagerControlFlowMixin, BackendOps):
         *,
         upper: bool = False,
         out: DenseArray | None = None,
-    ) -> DenseArray:
+    ) -> NativeArray:
         kwargs = {} if backend_kwargs is None else dict(backend_kwargs)
         kwargs.update(self._defined_kwargs(out=out))
         return self.torch.linalg.cholesky(A, upper=upper, **kwargs)
@@ -513,7 +520,7 @@ class TorchOps(EagerControlFlowMixin, BackendOps):
         return_sign: bool = False,
         *,
         out: DenseArray | None = None,
-    ) -> DenseArray | tuple[DenseArray, DenseArray]:
+    ) -> NativeArray | tuple[NativeArray, NativeArray]:
         """Compute log-sum-exp, with SciPy's ``b`` and ``return_sign`` options, which torch lacks, implemented here."""
         dim = tuple(range(a.ndim)) if axis is None else axis
         # Fast path: plain torch.logsumexp.
@@ -532,17 +539,17 @@ class TorchOps(EagerControlFlowMixin, BackendOps):
             return result, sign
         if out is not None:
             cast(Any, out).copy_(result)
-            return out
+            return cast(NativeArray, out)
         return result
 
     def where(
         self,
         condition: DenseArray | bool,
-        x: ArrayLike,
-        y: ArrayLike,
+        x: ArrayLike | float | complex,
+        y: ArrayLike | float | complex,
         *,
         out: DenseArray | None = None,
-    ) -> DenseArray:
+    ) -> NativeArray:
         if out is None:
             return self.torch.where(condition, x, y)
         return self.torch.where(condition, x, y, out=out)
@@ -554,18 +561,20 @@ class TorchOps(EagerControlFlowMixin, BackendOps):
         dtype: DType | None = None,
         *,
         out: DenseArray | None = None,
-    ) -> DenseArray:
+    ) -> NativeArray:
         if out is None:
             result = self.torch.cat(tuple(arrays), dim=axis)
         else:
             result = self.torch.cat(tuple(arrays), dim=axis, out=out)
         return self.astype(result, dtype) if dtype is not None else result
 
-    def _copy(self, x: DenseArray) -> DenseArray:
+    def _copy(self, x: DenseArray) -> NativeArray:
         """Return a PyTorch clone of ``x`` (mutation primitive for index ops)."""
         return cast(Any, x).clone()
 
-    def _scatter_add_inplace(self, y: DenseArray, index: Index, values: ArrayLike) -> None:
+    def _scatter_add_inplace(
+        self, y: DenseArray, index: Index, values: ArrayLike | float | complex
+    ) -> None:
         """Add ``values`` into ``y`` at ``index`` in place.
 
         Unlike NumPy's ``add.at``, plain indexed assignment does not accumulate

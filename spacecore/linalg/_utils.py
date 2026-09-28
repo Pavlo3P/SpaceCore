@@ -42,6 +42,11 @@ def require_strict_cg_preconditions(A: LinOp) -> None:
 
 def default_maxiter(A: LinOp) -> int:
     """Return the default Krylov iteration count for ``A``."""
+    from ..space import CoordinateSpace
+    from .._errors import CapabilityError
+
+    if not isinstance(A.domain, CoordinateSpace):
+        raise CapabilityError("Default iteration count requires CoordinateSpace; supply maxiter explicitly.")
     return max(1, prod(A.domain.shape))
 
 
@@ -201,10 +206,15 @@ def core_normalize(sops: SpaceCoreOps, x: Any) -> tuple[Any, Any]:
 
 def default_initial_vector(A: LinOp) -> Any:
     """Return a deterministic unit vector in ``A.domain`` using its geometry."""
-    # Normalized all-ones vector in the domain's geometry.
-    size = prod(A.domain.shape)
-    flat = A.ops.ones((size,), dtype=A.dtype)
-    v = A.domain.unflatten(flat)
+    from ..space._capabilities import probe_element
+    from .._errors import CapabilityError
+
+    v = probe_element(A.domain, A.ops, A.dtype)
+    if v is None:
+        raise CapabilityError(
+            "Default initialization requires space.ones() or CoordinateSpace; "
+            "supply an explicit initial element (x0)."
+        )
     norm = A.domain.norm(v)
     return A.domain.scale(safe_inverse_nonneg(A.ops, norm), v)
 

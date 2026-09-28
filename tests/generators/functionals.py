@@ -582,6 +582,22 @@ def _realified_case(dtype, check_level):
     )
 
 
+def _indicator_case(check_level, weighted, feasible):
+    ctx = _context(np.float64, check_level)
+    domain = _space(ctx, weighted)
+    x = ctx.asarray([1., .5, 2.] if feasible else [-1., .5, 2.])
+    return FunctionalCase(
+        obj=sc.IndicatorFunctional(sc.NonnegativeOrthant(domain)),
+        reference={
+            "kind": "indicator", "domain": domain, "x": x,
+            "value": 0. if feasible else np.inf, "gradient": None,
+            "target_ctx": _context(np.float32, check_level), "check_level": check_level,
+        },
+        capabilities=frozenset({"conversion", "real", "indicator", "projection"}),
+        id=f"indicator-weighted-{weighted}-feasible-{feasible}-checks-{check_level}",
+    )
+
+
 def functional_cases(
     *,
     dtypes: Iterable[Any] = NUMPY_FUNCTIONAL_DTYPES,
@@ -607,6 +623,8 @@ def functional_cases(
             if any(np.dtype(d) == np.dtype(np.complex128) for d in dtypes):
                 cases.append(_realified_case(np.complex128, check_level))
             if any(np.dtype(d) == np.dtype(np.float64) for d in dtypes):
+                cases.extend(_indicator_case(check_level, weighted, feasible)
+                             for weighted in (False, True) for feasible in (False, True))
                 cases.extend(_battery_cases(np.float64, check_level))
                 cases.append(_spectral_case(np.float64, check_level))
                 cases.append(_spectral_wrapper_case(np.float64, check_level))

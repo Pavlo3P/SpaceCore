@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted — minimal projection milestone on `0.5.0a`, 2026-09-28.
 
 ## Context
 
@@ -19,11 +19,18 @@ its ambient space, and its projector. This ADR adds that noun.
 
 ## Current design
 
-There is no set abstraction. Constraints are expressed ad hoc, membership has no
-common interface, and projection is hand-written per problem (S19 hand-rolled the
-cone projection; S13 hand-wrote sphere and Stiefel projections). The indicator
-functional and projection helpers reserved in ADR-019 have no typed `C` to range
-over.
+`spacecore.sets.Set` owns an ambient space, optional membership, and an optional
+metric projection. `NonnegativeOrthant` supplies a first concrete projector for
+real dense Euclidean/diagonal spaces. `IndicatorFunctional(C)` requires explicit
+convexity, returns zero/infinity, and delegates its positive-step prox to
+`C.project`. Its conjugate prox uses the ambient Hilbert pairing. Generic sets
+may be nonconvex, but do not thereby acquire the convex conjugate-prox contract.
+
+The remaining concrete sets below are demand-gated follow-ups. This milestone
+does not add an intersection solver or a separate `project_C` wrapper:
+`C.project(x)` is the public projection entry point. Custom sets implement the
+usual context conversion and pytree hooks; missing operations raise
+`CapabilityError`.
 
 ## Decision
 
@@ -32,6 +39,7 @@ ambient `Space` and provides a metric projection and optional membership.
 
 ```python
 class Set:
+    is_convex = False                 # explicit assertion by convex subclasses
     ambient: Space
     def project(self, x) -> Element        # nearest point in the ambient metric
     def contains(self, x) -> bool | None    # membership; None = cannot cheaply decide

@@ -95,6 +95,13 @@ class SpectralFunctional(_CoordinateFunctional[Domain]):
     -0.6931471805599453
     """
 
+    def _derivative_from_gradient(self, gradient):
+        if self.codomain.scalar_field == "complex":
+            raise NotImplementedError(
+                "Complex-valued spectral differentials require an explicit derivative_at implementation."
+            )
+        return super()._derivative_from_gradient(gradient)
+
     def __init__(
         self,
         dom: Domain,

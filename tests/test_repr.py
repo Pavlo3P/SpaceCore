@@ -305,7 +305,8 @@ class TestFunctionalRepr:
             lambda x: ctx.ops.vdot(ctx.asarray(np.ones(2)), x), w, ctx
         )
         comp = F.compose(A)
-        assert type(comp).__name__ == "ComposedFunctional"
+        assert isinstance(comp, sc.ComposedFunctional)
+        assert isinstance(comp, sc.LinearFunctional)
         r = repr(comp)
         assert "MatrixFreeLinearFunctional(ℝ^2 → ℝ) ∘ DenseLinOp(ℝ^3 → ℝ^2)" in r
 

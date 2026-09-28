@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 from functools import wraps
-from typing import Any, Callable
+from typing import Any, Callable, TypeVar, cast
 
-from ._check_policy import check_level_at_least
+from ._check_policy import CheckLevel, check_level_at_least
+
+
+_Method = TypeVar("_Method", bound=Callable[..., Any])
 
 
 def _as_positions(arg_positions: int | tuple[int, ...] | None) -> tuple[int, ...]:
@@ -23,7 +26,7 @@ def checked_method(
     in_batched: bool = False,
     out_batched: bool = False,
     out_batched_scalar: bool = False,
-) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+) -> Callable[[_Method], _Method]:
     """
     Build a decorator that checks a method's inputs and outputs against spaces.
 
@@ -46,7 +49,7 @@ def checked_method(
 
     Returns
     -------
-    Callable[[Callable[..., Any]], Callable[..., Any]]
+    Callable[[_Method], _Method]
         The decorator.
     """
     if out_batched_scalar and in_space is None:
@@ -60,11 +63,11 @@ def checked_method(
     # The batch size for out_batched_scalar comes from the first checked input.
     batch_pos = positions[0]
 
-    def decorate(method: Callable[..., Any]) -> Callable[..., Any]:
+    def decorate(method: _Method) -> _Method:
         @wraps(method)
         def wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
             # Fast path: ``check_level == "none"`` means no validation on either side.
-            level = getattr(self, "check_level", "standard")
+            level: CheckLevel = getattr(self, "check_level", "standard")
             if level == "none":
                 return method(self, *args, **kwargs)
 
@@ -103,11 +106,11 @@ def checked_method(
             if out_batched_scalar and check_level_at_least(level, "standard"):
                 from ._batching import _check_scalar_shape, _leading_batch_size
 
-                batch_target = self if in_space == "self" else getattr(self, in_space)
+                batch_target = self if in_space == "self" else getattr(self, cast(str, in_space))
                 _check_scalar_shape(y, (_leading_batch_size(batch_target, args[batch_pos]),))
 
             return y
 
-        return wrapper
+        return cast(_Method, wrapper)
 
     return decorate

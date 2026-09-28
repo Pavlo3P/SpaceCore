@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 import importlib
-from typing import Any, Sequence, Tuple, Callable, Optional, Type, ClassVar, cast
+from typing import Any, Sequence, Tuple, Callable, Optional, Type, ClassVar, Generic, cast
+
+from ..types._array import DenseT
 
 from ..types import DenseArray, SparseArray, DType, ArrayLike, Index, T, X, Y, R, Carry
 
@@ -28,7 +30,7 @@ class LazyNamespace:
         return self._module is not None
 
 
-class BackendOps(ABC):
+class BackendOps(ABC, Generic[DenseT]):
     """
     Public numerical contract for SpaceCore backends.
 
@@ -43,7 +45,7 @@ class BackendOps(ABC):
     xp: ClassVar[Any]
 
     def __init__(self) -> None:
-        self._constant_cache: dict[str, DenseArray] = {}
+        self._constant_cache: dict[str, DenseT] = {}
 
     @property
     def family(self) -> str:
@@ -113,7 +115,7 @@ class BackendOps(ABC):
         ...
 
     @abstractmethod
-    def sparse_matmul(self, a: SparseArray, b: DenseArray) -> DenseArray:
+    def sparse_matmul(self, a: SparseArray, b: DenseArray) -> DenseT:
         """Multiply a sparse array by a dense array."""
         ...
 
@@ -125,11 +127,11 @@ class BackendOps(ABC):
         b: DenseArray | None = None,
         keepdims: bool = False,
         return_sign: bool = False,
-    ) -> DenseArray | Tuple[DenseArray, DenseArray]:
+    ) -> DenseT | Tuple[DenseT, DenseT]:
         """Compute a stable log-sum-exp reduction."""
         ...
 
-    def _copy(self, x: DenseArray) -> DenseArray:
+    def _copy(self, x: DenseArray) -> DenseT:
         """Return a mutable copy of ``x``.
 
         Mutable backends override this with their native copy (``x.copy()`` for
@@ -139,7 +141,7 @@ class BackendOps(ABC):
         """
         raise NotImplementedError(f"{type(self).__name__} does not implement _copy.")
 
-    def _scatter_add_inplace(self, y: DenseArray, index: Index, values: ArrayLike) -> None:
+    def _scatter_add_inplace(self, y: DenseArray, index: Index, values: ArrayLike | float | complex) -> None:
         """Accumulate ``values`` into ``y`` at ``index`` in place.
 
         Backend mutation primitive used by the default :meth:`index_add`.
@@ -154,10 +156,10 @@ class BackendOps(ABC):
         self,
         x: DenseArray,
         index: Index,
-        values: ArrayLike,
+        values: ArrayLike | float | complex,
         *,
         copy: bool = True,
-    ) -> DenseArray:
+    ) -> DenseT:
         """Return ``x`` with ``x[index]`` set to ``values``.
 
         With ``copy=True`` a mutable copy is updated and returned; with
@@ -166,7 +168,7 @@ class BackendOps(ABC):
         """
         y = self._copy(x) if copy else x
         y[index] = values
-        return y
+        return cast(DenseT, y)
 
     def index_add(
         self,
@@ -175,7 +177,7 @@ class BackendOps(ABC):
         values: DenseArray,
         *,
         copy: bool = True,
-    ) -> DenseArray:
+    ) -> DenseT:
         """Return ``x`` with ``values`` accumulated into ``x[index]``.
 
         With ``copy=True`` a mutable copy is updated and returned; with
@@ -184,7 +186,7 @@ class BackendOps(ABC):
         """
         y = self._copy(x) if copy else x
         self._scatter_add_inplace(y, index, values)
-        return y
+        return cast(DenseT, y)
 
     @abstractmethod
     def ix_(self, *args: Any) -> Any:
@@ -297,7 +299,7 @@ class BackendOps(ABC):
             return axis
         return tuple(axis)
 
-    def _as_array(self, x: Any) -> DenseArray:
+    def _as_array(self, x: Any) -> DenseT:
         """Return ``x`` as a backend array, promoting a host scalar to 0-d.
 
         SpaceCore's convention is that every array-valued method returns a
@@ -312,7 +314,7 @@ class BackendOps(ABC):
         """
         return x if self.is_array(x) else self.xp.asarray(x)
 
-    def _take_along_axis(self, x: DenseArray, indices: DenseArray, axis: int) -> DenseArray:
+    def _take_along_axis(self, x: DenseArray, indices: DenseArray, axis: int) -> DenseT:
         """Gather along ``axis`` using per-position ``indices``.
 
         Used by the spectral-ordering normalization. Torch spells this
@@ -320,7 +322,7 @@ class BackendOps(ABC):
         """
         return self.xp.take_along_axis(x, indices, axis=axis)
 
-    def _permute_dims(self, x: DenseArray, axes: Sequence[int]) -> DenseArray:
+    def _permute_dims(self, x: DenseArray, axes: Sequence[int]) -> DenseT:
         axes = tuple(axes)
         # Array API name, then torch's, then NumPy's.
         if hasattr(self.xp, "permute_dims"):
@@ -347,26 +349,26 @@ class BackendOps(ABC):
         return tuple(order)
 
     @property
-    def inf(self) -> DenseArray:
+    def inf(self) -> DenseT:
         """Positive infinity as a cached backend scalar."""
         return self._constant("inf", float("inf"))
 
     @property
-    def nan(self) -> DenseArray:
+    def nan(self) -> DenseT:
         """NaN as a cached backend scalar."""
         return self._constant("nan", float("nan"))
 
     @property
-    def pi(self) -> DenseArray:
+    def pi(self) -> DenseT:
         """Pi as a cached backend scalar."""
         return self._constant("pi", 3.141592653589793)
 
     @property
-    def e(self) -> DenseArray:
+    def e(self) -> DenseT:
         """Euler's number as a cached backend scalar."""
         return self._constant("e", 2.718281828459045)
 
-    def _constant(self, name: str, value: float) -> DenseArray:
+    def _constant(self, name: str, value: float) -> DenseT:
         if name not in self._constant_cache:
             self._constant_cache[name] = self.asarray(value)
         return self._constant_cache[name]
@@ -456,7 +458,7 @@ class BackendOps(ABC):
             result *= int(dim)
         return result
 
-    def asarray(self, x: Any, dtype: DType | None = None, **backend_kwargs: Any) -> DenseArray:
+    def asarray(self, x: Any, dtype: DType | None = None, **backend_kwargs: Any) -> DenseT:
         """Convert input to a dense backend array (delegates to xp.asarray)."""
         self._reject_complex_to_real(x, dtype, operation="asarray")
         # Densify sparse input, then Array API asarray or torch's as_tensor.
@@ -467,10 +469,10 @@ class BackendOps(ABC):
             return self.xp.asarray(x, dtype=dtype, **backend_kwargs)
         return self.xp.as_tensor(x, dtype=dtype, **backend_kwargs)
 
-    def astype(self, x: DenseArray, dtype: DType | None, **backend_kwargs: Any) -> DenseArray:
+    def astype(self, x: DenseArray, dtype: DType | None, **backend_kwargs: Any) -> DenseT:
         """Cast x to dtype, returning x unchanged when dtype is None."""
         if dtype is None:
-            return x
+            return cast(DenseT, x)
         self._reject_complex_to_real(x, dtype, operation="astype")
         dtype = self.sanitize_dtype(dtype)
         # NumPy-style astype, else torch's .to.
@@ -478,27 +480,27 @@ class BackendOps(ABC):
             return cast(Any, x).astype(dtype, **backend_kwargs)
         return cast(Any, x).to(dtype=dtype, **backend_kwargs)
 
-    def empty(self, shape: Tuple[int, ...], dtype: DType | None = None) -> DenseArray:
+    def empty(self, shape: Tuple[int, ...], dtype: DType | None = None) -> DenseT:
         """Create an uninitialized array (delegates to xp.empty)."""
         return self.xp.empty(shape, dtype=self._dtype_arg(dtype))
 
-    def zeros(self, shape: Tuple[int, ...], dtype: DType | None = None) -> DenseArray:
+    def zeros(self, shape: Tuple[int, ...], dtype: DType | None = None) -> DenseT:
         """Create a zero-filled array (delegates to xp.zeros)."""
         return self.xp.zeros(shape, dtype=self._dtype_arg(dtype))
 
-    def ones(self, shape: Tuple[int, ...], dtype: DType | None = None) -> DenseArray:
+    def ones(self, shape: Tuple[int, ...], dtype: DType | None = None) -> DenseT:
         """Create a one-filled array (delegates to xp.ones)."""
         return self.xp.ones(shape, dtype=self._dtype_arg(dtype))
 
-    def zeros_like(self, x: DenseArray, dtype: DType | None = None) -> DenseArray:
+    def zeros_like(self, x: DenseArray, dtype: DType | None = None) -> DenseT:
         """Create a zero-filled array like x (delegates to xp.zeros_like)."""
         return self.xp.zeros_like(x, dtype=self._dtype_arg(dtype))
 
-    def ones_like(self, x: DenseArray, dtype: DType | None = None) -> DenseArray:
+    def ones_like(self, x: DenseArray, dtype: DType | None = None) -> DenseT:
         """Create a one-filled array like x (delegates to xp.ones_like)."""
         return self.xp.ones_like(x, dtype=self._dtype_arg(dtype))
 
-    def full_like(self, x: DenseArray, value: Any, dtype: DType | None = None) -> DenseArray:
+    def full_like(self, x: DenseArray, value: Any, dtype: DType | None = None) -> DenseT:
         """Create a value-filled array like x (delegates to xp.full_like)."""
         return self.xp.full_like(x, value, dtype=self._dtype_arg(dtype))
 
@@ -508,7 +510,7 @@ class BackendOps(ABC):
         stop: int | None = None,
         step: int | None = None,
         dtype: DType | None = None,
-    ) -> DenseArray:
+    ) -> DenseT:
         """Create an evenly spaced range (delegates to xp.arange)."""
         dtype = self._dtype_arg(dtype)
         # Mirror the arange(stop), arange(start, stop), arange(start, stop, step) overloads.
@@ -520,11 +522,11 @@ class BackendOps(ABC):
 
     def full(
         self, shape: Tuple[int, ...], fill_value: Any, dtype: DType | None = None
-    ) -> DenseArray:
+    ) -> DenseT:
         """Create a value-filled array (delegates to xp.full)."""
         return self.xp.full(shape, fill_value, dtype=self._dtype_arg(dtype))
 
-    def eye(self, n: int, m: int | None = None, dtype: DType | None = None) -> DenseArray:
+    def eye(self, n: int, m: int | None = None, dtype: DType | None = None) -> DenseT:
         """Create an identity-like matrix (delegates to xp.eye)."""
         return self.xp.eye(n, m, dtype=self._dtype_arg(dtype))
 
@@ -544,24 +546,24 @@ class BackendOps(ABC):
     # a non-contiguous view -- a transposed array flattens by its logical
     # index order, not its buffer.
 
-    def ravel(self, x: DenseArray) -> DenseArray:
+    def ravel(self, x: DenseArray) -> DenseT:
         """Flatten x to one dimension in C order (last axis varies fastest)."""
         if hasattr(self.xp, "ravel"):
             return self.xp.ravel(x)
         return self.reshape(x, (-1,))
 
-    def reshape(self, x: DenseArray, shape: Tuple[int, ...] | int) -> DenseArray:
+    def reshape(self, x: DenseArray, shape: Tuple[int, ...] | int) -> DenseT:
         """Reshape x in C order (delegates to xp.reshape; see the note above)."""
         shape_arg = (shape,) if isinstance(shape, int) else shape
         return self.xp.reshape(x, shape_arg)
 
-    def transpose(self, x: DenseArray, axes: Sequence[int] | None = None) -> DenseArray:
+    def transpose(self, x: DenseArray, axes: Sequence[int] | None = None) -> DenseT:
         """Permute dimensions of x."""
         if axes is None:
             axes = tuple(reversed(range(self.ndim(x))))
         return self._permute_dims(x, axes)
 
-    def swapaxes(self, x: DenseArray, axis1: int, axis2: int) -> DenseArray:
+    def swapaxes(self, x: DenseArray, axis1: int, axis2: int) -> DenseT:
         """Swap two axes of x."""
         if hasattr(self.xp, "swapaxes"):
             return self.xp.swapaxes(x, axis1, axis2)
@@ -570,26 +572,26 @@ class BackendOps(ABC):
         axes[axis1], axes[axis2] = axes[axis2], axes[axis1]
         return self._permute_dims(x, axes)
 
-    def expand_dims(self, x: DenseArray, axis: int | Sequence[int]) -> DenseArray:
+    def expand_dims(self, x: DenseArray, axis: int | Sequence[int]) -> DenseT:
         """Insert singleton dimensions into x."""
         if isinstance(axis, int):
             if hasattr(self.xp, "expand_dims"):
                 return self.xp.expand_dims(x, axis=axis)
             return self.xp.unsqueeze(x, axis)
         # Several axes: insert one at a time, in increasing final position.
-        out = x
+        out = cast(DenseT, x)
         ndim = self.ndim(x) + len(axis)
         for ax in sorted(a + ndim if a < 0 else a for a in axis):
             out = self.expand_dims(out, ax)
         return out
 
-    def squeeze(self, x: DenseArray, axis: int | Sequence[int] | None = None) -> DenseArray:
+    def squeeze(self, x: DenseArray, axis: int | Sequence[int] | None = None) -> DenseT:
         """Remove singleton dimensions from x."""
         if axis is None:
             # All size-1 axes, passed explicitly since not every backend accepts axis=None.
             axis = tuple(i for i, dim in enumerate(self.shape(x)) if dim == 1)
             if not axis:
-                return x
+                return cast(DenseT, x)
         axis = (axis,) if isinstance(axis, int) else tuple(axis)
         return self.xp.squeeze(x, axis=axis)
 
@@ -598,17 +600,17 @@ class BackendOps(ABC):
         x: DenseArray,
         source: int | Sequence[int],
         destination: int | Sequence[int],
-    ) -> DenseArray:
+    ) -> DenseT:
         """Move axes of x to new positions."""
         if hasattr(self.xp, "moveaxis"):
             return self.xp.moveaxis(x, source, destination)
         return self._permute_dims(x, self._move_axis_order(self.ndim(x), source, destination))
 
-    def stack(self, arrays: Sequence[DenseArray], axis: int = 0) -> DenseArray:
+    def stack(self, arrays: Sequence[DenseArray], axis: int = 0) -> DenseT:
         """Stack arrays along a new axis (delegates to xp.stack)."""
         return self.xp.stack(tuple(arrays), axis=axis)
 
-    def hstack(self, arrays: Sequence[DenseArray]) -> DenseArray:
+    def hstack(self, arrays: Sequence[DenseArray]) -> DenseT:
         """Stack arrays horizontally / column-wise (delegates to xp.hstack).
 
         Concatenates along axis 0 for 1-D inputs and along axis 1 otherwise,
@@ -616,7 +618,7 @@ class BackendOps(ABC):
         """
         return self.xp.hstack(tuple(arrays))
 
-    def vstack(self, arrays: Sequence[DenseArray]) -> DenseArray:
+    def vstack(self, arrays: Sequence[DenseArray]) -> DenseT:
         """Stack arrays vertically / row-wise (delegates to xp.vstack).
 
         Inputs are promoted to at least 2-D and concatenated along axis 0,
@@ -624,7 +626,7 @@ class BackendOps(ABC):
         """
         return self.xp.vstack(tuple(arrays))
 
-    def dstack(self, arrays: Sequence[DenseArray]) -> DenseArray:
+    def dstack(self, arrays: Sequence[DenseArray]) -> DenseT:
         """Stack arrays depth-wise along the third axis (delegates to xp.dstack).
 
         Inputs are promoted to at least 3-D and concatenated along axis 2,
@@ -632,7 +634,7 @@ class BackendOps(ABC):
         """
         return self.xp.dstack(tuple(arrays))
 
-    def column_stack(self, arrays: Sequence[DenseArray]) -> DenseArray:
+    def column_stack(self, arrays: Sequence[DenseArray]) -> DenseT:
         """Stack 1-D arrays as columns into a 2-D array (delegates to xp.column_stack).
 
         1-D inputs become columns; higher-dimensional inputs are concatenated
@@ -676,7 +678,7 @@ class BackendOps(ABC):
         # The i-th slice of every mapped leaf.
         def tree_take(x: Any, axis: Any, i: int) -> Any:
             if axis is None:
-                return x
+                return cast(DenseT, x)
             if isinstance(x, tuple):
                 axes = axis if isinstance(axis, (tuple, list)) else (axis,) * len(x)
                 return tuple(tree_take(xi, ai, i) for xi, ai in zip(x, axes))
@@ -797,7 +799,7 @@ class BackendOps(ABC):
         axis: int | Sequence[int] | None = None,
         keepdims: bool = False,
         dtype: DType | None = None,
-    ) -> DenseArray:
+    ) -> DenseT:
         """Sum over given axes (delegates to xp.sum). Returns a 0-d array when total."""
         return self._as_array(
             self.xp.sum(
@@ -813,7 +815,7 @@ class BackendOps(ABC):
         x: DenseArray,
         axis: int | Sequence[int] | None = None,
         keepdims: bool = False,
-    ) -> DenseArray:
+    ) -> DenseT:
         """Mean over given axes (delegates to xp.mean). Returns a 0-d array when total."""
         return self._as_array(self.xp.mean(x, axis=self._to_axis_tuple(axis), keepdims=keepdims))
 
@@ -822,7 +824,7 @@ class BackendOps(ABC):
         x: DenseArray,
         axis: int | Sequence[int] | None = None,
         keepdims: bool = False,
-    ) -> DenseArray:
+    ) -> DenseT:
         """Minimum over given axes (delegates to xp.min). Returns a 0-d array when total."""
         return self._as_array(self.xp.min(x, axis=self._to_axis_tuple(axis), keepdims=keepdims))
 
@@ -831,7 +833,7 @@ class BackendOps(ABC):
         x: DenseArray,
         axis: int | Sequence[int] | None = None,
         keepdims: bool = False,
-    ) -> DenseArray:
+    ) -> DenseT:
         """Maximum over given axes (delegates to xp.max). Returns a 0-d array when total."""
         return self._as_array(self.xp.max(x, axis=self._to_axis_tuple(axis), keepdims=keepdims))
 
@@ -841,7 +843,7 @@ class BackendOps(ABC):
         axis: int | Sequence[int] | None = None,
         keepdims: bool = False,
         dtype: DType | None = None,
-    ) -> DenseArray:
+    ) -> DenseT:
         """Product over given axes (delegates to xp.prod). Returns a 0-d array when total."""
         return self._as_array(
             self.xp.prod(
@@ -852,7 +854,7 @@ class BackendOps(ABC):
             )
         )
 
-    def trace(self, x: DenseArray) -> DenseArray:
+    def trace(self, x: DenseArray) -> DenseT:
         """Trace over the **trailing two axes**; batched input traces each matrix.
 
         Deliberately *not* ``xp.trace(x)``: NumPy and JAX default to
@@ -863,23 +865,23 @@ class BackendOps(ABC):
         """
         return self.sum(self.diagonal(x), axis=-1)
 
-    def argsort(self, x: DenseArray, axis: int = -1) -> DenseArray:
+    def argsort(self, x: DenseArray, axis: int = -1) -> DenseT:
         """Return indices that sort ``x`` along an axis."""
         return self._as_array(self.xp.argsort(x, axis=axis))
 
-    def sort(self, x: DenseArray, axis: int = -1) -> DenseArray:
+    def sort(self, x: DenseArray, axis: int = -1) -> DenseT:
         """Sort x along an axis (delegates to xp.sort)."""
         return self._as_array(self.xp.sort(x, axis=axis))
 
-    def argmin(self, x: DenseArray, axis: int | None = None, keepdims: bool = False) -> DenseArray:
+    def argmin(self, x: DenseArray, axis: int | None = None, keepdims: bool = False) -> DenseT:
         """Return indices of minima along an axis. Returns a 0-d array when total."""
         return self._as_array(self.xp.argmin(x, axis=axis, keepdims=keepdims))
 
-    def argmax(self, x: DenseArray, axis: int | None = None, keepdims: bool = False) -> DenseArray:
+    def argmax(self, x: DenseArray, axis: int | None = None, keepdims: bool = False) -> DenseT:
         """Return indices of maxima along an axis. Returns a 0-d array when total."""
         return self._as_array(self.xp.argmax(x, axis=axis, keepdims=keepdims))
 
-    def vdot(self, x: DenseArray, y: DenseArray) -> DenseArray:
+    def vdot(self, x: DenseArray, y: DenseArray) -> DenseT:
         """Return ``sum(conj(x) * y)`` over flattened inputs.
 
         Matches NumPy, JAX, and Torch ``vdot`` semantics. ``DenseLinOp.rapply``
@@ -897,9 +899,11 @@ class BackendOps(ABC):
         a: DenseArray,
         b: DenseArray,
         backend_kwargs: dict[str, Any] | None = None,
-    ) -> DenseArray:
+    ) -> DenseT:
         """Matrix product (delegates to xp.matmul)."""
-        return self.xp.matmul(a, b, **({} if backend_kwargs is None else backend_kwargs))
+        return self._as_array(
+            self.xp.matmul(a, b, **({} if backend_kwargs is None else backend_kwargs))
+        )
 
     # -- Spectral presentation conventions ---------------------------------
     #
@@ -923,7 +927,7 @@ class BackendOps(ABC):
     # branch, no host sync -- so it stays safe under jit, vmap and compile.
     # Cost is O(n^2) on top of an O(n^3) decomposition.
 
-    def _column_phase(self, vectors: DenseArray) -> DenseArray:
+    def _column_phase(self, vectors: DenseArray) -> DenseT:
         """Return the unit phase of each column's largest entry, shaped ``(..., 1, k)``."""
         # Per column: the entry of largest modulus and its unit phase.
         magnitude = self.abs(vectors)
@@ -931,15 +935,15 @@ class BackendOps(ABC):
         pivot_row = self.expand_dims(pivot_row, -2)
         # Gather the pivot with a one-hot mask, which stays jittable.
         rows = self.reshape(self.arange(self.shape(vectors)[-2]), (-1, 1))
-        selector = self.astype(rows == pivot_row, self.get_dtype(vectors))
+        selector = self.astype(cast(Any, rows) == pivot_row, self.get_dtype(vectors))
         pivot = self.sum(vectors * selector, axis=-2, keepdims=True)
         scale = self.abs(pivot)
         # A unit-norm vector cannot be all zeros; the guard only keeps the
         # division defined for degenerate inputs rather than changing a result.
-        safe_scale = self.where(scale > 0, scale, self.ones_like(scale))
-        return self.where(scale > 0, pivot / safe_scale, self.ones_like(pivot))
+        safe_scale = self.where(cast(Any, scale) > 0, scale, self.ones_like(scale))
+        return self.where(cast(Any, scale) > 0, pivot / safe_scale, self.ones_like(pivot))
 
-    def _gauge_columns(self, vectors: DenseArray) -> DenseArray:
+    def _gauge_columns(self, vectors: DenseArray) -> DenseT:
         """Scale each column so its largest-magnitude entry is real positive."""
         return vectors / self._column_phase(vectors)
 
@@ -947,7 +951,7 @@ class BackendOps(ABC):
         self,
         eigenvalues: DenseArray,
         eigenvectors: DenseArray,
-    ) -> tuple[DenseArray, DenseArray]:
+    ) -> tuple[DenseT, DenseT]:
         """Sort eigenpairs ascending by eigenvalue and gauge the eigenvectors."""
         # Ascending eigenvalues, columns permuted to match, then a fixed phase gauge.
         order = self.xp.argsort(self.real(eigenvalues), axis=-1)
@@ -959,7 +963,7 @@ class BackendOps(ABC):
         self,
         x: DenseArray,
         backend_kwargs: dict[str, Any] | None = None,
-    ) -> tuple[DenseArray, DenseArray]:
+    ) -> tuple[DenseT, DenseT]:
         """Eigenpairs of a Hermitian dense matrix, in SpaceCore's presentation.
 
         Eigenvalues ascending; each eigenvector scaled so its largest-magnitude
@@ -979,7 +983,7 @@ class BackendOps(ABC):
         ord: int | str | None = None,
         axis: int | Sequence[int] | None = None,
         keepdims: bool = False,
-    ) -> DenseArray:
+    ) -> DenseT:
         """Vector or matrix norm (delegates to xp.linalg.norm). Returns a 0-d array when total."""
         return self._as_array(self.xp.linalg.norm(x, ord=ord, axis=axis, keepdims=keepdims))
 
@@ -988,7 +992,7 @@ class BackendOps(ABC):
         A: DenseArray,
         b: DenseArray,
         backend_kwargs: dict[str, Any] | None = None,
-    ) -> DenseArray:
+    ) -> DenseT:
         """Solve a dense linear system (delegates to xp.linalg.solve)."""
         return self.xp.linalg.solve(A, b, **({} if backend_kwargs is None else backend_kwargs))
 
@@ -996,7 +1000,7 @@ class BackendOps(ABC):
         self,
         A: DenseArray,
         backend_kwargs: dict[str, Any] | None = None,
-    ) -> DenseArray:
+    ) -> DenseT:
         """Eigenvalues of a Hermitian dense matrix, ascending (SpaceCore convention)."""
         eigenvalues = self.xp.linalg.eigvalsh(
             A, **({} if backend_kwargs is None else backend_kwargs)
@@ -1008,7 +1012,7 @@ class BackendOps(ABC):
         A: DenseArray,
         full_matrices: bool = True,
         backend_kwargs: dict[str, Any] | None = None,
-    ) -> tuple[DenseArray, DenseArray, DenseArray]:
+    ) -> tuple[DenseT, DenseT, DenseT]:
         """Singular value decomposition, in SpaceCore's presentation.
 
         Singular values descending; each of the leading ``k = min(m, n)``
@@ -1033,7 +1037,7 @@ class BackendOps(ABC):
         U: DenseArray,
         s: DenseArray,
         Vh: DenseArray,
-    ) -> tuple[DenseArray, DenseArray, DenseArray]:
+    ) -> tuple[DenseT, DenseT, DenseT]:
         """Sort singular triples descending and gauge them, preserving ``U s Vh``."""
         # Sort singular values descending; permute the first k columns of U and rows of Vh.
         k = self.shape(s)[-1]
@@ -1058,11 +1062,16 @@ class BackendOps(ABC):
         self,
         A: DenseArray,
         backend_kwargs: dict[str, Any] | None = None,
-    ) -> DenseArray:
+    ) -> DenseT:
         """Cholesky factorization (delegates to xp.linalg.cholesky)."""
         return self.xp.linalg.cholesky(A, **({} if backend_kwargs is None else backend_kwargs))
 
-    def where(self, condition: DenseArray | bool, x: ArrayLike, y: ArrayLike) -> DenseArray:
+    def where(
+        self,
+        condition: DenseArray | bool,
+        x: ArrayLike | float | complex,
+        y: ArrayLike | float | complex,
+    ) -> DenseT:
         """Select between x and y by condition (delegates to xp.where)."""
         return self.xp.where(condition, x, y)
 
@@ -1071,7 +1080,7 @@ class BackendOps(ABC):
         arrays: Sequence[DenseArray],
         axis: int = 0,
         dtype: DType | None = None,
-    ) -> DenseArray:
+    ) -> DenseT:
         """Concatenate arrays along an existing axis (delegates to xp.concat)."""
         # Array API concat, else NumPy's concatenate.
         if hasattr(self.xp, "concat"):
@@ -1085,11 +1094,11 @@ class BackendOps(ABC):
         x: DenseArray,
         indices: DenseArray,
         axis: int | None = None,
-    ) -> DenseArray:
+    ) -> DenseT:
         """Take entries from x by integer indices (delegates to xp.take)."""
         return self.xp.take(x, indices, axis=axis)
 
-    def diagonal(self, x: DenseArray) -> DenseArray:
+    def diagonal(self, x: DenseArray) -> DenseT:
         """Return the main diagonal over the **trailing two axes**.
 
         Same correction as :meth:`trace`: the array libraries default to
@@ -1117,24 +1126,78 @@ class BackendOps(ABC):
             xp_state = f", xp_loaded={xp.is_loaded!r}"
         return f"{type(self).__name__}(family={self.family!r}{xp_state})"
 
+    def conj(self, x: DenseArray, **kwargs: Any) -> DenseT:
+        """Return ``xp.conj(...)`` as a backend array."""
+        return self._as_array(self.xp.conj(x, **kwargs))
 
-#: Methods that hand their arguments unchanged to the same-named ``xp`` function. Wrappers
-#: that normalize a convention (dtype defaults, axes, ordering) stay written out above.
-_PASS_THROUGH = (
-    'broadcast_to', 'conj', 'real', 'imag', 'abs', 'sign', 'sqrt', 'kron', 'einsum', 'exp',
-    'log', 'maximum', 'minimum', 'clip', 'isfinite', 'isnan', 'diag', 'tril', 'triu',
-)
+    def real(self, x: DenseArray, **kwargs: Any) -> DenseT:
+        """Return ``xp.real(...)`` as a backend array."""
+        return self._as_array(self.xp.real(x, **kwargs))
 
+    def imag(self, x: DenseArray, **kwargs: Any) -> DenseT:
+        """Return ``xp.imag(...)`` as a backend array."""
+        return self._as_array(self.xp.imag(x, **kwargs))
 
-def _forward_to_xp(name: str) -> Any:
-    # A method calling xp.<name> directly, named and documented like a BackendOps method.
-    def method(self: BackendOps, *args: Any, **kwargs: Any) -> Any:
-        return getattr(self.xp, name)(*args, **kwargs)
+    def abs(self, x: DenseArray, **kwargs: Any) -> DenseT:
+        """Return ``xp.abs(...)`` as a backend array."""
+        return self._as_array(self.xp.abs(x, **kwargs))
 
-    method.__name__, method.__qualname__ = name, f"BackendOps.{name}"
-    method.__doc__ = f"Return ``xp.{name}(...)`` unchanged."
-    return method
+    def sign(self, x: DenseArray, **kwargs: Any) -> DenseT:
+        """Return ``xp.sign(...)`` as a backend array."""
+        return self._as_array(self.xp.sign(x, **kwargs))
 
+    def sqrt(self, x: DenseArray, **kwargs: Any) -> DenseT:
+        """Return ``xp.sqrt(...)`` as a backend array."""
+        return self._as_array(self.xp.sqrt(x, **kwargs))
 
-for _name in _PASS_THROUGH:
-    setattr(BackendOps, _name, _forward_to_xp(_name))
+    def exp(self, x: DenseArray, **kwargs: Any) -> DenseT:
+        """Return ``xp.exp(...)`` as a backend array."""
+        return self._as_array(self.xp.exp(x, **kwargs))
+
+    def log(self, x: DenseArray, **kwargs: Any) -> DenseT:
+        """Return ``xp.log(...)`` as a backend array."""
+        return self._as_array(self.xp.log(x, **kwargs))
+
+    def isfinite(self, x: DenseArray, **kwargs: Any) -> DenseT:
+        """Return ``xp.isfinite(...)`` as a backend array."""
+        return self._as_array(self.xp.isfinite(x, **kwargs))
+
+    def isnan(self, x: DenseArray, **kwargs: Any) -> DenseT:
+        """Return ``xp.isnan(...)`` as a backend array."""
+        return self._as_array(self.xp.isnan(x, **kwargs))
+
+    def broadcast_to(self, x: DenseArray, shape: Sequence[int], **kwargs: Any) -> DenseT:
+        """Return ``xp.broadcast_to(...)`` as a backend array."""
+        return self._as_array(self.xp.broadcast_to(x, shape, **kwargs))
+
+    def kron(self, a: DenseArray, b: DenseArray, **kwargs: Any) -> DenseT:
+        """Return ``xp.kron(...)`` as a backend array."""
+        return self._as_array(self.xp.kron(a, b, **kwargs))
+
+    def einsum(self, subscripts: str, *operands: DenseArray, **kwargs: Any) -> DenseT:
+        """Return ``xp.einsum(...)`` as a backend array."""
+        return self._as_array(self.xp.einsum(subscripts, *operands, **kwargs))
+
+    def maximum(self, x1: DenseArray | float, x2: DenseArray | float, **kwargs: Any) -> DenseT:
+        """Return ``xp.maximum(...)`` as a backend array."""
+        return self._as_array(self.xp.maximum(x1, x2, **kwargs))
+
+    def minimum(self, x1: DenseArray | float, x2: DenseArray | float, **kwargs: Any) -> DenseT:
+        """Return ``xp.minimum(...)`` as a backend array."""
+        return self._as_array(self.xp.minimum(x1, x2, **kwargs))
+
+    def clip(self, x: DenseArray, min: Any = None, max: Any = None, **kwargs: Any) -> DenseT:
+        """Return ``xp.clip(...)`` as a backend array."""
+        return self._as_array(self.xp.clip(x, min, max, **kwargs))
+
+    def diag(self, x: DenseArray, k: int = 0, **kwargs: Any) -> DenseT:
+        """Return ``xp.diag(...)`` as a backend array."""
+        return self._as_array(self.xp.diag(x, k, **kwargs))
+
+    def tril(self, x: DenseArray, k: int = 0, **kwargs: Any) -> DenseT:
+        """Return ``xp.tril(...)`` as a backend array."""
+        return self._as_array(self.xp.tril(x, k=k, **kwargs))
+
+    def triu(self, x: DenseArray, k: int = 0, **kwargs: Any) -> DenseT:
+        """Return ``xp.triu(...)`` as a backend array."""
+        return self._as_array(self.xp.triu(x, k=k, **kwargs))

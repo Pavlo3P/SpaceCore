@@ -24,6 +24,7 @@ from ._composed import ComposedFunctional, make_functional_composed
 from ._linear import InnerProductFunctional, LinearFunctional, MatrixFreeLinearFunctional
 from ._quadratic import LinOpQuadraticForm, QuadraticForm
 from ._realified import RealifiedFunctional, realify
+from ._indicator import IndicatorFunctional
 from .tools import (
     SpectralFunctional,
     eigenvalue_space,
@@ -41,6 +42,7 @@ from .tools import (
     prox_l1,
     prox_l2sq,
 )
+from . import _prox  # noqa: F401 -- registers the optional closed-form rules
 
 __all__ = [
     "ComposedFunctional",
@@ -48,6 +50,7 @@ __all__ = [
     "Functional",
     "HuberFunctional",
     "InnerProductFunctional",
+    "IndicatorFunctional",
     "KLDivergenceFunctional",
     "L1NormFunctional",
     "LinearFunctional",

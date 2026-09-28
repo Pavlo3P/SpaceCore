@@ -17,6 +17,7 @@ dependencies = [
   "array-api-compat>=1.14.0",
   "numpy>=2.0.0",
   "optree>=0.17.0",
+  "typing-extensions>=4.12",
   "scipy>=1.17",
 ]
 
@@ -73,6 +74,8 @@ dev = [
   "pytest-cov>=5",
   "ruff>=0.6",
   "numpydoc>=1.7",
+  "mypy>=1.19",
+  "pyright>=1.1.408",
 ]
 
 [tool.setuptools]
@@ -88,6 +91,7 @@ include = ["spacecore*"]
 [tool.pytest.ini_options]
 addopts = [
   "--doctest-modules",
+  "--ignore=tests/typing",
   "--ignore-glob=spacecore/_contextual/*",
   "--ignore-glob=spacecore/backend/jax/_ops.py",
   "--ignore-glob=spacecore/backend/cupy/*",
@@ -144,3 +148,6 @@ exclude = [
   '\.tests\.',
   'test_',
 ]
+
+[tool.setuptools.package-data]
+spacecore = ["py.typed"]

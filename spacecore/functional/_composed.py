@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, cast
 
 from ._base import Functional
-from ._linear import InnerProductFunctional
+from ._linear import InnerProductFunctional, LinearFunctional
 from ._quadratic import LinOpQuadraticForm
 from .._checks import checked_method
 from .._check_policy import CheckLevel, minimum_check_level
@@ -50,11 +50,15 @@ def make_functional_composed(F: Functional, A: LinOp) -> Functional:
     _require_composable(F, A)
     # Closed forms: <c, A x> = <A* c, x>, and a quadratic form pulls back to A* Q A.
     if isinstance(F, InnerProductFunctional):
-        return InnerProductFunctional(A.H.apply(F.representer), A.domain, A.ctx)
+        return InnerProductFunctional(A.H.apply(F.representer), A.domain, A.ctx,
+                                      cod=F.codomain, real_linear=F.real_linear,
+                                      check_level=minimum_check_level((F.check_level, A.check_level)))
     if isinstance(F, LinOpQuadraticForm):
         Q = A.H @ F.Q @ A
         linear = None if F.linear is None else cast(Any, F.linear.compose(A))
         return LinOpQuadraticForm(Q, linear, F.a, A.ctx)
+    if isinstance(F, LinearFunctional):
+        return _ComposedLinearFunctional(F, A)
     # Otherwise a lazy composition.
     return ComposedFunctional(F, A)
 
@@ -145,6 +149,13 @@ class ComposedFunctional(Functional):
         value, gradient = self.F.value_and_grad(y, *args, **kwargs)
         return value, self.A.rapply(gradient)
 
+    def derivative_at(self, x: Any, *args: Any, **kwargs: Any) -> LinearFunctional:
+        return self.F.derivative_at(self.A.apply(x), *args, **kwargs).compose(self.A)
+
+    def value_and_derivative(self, x: Any, *args: Any, **kwargs: Any) -> tuple[Any, LinearFunctional]:
+        value, derivative = self.F.value_and_derivative(self.A.apply(x), *args, **kwargs)
+        return value, derivative.compose(self.A)
+
     @checked_method(in_space="domain", out_space="domain", in_batched=True, out_batched=True)
     def vgrad(self, xs: Any) -> Any:
         """Evaluate the chain-rule gradient over a leading batch axis."""
@@ -173,7 +184,21 @@ class ComposedFunctional(Functional):
 
     def _convert(self, new_ctx: Context) -> ComposedFunctional:
         """Convert the composed functional and operator to ``new_ctx``."""
-        return ComposedFunctional(self.F.convert(new_ctx), self.A.convert(new_ctx))
+        return type(self)(self.F.convert(new_ctx), self.A.convert(new_ctx))
+
+
+class _ComposedLinearFunctional(ComposedFunctional, LinearFunctional):
+    """Pullback that needs only forward application for directional evaluation."""
+
+    derivative_at = LinearFunctional.derivative_at
+
+    @property
+    def scalar_field(self) -> str:
+        return "real" if self.domain.scalar_field == "real" else self.F.scalar_field
+
+    @property
+    def representer(self) -> Any:
+        return self.A.rapply(self.F.representer)
 
 
 register("matmul", Functional, LinOp, make_functional_composed)

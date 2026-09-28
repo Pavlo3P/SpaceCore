@@ -33,3 +33,20 @@ branch, review, and release rules.
 
 Choose a [good-first-issue](https://github.com/Pavlo3P/SpaceCore/labels/good-first-issue).
 Each should name a file, an example to follow, and a clear completion condition.
+
+## Typing regression checks
+
+With the `jax`, `torch`, and `dev` extras installed:
+
+```bash
+pyright --project tests/typing/pyrightconfig.json
+mypy --follow-imports=silent --warn-unused-ignores tests/typing/*.py
+```
+
+For a NumPy-only install, pass `tests/typing/arrays.py` to both commands
+(keep the Pyright project option). These consumer tests check inferred result
+classes, native array interoperability, and intentional invalid calls. The
+unused-ignore checks ensure errors cannot disappear through `Any`. Pytest
+excludes this directory because its negative examples must never execute.
+See [the typing investigation](docs/dev/backend_typing.md) for the design and
+remaining limits.

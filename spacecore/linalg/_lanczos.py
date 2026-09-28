@@ -52,14 +52,90 @@ class LanczosResult(NamedTuple):
 class _LanczosBasisResult(NamedTuple):
     """Store fixed-size Lanczos basis data and tridiagonal projection."""
 
-    V: DenseArray
+    V: Any
     T: DenseArray
     alphas: DenseArray
     betas: DenseArray
     krylov_dim: Any
     initial_norm: Any
     tol: Any
-    e0_unit: DenseArray
+    initial_unit: Any
+
+
+class _KrylovBasis:
+    """Private storage adapter; vector arithmetic stays in the space algebra.
+
+    Eager custom elements are held unchanged in a list. JAX custom elements
+    must be registered pytrees with fixed leaf shapes and dtypes; their leaves
+    are stacked separately without converting elements to coordinates.
+    """
+
+    def __init__(self, space: Any, example: Any, capacity: int) -> None:
+        self.space = space
+        self.ops = space.ops
+        self.dom = SpaceCoreOps(space)
+        self.capacity = capacity
+        self.dense = type(space) in (
+            DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace
+        )
+        self.euclidean = self.dense and space.is_euclidean
+        self.tree = None
+        if self.dense:
+            self.shape = example.shape
+        elif self.ops.family == "jax":
+            self.tree = self.ops.jax.tree_util
+            _, self.structure = self.tree.tree_flatten(example)
+
+    def allocate(self) -> Any:
+        if self.dense:
+            return self.ops.zeros((self.capacity, *self.shape), dtype=self.space.dtype)
+        zero = self.space.zeros()
+        if self.tree is not None:
+            leaves, structure = self.tree.tree_flatten(zero)
+            if structure != self.structure:
+                raise TypeError("Krylov elements and space.zeros() must have the same pytree structure.")
+            return tuple(self.ops.stack([leaf] * self.capacity) for leaf in leaves)
+        # ponytail: native lists cover eager custom objects; specialize only if profiling warrants it.
+        return [zero] * self.capacity
+
+    def get(self, storage: Any, i: Any) -> Any:
+        if self.tree is not None:
+            return self.tree.tree_unflatten(self.structure, [leaf[i] for leaf in storage])
+        return storage[i]
+
+    def set(self, storage: Any, i: Any, x: Any) -> Any:
+        if self.dense:
+            return self.ops.index_set(storage, i, x, copy=True)
+        if self.tree is not None:
+            leaves, structure = self.tree.tree_flatten(x)
+            if structure != self.structure:
+                raise TypeError("Krylov operations must preserve the element pytree structure.")
+            return tuple(self.ops.index_set(a, i, b, copy=True) for a, b in zip(storage, leaves))
+        updated = storage.copy()
+        updated[i] = x
+        return updated
+
+    def inner(self, storage: Any, x: Any, count: Any) -> Any:
+        if self.euclidean:
+            vectors = self.ops.reshape(storage, (self.capacity, -1))
+            coeffs = self.ops.einsum("jn,n->j", self.ops.conj(vectors), self.ops.reshape(x, (-1,)))
+            return self.ops.where(self.ops.arange(self.capacity) < count, coeffs, self.ops.zeros_like(coeffs))
+        coeffs = self.ops.zeros((self.capacity,), dtype=self.space.dtype)
+
+        def body(j: Any, values: Any) -> Any:
+            return self.ops.index_set(values, j, self.dom.inner(self.get(storage, j), x), copy=True)
+
+        return self.ops.fori_loop(0, count, body, coeffs)
+
+    def lincomb(self, storage: Any, coeffs: Any, count: Any) -> Any:
+        if self.dense:
+            vectors = self.ops.reshape(storage, (self.capacity, -1))[:coeffs.shape[0]]
+            return self.ops.reshape(self.ops.einsum("j,jn->n", coeffs, vectors), self.shape)
+
+        def body(j: Any, x: Any) -> Any:
+            return self.dom.axpy(coeffs[j], self.get(storage, j), x)
+
+        return self.ops.fori_loop(0, count, body, self.space.zeros())
 
 
 def _check_lanczos_max_iter(max_iter: int) -> int:
@@ -119,53 +195,22 @@ def _lanczos_basis_and_tridiag(
 ) -> _LanczosBasisResult:
     """Build a Lanczos basis and tridiagonal projection."""
     ops = A.ops
-    ctx = A.ctx
     apply = resolve_apply(A)
     dom = SpaceCoreOps(A.domain)
-    # Plain Euclidean coordinate spaces reorthogonalize with one einsum.
-    use_euclidean_reorth = (
-        type(A.domain) in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace)
-        and A.domain.is_euclidean
-    )
-
-    # Preallocate the basis V and coefficients at full size, for jit.
-    v0 = A.domain.flatten(initial_vector)
-    v0 = ctx.assert_dense(v0)
-    n = v0.shape[0]
-
-    V = ops.zeros((max_iter + 1, n), dtype=ctx.dtype)
+    basis = _KrylovBasis(A.domain, initial_vector, max_iter + 1)
+    V = basis.allocate()
     alphas = ops.zeros((max_iter,), dtype=real_dtype)
     betas = ops.zeros((max_iter + 1,), dtype=real_dtype)
-
     tol_s = ops.asarray(tol, dtype=real_dtype)
-    eps_s = ops.asarray(1e-12, dtype=real_dtype)
 
-    # First basis vector: v0 normalized, or e0 if v0 is (numerically) zero.
-    v0_norm = A.domain.norm(initial_vector)
-
-    e0 = ops.zeros((n,), dtype=ctx.dtype)
-    e0 = ops.index_set(e0, (0,), ctx.asarray(1.0), copy=True)
-    e0_member = A.domain.unflatten(e0)
-    e0_norm = A.domain.norm(e0_member)
-    e0_unit = A.domain.flatten(A.domain.scale(safe_inverse_nonneg(ops, e0_norm), e0_member))
-
-    v0_unit = ops.cond(
-        v0_norm > eps_s,
-        lambda _: A.domain.flatten(
-            A.domain.scale(safe_inverse_nonneg(ops, v0_norm), initial_vector)
-        ),
-        lambda _: e0_unit,
-        ops.asarray(0.0, dtype=real_dtype),
-    )
-    V = ops.index_set(V, (0, slice(None)), v0_unit, copy=True)
+    v0_norm = dom.norm(initial_vector)
+    v0_unit = dom.scale(safe_inverse_nonneg(ops, v0_norm), initial_vector)
+    V = basis.set(V, 0, v0_unit)
 
     beta0 = ops.asarray(1.0, dtype=real_dtype)
     i0 = 0
     m_true0 = ops.asarray(max_iter)
-    keep_going0 = ops.asarray(True)
-
-    full_indices = ops.arange(max_iter + 1)
-    coeffs_zero = ops.zeros((max_iter + 1,), dtype=ctx.dtype)
+    keep_going0 = v0_norm > 0
 
     def cond_fun(state: tuple[Any, Any, Any, Any, Any, Any, Any]) -> Any:
         i, _V, _alphas, _betas, _beta, m_true, keep_going = state
@@ -177,58 +222,32 @@ def _lanczos_basis_and_tridiag(
         i, V_, alphas_, betas_, beta, m_true, keep_going = state
 
         # Three-term recurrence: w = A v_i - alpha_i v_i - beta_i v_{i-1}.
-        v_i = V_[i]
-        v_i_member = A.domain.unflatten(v_i)
-        w_member = apply(v_i_member)
-        w = A.codomain.flatten(w_member)
-        w = ctx.assert_dense(w)
-
-        alpha = dom.real_inner(v_i_member, w_member)
-        alphas_ = ops.index_set(alphas_, (i,), alpha, copy=True)
-
+        v_i = basis.get(V_, i)
+        w = apply(v_i)
+        alpha = dom.real_inner(v_i, w)
+        alphas_ = ops.index_set(alphas_, i, alpha, copy=True)
+        w = dom.axpy(-alpha, v_i, w)
         w = ops.cond(
             i == 0,
-            lambda w_in: w_in - alpha * v_i,
-            lambda w_in: w_in - alpha * v_i - betas_[i] * V_[i - 1],
+            lambda w_in: w_in,
+            lambda w_in: dom.axpy(-betas_[i], basis.get(V_, i - 1), w_in),
             w,
         )
 
-        # Full reorthogonalization against the basis built so far (masked).
-        w_member = A.domain.unflatten(w)
-        valid = full_indices < (i + 1)
-        mask = ops.where(
-            valid,
-            ops.asarray(1.0, dtype=real_dtype),
-            ops.asarray(0.0, dtype=real_dtype),
-        )
-        mask = ops.astype(mask, ctx.dtype)
+        # Full reorthogonalization using the declared inner product.
+        coeffs = basis.inner(V_, w, i + 1)
+        w_member = dom.axpy(-1, basis.lincomb(V_, coeffs, i + 1), w)
 
-        if use_euclidean_reorth:
-            coeffs_full = ops.einsum("jn,n->j", ops.conj(V_), w)
-        else:
-            coeffs_full = coeffs_zero
-
-            def fill_coeff(j: int, coeffs_in: DenseArray) -> DenseArray:
-                v_j_member = A.domain.unflatten(V_[j])
-                coeff = dom.inner(v_j_member, w_member)
-                return ops.index_set(coeffs_in, (j,), coeff, copy=True)
-
-            coeffs_full = ops.fori_loop(0, max_iter + 1, fill_coeff, coeffs_full)
-        coeffs_valid = coeffs_full * mask
-        proj = ops.sum(coeffs_valid[:, None] * V_, axis=0)
-        w = w - proj
-
-        # beta_{i+1} = ||w||; below tol the Krylov space is exhausted (breakdown).
-        w_member = A.domain.unflatten(w)
+        # beta_{i+1} = ||w||; below tol the Krylov space is exhausted.
         beta_new = dom.norm(w_member)
         betas_ = ops.index_set(betas_, (i + 1,), beta_new, copy=True)
         breakdown = beta_new < tol_s
         m_true_next = ops.where(breakdown & (m_true == max_iter), i + 1, m_true)
 
         # Store the next unit vector unless breakdown happened.
-        def set_next(V_in: DenseArray) -> DenseArray:
-            w_unit = A.domain.flatten(dom.scale(safe_inverse_nonneg(ops, beta_new), w_member))
-            return ops.index_set(V_in, (i + 1, slice(None)), w_unit, copy=True)
+        def set_next(V_in: Any) -> Any:
+            w_unit = dom.scale(safe_inverse_nonneg(ops, beta_new), w_member)
+            return basis.set(V_in, i + 1, w_unit)
 
         V_ = ops.cond(beta_new >= tol_s, set_next, lambda V_in: V_in, V_)
         i_next = i + 1
@@ -248,7 +267,7 @@ def _lanczos_basis_and_tridiag(
     # Krylov dimension actually reached, and the projected tridiagonal T.
     m = ops.minimum(m_true, ops.asarray(i_final))
     T = _build_tridiagonal(ops, alphas, betas, max_iter, m, real_dtype)
-    return _LanczosBasisResult(V, T, alphas, betas, m, v0_norm, tol_s, e0_unit)
+    return _LanczosBasisResult(V, T, alphas, betas, m, v0_norm, tol_s, v0_unit)
 
 
 def lanczos_smallest(
@@ -271,7 +290,7 @@ def lanczos_smallest(
         Square operator, Hermitian in the domain's inner product. Known non-Hermitian
         operators are rejected; unknown ones are trusted.
     initial_vector : array-like
-        Starting vector in ``A.domain``; a zero vector falls back to a coordinate vector.
+        Nonzero starting element in ``A.domain``.
     max_iter : int, optional
         Maximum Krylov dimension; a static argument under ``jax.jit``.
     tol : float, optional
@@ -289,7 +308,8 @@ def lanczos_smallest(
     TypeError
         If ``A`` is not a :class:`LinOp`.
     ValueError
-        If ``A`` is not square, is known non-Hermitian, or ``max_iter`` is invalid.
+        If ``A`` is not square, is known non-Hermitian, ``max_iter`` is invalid,
+        or the starting element is zero (eager execution).
 
     See Also
     --------
@@ -301,8 +321,11 @@ def lanczos_smallest(
     Ritz value can recover the smallest eigenvalue only if ``initial_vector`` overlaps
     its eigenspace. Trefethen & Bau, *Numerical Linear Algebra*, Algorithm 36.1 and
     Thm 36.1; multiplying the Lanczos relation by a unit Ritz vector gives the residual.
-    Orthonormal coordinates give the metric version, with conjugate inner products
-    for complex spaces. JIT-compatible on JAX with ``max_iter`` and ``check_every`` static.
+    Uses the space algebra and native elements. Custom JAX elements must be
+    registered pytrees whose structure, leaf shapes, and dtypes stay fixed.
+    ``max_iter`` and ``check_every`` must be static under ``jax.jit``.
+    A zero start raises eagerly; under JAX tracing it returns a NaN eigenvalue,
+    a zero eigenvector, and ``converged=False``.
 
     Examples
     --------
@@ -329,6 +352,13 @@ def lanczos_smallest(
     ctx = A.ctx
     real_dtype = ops.real_dtype(ctx.dtype)
     idx = ops.arange(max_iter)
+    initial_norm = A.domain.norm(initial_vector)
+    try:
+        zero_start = bool(initial_norm == 0)
+    except TypeError:  # JAX traced predicate; report invalid input in the result below.
+        zero_start = False
+    if zero_start:
+        raise ValueError("lanczos_smallest requires a nonzero initial_vector.")
     basis = _lanczos_basis_and_tridiag(A, initial_vector, max_iter, tol, real_dtype, check_every)
 
     # Smallest eigenpair of T; residual estimate beta_m |y_{m-1}|.
@@ -336,7 +366,7 @@ def lanczos_smallest(
     _eigvals, eigvecs = ops.eigh(basis.T)
     y_full = eigvecs[:, 0]
     residual_norm = basis.betas[m] * ops.abs(y_full[m - 1])
-    converged = residual_norm < basis.tol
+    converged = (residual_norm < basis.tol) & (basis.initial_norm > 0)
 
     # Ritz vector x = V y, using only the m active basis vectors.
     mask_y = ops.where(
@@ -347,25 +377,21 @@ def lanczos_smallest(
     mask_y = ops.astype(mask_y, y_full.dtype)
     y_valid = y_full * mask_y
 
-    V_reduced = basis.V[:max_iter, :]
-    x_flat = ops.einsum("j,jn->n", y_valid, V_reduced)
-
-    # Normalize x, falling back to e0 if it vanished.
-    x_member = A.domain.unflatten(x_flat)
-    x_norm = A.domain.norm(x_member)
-    x_flat = ops.cond(
-        x_norm > ops.asarray(1e-12, dtype=real_dtype),
-        lambda _: A.domain.flatten(A.domain.scale(safe_inverse_nonneg(ops, x_norm), x_member)),
-        lambda _: basis.e0_unit,
+    vectors = _KrylovBasis(A.domain, initial_vector, max_iter + 1)
+    x = vectors.lincomb(basis.V, y_valid, m)
+    x_norm = A.domain.norm(x)
+    x = ops.cond(
+        x_norm > 0,
+        lambda _: A.domain.scale(safe_inverse_nonneg(ops, x_norm), x),
+        lambda _: basis.initial_unit,
         ops.asarray(0.0, dtype=real_dtype),
     )
 
-    # Report the Rayleigh quotient <x, A x> / <x, x> in the original space.
-    x = A.domain.unflatten(x_flat)
+    # Report the Rayleigh quotient in the original space.
     Ax = A.apply(x)
 
     num = ops.real(A.domain.inner(x, Ax))
     den = ops.real(A.domain.inner(x, x))
-    lam = num / den
+    lam = ops.where(den > 0, num * safe_inverse_nonneg(ops, den), ops.asarray(float("nan"), dtype=real_dtype))
 
     return LanczosResult(lam, x, residual_norm, m, converged)

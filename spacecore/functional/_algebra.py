@@ -11,6 +11,7 @@ from __future__ import annotations
 from typing import Any
 
 from ._base import Functional
+from ._linear import LinearFunctional
 from ..mapping import Scalar, ScaledNode, SumNode, ZeroNode, make_scaled_of, make_sum_of, register
 from ..space import Field
 from .._checks import checked_method
@@ -94,6 +95,14 @@ class ScaledFunctional(ScaledNode, Functional):
         return self.scalar * value, self.domain.scale(conj_scalar, grad)
 
 
+    def derivative_at(self, x: Any, *args: Any, **kwargs: Any) -> LinearFunctional:
+        return self.scalar * self.functional.derivative_at(x, *args, **kwargs)
+
+    def value_and_derivative(self, x: Any, *args: Any, **kwargs: Any) -> tuple[Any, LinearFunctional]:
+        value, derivative = self.functional.value_and_derivative(x, *args, **kwargs)
+        return self.scalar * value, self.scalar * derivative
+
+
 def make_scaled_functional(scalar: Any, functional: Functional) -> Functional:
     """
     Return ``scalar * functional``: ``1`` passes it through, nested scalars fold.
@@ -110,7 +119,8 @@ def make_scaled_functional(scalar: Any, functional: Functional) -> Functional:
     Functional
         The scaled functional.
     """
-    return make_scaled_of(Functional, scalar, functional)
+    family = LinearFunctional if isinstance(functional, LinearFunctional) else Functional
+    return make_scaled_of(family, scalar, functional)
 
 
 class SumFunctional(SumNode, Functional):
@@ -174,6 +184,14 @@ class SumFunctional(SumNode, Functional):
         return value_total, domain.zeros() if grad_total is None else grad_total
 
 
+    def derivative_at(self, x: Any, *args: Any, **kwargs: Any) -> LinearFunctional:
+        return make_functional_sum(tuple(t.derivative_at(x, *args, **kwargs) for t in self.terms))
+
+    def value_and_derivative(self, x: Any, *args: Any, **kwargs: Any) -> tuple[Any, LinearFunctional]:
+        pairs = [t.value_and_derivative(x, *args, **kwargs) for t in self.terms]
+        return sum(v for v, _ in pairs), make_functional_sum(tuple(d for _, d in pairs))
+
+
 def make_functional_sum(terms: Any) -> Functional:
     """
     Return the lazy sum of functionals, flattened, with zero terms dropped.
@@ -188,7 +206,9 @@ def make_functional_sum(terms: Any) -> Functional:
     Functional
         The sum, or the single remaining term.
     """
-    return make_sum_of(Functional, terms)
+    terms = tuple(terms)
+    family = LinearFunctional if terms and all(isinstance(t, LinearFunctional) for t in terms) else Functional
+    return make_sum_of(family, terms)
 
 
 class ZeroFunctional(ZeroNode, Functional):
@@ -440,6 +460,14 @@ class ProductFunctional(Functional):
         rv, rg = self.right.value_and_grad(x, *args, **kwargs)
         return lv * rv, self._product_grad(lv, lg, rv, rg)
 
+    def derivative_at(self, x: Any, *args: Any, **kwargs: Any) -> LinearFunctional:
+        return self.value_and_derivative(x, *args, **kwargs)[1]
+
+    def value_and_derivative(self, x: Any, *args: Any, **kwargs: Any) -> tuple[Any, LinearFunctional]:
+        lv, ld = self.left.value_and_derivative(x, *args, **kwargs)
+        rv, rd = self.right.value_and_derivative(x, *args, **kwargs)
+        return lv * rv, rv * ld + lv * rd
+
     def __eq__(self, other: Any) -> bool:
         """Return whether another product has the same ordered factors.
 
@@ -500,6 +528,60 @@ def make_functional_product(left: Functional, right: Functional) -> Functional:
     if isinstance(right, ConstantFunctional):
         return make_scaled_functional(right.constant, left)
     return ProductFunctional(left, right)
+
+
+class _ScaledLinearFunctional(ScaledFunctional, LinearFunctional):
+    """Linear algebra preserves the linear-functional contract."""
+
+    derivative_at = LinearFunctional.derivative_at
+    grad = LinearFunctional.grad
+    vgrad = LinearFunctional.vgrad
+    value_and_grad = Functional.value_and_grad
+
+    @property
+    def scalar_field(self) -> str:
+        return self.functional.scalar_field
+
+    @property
+    def representer(self) -> Any:
+        if self.scalar_field == "real" and self.codomain.scalar_field == "complex":
+            raise NotImplementedError("A general real-linear complex-valued map has no single Riesz representer.")
+        return self.domain.scale(self.ops.conj(self.scalar), self.functional.representer)
+
+
+class _SumLinearFunctional(SumFunctional, LinearFunctional):
+    """Sum evaluated lazily, with a representer only when all terms have one."""
+
+    derivative_at = LinearFunctional.derivative_at
+    grad = LinearFunctional.grad
+    vgrad = LinearFunctional.vgrad
+    value_and_grad = Functional.value_and_grad
+
+    @property
+    def scalar_field(self) -> str:
+        return "real" if any(t.scalar_field == "real" for t in self.terms) else "complex"
+
+    @property
+    def representer(self) -> Any:
+        if self.scalar_field == "real" and self.codomain.scalar_field == "complex":
+            raise NotImplementedError("A general real-linear complex-valued map has no single Riesz representer.")
+        result = self.terms[0].representer
+        for term in self.terms[1:]:
+            result = self.domain.add(result, term.representer)
+        return result
+
+
+class _ZeroLinearFunctional(ZeroFunctional, LinearFunctional):
+    """Zero in the linear-functional algebra."""
+
+    @property
+    def representer(self) -> Any:
+        return self.domain.zeros()
+
+
+LinearFunctional._Sum = _SumLinearFunctional
+LinearFunctional._Scaled = _ScaledLinearFunctional
+LinearFunctional._Zero = _ZeroLinearFunctional
 
 
 Functional._Sum, Functional._Scaled, Functional._Zero = SumFunctional, ScaledFunctional, ZeroFunctional

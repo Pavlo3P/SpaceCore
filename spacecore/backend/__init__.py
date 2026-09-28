@@ -1,5 +1,13 @@
 """Backend contexts and operation implementations."""
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .jax import JaxOps as JaxOps
+    from .torch import TorchOps as TorchOps
+    from .cupy import CuPyOps as CuPyOps
+
+
 from .._check_policy import CHECK_LEVELS, CheckLevel
 from ._container import PyTreeNode, PyTreeRegistry, registry as pytree_registry
 from ._ops import BackendOps
@@ -38,5 +46,9 @@ __all__ = [
     "ops_registry",
     "pytree_registry",
     "available_ops",
-    *(_cls.__name__ for _cls in _ops if _cls.__name__ != "NumpyOps"),
 ]
+
+if TYPE_CHECKING:
+    __all__ += ["JaxOps", "CuPyOps", "TorchOps"]
+else:
+    __all__ += [_cls.__name__ for _cls in _ops if _cls.__name__ != "NumpyOps"]

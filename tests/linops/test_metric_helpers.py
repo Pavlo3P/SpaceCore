@@ -2,10 +2,8 @@
 
 Checklist item 2:
 
-* ``space_has_riesz_maps`` — true on weighted spaces with Riesz maps,
-  false on plain DenseCoordinateSpace lacking them (well, all do via
-  EuclideanInnerProduct, so the test verifies the predicate's contract on
-  weighted vs Euclidean).
+* ``space_has_riesz_maps`` — true on weighted and Euclidean geometries with
+  explicit maps, false when only the unsupported base methods are inherited.
 * ``_requires_euclidean_or_riesz`` — accepts Euclidean / weighted-with-Riesz
   spaces; raises with informative message on spaces lacking metric machinery.
 * ``_metric_is_hermitian_by_basis`` — returns ``None`` on non-square ops;
@@ -44,11 +42,15 @@ class TestSpaceHasRieszMaps:
         )
         assert space_has_riesz_maps(space) is True
 
-    def test_euclidean_dense_coordinate_returns_false(self, numpy_ctx):
-        """Euclidean spaces don't need Riesz maps; the helper returns False
-        (callers handle Euclidean explicitly before invoking this predicate)."""
+    def test_euclidean_dense_coordinate_has_identity_maps(self, numpy_ctx):
+        """Identity maps now belong explicitly to EuclideanInnerProduct."""
         space = sc.DenseCoordinateSpace((2,), numpy_ctx)
-        assert space_has_riesz_maps(space) is False
+        assert space_has_riesz_maps(space) is True
+
+    def test_native_space_with_own_maps_needs_no_geometry_object(self, numpy_ctx):
+        from examples.proximal_contract import SplitSpace
+        space = SplitSpace([2., 3.], numpy_ctx)
+        assert space_has_riesz_maps(space) is True
 
     def test_tree_of_weighted_leaves_returns_true(self, numpy_ctx):
         weights = numpy_ctx.asarray([2.0, 3.0])

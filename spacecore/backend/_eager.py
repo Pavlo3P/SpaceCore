@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Callable, Optional, Sequence, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Optional, Sequence, Tuple, cast
+
+if TYPE_CHECKING:
+    from ._ops import BackendOps
 
 from ..types import Carry, R, T, X, Y
 
@@ -19,11 +22,6 @@ class EagerControlFlowMixin:
     surface (``self.stack`` / ``self.asarray``), so leaf stacking works on every
     backend without referencing a backend-specific array namespace.
     """
-
-    if TYPE_CHECKING:
-        # Provided by the BackendOps host this mixin is combined with.
-        def stack(self, *args: Any, **kwargs: Any) -> Any: ...
-        def asarray(self, *args: Any, **kwargs: Any) -> Any: ...
 
     # -- pytree helpers ----------------------------------------------------
 
@@ -79,9 +77,9 @@ class EagerControlFlowMixin:
         def _stack_leaves(*leaves: Any) -> Any:
             # Prefer the portable backend stack; fall back to asarray for ragged leaves.
             try:
-                return self.stack(leaves, axis=0)
+                return cast("BackendOps", self).stack(leaves, axis=0)
             except Exception:
-                return self.asarray(leaves)
+                return cast("BackendOps", self).asarray(leaves)
 
         return self._tree_multimap(_stack_leaves, *ys_list)
 
@@ -153,7 +151,7 @@ class EagerControlFlowMixin:
         ys_steps: list[Any] = []
         for i in indices:
             x_i = None if xs is None else self._tree_index(xs, i)
-            carry, y = f(carry, x_i)
+            carry, y = f(carry, cast(X, x_i))
             ys_steps.append(y)
 
         if reverse:

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Sequence, Literal, Tuple, Callable, Optional, Type, cast
+from typing import TYPE_CHECKING, Any, Sequence, Literal, Tuple, Callable, Optional, Type, cast
 from warnings import warn
 
 from .._family import BackendFamily
@@ -9,7 +9,14 @@ from ..numpy import NumpyOps
 from ...types import DenseArray, ArrayLike, SparseArray, DType, Index, X, T, Y, R, Carry
 
 
-class JaxOps(BackendOps):
+if TYPE_CHECKING:
+    from jax import Array
+    NativeArray = Array
+else:
+    NativeArray = DenseArray
+
+
+class JaxOps(BackendOps[NativeArray]):
     """
     Backend operations on JAX arrays (``jax.Array``; sparse ``BCOO`` and ``BCSR``).
 
@@ -184,7 +191,7 @@ class JaxOps(BackendOps):
 
         raise ValueError(f"Unknown sparse format: {format!r}")
 
-    def sparse_matmul(self, a: SparseArray, b: DenseArray) -> DenseArray:
+    def sparse_matmul(self, a: SparseArray, b: DenseArray) -> NativeArray:
         """Multiply a JAX sparse array by a dense one, returning a dense ``jax.Array``."""
         return a @ b
 
@@ -210,7 +217,7 @@ class JaxOps(BackendOps):
         keepdims: bool = False,
         return_sign: bool = False,
         where: DenseArray | None = None,
-    ) -> DenseArray | Tuple[DenseArray, DenseArray]:
+    ) -> NativeArray | Tuple[NativeArray, NativeArray]:
         """
         Compute a stable log-sum-exp reduction using JAX.
 
@@ -227,7 +234,10 @@ class JaxOps(BackendOps):
             a, axis=axis, b=b, keepdims=keepdims, return_sign=return_sign, where=where
         )
 
-    def index_set(self, x: DenseArray, index: Index, values: ArrayLike, *, copy: bool = True):
+    def index_set(
+        self, x: DenseArray, index: Index, values: ArrayLike | float | complex,
+        *, copy: bool = True,
+    ) -> NativeArray:
         """Return ``x`` with ``x[index] = values`` via ``x.at[index].set``; ``copy=False`` raises, as JAX arrays are immutable."""
         if not copy:
             raise NotImplementedError("JAX arrays are immutable; copy=False is not supported.")
@@ -300,7 +310,9 @@ class JaxOps(BackendOps):
         """Run ``jax.lax.cond``: both branches are traced, not chosen eagerly in Python."""
         return self.jax.lax.cond(pred, true_fun, false_fun, *operands)
 
-    def index_add(self, x: DenseArray, index: Index, values: DenseArray, *, copy: bool = True):
+    def index_add(
+        self, x: DenseArray, index: Index, values: DenseArray, *, copy: bool = True
+    ) -> NativeArray:
         """Return ``x`` with ``values`` added at ``index`` via ``x.at[index].add``; repeated indices accumulate, and ``copy=False`` raises."""
         if not copy:
             raise NotImplementedError("JAX arrays are immutable; copy=False is not supported.")

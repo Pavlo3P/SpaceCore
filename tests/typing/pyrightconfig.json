@@ -1,0 +1,7 @@
+{
+  "include": ["arrays.py", "optional_arrays.py"],
+  "extraPaths": ["../.."],
+  "pythonVersion": "3.11",
+  "typeCheckingMode": "basic",
+  "reportUnnecessaryTypeIgnoreComment": "error"
+}

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Sequence, Tuple, Literal, Type, cast
+from typing import TYPE_CHECKING, Any, Sequence, Tuple, Literal, Type, cast
 
 from .._family import BackendFamily
 from .._eager import EagerControlFlowMixin
@@ -8,7 +8,14 @@ from .._ops import BackendOps
 from ...types import ArrayLike, DenseArray, SparseArray, DType, Index
 
 
-class NumpyOps(EagerControlFlowMixin, BackendOps):
+if TYPE_CHECKING:
+    from numpy.typing import NDArray
+    NativeArray = NDArray[Any]
+else:
+    NativeArray = DenseArray
+
+
+class NumpyOps(EagerControlFlowMixin, BackendOps[NativeArray]):
     """
     Backend operations on NumPy arrays, with SciPy sparse matrices and arrays.
 
@@ -119,7 +126,7 @@ class NumpyOps(EagerControlFlowMixin, BackendOps):
 
         raise ValueError(f"Unknown sparse format: {format!r}")
 
-    def sparse_matmul(self, a: SparseArray, b: DenseArray) -> DenseArray:
+    def sparse_matmul(self, a: SparseArray, b: DenseArray) -> NativeArray:
         """Multiply a SciPy sparse matrix by a dense array."""
         if not self.is_sparse(a):
             raise TypeError("sparse_matmul expects `a` to be a SciPy sparse matrix/array.")
@@ -134,7 +141,7 @@ class NumpyOps(EagerControlFlowMixin, BackendOps):
         b: DenseArray | None = None,
         keepdims: bool = False,
         return_sign: bool = False,
-    ) -> DenseArray | Tuple[DenseArray, DenseArray]:
+    ) -> NativeArray | Tuple[NativeArray, NativeArray]:
         """
         Compute a stable log-sum-exp reduction using SciPy.
 
@@ -147,15 +154,21 @@ class NumpyOps(EagerControlFlowMixin, BackendOps):
         See:
             https://docs.scipy.org/doc/scipy/reference/generated/scipy.special.logsumexp.html
         """
-        return self.sp.special.logsumexp(
+        result = self.sp.special.logsumexp(
             a, axis=axis, b=b, keepdims=keepdims, return_sign=return_sign
         )
 
-    def _copy(self, x: DenseArray) -> DenseArray:
+        if return_sign:
+            return self._as_array(result[0]), self._as_array(result[1])
+        return self._as_array(result)
+
+    def _copy(self, x: DenseArray) -> NativeArray:
         """Return a NumPy copy of ``x`` (mutation primitive for index ops)."""
         return cast(Any, x).copy()
 
-    def _scatter_add_inplace(self, y: DenseArray, index: Index, values: ArrayLike) -> None:
+    def _scatter_add_inplace(
+        self, y: DenseArray, index: Index, values: ArrayLike | float | complex
+    ) -> None:
         """Accumulate ``values`` into ``y`` at ``index`` via ``numpy.add.at``."""
         self.np.add.at(y, index, values)
 

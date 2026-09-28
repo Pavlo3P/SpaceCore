@@ -4,7 +4,7 @@ Checklist section 8, ``lanczos_smallest`` + internal ``_LanczosBasisResult``:
 
 * Approximates the smallest eigenpair (real, complex Hermitian, large-scale).
 * Geometry awareness: weighted / custom inner products give the metric pair.
-* Zero initial vector falls back to a deterministic coordinate vector.
+* Zero initial vector is rejected eagerly.
 * Rejects invalid ``max_iter``, structurally non-Hermitian, and rectangular
   operators.
 * ``krylov_dim`` reflects true breakdown; the basis is orthonormal and the
@@ -134,15 +134,13 @@ class TestGeometryAndFallback:
             atol=1e-6,
         )
 
-    def test_uses_e0_for_zero_initial_vector(self):
+    def test_rejects_zero_initial_vector(self):
         ctx = make_ctx()
         space = sc.DenseCoordinateSpace((2,), ctx)
         op = sc.DenseLinOp(ctx.asarray([[2.0, 0.0], [0.0, 5.0]]), space, space, ctx)
 
-        result = sc.lanczos_smallest(op, ctx.asarray([0.0, 0.0]), max_iter=2, tol=1e-8)
-
-        np.testing.assert_allclose(result.eigenvalue, 2.0, rtol=1e-6, atol=1e-6)
-        np.testing.assert_allclose(result.eigenvector, [1.0, 0.0], rtol=1e-6, atol=1e-6)
+        with pytest.raises(ValueError, match="nonzero"):
+            sc.lanczos_smallest(op, ctx.asarray([0.0, 0.0]), max_iter=2, tol=1e-8)
 
 
 # ===========================================================================

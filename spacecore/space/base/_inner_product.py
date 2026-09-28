@@ -23,12 +23,16 @@ class InnerProduct(ABC):
         """Return the inner product of ``x`` and ``y``."""
 
     def riesz(self, ops, x):
-        """Map a coordinate element to its dual. Euclidean default: identity."""
-        return x
+        """Map an element to its dual; non-Euclidean geometry must implement this."""
+        from ..._errors import CapabilityError
+
+        raise CapabilityError(f"{type(self).__name__} does not implement riesz.")
 
     def riesz_inverse(self, ops, x):
-        """Map a dual element back to coordinates. Euclidean default: identity."""
-        return x
+        """Invert the Riesz map; non-Euclidean geometry must implement this."""
+        from ..._errors import CapabilityError
+
+        raise CapabilityError(f"{type(self).__name__} does not implement riesz_inverse.")
 
     def convert(self, ctx):
         """Return this geometry represented in ``ctx`` when conversion is needed."""
@@ -54,6 +58,14 @@ class EuclideanInnerProduct(InnerProduct):
 
     def inner(self, ops, x, y):
         return ops.vdot(x, y)
+
+    def riesz(self, ops, x):
+        """Return the Euclidean representer unchanged."""
+        return x
+
+    def riesz_inverse(self, ops, x):
+        """Return the Euclidean covector unchanged."""
+        return x
 
     @property
     def is_euclidean(self) -> bool:

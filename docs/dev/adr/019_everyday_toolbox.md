@@ -51,9 +51,13 @@ hierarchy:
 These constructors live in the `spacecore.functional.tools` subpackage and are
 re-exported from `spacecore.functional` and the top-level `spacecore` namespace.
 
-`IndicatorFunctional(C)` and `project_C` are **not** part of this implementation;
-they range over the `Set` abstraction of [ADR-020](020_sets_and_projection.md)
-and land with that ADR. The Set-free `project_nonneg` prox wrapper ships here.
+The `0.5.0a` milestone adds optional `Functional.prox(x, step)` through the
+existing mapping rule table and Hilbert `conjugate_prox` through Moreau.
+Positive scaling and finite constant shifts preserve supported rules; arbitrary
+sums and pullbacks do not. Positive steps may be traced at `check_level="none"`.
+`IndicatorFunctional(C)` now delegates to the metric projector supplied by
+[ADR-020](020_sets_and_projection.md); call `C.project(x)` directly. The
+Set-free `project_nonneg` wrapper remains available.
 
 ## Decision
 

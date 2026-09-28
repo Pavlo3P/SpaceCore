@@ -16,7 +16,7 @@ from typing import Any, Callable, Self
 #: Registers one class with one backend's pytree system. Supplied by that
 #: backend's adapter, which owns the translation from our ``tree_flatten`` /
 #: ``tree_unflatten`` pair into whatever shape the backend expects.
-TreeRegistrar = Callable[[type], None]
+TreeRegistrar = Callable[[type], object]
 
 
 class PyTreeRegistry:

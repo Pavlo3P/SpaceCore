@@ -7,6 +7,22 @@ disagree, this document wins.
 
 ## Now
 
+### `0.5.0a` proximal milestone — 2026-09-28
+
+The first-order toolbox direction in `docs/source/design/vision.rst` now has
+optional functional prox rules, Hilbert conjugate prox, and the minimal
+ADR-020 set/indicator/projection surface. The consumer example and benchmark
+exercise unchanged proximal-gradient/PDHG loops across dense/native elements
+and Euclidean/weighted geometry, including compiled JAX. Unsupported operations
+raise explicit capability errors. See `docs/source/design/proximal_contract.rst`.
+
+Next: downstream adoption, demand-driven additional rules, and measured
+performance improvements/regression tracking. Broad performance parity is not
+established. The release train below is historical planning: ADR-016 dispatch
+has been removed, and native functionals and Krylov paths have since advanced.
+
+### Earlier release planning
+
 `0.4.0` is implemented bar the Phase J/M closeout (backend-conformance matrix
 completion, deviation catalog, doc-build hygiene). Active work is the post-`0.4.0`
 interim line — ADR-016 dispatch (mechanism now implemented, off by default),

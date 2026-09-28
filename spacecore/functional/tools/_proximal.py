@@ -7,11 +7,19 @@ Beck, *First-Order Methods in Optimization*, Thm 6.6 and Lemma 6.5.
 """
 from __future__ import annotations
 
-import math
-import numbers
-from typing import Any, cast
+from typing import Any
 
 from ...space import WeightedInnerProduct
+
+
+def _soft_threshold(ops: Any, x: Any, threshold: Any) -> Any:
+    radius = ops.abs(x)
+    if ops.is_complex_dtype(ops.get_dtype(x)):
+        safe = ops.where(radius > 0, radius, ops.ones_like(radius))
+        phase = x / safe
+    else:
+        phase = ops.sign(x)
+    return phase * ops.maximum(radius - threshold, ops.zeros_like(radius))
 
 
 def _diagonal_weights_or_raise(X: Any, fname: str) -> Any:
@@ -26,7 +34,7 @@ def _diagonal_weights_or_raise(X: Any, fname: str) -> Any:
     if geometry.is_euclidean:
         return None
     if isinstance(geometry, WeightedInnerProduct):
-        return geometry.weights
+        return X.ops.real(geometry.weights)
     raise ValueError(
         f"{fname} is a separable closed form valid only for Euclidean or diagonal "
         f"(weighted) metrics; the metric {type(geometry).__name__} is not diagonal, "
@@ -83,10 +91,10 @@ def generalized_shrinkage(
         The minimizer.
     """
     # Validate eps, lam, the metric, the shapes, and nonneg on real spaces only.
-    if not isinstance(eps, numbers.Real) or not math.isfinite(eps) or eps <= 0:
-        raise ValueError(f"generalized_shrinkage requires a finite eps > 0, got {eps!r}.")
-    if not isinstance(lam, numbers.Real) or not math.isfinite(lam) or lam < 0:
-        raise ValueError(f"generalized_shrinkage requires a finite lam >= 0, got {lam!r}.")
+    from .._prox import validate_step
+
+    validate_step(eps, X, "generalized_shrinkage eps")
+    validate_step(lam, X, "generalized_shrinkage lam", positive=False)
 
     weights = _diagonal_weights_or_raise(X, "generalized_shrinkage")
 
@@ -103,25 +111,24 @@ def generalized_shrinkage(
     v = x0 - c / (2.0 * eps)
 
     # Threshold width lam / (2 eps w_i), with w_i = 1 on Euclidean spaces.
-    if lam == 0:
-        tau: Any = 0.0
-    elif weights is None:
+    if weights is None:
         tau = lam / (2.0 * eps)
     else:
         tau = lam / (2.0 * eps * weights)
 
     # On x >= 0 the l1 term is linear, so the step is a one-sided shift.
     if nonneg:
-        return ops.maximum(v - tau, cast(Any, 0.0))
+        return ops.maximum(v - tau, ops.zeros_like(v))
     # Soft-threshold; tau == 0 collapses to the identity v.
-    return ops.sign(v) * ops.maximum(ops.abs(v) - tau, cast(Any, 0.0))
+    return _soft_threshold(ops, v, tau)
 
 
-def _require_step(t: float, fname: str) -> float:
+def _require_step(t: Any, fname: str, X: Any) -> Any:
     """Validate and return a finite, nonnegative scalar proximal step ``t``."""
-    if not isinstance(t, numbers.Real) or not math.isfinite(t) or t < 0:
-        raise ValueError(f"{fname} requires a finite step t >= 0, got {t!r}.")
-    return float(t)
+    from .._prox import validate_step
+
+    validate_step(t, X, fname, positive=False)
+    return t
 
 
 def prox_l1(v: Any, t: Any, X: Any, *, nonneg: bool = False) -> Any:
@@ -147,7 +154,7 @@ def prox_l1(v: Any, t: Any, X: Any, *, nonneg: bool = False) -> Any:
         Beck, *First-Order Methods in Optimization*, Example 6.8.
     """
     # prox of t ||.||_1 = shrinkage with c = 0, x0 = v, eps = 1/2.
-    t = _require_step(t, "prox_l1")
+    t = _require_step(t, "prox_l1", X)
     v = X.ctx.asarray(v)
     _require_member_shape(X, v, "v", "prox_l1")
     return generalized_shrinkage(X, c=X.zeros(), x0=v, eps=0.5, lam=t, nonneg=nonneg)
@@ -175,7 +182,7 @@ def prox_l2sq(v: Any, t: Any, X: Any, *, nonneg: bool = False) -> Any:
         Beck, *First-Order Methods in Optimization*, Sec. 6.2.3.
     """
     # prox of (t/2) ||.||^2 = shrinkage with c = -v, x0 = 0, eps = (1 + t) / 2.
-    t = _require_step(t, "prox_l2sq")
+    t = _require_step(t, "prox_l2sq", X)
     v = X.ctx.asarray(v)
     _require_member_shape(X, v, "v", "prox_l2sq")
     return generalized_shrinkage(

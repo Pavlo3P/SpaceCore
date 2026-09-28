@@ -17,7 +17,7 @@ from ..kernels.core.functional import (
     matrixfree_linear_value_core,
     matrixfree_linear_vvalue_core,
 )
-from ..space import Space, TreeElement, TreeSpace
+from ..space import Space, CoordinateSpace, TreeElement, TreeSpace
 
 
 def _convert_space_element(space: Space, value: Any) -> Any:
@@ -38,6 +38,8 @@ def _convert_space_element(space: Space, value: Any) -> Any:
                 for leaf_space, leaf in zip(space.leaf_spaces, leaves)
             )
         return space.unflatten_tree(converted)
+    if not isinstance(space, CoordinateSpace):
+        return value
     return space.ctx.asarray(value)
 
 
@@ -59,6 +61,18 @@ class LinearFunctional(Functional[Domain]):
 
     _grad_core = linear_grad_core
     _vgrad_core = linear_vgrad_core
+
+    @property
+    def scalar_field(self) -> str:
+        """Field over which the map is linear, independent of storage dtype."""
+        if self.domain.scalar_field == "real" or self.codomain.scalar_field == "real":
+            return "real"
+        return "complex"
+
+    def derivative_at(self, x: Any, *args: Any, **kwargs: Any) -> "LinearFunctional":
+        """Return this linear functional itself, even without a representer."""
+        self.domain.check_member(x)
+        return self
 
     @property
     @abstractmethod
@@ -89,7 +103,10 @@ class LinearFunctional(Functional[Domain]):
 
 class InnerProductFunctional(LinearFunctional[Domain]):
     r"""
-    The linear functional :math:`x \mapsto \langle c, x\rangle_X` of a representer ``c``.
+    The functional :math:`x \mapsto \langle c, x\rangle_X` of a representer ``c``.
+
+    A real codomain or ``real_linear=True`` selects the real part of this
+    pairing. This represents real differentials on complex parameter spaces.
 
     Parameters
     ----------
@@ -101,8 +118,13 @@ class InnerProductFunctional(LinearFunctional[Domain]):
         Backend context; resolved from ``dom`` when omitted.
     check_level : {"none", "cheap", "standard", "strict"}, optional
         Validation level; the ambient default when omitted.
+    cod : Field or None, optional
+        Scalar output field; defaults to the domain's scalar field.
+    real_linear : bool, optional
+        Evaluate the real pairing, even with a complex scalar codomain.
     """
 
+    # A real codomain requests the real pairing, including on complex storage.
     _value_core = inner_product_value_core
     _vvalue_core = inner_product_vvalue_core
 
@@ -112,12 +134,20 @@ class InnerProductFunctional(LinearFunctional[Domain]):
         dom: Domain,
         ctx: Context | str | None = None,
         check_level: CheckLevel | None = None,
+        *,
+        cod: Field | None = None,
+        real_linear: bool = False,
     ) -> None:
-        super().__init__(dom, ctx, check_level=check_level)
+        super().__init__(dom, ctx, check_level=check_level, cod=cod)
+        self.real_linear = real_linear or self.codomain.scalar_field == "real"
         # Store the representer on the functional's backend, and check it belongs.
         self._c = _convert_space_element(self.domain, c)
         if self._checks_at_least("standard"):
             self.domain._check_member(self._c)
+
+    @property
+    def scalar_field(self) -> str:
+        return "real" if self.real_linear else super().scalar_field
 
     @property
     def representer(self) -> Any:
@@ -138,7 +168,7 @@ class InnerProductFunctional(LinearFunctional[Domain]):
         """Return whether another inner-product functional has the same representer."""
         if not self.same_math(other):              # Tier 1: backend
             return NotImplemented
-        if self.domain != other.domain:                         # Tier 2: domain before allclose
+        if self.domain != other.domain or self.codomain != other.codomain or self.real_linear != other.real_linear:                         # Tier 2: domain before allclose
             return False
         return bool(self.ops.allclose(                          # Tier 3: representer
             self.domain.flatten(self._c),
@@ -149,19 +179,20 @@ class InnerProductFunctional(LinearFunctional[Domain]):
     def tree_flatten(self):
         """Flatten this functional for pytree registration."""
         children = (self._c,)
-        aux = (self.domain, self.ctx)
+        aux = (self.domain, self.ctx, self.codomain, self.check_level, self.real_linear)
         return children, aux
 
     @classmethod
     def tree_unflatten(cls, aux, children):
         """Rebuild this functional from pytree data."""
-        domain, ctx = aux
+        domain, ctx, cod, check_level, real_linear = aux
         c = children[0]
-        return cls(c, domain, ctx)
+        return cls(c, domain, ctx, cod=cod, check_level=check_level, real_linear=real_linear)
 
     def _convert(self, new_ctx: Context) -> InnerProductFunctional:
         """Convert the domain and representer to ``new_ctx``."""
-        return InnerProductFunctional(self._c, self.domain.convert(new_ctx), new_ctx)
+        return InnerProductFunctional(self._c, self.domain.convert(new_ctx), new_ctx,
+                                      cod=self.codomain, check_level=self.check_level, real_linear=self.real_linear)
 
 
 class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
@@ -182,6 +213,9 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
         Validation level; the ambient default when omitted.
     cod : Field or None, optional
         Scalar codomain; ``dom.scalars`` by default.
+    real_linear : bool, optional
+        Declare real linearity for a complex-valued callable on complex inputs.
+        The callable is used unchanged; no real-part projection is applied.
     """
 
     _value_core = matrixfree_linear_value_core
@@ -196,6 +230,7 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
         check_level: CheckLevel | None = None,
         *,
         cod: Field | None = None,
+        real_linear: bool = False,
     ) -> None:
         # Validate the callables, then bind the domain.
         if not callable(value):
@@ -203,8 +238,14 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
         if vvalue is not None and not callable(vvalue):
             raise TypeError(f"vvalue must be callable, got {type(vvalue).__name__}.")
         super().__init__(dom, ctx, check_level=check_level, cod=cod)
+        self.real_linear = real_linear
         self.value_fn = value
         self.vvalue_fn = vvalue
+
+    @property
+    def scalar_field(self) -> str:
+        """Allow a real-linear callable even when its output is complex."""
+        return "real" if self.real_linear else super().scalar_field
 
     @property
     def representer(self) -> Any:
@@ -279,19 +320,20 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
         if self.domain != other.domain or self.codomain != other.codomain:  # Tier 2: endpoints
             return False
         # Callable identity: extensional equality of callables is undecidable.
-        return self.value_fn is other.value_fn and self.vvalue_fn is other.vvalue_fn
+        return (self.value_fn is other.value_fn and self.vvalue_fn is other.vvalue_fn
+                and self.real_linear == other.real_linear)
 
     def tree_flatten(self):
         """Flatten this functional for pytree registration."""
         children = ()
-        aux = (self.value_fn, self.domain, self.ctx, self.vvalue_fn, self.codomain, self.check_level)
+        aux = (self.value_fn, self.domain, self.ctx, self.vvalue_fn, self.codomain, self.check_level, self.real_linear)
         return children, aux
 
     @classmethod
     def tree_unflatten(cls, aux, children):
         """Rebuild this functional from pytree data."""
-        value_fn, domain, ctx, vvalue_fn, cod, check_level = aux
-        return cls(value_fn, domain, ctx, vvalue_fn, check_level=check_level, cod=cod)
+        value_fn, domain, ctx, vvalue_fn, cod, check_level, real_linear = aux
+        return cls(value_fn, domain, ctx, vvalue_fn, check_level=check_level, cod=cod, real_linear=real_linear)
 
     def _convert(self, new_ctx: Context) -> MatrixFreeLinearFunctional:
         """
@@ -315,4 +357,5 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
             self.vvalue_fn,
             check_level=self.check_level,
             cod=self.codomain,
+            real_linear=self.real_linear,
         )

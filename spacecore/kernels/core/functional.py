@@ -53,7 +53,8 @@ def linear_vgrad_core(op: Any, xs: Any) -> Any:
 # ---------------------------------------------------------------------------
 def inner_product_value_core(op: Any, x: Any) -> Any:
     inner = getattr(op.domain, "_inner_core", op.domain.inner)
-    return inner(op._c, x)
+    value = inner(op._c, x)
+    return op.ops.real(value) if op.real_linear else value
 
 
 def inner_product_vvalue_core(op: Any, xs: Any) -> Any:
@@ -67,7 +68,8 @@ def inner_product_vvalue_core(op: Any, xs: Any) -> Any:
         c_dual = op._c if dom.is_euclidean else dom.riesz(op._c)
         c_flat = ops.conj(dom.flatten(c_dual))
         xs_flat = dom.flatten_batch(xs)
-    return xs_flat @ c_flat
+    value = xs_flat @ c_flat
+    return ops.real(value) if op.real_linear else value
 
 
 # ---------------------------------------------------------------------------

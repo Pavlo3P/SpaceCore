@@ -25,14 +25,17 @@ class Scalar:
     """Rule-table key standing for any scalar-like operand."""
 
 
-_RULES: dict[tuple[str, type, type], Callable[[Any, Any], Any]] = {}
+_RULES: dict[tuple[str, type, type], Callable[..., Any]] = {}
 
 
-def register(op: str, left: type, right: type, rule: Callable[[Any, Any], Any]) -> None:
+def register(op: str, left: type, right: type, rule: Callable[..., Any]) -> None:
     """Register ``rule(a, b)`` as the result of ``a <op> b`` for these operand kinds.
 
     ``op`` is ``"add"``, ``"mul"`` or ``"matmul"``; ``left`` and ``right`` are
-    classes (matched along the MRO) or :class:`Scalar`.
+    classes (matched along the MRO) or :class:`Scalar`. For ``"prox"``, keys
+    are functional and geometry classes, and the rule takes ``(f, geometry, x,
+    step)``. ``object`` matches any geometry, including a native space without
+    a separate geometry object; register it only for geometry-independent rules.
     """
     _RULES[op, left, right] = rule
 
@@ -47,6 +50,16 @@ def _is_zero(x: Any) -> bool:
     return not isinstance(x, Algebraic) and is_scalar_like(x) and scalar_eq(x, 0)
 
 
+def _find_rule(op: str, a: Any, b: Any) -> Callable[..., Any] | None:
+    # Most specific rule wins: walk both MROs, left operand first.
+    for left in _kinds(a):
+        for right in _kinds(b):
+            rule = _RULES.get((op, left, right))
+            if rule is not None:
+                return rule
+    return None
+
+
 def _combine(op: str, a: Any, b: Any) -> Any:
     """Build ``a <op> b`` from the most specific registered rule, or ``NotImplemented``."""
     # m + 0 and 0 + m are m, so builtin sum() can start from 0.
@@ -55,12 +68,9 @@ def _combine(op: str, a: Any, b: Any) -> Any:
             return a
         if _is_zero(a):
             return b
-    # Most specific rule wins: walk both MROs, left operand first.
-    for left in _kinds(a):
-        for right in _kinds(b):
-            rule = _RULES.get((op, left, right))
-            if rule is not None:
-                return rule(a, b)
+    rule = _find_rule(op, a, b)
+    if rule is not None:
+        return rule(a, b)
     # No rule: Python tries the reflected operator, then raises TypeError.
     return NotImplemented
 

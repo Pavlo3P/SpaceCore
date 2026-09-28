@@ -21,19 +21,23 @@ def space_has_riesz_maps(space) -> bool:
         return all(leaf.is_euclidean or space_has_riesz_maps(leaf) for leaf in leaves)
 
     # Riesz maps exist if the geometry or the space overrides both base methods.
+    if not isinstance(space, InnerProductSpace):
+        return False
+    space_has_maps = (
+        type(space).riesz is not InnerProductSpace.riesz
+        and type(space).riesz_inverse is not InnerProductSpace.riesz_inverse
+    )
+    if space_has_maps:
+        return True
     geometry = getattr(space, "geometry", None)
-    if geometry is None or not isinstance(space, InnerProductSpace):
+    if geometry is None:
         return False
     geometry_type = type(geometry)
     geometry_has_maps = (
         geometry_type.riesz is not InnerProduct.riesz
         and geometry_type.riesz_inverse is not InnerProduct.riesz_inverse
     )
-    space_has_maps = (
-        type(space).riesz is not InnerProductSpace.riesz
-        and type(space).riesz_inverse is not InnerProductSpace.riesz_inverse
-    )
-    return geometry_has_maps or space_has_maps
+    return geometry_has_maps
 
 
 def _requires_euclidean_or_riesz(dom, cod, opname: str) -> None:

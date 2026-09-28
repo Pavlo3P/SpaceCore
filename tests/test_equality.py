@@ -291,7 +291,8 @@ class TestFunctionalEquality:
 
         F = sc.MatrixFreeLinearFunctional(fn, w, ctx)
         comp = F.compose(A)
-        assert type(comp).__name__ == "ComposedFunctional"
+        assert isinstance(comp, sc.ComposedFunctional)
+        assert isinstance(comp, sc.LinearFunctional)
         assert comp == F.compose(A)
 
 

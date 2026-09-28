@@ -7,6 +7,41 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Optional `Functional.prox` rules in the existing mapping table, Hilbert-space
+  `conjugate_prox` via Moreau, positive scaling, and finite constant shifts.
+  Rules cover the squared space norm, coordinate L1 in diagonal geometry, and
+  indicators. Unsupported sums, products, pullbacks, and geometries raise
+  `CapabilityError`; no optimization loop or dense fallback is introduced.
+- `Set`, `NonnegativeOrthant`, and `IndicatorFunctional` connect membership,
+  metric projection, and extended-real indicator values. Custom sets explicitly
+  declare convexity before supplying an indicator.
+- A consumer acceptance example and macrobenchmark run unchanged proximal
+  gradient and PDHG across two metrics and two representations, including JAX
+  compilation with dynamic steps. Tests check independent KKT conditions and
+  every benchmark result coordinate.
+
+### Fixed
+
+- Proximal helpers accept dynamic scalar steps at `check_level="none"` and use
+  real thresholds for complex diagonal geometry. Thresholding works on Torch
+  without passing Python scalars to its tensor-only `maximum` primitive.
+- Default Krylov initialization uses native `ones()` when available and asks
+  for an explicit initial element otherwise. Non-coordinate spaces require an
+  explicit iteration budget, rather than failing with a missing `shape`.
+- **Custom `InnerProduct` implementations must supply Riesz maps** (breaking).
+  Missing maps raise `CapabilityError`; only `EuclideanInnerProduct` supplies
+  identity maps by default, preventing silent misuse of a non-Euclidean metric.
+
+- Backend array typing: native dense results for NumPy, JAX, and Torch operations
+  and explicit contexts; portable protocols accept native positional operators;
+  optional backend exports and forwarded operations are visible to editors.
+  Validation decorators preserve callable signatures. Wheels include `py.typed`.
+- Scalar results from elementwise backend operations, contractions, and
+  NumPy/CuPy `logsumexp` are promoted to zero-dimensional arrays, matching the
+  existing array-result contract.
+
 ### Removed
 
 - **The ADR-016 benchmarked-spec dispatch layer** (breaking): `spacecore.kernels.specs`,
@@ -43,6 +78,13 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   classes bind their cores as class attributes (`_apply_core = dense_apply_core`).
 
 ### Changed
+
+- Lanczos and `expm_multiply` now retain native elements through a private basis
+  adapter and space algebra, with dense fast paths and fixed-shape JAX pytree
+  support. No coordinate conversion is required for custom spaces.
+  **Lanczos zero-start behavior changed**: a zero initial element raises eagerly;
+  under JAX tracing it returns a NaN eigenvalue and `converged=False` instead of
+  inventing a coordinate vector. The exponential action of zero returns zero.
 
 - The `Scaled`/`Sum`/`Zero` lazy nodes and the `make_sum`/`make_scaled` factories are
   written once in `spacecore.mapping` and mixed into the `LinOp` and `Functional` node

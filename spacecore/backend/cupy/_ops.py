@@ -123,7 +123,7 @@ class CuPyOps(EagerControlFlowMixin, BackendOps):
         return_sign: bool = False,
     ) -> DenseArray | Tuple[DenseArray, DenseArray]:
         """Compute log-sum-exp using ``cupyx.scipy.special``."""
-        return self.cpx_scipy.special.logsumexp(
+        result = self.cpx_scipy.special.logsumexp(
             a,
             axis=axis,
             b=b,
@@ -131,11 +131,17 @@ class CuPyOps(EagerControlFlowMixin, BackendOps):
             return_sign=return_sign,
         )
 
+        if return_sign:
+            return self._as_array(result[0]), self._as_array(result[1])
+        return self._as_array(result)
+
     def _copy(self, x: DenseArray) -> DenseArray:
         """Return a CuPy copy of ``x`` (mutation primitive for index ops)."""
         return cast(Any, x).copy()
 
-    def _scatter_add_inplace(self, y: DenseArray, index: Index, values: ArrayLike) -> None:
+    def _scatter_add_inplace(
+        self, y: DenseArray, index: Index, values: ArrayLike | float | complex
+    ) -> None:
         """Accumulate ``values`` into ``y`` at ``index`` via ``cupy.add.at``."""
         self.cp.add.at(y, index, values)
 

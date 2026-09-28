@@ -1,12 +1,15 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Generic, overload
 
 from ..backend import BackendOps
 from ..types import DenseArray, SparseArray, DType, ArrayLike
+from ..types._array import DenseT
 
 
 @dataclass(frozen=True, slots=True, init=False)
-class Context:
+class Context(Generic[DenseT]):
     """
     Backend operations plus the default dtype for new arrays.
 
@@ -34,10 +37,26 @@ class Context:
     True
     """
 
-    ops: BackendOps
+    ops: BackendOps[DenseT]
     dtype: DType | None
 
-    def __init__(self, ops: BackendOps, dtype: DType | None = None) -> None:
+    @overload
+    def __init__(
+        self,
+        ops: BackendOps[DenseT] | type[BackendOps[DenseT]] | Context[DenseT],
+        dtype: DType | None = None,
+    ) -> None: ...
+
+    @overload
+    def __init__(
+        self: Context[DenseArray], ops: str, dtype: DType | None = None,
+    ) -> None: ...
+
+    def __init__(
+        self,
+        ops: BackendOps[DenseT] | type[BackendOps[DenseT]] | Context[DenseT] | str,
+        dtype: DType | None = None,
+    ) -> None:
         """
         Validate and normalize the context after dataclass initialization.
 
@@ -50,13 +69,13 @@ class Context:
 
         # Accept anything normalize_ops understands; the frozen dataclass is set via object.__setattr__.
         try:
-            ops = normalize_ops(ops)
+            resolved_ops = normalize_ops(ops)
         except TypeError:
             raise TypeError("Unknown ops type.")
-        object.__setattr__(self, "ops", ops)
+        object.__setattr__(self, "ops", resolved_ops)
         object.__setattr__(self, "dtype", self.ops.sanitize_dtype(dtype))
 
-    def assert_dense(self, x: Any) -> DenseArray:
+    def assert_dense(self, x: Any) -> DenseT:
         """Return ``x`` if it is a dense array of this backend; raise ``TypeError`` otherwise."""
         if not self.ops.is_dense(x):
             raise TypeError(f"Expected dense array for {self.ops.family}, got {type(x).__name__}")
@@ -70,7 +89,7 @@ class Context:
             raise TypeError(f"Expected sparse array for {self.ops.family}, got {type(x).__name__}")
         return x
 
-    def asarray(self, x: Any) -> DenseArray:
+    def asarray(self, x: Any) -> DenseT:
         """
         Convert ``x`` to a dense backend array of dtype ``self.dtype``.
 

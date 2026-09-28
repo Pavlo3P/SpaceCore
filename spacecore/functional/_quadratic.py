@@ -8,7 +8,7 @@ from .._batching import (
     _leading_batch_size,
     _warn_vmap_fallback_once,
 )
-from ._linear import LinearFunctional
+from ._linear import LinearFunctional, InnerProductFunctional
 from .._checks import checked_method
 from .._check_policy import CheckLevel
 from ..contextual import resolve_context_priority
@@ -141,6 +141,18 @@ class LinOpQuadraticForm(QuadraticForm[Domain]):
         quadratic contribution is exactly ``Q.apply(x)``.
         """
         return self._grad_core(x)
+
+    def derivative_at(self, x: Any, *args: Any, **kwargs: Any) -> LinearFunctional:
+        """Differentiate the Hermitian quadratic with the real pairing.
+
+        A complex linear term is kept separately: the total differential may
+        be real-linear and complex-valued, so one Riesz vector need not suffice.
+        """
+        quadratic = InnerProductFunctional(
+            self.Q.apply(x), self.domain, self.ctx, check_level=self.check_level,
+            cod=self.codomain, real_linear=True,
+        )
+        return quadratic if self.linear is None else quadratic + self.linear
 
     @checked_method(in_space="domain", out_space="domain")
     def hess_apply(self, x: Any) -> Any:
