@@ -9,3 +9,21 @@ docs/_build/
 docs/source/_build/
 .venv*/
 .DS_Store
+
+# Tutorials and notebooks live in a separate repository.
+tutorials/
+notebooks/
+*.ipynb
+# Examples and benchmarks are not part of the 0.5.0 package repository.
+examples/
+bench/
+tests/bench/
+tests/test_*_example.py
+tests/test_mpo_qot_split.py
+run_test.sbatch
+# Vision documents are personal notes, not part of SpaceCore.
+docs/dev/vision.md
+docs/dev/representation-vision-research.md
+docs/dev/representation_vision_probe.py
+docs/source/dev/vision.rst
+docs/source/design/vision.rst

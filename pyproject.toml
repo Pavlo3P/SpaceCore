@@ -54,10 +54,6 @@ torch = [
 cupy = [
   "cupy>=13.0",
 ]
-# Dependencies needed to execute the tutorial notebooks under ``tutorials/``.
-examples = [
-  "matplotlib>=3.8",
-]
 docs = [
   "sphinx>=8.0",
   "pydata-sphinx-theme>=0.16",
@@ -127,7 +123,6 @@ ignore = [
 convention = "numpy"
 
 [tool.ruff.lint.per-file-ignores]
-"tutorials/*.ipynb" = ["E402", "E741"]
 "tests/*.py" = ["E701"]
 "tests/*" = ["D"]
 # Internal duck-typed check-free kernel cores: registered by name and documented

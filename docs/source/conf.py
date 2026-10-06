@@ -56,7 +56,7 @@ numpydoc_class_members_toctree = False
 numpydoc_validation_checks = set()
 
 templates_path = ["_templates"]
-exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
+exclude_patterns = ["_build", "Thumbs.db", ".DS_Store", "design/vision.rst", "dev/vision.rst"]  # not part of SpaceCore
 
 html_theme = "pydata_sphinx_theme"
 html_title = "SpaceCore"

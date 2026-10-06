@@ -1,8 +1,7 @@
 Tutorials
 =========
 
-Read the foundations in order, then choose a worked example. Each page has a
-runnable notebook in the repository's ``tutorials/`` directory.
+Read the foundations in order, then choose a worked example.
 
 Foundations
 -----------

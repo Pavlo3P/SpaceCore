@@ -1,11 +1,10 @@
 Developer documentation
 =======================
 
-Contribution guidelines, architecture decisions, and project direction.
+Contribution guidelines and architecture decisions.
 
 .. toctree::
    :maxdepth: 1
 
    contributing
    adr
-   vision

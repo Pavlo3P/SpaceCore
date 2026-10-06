@@ -104,34 +104,3 @@ the functional supports, including a native space with no separate geometry
 object. Changing a subclass's objective also requires reviewing its inherited
 prox rule. Register extensions during setup, before tracing; changing the table
 does not invalidate an already compiled function.
-
-Acceptance example and benchmark
---------------------------------
-
-``examples/proximal_contract.py`` runs the same proximal-gradient and PDHG
-implementations on dense vectors and custom two-leaf elements, using Euclidean
-or weighted primal geometry. The objective and its independently derived KKT
-optimum stay fixed. Tests exercise NumPy, eager JAX, and compiled JAX with
-dynamic steps. The custom elements forbid implicit array conversion, and their
-space has no shape or flatten interface. The same loops also accept an
-indicator in place of the L1 penalty.
-
-.. code-block:: console
-
-   python -m examples.proximal_contract
-   python -m bench.run_macro --benchmark proximal_contract --backend numpy --backend jax --quick
-
-The benchmark compares every result coordinate with handwritten array loops
-and compiles both JAX paths. Compile time is separate from steady-state time.
-Setup is excluded. Small eager loops still expose Python abstraction overhead;
-this milestone does not establish universal performance parity or performance
-regression tracking in CI. Full runs include both geometries, representations,
-algorithms, and vector sizes 32 and 1024. This initial case targets CPU.
-
-Initial local measurements (2026-09-28, CPU, 200 iterations, one seed)
-showed NumPy public-loop runtimes about 2.4--5.1 times their bare references.
-For 1024 coefficients, compiled JAX public-loop runtimes ranged from about
-0.56--1.23 times the references; 32-coefficient cases remained slower. These
-are observations from one machine, not portable performance guarantees. Across
-all 64 result rows, the maximum coordinate difference was ``2.4e-7`` and the
-maximum distance in the infinity norm to the independent optimum was ``6.6e-7``.

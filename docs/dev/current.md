@@ -9,8 +9,7 @@ disagree, this document wins.
 
 ### `0.5.0a` proximal milestone — 2026-09-28
 
-The first-order toolbox direction in `docs/source/design/vision.rst` now has
-optional functional prox rules, Hilbert conjugate prox, and the minimal
+The first-order toolbox now has optional functional prox rules, Hilbert conjugate prox, and the minimal
 ADR-020 set/indicator/projection surface. The consumer example and benchmark
 exercise unchanged proximal-gradient/PDHG loops across dense/native elements
 and Euclidean/weighted geometry, including compiled JAX. Unsupported operations
@@ -154,8 +153,7 @@ deprecation/compatibility policy.
 **Final work** — freeze the public API; remove the `enable_checks` deprecation
 shim and any abandoned experimental surface; complete the typing
 (`docs/dev/typing-audit.md`, `uvx pyright` baseline), naming, and documentation
-audits; run full downstream migration and artifact verification. Keep the `1.0.0`
-definition in sync with `vision.md`.
+audits; run full downstream migration and artifact verification.
 
 ## Continuous parallel work
 
@@ -165,8 +163,7 @@ Throughout the train:
   publish patch releases for regressions.
 - Validate changes against SDPLab.
 - Benchmark before and after every optimization; never optimize on intuition.
-- Reject abstractions that hide problem-specific mathematics (the core invariant
-  from `vision.md`).
+- Reject abstractions that hide problem-specific mathematics.
 - Update this document at the **start** of each release, before writing code —
   including the open-question list.
 - Write a new ADR whenever a non-trivial design decision is made.

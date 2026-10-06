@@ -156,15 +156,15 @@ def test_jax_differential_is_traceable():
 
 
 def test_no_array_conversion_for_native_representation():
-    from examples.structured_optimization import SparseCoefficients, SquaredDistance
+    from tests.linalg.test_native_krylov import Pair, PairSpace
 
-    X = SparseCoefficients(2, sc.Context(sc.NumpyOps(), dtype=np.float64))
-    x, h = X.from_components([1., 2.]), X.from_components([3., 4.])
-    f = SquaredDistance(X, X.zeros())
-    d = f.derivative_at(x)
-    assert d(h) == 11
-    assert d.representer is x or d.representer.entries == x.entries
-    assert (2 * d + d)(h) == 33
+    X = PairSpace(sc.Context(sc.NumpyOps(), dtype=np.float64))  # Pair forbids __array__
+    x = Pair(np.asarray(1.), np.array([2., 0.]))
+    h = Pair(np.asarray(3.), np.array([4., 5.]))
+    d = sc.SquaredL2NormFunctional(X).derivative_at(x)
+    assert d(h) == 14  # <x, h> = 2*1*3 + 2*4
+    assert d.representer is x
+    assert (2 * d + d)(h) == 42
 
 
 def test_complex_scaled_real_differential_does_not_invent_a_representer():

@@ -434,7 +434,7 @@ Current source checks identify specific boundaries:
 - Generic `InnerProduct.riesz`/`riesz_inverse` default to identity; non-Euclidean geometry should not silently inherit that meaning.
 - The earlier representation research documents mandatory densification paths and coordinate assumptions in solver defaults.
 
-Relevant source: [functional base](../../spacecore/functional/_base.py), [operator family](../../spacecore/opfamily.py), [inner-product geometry](../../spacecore/space/base/_inner_product.py), and [earlier representation audit](representation-vision-research.md).
+Relevant source: [functional base](../../spacecore/functional/_base.py), [operator family](../../spacecore/opfamily.py), [inner-product geometry](../../spacecore/space/base/_inner_product.py).
 
 Do not expand the backend array API until it contains every algorithm's mathematics. Many operations in this report belong to sets, maps, geometries, or specialized subproblem implementations.
 

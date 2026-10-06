@@ -48,9 +48,16 @@ class TestSpaceHasRieszMaps:
         assert space_has_riesz_maps(space) is True
 
     def test_native_space_with_own_maps_needs_no_geometry_object(self, numpy_ctx):
-        from examples.proximal_contract import SplitSpace
-        space = SplitSpace([2., 3.], numpy_ctx)
-        assert space_has_riesz_maps(space) is True
+        from tests.linalg.test_native_krylov import PairSpace
+
+        class WithMaps(PairSpace):
+            def riesz(self, x):
+                return x
+
+            def riesz_inverse(self, x):
+                return x
+
+        assert space_has_riesz_maps(WithMaps(numpy_ctx)) is True
 
     def test_tree_of_weighted_leaves_returns_true(self, numpy_ctx):
         weights = numpy_ctx.asarray([2.0, 3.0])

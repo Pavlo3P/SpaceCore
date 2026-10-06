@@ -113,12 +113,13 @@ def test_rule_specificity_and_missing_native_initialization():
     register("prox", Custom, sc.WeightedInnerProduct,
              lambda f, g, x, t: f.domain.scale(1/(1+t), x))
     np.testing.assert_allclose(Custom(X).prox(X.ctx.asarray([1., 2., 3.]), 1.), [.5, 1, 1.5])
-    from examples.structured_optimization import build_problem
-    problem, *_ = build_problem("sparse", count=4)
+    from tests.linalg.test_native_krylov import PairSpace
+    N = PairSpace(X.ctx)  # native: no shape, no ones(), no flatten
+    K = sc.MatrixFreeLinOp(lambda x: x, lambda x: x, N, N, N.ctx)
     with pytest.raises(sc.CapabilityError, match="x0"):
-        sc.power_iteration(problem.K.H @ problem.K, maxiter=4)
+        sc.power_iteration(K.H @ K, maxiter=4)
     with pytest.raises(sc.CapabilityError, match="maxiter"):
-        sc.cg(problem.K.H @ problem.K, problem.X.zeros())
+        sc.cg(K.H @ K, N.zeros())
 
 
 def test_jit_dynamic_steps_and_indicator_pytree():

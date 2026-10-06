@@ -50,6 +50,10 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Removed
 
+- Notebooks, examples and the benchmark suite (`tutorials/`, `notebooks/`,
+  `examples/`, `bench/`) move out of the package repository; the docs keep
+  their tutorials pages (`docs/source/tutorials/`), and the
+  `examples` install extra is gone.
 - **The ADR-016 benchmarked-spec dispatch layer** (breaking): `spacecore.kernels.specs`,
   `dispatch`, `dispatch_mode`, `set_dispatch_mode`, `get_dispatch_mode`,
   `should_consult_dispatch`, `KernelSpec`, `KernelCost`, `KernelRegistry`, `registry`,

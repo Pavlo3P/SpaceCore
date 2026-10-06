@@ -1,8 +1,8 @@
 """Integration regression for the weighted Tikhonov pattern.
 
 This pins the SpaceCore behaviour that the former ``examples/weighted_tikhonov.py``
-demo used to guard (the demo is now superseded by
-``tutorials/05_weighted_tikhonov.ipynb``): an operator between weighted spaces must
+demo used to guard (the demo is now a tutorial in the separate tutorials
+repository): an operator between weighted spaces must
 expose the *metric* adjoint rather than the coordinate transpose, and the regularised
 normal equations assembled with operator algebra must match an independent dense solve.
 """

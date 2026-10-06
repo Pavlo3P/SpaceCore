@@ -40,10 +40,6 @@ and solver assumptions.
 Next steps
 ----------
 
-* **Learn:** start with :doc:`tutorials/01_backend_and_context`, then
-  :doc:`tutorials/02_linear_algebra` and :doc:`tutorials/03_functionals`.
-* **Solve a problem:** see :doc:`tutorials/index` for structured unknowns,
-  inverse problems, optimal transport, and constrained optimization.
 * **Look up an object:** use the :doc:`api/index`.
 * **Understand behavior:** read :doc:`design/index` for geometry, validation,
   batching, dtype, and backend rules.

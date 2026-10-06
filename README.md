@@ -37,21 +37,8 @@ print(N.is_hermitian())               # True          inferred from the structur
 print(sc.cg(N, x, tol=1e-12).converged)  # True
 ```
 
-### Build a problem and its algorithms
-
-[One problem, three algorithms, two representations](examples/structured_optimization.md)
-shows proximal gradient, PDHG, and ADMM using the same mathematical objects with
-dense arrays or custom coefficient values. A prepared factorization replaces
-ADMM's inner CG solve without changing the iteration.
-
-```bash
-python -m examples.structured_optimization
-```
-
 [Metric proximal operations](docs/source/design/proximal_contract.rst) add
 optional `f.prox(x, step)`, `f.conjugate_prox(x, step)`, and set indicators.
-Run `python -m examples.proximal_contract` for unchanged proximal-gradient and
-PDHG loops across dense/custom elements and Euclidean/weighted metrics.
 
 ## Features
 
@@ -79,7 +66,6 @@ Solvers validate once at entry, not per iteration. Batching goes through
 
 ## Docs
 
-[Tutorials](https://pavlo3p.github.io/SpaceCore/tutorials/index.html) ·
 [Design notes](https://pavlo3p.github.io/SpaceCore/design/index.html) ·
 [API](https://pavlo3p.github.io/SpaceCore/api/index.html) ·
 [Release notes](https://pavlo3p.github.io/SpaceCore/release_notes.html)
