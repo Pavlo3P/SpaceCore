@@ -188,17 +188,6 @@ class ElementwiseJordanSpace(PyTreeNode, JordanAlgebraSpace, DenseCoordinateSpac
         """Return the Jordan identity: the all-ones element in the space dtype."""
         return self.ops.ones(self.shape, dtype=self.dtype)
 
-    def _apply_entrywise(self, x: DenseArray, f: Callable[[DenseArray], DenseArray]) -> DenseArray:
-        """Apply ``f`` entrywise and verify that shape is preserved."""
-        # Apply f to the whole array, else elementwise; the shape must not change.
-        try:
-            y = f(x)
-        except Exception:
-            y = self.ops.vectorize(f)(x)
-        if self._checks_at_least("cheap") and y.shape != x.shape:
-            raise ValueError("Function application changed shape.")
-        return y
-
     @checked_method(in_space="self", out_space="self")
     def spectral_apply(self, x: DenseArray, f: Callable[[DenseArray], DenseArray]) -> DenseArray:
         """Apply a scalar function coordinatewise."""

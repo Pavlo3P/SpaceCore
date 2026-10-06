@@ -60,11 +60,6 @@ def _stacked_capabilities(base: Space) -> frozenset[type]:
     return _space_capabilities(base)
 
 
-def _stacked_class_for(capabilities: frozenset[type]) -> type[StackedSpace]:
-    """Return the deterministic concrete class for a stacked capability set."""
-    return _STACKED_REGISTRY.get(registry_key(capabilities), StackedSpace)
-
-
 def _require_base(base: Space, capability: type, owner: str) -> None:
     """Raise if ``base`` lacks ``capability``."""
     if not isinstance(base, capability):
@@ -106,7 +101,8 @@ class StackedSpace(PyTreeNode, CoordinateSpace):
             base = _validate_stacked_base(base)
             _validate_count(count)
             resolved_ctx = resolve_context_priority(ctx, base)
-            cls = _stacked_class_for(_stacked_capabilities(base.convert(resolved_ctx)))
+            capabilities = _stacked_capabilities(base.convert(resolved_ctx))
+            cls = _STACKED_REGISTRY.get(registry_key(capabilities), StackedSpace)
         return super(StackedSpace, cls).__new__(cls)
 
     def __init__(
@@ -196,16 +192,20 @@ class StackedSpace(PyTreeNode, CoordinateSpace):
         """Return a flattened stack of this stack: ``base.stacked(count * k)``."""
         return StackedSpace(self.base, self.count * int(count), self.ctx)
 
-class _StackedInnerProductMixin:
-    """Inner-product operations for stacks whose base supports them."""
+class _StackedHostMixin:
+    """Type-only declarations of the StackedSpace host surface used by stack mixins."""
 
     if TYPE_CHECKING:
-        # Provided by the StackedSpace host this mixin is combined with; narrowed
-        # to the relevant capability per method (see ``cast`` calls below).
+        # Provided by the StackedSpace host these mixins are combined with; the
+        # base is narrowed to the relevant capability per method (see ``cast`` calls).
         @property
         def base(self) -> Space: ...
         @property
         def ops(self) -> BackendOps: ...
+
+
+class _StackedInnerProductMixin(_StackedHostMixin):
+    """Inner-product operations for stacks whose base supports them."""
 
     @checked_method(in_space="self", arg_positions=(0, 1))
     def inner(self, x: Any, y: Any) -> Any:
@@ -250,15 +250,8 @@ class _StackedInnerProductMixin:
         return cast(InnerProductSpace, self.base).is_euclidean
 
 
-class _StackedStarMixin:
+class _StackedStarMixin(_StackedHostMixin):
     """Star operation for stacks whose base supports it."""
-
-    if TYPE_CHECKING:
-        # Provided by the StackedSpace host this mixin is combined with.
-        @property
-        def base(self) -> Space: ...
-        @property
-        def ops(self) -> BackendOps: ...
 
     def star(self, x: Any) -> Any:
         """Return the base-space star operation for each stacked copy."""
@@ -270,15 +263,8 @@ class _StackedStarMixin:
             return self.ops.vmap(base.star, in_axes=0, out_axes=0)(x)
 
 
-class _StackedJordanMixin:
+class _StackedJordanMixin(_StackedHostMixin):
     """Jordan operations for stacks whose base supports them."""
-
-    if TYPE_CHECKING:
-        # Provided by the StackedSpace host this mixin is combined with.
-        @property
-        def base(self) -> Space: ...
-        @property
-        def ops(self) -> BackendOps: ...
 
     @checked_method(in_space="self", arg_positions=(0, 1))
     def jordan(self, x: Any, y: Any) -> Any:

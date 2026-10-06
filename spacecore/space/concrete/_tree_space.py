@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import operator
 from dataclasses import dataclass
+from functools import reduce
+from itertools import accumulate, pairwise
+from math import prod
 from typing import TYPE_CHECKING, Any, Callable, Sequence, cast
 
 import optree
@@ -34,14 +38,6 @@ from .._capabilities import (
 _TREE_REGISTRY: dict[CapabilitySet, type[TreeSpace]] = {}
 
 
-def _prod_int(shape: tuple[int, ...]) -> int:
-    """Return the integer product of a shape tuple."""
-    result = 1
-    for dimension in shape:
-        result *= int(dimension)
-    return int(result)
-
-
 def _validate_leaf_spaces(
     leaf_spaces: Any, owner: str = "TreeSpace"
 ) -> tuple[CoordinateSpace, ...]:
@@ -67,15 +63,10 @@ def _validate_leaf_spaces(
 def _tree_capabilities(spaces: Sequence[Space]) -> CapabilitySet:
     """Return capabilities shared by every tree leaf."""
     # A capability is kept only if every leaf has it.
-    if not spaces:
-        return frozenset()
     for space in spaces:
         if isinstance(space, EuclideanElementwiseJordanSpace):
             _validate_euclidean_elementwise_jordan(space, space.geometry)
-    shared = set(_space_capabilities(spaces[0]))
-    for space in spaces[1:]:
-        shared.intersection_update(_space_capabilities(space))
-    return frozenset(shared)
+    return frozenset.intersection(*map(_space_capabilities, spaces))
 
 
 def _format_path(path: tuple[Any, ...]) -> str:
@@ -306,22 +297,15 @@ class TreeSpace(PyTreeNode, CoordinateSpace):
         self._treedef = treespec
         self._leaf_paths = tuple(optree.treespec_paths(treespec))
         self.leaf_spaces = uniform_spaces
-        self._dims = tuple(_prod_int(space.shape) for space in uniform_spaces)
-        offsets = [0]
-        for dimension in self._dims:
-            offsets.append(offsets[-1] + dimension)
-        self._offsets = tuple(offsets)
-        self._slices = tuple(
-            slice(offsets[index], offsets[index + 1]) for index in range(len(self._dims))
-        )
+        offsets = (0, *accumulate(prod(map(int, s.shape)) for s in uniform_spaces))
+        self._slices = tuple(slice(a, b) for a, b in pairwise(offsets))
         # Coordinate shape is the total size; check level: explicit, else the least strict leaf.
         super(TreeSpace, self).__init__((offsets[-1],), resolved_ctx)
         if check_level is not None:
             self._check_level = normalize_check_level(check_level)
         else:
             leaf_levels = tuple(space.check_level for space in uniform_spaces)
-            if leaf_levels:
-                self._check_level = minimum_check_level(leaf_levels)
+            self._check_level = minimum_check_level(leaf_levels)
 
     @classmethod
     def from_leaf_spaces(
@@ -420,13 +404,6 @@ class TreeSpace(PyTreeNode, CoordinateSpace):
     def _from_components(self, parts: tuple[Any, ...]) -> Any:
         return self.unflatten_tree(parts)
 
-    def _ones_for_space(self, space: CoordinateSpace) -> Any:
-        # The leaf's own ones if it has them, else an array of ones.
-        ones = getattr(space, "ones", None)
-        if callable(ones):
-            return ones()
-        return self.ops.ones(space.shape, dtype=self.dtype)
-
     def zero(self) -> Any:
         """Return the additive identity."""
         return self.zeros()
@@ -437,9 +414,12 @@ class TreeSpace(PyTreeNode, CoordinateSpace):
 
     def ones(self) -> Any:
         """Return a leafwise all-ones element when leaf spaces support it."""
-        return self._from_components(
-            tuple(self._ones_for_space(space) for space in self.leaf_spaces)
-        )
+        # Each leaf's own ones if it has them, else an array of ones.
+        parts = []
+        for space in self.leaf_spaces:
+            ones = getattr(space, "ones", None)
+            parts.append(ones() if callable(ones) else self.ops.ones(space.shape, dtype=self.dtype))
+        return self._from_components(tuple(parts))
 
     @checked_method(in_space="self", arg_positions=(0, 1))
     def add(self, x: Any, y: Any) -> Any:
@@ -585,13 +565,13 @@ class _LeafwiseInnerProductMixin(_LeafwiseHostMixin):
         """Return the sum of leaf inner products."""
         leaf_spaces = cast("Sequence[InnerProductSpace]", self.leaf_spaces)
         # Sum of the leaves' inner products.
-        accumulator = None
-        for space, xi, yi in zip(
-            leaf_spaces, self._components(x), self._components(y)
-        ):
-            value = space.inner(xi, yi)
-            accumulator = value if accumulator is None else accumulator + value
-        return accumulator
+        return reduce(
+            operator.add,
+            (
+                space.inner(xi, yi)
+                for space, xi, yi in zip(leaf_spaces, self._components(x), self._components(y))
+            ),
+        )
 
     def riesz(self, x: Any) -> Any:
         """Apply each leaf space's Riesz map."""
@@ -795,21 +775,19 @@ class _LeafwiseJordanMixin(_LeafwiseHostMixin):
         """Return the direct-sum trace: the sum of the leaf traces."""
         leaf_spaces = cast("Sequence[JordanAlgebraSpace]", self.leaf_spaces)
         # The trace of a direct product is the sum of the leaves' traces.
-        total = None
-        for space, leaf in zip(leaf_spaces, self._components(x)):
-            value = space.trace(leaf)
-            total = value if total is None else total + value
-        return total
+        return reduce(
+            operator.add,
+            (space.trace(leaf) for space, leaf in zip(leaf_spaces, self._components(x))),
+        )
 
     def determinant(self, x: Any) -> Any:
         """Return the direct-sum determinant: the product of the leaf determinants."""
         leaf_spaces = cast("Sequence[JordanAlgebraSpace]", self.leaf_spaces)
         # The determinant of a direct product is the product of the leaves' determinants.
-        total = None
-        for space, leaf in zip(leaf_spaces, self._components(x)):
-            value = space.determinant(leaf)
-            total = value if total is None else total * value
-        return total
+        return reduce(
+            operator.mul,
+            (space.determinant(leaf) for space, leaf in zip(leaf_spaces, self._components(x))),
+        )
 
     def unit(self) -> Any:
         """Return the leafwise Jordan identity assembled into a tree element."""

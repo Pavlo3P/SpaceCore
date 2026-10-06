@@ -160,10 +160,6 @@ class WeightedInnerProduct(InnerProduct):
         if not _np.all(weights_np > 0):
             raise ValueError("WeightedInnerProduct weights must be strictly positive.")
 
-    @property
-    def is_euclidean(self) -> bool:
-        return False
-
 
 class InnerProductSpace(VectorSpace):
     """

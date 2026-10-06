@@ -1,6 +1,7 @@
 """Class-based space capability queries and operation requirements."""
 from __future__ import annotations
 
+import math
 from typing import Any, Protocol, runtime_checkable
 
 from .._errors import CapabilityError
@@ -25,18 +26,11 @@ _CAP_EUCLIDEAN_JORDAN = EuclideanJordanAlgebraSpace
 def _space_capabilities(space: Space) -> CapabilitySet:
     """Return structural capabilities advertised by one leaf space."""
     # Capabilities are the capability classes the space is an instance of.
-    capabilities: set[type] = set()
-    if isinstance(space, CoordinateSpace):
-        capabilities.add(_CAP_COORDINATE)
-    if isinstance(space, InnerProductSpace):
-        capabilities.add(_CAP_INNER)
-    if isinstance(space, StarSpace):
-        capabilities.add(_CAP_STAR)
-    if isinstance(space, JordanAlgebraSpace):
-        capabilities.add(_CAP_JORDAN)
-    if isinstance(space, EuclideanJordanAlgebraSpace):
-        capabilities.add(_CAP_EUCLIDEAN_JORDAN)
-    return frozenset(capabilities)
+    return frozenset(
+        cap
+        for cap in (_CAP_COORDINATE, _CAP_INNER, _CAP_STAR, _CAP_JORDAN, _CAP_EUCLIDEAN_JORDAN)
+        if isinstance(space, cap)
+    )
 
 
 @runtime_checkable
@@ -66,9 +60,7 @@ def probe_element(space: Space, ops: Any, dtype: Any) -> Any | None:
     if isinstance(space, SupportsOnes):
         return space.ones()
     if isinstance(space, CoordinateSpace):
-        size = 1
-        for dim in space.shape:
-            size *= int(dim)
+        size = math.prod(map(int, space.shape))
         return space.unflatten(ops.ones((size,), dtype=dtype))
     return None
 

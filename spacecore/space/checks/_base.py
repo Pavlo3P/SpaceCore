@@ -114,7 +114,6 @@ class BackendCheck(SpaceCheck):
     """
 
     name: str = "backend"
-    core_rank: ClassVar[int] = 0
     minimum_level: ClassVar[CheckLevel] = "cheap"
 
     def is_valid(self, space: Any, x: Any) -> bool:
@@ -179,7 +178,6 @@ class DTypeCheck(SpaceCheck):
     """
 
     name: str = "dtype"
-    core_rank: ClassVar[int] = 0
     minimum_level: ClassVar[CheckLevel] = "cheap"
 
     def is_valid(self, space: Any, x: Any) -> bool:
@@ -201,7 +199,6 @@ class FieldCheck(SpaceCheck):
     """
 
     name: str = "field"
-    core_rank: ClassVar[int] = 0
     minimum_level: ClassVar[CheckLevel] = "cheap"
 
     def is_valid(self, space: Any, x: Any) -> bool:
