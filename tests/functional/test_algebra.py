@@ -14,7 +14,6 @@ import pytest
 import spacecore as sc
 
 from tests._helpers import has_jax, to_numpy
-from tests.optimize._helpers import has_optax
 
 
 class _SumSquares(sc.Functional):
@@ -456,24 +455,3 @@ class TestProduct:
         np.testing.assert_allclose(
             to_numpy(X.inner((F * G).grad(x), h)), to_numpy(expected)
         )
-
-
-# ===========================================================================
-# End-to-end: a composed functional drives minimize_optax
-# ===========================================================================
-@pytest.mark.skipif(not (has_jax() and has_optax()), reason="requires jax and optax")
-class TestOptimizerIntegration:
-    def test_minimize_sum_functional(self):
-        import optax
-
-        from tests.linalg._helpers import make_ctx
-        from tests.optimize._helpers import euclidean_problem
-
-        ctx = make_ctx("jax", np.float32)
-        X, F, x_star = euclidean_problem(ctx)
-        # A SumFunctional of two ScaledFunctionals; argmin(0.5F + 0.5F) == argmin F.
-        composed = 0.5 * F + 0.5 * F
-        assert isinstance(composed, sc.SumFunctional)
-        res = sc.minimize_optax(composed, X.zeros(), optax.adam(1e-1), max_iter=2000, tol=1e-5, verbose=0)
-        assert res.success
-        np.testing.assert_allclose(to_numpy(res.x_element), x_star, atol=1e-2)

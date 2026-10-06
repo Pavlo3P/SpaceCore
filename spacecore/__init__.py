@@ -85,12 +85,6 @@ from .linalg import (
     lsqr,
     power_iteration,
 )
-from .optimize import (
-    OptaxResult,
-    line_search_scipy,
-    minimize_optax,
-    minimize_scipy,
-)
 from .space import (
     DenseElement,
     Element,
@@ -229,10 +223,6 @@ __all__ = [
     "lanczos_smallest",
     "lsqr",
     "power_iteration",
-    "minimize_scipy",
-    "minimize_optax",
-    "OptaxResult",
-    "line_search_scipy",
     "BackendCheck",
     "DTypeCheck",
     "FieldCheck",

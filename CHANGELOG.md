@@ -50,6 +50,13 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Removed
 
+- **`spacecore.optimize`** (breaking): `minimize_scipy`, `line_search_scipy`,
+  `minimize_optax` and `OptaxResult` moved to the separate
+  [`spacecore-optimize`](https://github.com/Pavlo3P/spacecore-optimize) package
+  (`import spacecore_optimize as spo`), which depends on SpaceCore. The `optax`
+  install extra, `docs/source/api/optimize.rst` and `tests/optimize/` go with
+  them. SpaceCore keeps the geometry handoff they use (`Functional.grad`,
+  `X.riesz`) and no optimization loops.
 - Notebooks, examples and the benchmark suite (`tutorials/`, `notebooks/`,
   `examples/`, `bench/`) move out of the package repository; the docs keep
   their tutorials pages (`docs/source/tutorials/`), and the

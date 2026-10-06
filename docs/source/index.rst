@@ -13,7 +13,7 @@ Requires Python 3.11+.
 .. code-block:: bash
 
    pip install spacecore          # NumPy backend
-   pip install "spacecore[jax]"   # or [torch], [cupy], [optax]
+   pip install "spacecore[jax]"   # or [torch], [cupy]
 
 Solve a linear system
 ---------------------

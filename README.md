@@ -13,7 +13,7 @@ its adjoint is the metric adjoint, not the matrix transpose.
 
 ```bash
 pip install spacecore            # NumPy backend
-pip install "spacecore[jax]"     # or [torch], [cupy], [optax]
+pip install "spacecore[jax]"     # or [torch], [cupy]
 ```
 
 Python 3.11+.

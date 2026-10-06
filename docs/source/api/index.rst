@@ -12,4 +12,3 @@ Look up classes and functions by topic.
    linops
    functionals
    linalg
-   optimize
