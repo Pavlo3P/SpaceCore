@@ -168,9 +168,10 @@ traversal.
 Operators
 ~~~~~~~~~
 
-``ProductLinOp`` was renamed to ``TreeLinOp``. ``BlockDiagonalLinOp``,
-``StackedLinOp``, and ``SumToSingleLinOp`` now validate ``TreeSpace`` domains
-and codomains directly; no separate product wrapper is needed.
+``ProductLinOp`` was renamed to ``TreeLinOp``. ``BlockDiagonalLinOp`` and
+``BlockMatrixLinOp`` validate ``TreeSpace`` domains and codomains directly; no
+separate product wrapper is needed. One-column and one-row block matrices replace
+the former ``StackedLinOp`` and ``SumToSingleLinOp``.
 
 .. code-block:: python
 

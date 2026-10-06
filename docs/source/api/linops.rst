@@ -63,16 +63,17 @@ Tree and block operators
    spacecore.linop.TreeLinOp
    spacecore.linop.BlockDiagonalLinOp
    spacecore.linop.BlockMatrixLinOp
-   spacecore.linop.StackedLinOp
-   spacecore.linop.SumToSingleLinOp
 
 * ``TreeLinOp`` is the base for operators with a ``TreeSpace`` domain or codomain.
 * ``BlockDiagonalLinOp(blocks)`` maps corresponding tree leaves independently
   and infers both ``TreeSpace`` endpoints from the block domains and codomains.
 * ``BlockMatrixLinOp(block_rows)`` computes row sums for a rectangular matrix
-  of compatible blocks and infers tuple-structured ``TreeSpace`` endpoints.
-* ``StackedLinOp`` maps one domain into a tree codomain.
-* ``SumToSingleLinOp`` maps a tree domain into one codomain by summing leaf outputs.
+  of compatible blocks. The container of rows is the codomain tree and each row's
+  container the domain tree; a side written as a plain one-element list or tuple
+  is a single space. So ``BlockMatrixLinOp.stack((A1, A2))`` maps one domain into a
+  tree, ``x -> (A1 x, A2 x)``, and ``BlockMatrixLinOp.from_operators((A1, A2))`` sums
+  a tree into one codomain, ``(x1, x2) -> A1 x1 + A2 x2``; each is the adjoint of
+  the other built from the blocks' adjoints.
 
 Both block classes represent operators over finite direct products. They are
 not tensor-product or Kronecker-product operators. Their ``rapply`` methods use
@@ -138,10 +139,3 @@ Autodoc
    :members:
    :inherited-members:
 
-.. autoclass:: spacecore.linop.StackedLinOp
-   :members:
-   :inherited-members:
-
-.. autoclass:: spacecore.linop.SumToSingleLinOp
-   :members:
-   :inherited-members:

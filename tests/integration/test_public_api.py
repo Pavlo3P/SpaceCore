@@ -63,8 +63,6 @@ def test_expected_names_are_exported():
         "make_composed",
         "TreeLinOp",
         "BlockDiagonalLinOp",
-        "StackedLinOp",
-        "SumToSingleLinOp",
         "Functional",
         "LinearFunctional",
         "InnerProductFunctional",

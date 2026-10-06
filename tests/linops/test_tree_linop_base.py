@@ -30,9 +30,9 @@ class TestEmptyParts:
         with pytest.raises(ValueError, match="at least one block"):
             sc.BlockDiagonalLinOp.from_operators(())
         with pytest.raises(ValueError, match="Parts must be non-empty"):
-            sc.StackedLinOp.from_operators(())
-        with pytest.raises(ValueError, match="Parts must be non-empty"):
-            sc.SumToSingleLinOp.from_operators(())
+            sc.BlockMatrixLinOp.stack(())
+        with pytest.raises(ValueError, match="at least one block"):
+            sc.BlockMatrixLinOp.from_operators(())
 
 
 # ===========================================================================

@@ -188,9 +188,43 @@ class BlockDiagonalLinOp(TreeLinOp[TreeSpace, TreeSpace]):
         """Build a tuple-structured block-diagonal operator."""
         return cls(tuple(parts))
 
-class BlockMatrixLinOp(TreeLinOp[TreeSpace, TreeSpace]):
+def _endpoint(container: Any, spaces: tuple[Any, ...], ctx: Any) -> Any:
+    """Return the endpoint space for a row or column container of blocks."""
+    # A plain one-element list or tuple is a single space; any other container is a tree.
+    if type(container) in (list, tuple) and len(spaces) == 1:
+        return spaces[0]
+    return TreeSpace(_container_def(container), spaces, ctx=ctx)
+
+
+def _container_def(container: Any) -> Any:
+    """Return the treedef of ``container`` with each element as one leaf."""
+    return optree.tree_structure(container, is_leaf=lambda node: node is not container)
+
+
+def _split(space: Any, x: Any) -> tuple[Any, ...]:
+    """Return the components of ``x``: the tree leaves, or ``(x,)`` for a single space."""
+    return space._components(x) if isinstance(space, TreeSpace) else (x,)
+
+
+def _join(space: Any, parts: tuple[Any, ...]) -> Any:
+    """Inverse of :func:`_split`."""
+    return space._from_components(parts) if isinstance(space, TreeSpace) else parts[0]
+
+
+def _leaf_spaces(space: Any) -> tuple[Any, ...]:
+    return space.leaf_spaces if isinstance(space, TreeSpace) else (space,)
+
+
+class BlockMatrixLinOp(TreeLinOp[Any, Any]):
     r"""
     Block matrix over direct products: ``y_i = sum_j A_ij x_j`` for blocks ``A_ij : X_j -> Y_i``.
+
+    The container of rows is the codomain's tree and the container of each row is the
+    domain's tree, so a NamedTuple of rows gives NamedTuple codomain elements. A side
+    given as a plain one-element list or tuple is a single space, not a one-leaf tree:
+    ``BlockMatrixLinOp([[A1], [A2]])`` stacks ``x -> (A1 x, A2 x)`` and
+    ``BlockMatrixLinOp([[A1, A2]])`` sums ``(x1, x2) -> A1 x1 + A2 x2``; each is the
+    other's adjoint when the blocks are replaced by theirs.
 
     Parameters
     ----------
@@ -255,12 +289,13 @@ class BlockMatrixLinOp(TreeLinOp[TreeSpace, TreeSpace]):
                         f"0 and {row_index}."
                     )
 
-        # Domain leaves come from the columns, codomain leaves from the rows.
+        # Domain leaves come from the columns, codomain leaves from the rows; the
+        # containers give the trees.
         ctx = flat_blocks[0].ctx
-        dom = TreeSpace.from_leaf_spaces(
-            tuple(normalized_rows[0][column].domain for column in range(column_count)), ctx
-        )
-        cod = TreeSpace.from_leaf_spaces(tuple(row[0].codomain for row in normalized_rows), ctx)
+        dom = _endpoint(rows[0], tuple(block.domain for block in normalized_rows[0]), ctx)
+        cod = _endpoint(block_rows, tuple(row[0].codomain for row in normalized_rows), ctx)
+        self._row_def = _container_def(block_rows)
+        self._column_def = _container_def(rows[0])
         self._row_count = len(normalized_rows)
         self._column_count = column_count
         super().__init__(dom, cod, flat_blocks, ctx, check_level=check_level)
@@ -269,70 +304,75 @@ class BlockMatrixLinOp(TreeLinOp[TreeSpace, TreeSpace]):
             for index in range(self._row_count)
         )
 
+    def _rows(self, blocks: Sequence[LinOp], row_def: Any = None, column_def: Any = None) -> Any:
+        # Refold row-major blocks into this operator's row and column containers.
+        row_def, column_def = row_def or self._row_def, column_def or self._column_def
+        width = column_def.num_leaves
+        return optree.tree_unflatten(
+            row_def,
+            [
+                optree.tree_unflatten(column_def, list(blocks[row * width : (row + 1) * width]))
+                for row in range(row_def.num_leaves)
+            ],
+        )
+
     def _check_layout(self) -> None:
-        """Check the row and column incidence against inferred tree leaves."""
-        if len(self.parts) != self._row_count * self._column_count:
-            raise ValueError("BlockMatrixLinOp block count does not match its rectangular shape.")
-        if self.dom.arity != self._column_count or self.cod.arity != self._row_count:
-            raise ValueError("BlockMatrixLinOp inferred TreeSpace arity mismatch.")
+        """Check the row and column incidence against inferred endpoint leaves."""
+        dom_leaves, cod_leaves = _leaf_spaces(self.dom), _leaf_spaces(self.cod)
+        if len(dom_leaves) != self._column_count or len(cod_leaves) != self._row_count:
+            raise ValueError("BlockMatrixLinOp inferred endpoint arity mismatch.")
         for row in range(self._row_count):
             for column in range(self._column_count):
                 block = self.parts[row * self._column_count + column]
-                if not _same_space_for_algebra(block.domain, self.dom.leaf_spaces[column]):
+                if not _same_space_for_algebra(block.domain, dom_leaves[column]):
                     raise ValueError(f"Block ({row}, {column}) has an incompatible domain.")
-                if not _same_space_for_algebra(block.codomain, self.cod.leaf_spaces[row]):
+                if not _same_space_for_algebra(block.codomain, cod_leaves[row]):
                     raise ValueError(f"Block ({row}, {column}) has an incompatible codomain.")
 
     def _apply_core(self, x: Any) -> Any:
         # y_i = sum_j A_ij x_j, row by row.
-        x_parts = self.dom._components(x)
-        y_parts = []
-        for row_index, codomain in enumerate(self.cod.leaf_spaces):
-            values = tuple(
-                self._apply_parts[row_index * self._column_count + column](x_parts[column])
+        x_parts = _split(self.dom, x)
+        y_parts = tuple(
+            _sum_values(codomain, tuple(
+                self._apply_parts[row * self._column_count + column](x_parts[column])
                 for column in range(self._column_count)
-            )
-            y_parts.append(_sum_values(codomain, values, batched=False))
-        return self.cod._from_components(tuple(y_parts))
+            ), batched=False)
+            for row, codomain in enumerate(_leaf_spaces(self.cod))
+        )
+        return _join(self.cod, y_parts)
 
     def _rapply_core(self, y: Any) -> Any:
         # x_j = sum_i A_ij* y_i, column by column.
-        y_parts = self.cod._components(y)
-        x_parts = []
-        for column, domain in enumerate(self.dom.leaf_spaces):
-            values = tuple(
+        y_parts = _split(self.cod, y)
+        x_parts = tuple(
+            _sum_values(domain, tuple(
                 self._rapply_parts[row * self._column_count + column](y_parts[row])
                 for row in range(self._row_count)
-            )
-            x_parts.append(_sum_values(domain, values, batched=False))
-        return self.dom._from_components(tuple(x_parts))
+            ), batched=False)
+            for column, domain in enumerate(_leaf_spaces(self.dom))
+        )
+        return _join(self.dom, x_parts)
 
-    @checked_method(
-        in_space="domain", out_space="codomain", in_batched=True, out_batched=True
-    )
-    def vapply(self, x: Any) -> Any:
-        """Apply the block matrix over a tuple of leading-axis batches."""
-        x_parts = self.dom._components(x)
-        y_parts = []
-        for row, codomain in zip(self.block_rows, self.cod.leaf_spaces):
-            values = tuple(block.vapply(x_part) for block, x_part in zip(row, x_parts))
-            y_parts.append(_sum_values(codomain, values, batched=True))
-        return self.cod._from_components(tuple(y_parts))
+    def _vapply_core(self, x: Any) -> Any:
+        x_parts = _split(self.dom, x)
+        y_parts = tuple(
+            _sum_values(codomain, tuple(
+                block._vapply_core(x_part) for block, x_part in zip(row, x_parts)
+            ), batched=True)
+            for row, codomain in zip(self.block_rows, _leaf_spaces(self.cod))
+        )
+        return _join(self.cod, y_parts)
 
-    @checked_method(
-        in_space="codomain", out_space="domain", in_batched=True, out_batched=True
-    )
-    def rvapply(self, y: Any) -> Any:
-        """Apply the block metric adjoint over leading-axis batches."""
-        y_parts = self.cod._components(y)
-        x_parts = []
-        for column, domain in enumerate(self.dom.leaf_spaces):
-            values = tuple(
-                self.block_rows[row][column].rvapply(y_parts[row])
+    def _rvapply_core(self, y: Any) -> Any:
+        y_parts = _split(self.cod, y)
+        x_parts = tuple(
+            _sum_values(domain, tuple(
+                self.block_rows[row][column]._rvapply_core(y_parts[row])
                 for row in range(self._row_count)
-            )
-            x_parts.append(_sum_values(domain, values, batched=True))
-        return self.dom._from_components(tuple(x_parts))
+            ), batched=True)
+            for column, domain in enumerate(_leaf_spaces(self.dom))
+        )
+        return _join(self.dom, x_parts)
 
     @property
     def H(self) -> BlockMatrixLinOp:
@@ -340,46 +380,46 @@ class BlockMatrixLinOp(TreeLinOp[TreeSpace, TreeSpace]):
         view = getattr(self, "_adjoint_view", None)
         if view is None:
             # The adjoint is the transposed matrix of block adjoints; cache both ways.
-            rows = tuple(
-                tuple(self.block_rows[row][column].H for row in range(self._row_count))
+            transposed = [
+                self.block_rows[row][column].H
                 for column in range(self._column_count)
-            )
-            view = BlockMatrixLinOp(rows)
+                for row in range(self._row_count)
+            ]
+            view = BlockMatrixLinOp(self._rows(transposed, self._column_def, self._row_def))
             self._adjoint_view = view
             view._adjoint_view = self
         return view
 
     def fuse(self, *, materialize: bool = False) -> BlockMatrixLinOp:
-        """Fuse each block (ADR-021), preserving the rectangular block layout."""
-        return BlockMatrixLinOp(
-            tuple(
-                tuple(block.fuse(materialize=materialize) for block in row)
-                for row in self.block_rows
-            )
-        )
+        """Fuse each block (ADR-021), preserving the block layout."""
+        return BlockMatrixLinOp(self._rows([op.fuse(materialize=materialize) for op in self.parts]))
 
     def tree_flatten(self):
         """Flatten row-major blocks for JAX pytree registration."""
-        return self.parts, (self._row_count, self._column_count)
+        return self.parts, (self._row_def, self._column_def)
 
     @classmethod
     def tree_unflatten(cls, aux: Any, children: Sequence[LinOp]) -> BlockMatrixLinOp:
         """Rebuild a block matrix from row-major pytree children."""
-        # Refold the flat children into rows.
-        row_count, column_count = aux
-        rows = tuple(
-            tuple(children[row * column_count : (row + 1) * column_count])
-            for row in range(row_count)
-        )
-        return cls(rows)
+        row_def, column_def = aux
+        width = column_def.num_leaves
+        return cls(optree.tree_unflatten(row_def, [
+            optree.tree_unflatten(column_def, list(children[row * width : (row + 1) * width]))
+            for row in range(row_def.num_leaves)
+        ]))
 
     @classmethod
     def from_operators(cls, parts: Sequence[LinOp]) -> BlockMatrixLinOp:
-        """Build a one-row block matrix from a sequence of operators."""
+        """Build a one-row block matrix, ``(x_1, ..., x_k) -> sum_j A_j x_j``."""
         return cls((tuple(parts),))
 
+    @classmethod
+    def stack(cls, parts: Sequence[LinOp]) -> BlockMatrixLinOp:
+        """Build a one-column block matrix, ``x -> (A_1 x, ..., A_k x)``."""
+        if not parts:
+            raise ValueError("Parts must be non-empty.")
+        return cls(tuple((op,) for op in parts))
+
     def _convert(self, new_ctx: Context) -> BlockMatrixLinOp:
-        """Convert every block to ``new_ctx`` and preserve the matrix layout."""
-        return BlockMatrixLinOp(
-            tuple(tuple(block.convert(new_ctx) for block in row) for row in self.block_rows)
-        )
+        """Convert every block to ``new_ctx`` and preserve the block layout."""
+        return BlockMatrixLinOp(self._rows([block.convert(new_ctx) for block in self.parts]))

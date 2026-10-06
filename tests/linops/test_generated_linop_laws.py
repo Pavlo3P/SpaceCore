@@ -142,8 +142,6 @@ def test_generated_inventory_covers_every_concrete_public_family():
         sc.ComposedLinOp,
         sc.SumLinOp,
         sc.ScaledLinOp,
-        sc.StackedLinOp,
-        sc.SumToSingleLinOp,
         sc.BlockDiagonalLinOp,
         sc.BlockMatrixLinOp,
     }

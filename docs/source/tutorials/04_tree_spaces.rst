@@ -291,9 +291,9 @@ Recap
 -  A **``TreeSpace``** is a direct product of heterogeneous leaves;
    elements are Python trees; inner products and squared norms sum over leaves.
    ``flatten``/``unflatten`` bridge to a plain vector.
--  **``BlockMatrixLinOp``** (and friends ``BlockDiagonalLinOp``,
-   ``StackedLinOp``, ``SumToSingleLinOp``) compose leaf operators into
-   maps between tree spaces.
+-  **``BlockMatrixLinOp``** (and ``BlockDiagonalLinOp``) compose leaf operators
+   into maps between tree spaces; a one-column or one-row block matrix stacks one
+   space into a tree or sums a tree into one space.
 -  Solvers like **``sc.cg``** run unchanged over tree spaces — structure
    is preserved end to end.
 

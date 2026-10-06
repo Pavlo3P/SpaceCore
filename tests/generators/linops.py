@@ -491,7 +491,7 @@ def tree_linop_cases(ctx: sc.Context) -> tuple[LinOpCase, ...]:
     )
 
     stacked_rows = (rows[0][0], rows[1][0])
-    stacked = sc.StackedLinOp.from_operators(stacked_rows)
+    stacked = sc.BlockMatrixLinOp.stack(stacked_rows)
     cases.append(
         _tree_case(
             stacked,
@@ -507,7 +507,7 @@ def tree_linop_cases(ctx: sc.Context) -> tuple[LinOpCase, ...]:
     )
 
     sum_parts = (rows[1][0], rows[1][1])
-    sum_to_single = sc.SumToSingleLinOp.from_operators(sum_parts)
+    sum_to_single = sc.BlockMatrixLinOp.from_operators(sum_parts)
     cases.append(
         _tree_case(
             sum_to_single,

@@ -232,7 +232,7 @@ class TestFuseTreeOperators:
         n = 4
         X = sc.DenseCoordinateSpace((n,), numpy_ctx)
         comps = [_dense(numpy_ctx, X, X, rng.standard_normal((n, n))) @ _dense(numpy_ctx, X, X, rng.standard_normal((n, n))) for _ in range(3)]
-        S = sc.StackedLinOp.from_operators(tuple(comps))
+        S = sc.BlockMatrixLinOp.stack(tuple(comps))
         fused = S.fuse()
         assert all(isinstance(p, sc.DenseLinOp) for p in fused.parts)
         x = numpy_ctx.asarray(rng.standard_normal(n))
@@ -246,7 +246,7 @@ class TestFuseTreeOperators:
         n = 4
         X = sc.DenseCoordinateSpace((n,), numpy_ctx)
         comps = [_dense(numpy_ctx, X, X, rng.standard_normal((n, n))) @ _dense(numpy_ctx, X, X, rng.standard_normal((n, n))) for _ in range(3)]
-        T = sc.SumToSingleLinOp.from_operators(tuple(comps))
+        T = sc.BlockMatrixLinOp.from_operators(tuple(comps))
         fused = T.fuse()
         assert all(isinstance(p, sc.DenseLinOp) for p in fused.parts)
         x = T.domain._from_components(tuple(numpy_ctx.asarray(rng.standard_normal(n)) for _ in range(3)))

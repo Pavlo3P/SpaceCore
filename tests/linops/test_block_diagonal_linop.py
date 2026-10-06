@@ -303,7 +303,7 @@ class TestBatching:
         dom1, dom2 = sc.DenseCoordinateSpace((1,), ctx), sc.DenseCoordinateSpace((1,), ctx)
         B1 = sc.DenseLinOp(ctx.asarray([[1.0], [2.0]]), dom1, shared, ctx)
         B2 = sc.DenseLinOp(ctx.asarray([[3.0], [-1.0]]), dom2, shared, ctx)
-        summed = sc.SumToSingleLinOp.from_operators((B1, B2))
+        summed = sc.BlockMatrixLinOp.from_operators((B1, B2))
         xs = (ctx.asarray([[1.0], [2.0]]), ctx.asarray([[3.0], [4.0]]))
 
         summed.vapply(xs)

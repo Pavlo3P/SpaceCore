@@ -50,6 +50,16 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Removed
 
+- **`StackedLinOp` and `SumToSingleLinOp`** (breaking). `BlockMatrixLinOp` covers
+  both: a side given as a plain one-element list or tuple is a single space, not a
+  one-leaf tree, and the containers of rows and of each row are the codomain and
+  domain trees (a NamedTuple of rows gives NamedTuple elements). Write
+  `BlockMatrixLinOp.stack((A1, A2))` for `x -> (A1 x, A2 x)` and
+  `BlockMatrixLinOp.from_operators((A1, A2))` for `(x1, x2) -> A1 x1 + A2 x2`; the
+  adjoint of each is the other. A one-column or one-row `BlockMatrixLinOp` now has a
+  plain endpoint where it used to have a one-leaf `TreeSpace`. The flat dense fast
+  paths of the two classes went with them: they did the same matrix products as
+  `DenseLinOp`'s core and saved only per-block call overhead.
 - **Legacy `BlockDiagonalLinOp(dom, cod, parts, ctx)` construction** (breaking).
   `BlockDiagonalLinOp(blocks, ctx)` takes the block tree only; its tree is the element
   structure, so a NamedTuple of blocks gives NamedTuple elements. The tree operators'
