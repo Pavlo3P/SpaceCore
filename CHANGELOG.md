@@ -71,6 +71,14 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   install extra, `docs/source/api/optimize.rst` and `tests/optimize/` go with
   them. SpaceCore keeps the geometry handoff they use (`Functional.grad`,
   `X.riesz`) and no optimization loops.
+- **Functional catalogue** (breaking): `least_squares`, `NegativeEntropyFunctional`,
+  `KLDivergenceFunctional`, `HuberFunctional`, `SpectralFunctional`, `spectralize`,
+  `eigenvalue_space`, `NuclearNormFunctional`, `generalized_shrinkage`, `prox_l1`,
+  `prox_l2sq` and `project_nonneg` moved to `spacecore-optimize` (`spo.<Name>`).
+  SpaceCore keeps the norms used by the prox rules (`LpNormFunctional`,
+  `SquaredL2NormFunctional`, with the `L1NormFunctional` wrapper), the
+  prox/conjugate machinery, indicators and sets, and the coordinate-gradient base
+  `_CoordinateFunctional`.
 - Notebooks, examples and the benchmark suite (`tutorials/`, `notebooks/`,
   `examples/`, `bench/`) move out of the package repository; the docs keep
   their tutorials pages (`docs/source/tutorials/`), and the

@@ -130,7 +130,7 @@ def test_jit_dynamic_steps_and_indicator_pytree():
     x = X.ctx.asarray([-2., .1, 3.])
 
     def run(x, t):
-        return f.prox(x, t), f.conjugate_prox(x, t), g.prox(x, t), sc.prox_l1(x, t, X)
+        return f.prox(x, t), f.conjugate_prox(x, t), g.prox(x, t)
 
     for step in (.2, .7):
         eager = run(x, step)
@@ -156,7 +156,6 @@ def test_complex_l1_uses_real_metric_weights(backend):
     # Nonzero-coordinate subgradient optimality in the real Hilbert pairing.
     active = np.abs(z) > 0
     np.testing.assert_allclose((weights*(x_np-z)/step)[active], z[active]/np.abs(z[active]), atol=2e-6)
-    np.testing.assert_allclose(array(X, sc.prox_l1(x, step, X)), z, atol=1e-6)
 
 
 def test_checked_array_steps_and_missing_membership():

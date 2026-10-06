@@ -1,5 +1,5 @@
-"""A space with no geometry and no coordinates is enough for operators, solvers,
-least squares and elements; nothing densifies behind the user's back."""
+"""A space with no geometry and no coordinates is enough for operators, solvers
+and elements; nothing densifies behind the user's back."""
 import warnings
 
 import numpy as np
@@ -48,17 +48,6 @@ def test_geometry_is_optional():
     assert X.riesz(b) is b and X.riesz_inverse(b) is b
     x = sc.cg(A, b, maxiter=10, tol=1e-12).x
     np.testing.assert_allclose(as_numpy(x), as_numpy(b) / diag)
-
-
-def test_least_squares_on_native_members():
-    ctx, X, A, b, diag = _setup()
-    f = sc.least_squares(A, b)
-    x = Pair(np.asarray(0.5), np.array([1.0, 0.0]))
-    r = as_numpy(x) * diag - as_numpy(b)
-    w = np.array([2.0, 1.0, 1.0])
-    np.testing.assert_allclose(f.value(x), 0.5 * np.sum(w * r * r))
-    # Riesz gradient A^*(Ax - b) with self-adjoint diagonal A.
-    np.testing.assert_allclose(as_numpy(f.grad(x)), diag * r)
 
 
 def test_element_does_not_densify_at_level_none():

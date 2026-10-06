@@ -10,7 +10,17 @@ from ..mapping._base import _find_rule, register
 from ..space import EuclideanInnerProduct, WeightedInnerProduct
 from ._algebra import ConstantFunctional, ScaledFunctional, SumFunctional, ZeroFunctional
 from .tools._norms import LpNormFunctional, SquaredL2NormFunctional
-from .tools._proximal import _soft_threshold
+
+
+def _soft_threshold(ops: Any, x: Any, threshold: Any) -> Any:
+    """Shrink ``|x|`` by ``threshold`` keeping the phase (sign for real ``x``)."""
+    radius = ops.abs(x)
+    if ops.is_complex_dtype(ops.get_dtype(x)):
+        safe = ops.where(radius > 0, radius, ops.ones_like(radius))
+        phase = x / safe
+    else:
+        phase = ops.sign(x)
+    return phase * ops.maximum(radius - threshold, ops.zeros_like(radius))
 
 
 def validate_step(step: Any, owner: Any, operation: str, *, positive: bool = True) -> None:

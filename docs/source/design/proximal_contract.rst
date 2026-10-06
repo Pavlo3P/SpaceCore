@@ -30,8 +30,9 @@ validate their values. At ``check_level="none"``, dynamic backend scalars are
 accepted without host conversion; the caller must guarantee their values are
 valid. Concrete invalid Python scalars still raise. This also applies to
 positive scaling coefficients and finite real constant shifts in compiled
-functional algebra. The older ``prox_l1`` / ``prox_l2sq`` helpers retain their
-nonnegative-step convention, including the documented zero-step behavior.
+functional algebra. The ``prox_l1`` / ``prox_l2sq`` helpers (now in
+``spacecore-optimize``) retain their nonnegative-step convention, including
+the documented zero-step behavior.
 
 Conjugates use Hilbert dual variables
 -------------------------------------

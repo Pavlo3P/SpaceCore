@@ -166,65 +166,30 @@ Quadratic functionals
 * ``QuadraticForm`` models objectives with value, gradient, and Hessian-vector action.
 * ``LinOpQuadraticForm`` represents ``0.5 <x, Qx> + ell(x) + a``.
 
-Battery functionals
--------------------
+Norm functionals
+----------------
 
-Named constructors over the existing machinery (ADR-019). Their gradients are
-metric (Riesz) gradients under the domain geometry.
+Coordinate norms (the ones the closed-form prox rules cover) and the realified
+view. Their gradients are metric (Riesz) gradients under the domain geometry.
 
 .. autosummary::
    :nosignatures:
 
-   spacecore.functional.least_squares
    spacecore.functional.SquaredL2NormFunctional
    spacecore.functional.LpNormFunctional
    spacecore.functional.L1NormFunctional
-   spacecore.functional.SpectralFunctional
-   spacecore.functional.spectralize
-   spacecore.functional.eigenvalue_space
-   spacecore.functional.NuclearNormFunctional
    spacecore.functional.RealifiedFunctional
    spacecore.functional.realify
-   spacecore.functional.NegativeEntropyFunctional
-   spacecore.functional.KLDivergenceFunctional
-   spacecore.functional.HuberFunctional
 
-* ``least_squares`` builds the ``scale ||A x - b||^2`` objective as a ``LinOpQuadraticForm``.
 * ``SquaredL2NormFunctional`` is ``1/2 ||x||_X^2`` (gradient ``x``, clean shrinkage prox).
 * ``LpNormFunctional`` / ``L1NormFunctional`` are coordinate ``p``-norms.
-* ``SpectralFunctional`` / ``spectralize`` lift **any** symmetric coordinate
-  functional onto a Jordan spectrum: on Hermitian matrices the differentiable
-  case is Lewis, "Derivatives of Spectral Functions", Thm 1.1, and convex
-  subgradients are Thm 1.3. The Schatten ``p``-norm is
-  ``spectralize(X, lambda s: LpNormFunctional(s, p))``, the negative von Neumann entropy
-  is ``spectralize(X, NegativeEntropyFunctional)``. ``eigenvalue_space`` builds
-  the real space the spectrum lives in.
-* ``NuclearNormFunctional`` is the named Schatten-1 case.
 * ``RealifiedFunctional`` / ``realify`` present a complex-domain functional over
   stacked real coordinates, for real-only optimizers.
-* ``NegativeEntropyFunctional`` and ``KLDivergenceFunctional`` are the entropy objectives.
-* ``HuberFunctional`` is the separable Huber loss.
 
-These constructors live in the :mod:`spacecore.functional.tools` subpackage and are
+The norms live in the :mod:`spacecore.functional.tools` subpackage and are
 re-exported from :mod:`spacecore.functional` and the top-level ``spacecore`` namespace.
-
-Proximal and projection
------------------------
-
-A closed-form, metric-aware proximal primitive and its named wrappers (ADR-019).
-Valid on Euclidean and diagonal metrics; a non-diagonal metric raises.
-
-.. autosummary::
-   :nosignatures:
-
-   spacecore.functional.generalized_shrinkage
-   spacecore.functional.prox_l1
-   spacecore.functional.prox_l2sq
-   spacecore.functional.project_nonneg
-
-* ``generalized_shrinkage`` solves ``<c, x>_X + eps ||x - x0||^2_X + lam ||x||_1`` (optionally ``x >= 0``).
-* ``prox_l1`` is the metric soft-threshold; ``prox_l2sq`` is the shrinkage ``v / (1 + t)``.
-* ``project_nonneg`` is the metric projection onto the nonnegative orthant.
+Least squares, entropy, Huber, spectral lifts and the shrinkage helpers are in
+`spacecore-optimize <https://github.com/Pavlo3P/spacecore-optimize>`_.
 
 Autodoc
 -------
@@ -259,8 +224,6 @@ Autodoc
 
 .. autofunction:: spacecore.functional.make_functional_composed
 
-.. autofunction:: spacecore.functional.least_squares
-
 .. autoclass:: spacecore.functional.SquaredL2NormFunctional
    :members:
 
@@ -269,33 +232,7 @@ Autodoc
 
 .. autofunction:: spacecore.functional.L1NormFunctional
 
-.. autoclass:: spacecore.functional.SpectralFunctional
-   :members:
-
-.. autofunction:: spacecore.functional.spectralize
-
-.. autofunction:: spacecore.functional.eigenvalue_space
-
-.. autofunction:: spacecore.functional.NuclearNormFunctional
-
 .. autoclass:: spacecore.functional.RealifiedFunctional
    :members:
 
 .. autofunction:: spacecore.functional.realify
-
-.. autoclass:: spacecore.functional.NegativeEntropyFunctional
-   :members:
-
-.. autoclass:: spacecore.functional.KLDivergenceFunctional
-   :members:
-
-.. autoclass:: spacecore.functional.HuberFunctional
-   :members:
-
-.. autofunction:: spacecore.functional.generalized_shrinkage
-
-.. autofunction:: spacecore.functional.prox_l1
-
-.. autofunction:: spacecore.functional.prox_l2sq
-
-.. autofunction:: spacecore.functional.project_nonneg

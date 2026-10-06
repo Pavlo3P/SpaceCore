@@ -182,17 +182,9 @@ def _battery_cases(
 ) -> tuple[FunctionalCase, ...]:
     """Generated cases for the ADR-019 battery functionals (real coordinates)."""
     x = np.asarray([0.5, -1.0, 2.0], dtype=dtype)
-    x_pos = np.asarray([0.5, 1.0, 2.0], dtype=dtype)
-    x_huber = np.asarray([0.5, -1.5, 2.0], dtype=dtype)
-    target = np.asarray([1.0, 2.0, 0.5], dtype=dtype)
     weights = np.asarray(_BATTERY_WEIGHTS, dtype=dtype)
-    delta = 1.0
 
     lp_norm = float(np.sum(np.abs(x) ** 2.0) ** 0.5)
-    a = np.abs(x_huber)
-    huber_value = float(
-        np.sum(np.where(a <= delta, 0.5 * a * a, delta * (a - 0.5 * delta)))
-    )
 
     cases: list[FunctionalCase] = []
     for weighted in (False, True):
@@ -215,65 +207,7 @@ def _battery_cases(
                 euclidean_gradient=x / lp_norm,
             )
         )
-        cases.append(
-            _battery_case(
-                dtype, check_level, kind="negative-entropy", weighted=weighted,
-                build=lambda dom, ctx: sc.NegativeEntropyFunctional(dom, ctx),
-                x_np=x_pos,
-                value=float(np.sum(x_pos * np.log(x_pos))),
-                euclidean_gradient=np.log(x_pos) + 1.0,
-            )
-        )
-        cases.append(
-            _battery_case(
-                dtype, check_level, kind="kl-divergence", weighted=weighted,
-                build=lambda dom, ctx: sc.KLDivergenceFunctional(ctx.asarray(target), dom, ctx),
-                x_np=x_pos,
-                value=float(np.sum(x_pos * np.log(x_pos / target))),
-                euclidean_gradient=np.log(x_pos / target) + 1.0,
-            )
-        )
-        cases.append(
-            _battery_case(
-                dtype, check_level, kind="huber", weighted=weighted,
-                build=lambda dom, ctx: sc.HuberFunctional(dom, delta, ctx),
-                x_np=x_huber,
-                value=huber_value,
-                euclidean_gradient=np.where(a <= delta, x_huber, delta * np.sign(x_huber)),
-            )
-        )
     return tuple(cases)
-
-
-def _spectral_case(dtype: Any, check_level: sc.CheckLevel | str) -> FunctionalCase:
-    """Generated case for the Schatten p-norm as a spectral lift of the coordinate p-norm.
-
-    Uses ``p = 2`` so the value is the Frobenius norm and the gradient is
-    ``X / ||X||_F`` -- both computable without an eigendecomposition, giving an
-    independent reference. The ``"real"`` capability is intentionally omitted so
-    the directional-derivative law (which assumes a length-3 coordinate
-    direction) skips this matrix domain; that identity is covered in
-    ``tests/functional/tools/test_spectral.py``.
-    """
-    ctx = _context(dtype, check_level)
-    domain = sc.HermitianSpace(2, ctx=ctx)
-    m = np.asarray([[2.0, 0.5], [0.5, 3.0]], dtype=dtype)
-    frobenius = float(np.linalg.norm(m, "fro"))
-    target_ctx = _context(_target_dtype(dtype), check_level)
-    return FunctionalCase(
-        obj=sc.spectralize(domain, lambda t: sc.LpNormFunctional(t, 2.0), ctx),
-        reference={
-            "kind": "spectral-lp-norm",
-            "domain": domain,
-            "x": ctx.asarray(m),
-            "value": frobenius,
-            "gradient": ctx.asarray(m / frobenius),
-            "target_ctx": target_ctx,
-            "check_level": check_level,
-        },
-        capabilities=frozenset({"gradient", "conversion", "euclidean", "spectral"}),
-        id=f"spectral-lp-norm-frobenius-{np.dtype(dtype).name}-checks-{check_level}",
-    )
 
 
 def _composed_case(dtype: Any, check_level: sc.CheckLevel | str) -> FunctionalCase:
@@ -523,35 +457,6 @@ def _algebra_cases(dtype: Any, check_level: sc.CheckLevel | str) -> tuple[Functi
     )
 
 
-def _spectral_wrapper_case(dtype, check_level):
-    """Generated case for the general spectral lift ``SpectralFunctional``.
-
-    Uses ``SquaredL2NormFunctional`` on the eigenvalue space, so
-    ``F(X) = 1/2 sum lambda_i^2 = 1/2 ||X||_F^2`` with gradient ``X`` — both
-    available in closed form without an eigendecomposition, giving an
-    independent reference (the wrapper is checked against the hand-written
-    ``NuclearNormFunctional`` in ``tests/functional/tools/test_spectral.py``).
-    """
-    ctx = _context(dtype, check_level)
-    domain = sc.HermitianSpace(2, ctx=ctx)
-    m = np.asarray([[2.0, 0.5], [0.5, 3.0]], dtype=dtype)
-    target_ctx = _context(_target_dtype(dtype), check_level)
-    return FunctionalCase(
-        obj=sc.spectralize(domain, sc.SquaredL2NormFunctional, ctx),
-        reference={
-            "kind": "spectral-wrapper",
-            "domain": domain,
-            "x": ctx.asarray(m),
-            "value": 0.5 * float(np.sum(m * m)),
-            "gradient": ctx.asarray(m),
-            "target_ctx": target_ctx,
-            "check_level": check_level,
-        },
-        capabilities=frozenset({"gradient", "conversion", "euclidean", "spectral"}),
-        id=f"spectral-wrapper-squared-l2-{np.dtype(dtype).name}-checks-{check_level}",
-    )
-
-
 def _realified_case(dtype, check_level):
     """Generated case for ``RealifiedFunctional`` over stacked real coordinates.
 
@@ -626,6 +531,4 @@ def functional_cases(
                 cases.extend(_indicator_case(check_level, weighted, feasible)
                              for weighted in (False, True) for feasible in (False, True))
                 cases.extend(_battery_cases(np.float64, check_level))
-                cases.append(_spectral_case(np.float64, check_level))
-                cases.append(_spectral_wrapper_case(np.float64, check_level))
     return tuple(cases)
