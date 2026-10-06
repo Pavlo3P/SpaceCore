@@ -123,7 +123,8 @@ Here is a general quadratic bowl :math:`F(x) = \tfrac12 x^\top H x`.
             coord_grad = self.ops.matmul(self.H, x)          # cotangent  ∂F/∂x = Hx
             return self.domain.riesz_inverse(coord_grad)     # → gradient in the space geometry
     
-        # pytree hooks (required): leaves are parameters, aux is static structure
+        # pytree hooks, written by hand here; declaring _fields = ("H", "dom", "ctx")
+        # instead derives them, and convert() too (see the "Extending" design note)
         def tree_flatten(self):
             return (self.H,), (self.domain, self.ctx)
         @classmethod

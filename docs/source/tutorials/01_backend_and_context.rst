@@ -301,8 +301,8 @@ The same wrong input is caught at ``standard`` but silently accepted at
 
 Use ``none`` in tight production loops you have already validated, and
 ``standard``/``strict`` while developing. (Older code used
-``enable_checks=True/False``; that still works but is deprecated in
-favour of ``check_level``.)
+``enable_checks=True/False``; that spelling was removed in 0.5.0a, so use
+``check_level``.)
 
 5 · Switching backends with ``.convert(...)``
 ---------------------------------------------

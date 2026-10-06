@@ -20,7 +20,9 @@ Inner-product geometry is part of the space contract. Euclidean and weighted geo
 
 ## LinOp and Functional layers
 
-`spacecore/linop/` contains typed maps between domain and codomain spaces. `apply(x)` evaluates the forward map `A x`; `rapply(y)` evaluates the metric adjoint `A^sharp y`; `.H` returns an adjoint view that swaps those actions. Algebraic operators implement composition, sums, scalar multiples, products, stacking, and block structure without eagerly materializing matrices.
+`spacecore/mapping/` holds `Mapping`, the common parent of `LinOp` and `Functional`, with the lazy algebra both families share: the operator-overload rule table, the scaled/sum/zero nodes and the scalar helpers. It also derives equality from a class's declared `_fields` (see `docs/source/design/extending.rst`).
+
+`spacecore/linop/` contains typed maps between domain and codomain spaces. `apply(x)` evaluates the forward map `A x`; `rapply(y)` evaluates the metric adjoint `A^sharp y`; `.H` returns an adjoint view that swaps those actions. `LinOp` owns these checked public methods and subclasses implement the check-free cores `_apply_core`, `_rapply_core` (and optionally the batched ones), which composites and solvers call directly. Algebraic operators implement composition, sums, scalar multiples, and block structure without eagerly materializing matrices; `BlockMatrixLinOp` also covers stacking one space into a tree (one column) and summing a tree into one space (one row).
 
 Matrix-backed operators own a coordinate matrix or tensor, so they can compute metric adjoints with Riesz maps. Matrix-free operators do not own a matrix. `MatrixFreeLinOp.rapply` is a user-supplied assertion that the callable is already the correct metric adjoint for the declared spaces. SpaceCore validates membership when checks are enabled, but it does not derive or correct matrix-free adjoints.
 
@@ -34,7 +36,7 @@ Solver assumptions are mathematical assumptions over declared spaces: Hermitian,
 
 ## Cross-cutting infrastructure
 
-`spacecore/_contextual/` owns context-bound objects, context normalization, default-context state, backend registration, and conversion dispatch. `spacecore/_batching.py` provides shared batching helpers. `spacecore/_checks.py` provides method-level validation decorators used by spaces, operators, and functionals; runtime check intensity is selected from `spacecore/_check_policy.py`, which defines the `CheckLevel` literal (`"none"`, `"cheap"`, `"standard"`, `"strict"`) and the `CHECK_LEVELS` ordering. Tree-structured handling lives with the space implementations in `spacecore/space/concrete/_tree_space.py` (using `optree`) rather than in a top-level helper module. `spacecore/_version.py` is the package version source used by packaging and docs.
+`spacecore/contextual/` owns context-bound objects, context normalization, default-context state, backend registration, and conversion, which `ContextBound` derives from a class's declared `_fields`; `PyTreeNode` in `spacecore/backend/_container.py` derives the pytree hooks from the same declaration. `spacecore/_batching.py` provides shared batching helpers. `spacecore/_checks.py` provides the method-level validation decorators used by spaces, operators, and functionals, and defines the `CheckLevel` literal (`"none"`, `"cheap"`, `"standard"`, `"strict"`) with its `CHECK_LEVELS` ordering. Tree-structured handling lives with the space implementations in `spacecore/space/concrete/_tree_space.py` (using `optree`) rather than in a top-level helper module. `spacecore/_version.py` is the package version source used by packaging and docs.
 
 ## Public class map
 
@@ -44,6 +46,7 @@ This map lists public concrete class-like exports a contributor is likely to enc
 - `BackendCheck` — membership check that validates an element belongs to the expected backend family.
 - `BackendFamily` — backend-family identifier used by contexts and backend detection.
 - `BlockDiagonalLinOp` — product-space operator that applies component operators independently on each block.
+- `BlockMatrixLinOp` — rectangular block operator `y_i = sum_j A_ij x_j`; one column stacks a space into a tree, one row sums a tree into a space.
 - `CGResult` — result tuple returned by conjugate-gradient solves.
 - `ComposedFunctional` — functional representing lazy composition of a functional with a linear operator.
 - `ComposedLinOp` — lazy composition `A @ B` of compatible linear operators.
@@ -82,10 +85,8 @@ This map lists public concrete class-like exports a contributor is likely to enc
 - `Space` — context-bound mathematical space with membership validation.
 - `SpaceValidationError` — exception raised when an element fails space validation.
 - `SquareMatrixCheck` — membership check enforcing square matrix shape.
-- `StackedLinOp` — operator mapping one domain into a tree codomain.
 - `StackedSpace` — space representing a fixed leading-axis stack of one base space.
 - `SumLinOp` — lazy finite sum of operators with common domain and codomain.
-- `SumToSingleLinOp` — operator mapping a tree domain into one codomain by summing leaf outputs.
 - `TorchOps` — optional Torch backend operations class, exported when Torch is installed.
 - `WeightedInnerProduct` — diagonal weighted inner-product geometry with validated positive finite weights.
 - `ZeroLinOp` — zero linear operator between two spaces.

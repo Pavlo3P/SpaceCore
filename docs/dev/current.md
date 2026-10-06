@@ -7,18 +7,37 @@ disagree, this document wins.
 
 ## Now
 
+### `0.5.0a` simplification pass — 2026-10-06
+
+The package lost layers without changing the Backend → Space → Mapping
+(LinOp / Functional) → Element division:
+
+- `LinOp` and `Functional` own their checked public methods; subclasses write only
+  the check-free cores (`_apply_core`, `_value_core`, ...). The `kernels` package
+  that held those cores as free functions is gone.
+- A class declares its constructor `_fields` once; pytree flattening, `convert`
+  and `Mapping` equality derive from it (`docs/source/design/extending.rst`).
+- `BlockMatrixLinOp` covers stacking and summing (`stack()`, `from_operators()`);
+  `StackedLinOp`, `SumToSingleLinOp`, `spacecore.opfamily`, the legacy
+  `BlockDiagonalLinOp(dom, cod, parts, ctx)` form and `_check_policy.py` are gone.
+- The map algebra lives in the `spacecore.mapping` package.
+- The optimizer adapters moved to the separate `spacecore-optimize` package; the
+  notebooks, tutorial notebooks, examples and the `bench` suite left the
+  repository (the rendered tutorial pages stay in the docs).
+
 ### `0.5.0a` proximal milestone — 2026-09-28
 
 The first-order toolbox now has optional functional prox rules, Hilbert conjugate prox, and the minimal
-ADR-020 set/indicator/projection surface. The consumer example and benchmark
-exercise unchanged proximal-gradient/PDHG loops across dense/native elements
-and Euclidean/weighted geometry, including compiled JAX. Unsupported operations
+ADR-020 set/indicator/projection surface. Tests exercise
+unchanged proximal-gradient/PDHG loops across dense/native elements and
+Euclidean/weighted geometry, including compiled JAX. Unsupported operations
 raise explicit capability errors. See `docs/source/design/proximal_contract.rst`.
 
 Next: downstream adoption, demand-driven additional rules, and measured
 performance improvements/regression tracking. Broad performance parity is not
-established. The release train below is historical planning: ADR-016 dispatch
-has been removed, and native functionals and Krylov paths have since advanced.
+established. The release train below is historical planning: ADR-016 dispatch,
+the ADR-018 adapters and the ADR-023 bench have since left the package, and native
+functionals and Krylov paths have advanced.
 
 ### Earlier release planning
 
@@ -34,16 +53,6 @@ Milestone tracking: [SpaceCore milestones](https://github.com/Pavlo3P/SpaceCore/
 Design decisions not yet settled. Do not open unsolicited PRs for these unless an
 issue already defines the work or a maintainer has agreed on the design.
 
-- **Dispatch** — ADR-016 is accepted and the structural-dispatch mechanism is
-  implemented (`dispatch_key`/`priority`/`cost`, the registry index, the
-  `dispatch()` entry point with `off`/`on`/`verify` modes and the memory gate),
-  off by default. Three dispatch-eligible algebraic specs now route at the wired
-  call sites (`composed-zero-annihilation`, `composed-identity-elision`,
-  `block-diagonal-uniform-dense-batched`); `NumpyOps.free_memory_bytes()` reports
-  RAM via optional `psutil`. Remaining: per-backend `free_memory_bytes()` for
-  GPU backends; cross-backend bit-exactness of the batched block fold (NumPy-only
-  today); whether build-time materialization may ever be auto-triggered or stays
-  explicit opt-in.
 - **Mixed precision** — which operations may combine precisions without explicit
   conversion?
 - **Solver workspaces** — when should vector workspaces follow operand dtype
@@ -71,20 +80,12 @@ its ADR is accepted.
 
 Turn three recorded design decisions into code:
 
-- **ADR-016 — optimized-kernel dispatch.** *Implemented* (off by default):
-  `dispatch_key`/`priority`/`cost` on `KernelSpec`, the registry index, the
-  `dispatch()` entry point with its `dispatch_mode` (`off`/`on`/`verify`) and
-  shape-only memory gate, the composed / block-diagonal call sites rewired, and
-  three dispatch-eligible algebraic specs (zero annihilation, identity elision,
-  uniform-dense batched block matmul) each with an `rtol=atol=0` correctness
-  reference and a bench probe. Remaining: GPU-backend `free_memory_bytes()` and
-  cross-backend bit-exactness of the batched block fold (NumPy-only today).
-- **ADR-018 — external optimizer adapters.** *Implemented*: the
-  `spacecore.optimize` subpackage ships `minimize_scipy`, `line_search_scipy`,
-  and `minimize_optax`, each taking a `Functional` and performing the
-  metric→coordinate gradient handoff (`X.riesz(F.grad(x))`) centrally. The SciPy
-  adapters reject complex domains; `minimize_optax` requires a JAX-backed domain
-  and the optional `optax` extra. jaxopt/BlackJAX/pymanopt stay as tutorials.
+- **ADR-016 — optimized-kernel dispatch.** *Removed in 0.5.0a*: its batched specs
+  ran mostly slower than the plain loops on eager NumPy and never under `jax.jit`;
+  the check-free cores it sat on are now methods of their classes.
+- **ADR-018 — external optimizer adapters.** *Moved out in 0.5.0a* to the
+  `spacecore-optimize` package (`minimize_scipy`, `line_search_scipy`,
+  `minimize_optax`).
 - **ADR-019 — everyday toolbox.** Battery functionals and a closed-form
   proximal/projection primitive.
 
@@ -122,9 +123,10 @@ Turn three recorded design decisions into code:
   design note on non-Euclidean preconditioning (how preconditioners transform
   under a Riesz map `R_X`).
 - **Performance** — measure abstraction overhead against the stable generators;
-  add optimized kernels for block / Kronecker / tensor-product operators, each
-  behind a correctness reference and a benchmark; add performance-regression
-  tracking to CI on top of `python -m bench`.
+  add a specialized path for block / Kronecker / tensor-product operators only
+  where a benchmark under `jax.jit` shows a gain, each behind a correctness
+  reference; add performance-regression tracking to CI (the benchmark suite now
+  lives outside this repository).
 
 ### `0.7.0` — Documentation and tutorials
 

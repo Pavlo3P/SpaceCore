@@ -65,8 +65,9 @@ set's metric projection.
 ``NonnegativeOrthant(X)`` supports real dense coordinates with Euclidean or
 diagonal geometry. Its projection is coordinatewise maximum with zero. Other
 geometries and representations need their own mathematically valid set
-implementation. A custom ``Set`` also implements the standard ``_convert``
-and pytree hooks; ambient geometry is static metadata. Sets do not imply
+implementation. A custom ``Set`` declares its constructor ``_fields``, which gives it
+conversion and the pytree hooks (:doc:`extending`); ambient geometry is static
+metadata. Sets do not imply
 manifold operations or an intersection-projection solver.
 
 .. code-block:: python

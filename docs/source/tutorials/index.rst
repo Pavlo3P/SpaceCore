@@ -22,7 +22,7 @@ Worked examples
 Performance and internals
 -------------------------
 
-* :doc:`09_kernels_and_fusion` — Kernel dispatch, operator fusion with ``fuse()``, and caching materialized stacks.
+* :doc:`09_kernels_and_fusion` — Lazy operator algebra and explicit fusion with ``fuse()``.
 
 .. toctree::
    :hidden:

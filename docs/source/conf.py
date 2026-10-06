@@ -37,7 +37,7 @@ autodoc_default_options = {
     "show-inheritance": True,
     "exclude-members": (
         "tree_flatten, tree_unflatten, "
-        "ctx, ops, dtype, enable_checks, representer, A, parts, n, "
+        "ctx, ops, dtype, representer, A, parts, n, "
         "xp, torch, "
         "__dict__, __weakref__, __module__"
     ),

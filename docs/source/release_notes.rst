@@ -1,6 +1,57 @@
 Release notes
 =============
 
+Version 0.5.0a
+--------------
+
+Unreleased pre-release. SpaceCore 0.5.0a adds the first-order proximal surface
+and removes layers that did not earn their keep, while keeping the Backend →
+Space → Mapping (``LinOp`` / ``Functional``) → Element division. The full list is
+in ``CHANGELOG.md``.
+
+Added
+~~~~~
+
+* Optional ``Functional.prox`` rules, Hilbert-space ``conjugate_prox``, and the
+  ``Set`` / ``NonnegativeOrthant`` / ``IndicatorFunctional`` projection surface
+  (:doc:`design/proximal_contract`).
+* ``Element``, a formal context-bound member of a space; ``Mapping``, the common
+  parent of ``LinOp`` and ``Functional``; ``Field`` scalar spaces as the codomain
+  of functionals.
+* A field declaration for extensions: a class lists its constructor ``_fields``
+  once and gets pytree flattening, ``convert`` and (for maps) equality from it
+  (:doc:`design/extending`).
+
+Changed
+~~~~~~~
+
+* ``LinOp`` and ``Functional`` own their checked public methods; subclasses
+  implement the check-free cores ``_apply_core``, ``_rapply_core``,
+  ``_value_core``, and so on.
+* A one-column or one-row ``BlockMatrixLinOp`` has a plain endpoint rather than a
+  one-leaf ``TreeSpace``, and the containers of its rows give the endpoint trees.
+* Coordinate functionals that compared by identity now compare by their fields.
+* The pytree ``aux`` of field-declared classes is a tuple of ``(field, value)``
+  pairs.
+
+Removed
+~~~~~~~
+
+* ``StackedLinOp`` and ``SumToSingleLinOp`` (breaking): use
+  ``BlockMatrixLinOp.stack(parts)`` and ``BlockMatrixLinOp.from_operators(parts)``.
+* ``spacecore.opfamily`` and the ``Functional * LinOp`` rule (breaking): it had no
+  consumer; ``F * A`` now raises ``TypeError``.
+* The ``spacecore.kernels`` package: the ADR-016 dispatch specs (mostly slower on
+  eager NumPy, never used under ``jax.jit``) and the core-function layer, whose
+  cores are now methods of their classes.
+* ``spacecore.optimize`` (breaking): the optimizer adapters live in the separate
+  ``spacecore-optimize`` package.
+* The legacy ``BlockDiagonalLinOp(dom, cod, parts, ctx)`` form, the
+  ``enable_checks`` shim, ``ShiftedFunctional`` and other deprecated surfaces
+  (breaking).
+* Notebooks, tutorial notebooks, examples and the benchmark suite left the
+  package repository; the rendered tutorials stay in these docs.
+
 Version 0.4.3
 -------------
 
@@ -166,7 +217,7 @@ Added
   optimizers expect with ``X.riesz(F.grad(x))`` — the identity on a Euclidean
   space and mandatory on a weighted one. The external optimizer owns iteration,
   line search, and convergence. ``minimize_optax`` requires a JAX-backed domain
-  and the optional ``optax`` extra. See :doc:`api/optimize`.
+  and the optional ``optax`` extra. See the optimizer adapter docs (now in ``spacecore-optimize``).
 * ADR-019 everyday functional and proximal toolbox, in the
   ``spacecore.functional.tools`` subpackage. ``least_squares(A, b, *,
   weights=None, scale=0.5)`` returns a ``LinOpQuadraticForm`` for the (optionally

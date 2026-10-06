@@ -17,10 +17,9 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 - `Set`, `NonnegativeOrthant`, and `IndicatorFunctional` connect membership,
   metric projection, and extended-real indicator values. Custom sets explicitly
   declare convexity before supplying an indicator.
-- A consumer acceptance example and macrobenchmark run unchanged proximal
-  gradient and PDHG across two metrics and two representations, including JAX
-  compilation with dynamic steps. Tests check independent KKT conditions and
-  every benchmark result coordinate.
+- Acceptance tests run unchanged proximal gradient and PDHG across two metrics
+  and two representations, including JAX compilation with dynamic steps, and
+  check independent KKT conditions.
 
 ### Fixed
 
@@ -116,6 +115,13 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **`LinOp` and `Functional` own their checked public methods.** `apply`, `rapply`,
+  `vapply`, `rvapply`, `value` and `vvalue` validate on the base class and call the
+  check-free cores (`_apply_core`, `_value_core`, ...), with the vmap fallback in the
+  default batched cores. A subclass implements the cores; overriding a public method
+  still works. See the new "Extending SpaceCore" design note.
+- The map algebra moved from `spacecore/mapping.py` into the `spacecore.mapping`
+  package; `from spacecore.mapping import ...` is unchanged.
 - **Field declarations replace hand-written pytree, convert and equality hooks.** A
   class lists its constructor fields once (`_fields`, with `_dynamic` naming the
   children); `PyTreeNode` derives `tree_flatten`/`tree_unflatten`, `ContextBound`

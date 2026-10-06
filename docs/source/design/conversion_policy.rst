@@ -12,8 +12,11 @@ Spaces are reconstructed in the target context. Shape, structure, tolerances,
 and geometry definitions are preserved. Geometry data that stores arrays, such
 as ``WeightedInnerProduct.weights``, is converted with ``target.asarray``.
 
-Operators are reconstructed in the target context when they implement
-``_convert``. Matrix-backed operators convert stored dense or sparse matrices.
+Operators, functionals, spaces and sets are reconstructed in the target context
+from their declared constructor fields (:doc:`extending`): the context is
+replaced, bound objects convert recursively and dense arrays move with
+``target.asarray``. Classes with other needs override ``_convert``; sparse
+matrices, for example, convert with ``assparse``.
 Algebraic operators convert their operands. Matrix-free operators preserve their
 Python callables and rebuild only their domain, codomain, and context; the
 callables must already be valid for the target backend.

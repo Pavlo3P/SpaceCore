@@ -6,6 +6,7 @@ Rules for geometry, validation, batching, conversion, and backend behavior.
 .. toctree::
    :maxdepth: 1
 
+   extending
    proximal_contract
    context_ownership
    conversion_policy
