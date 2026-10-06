@@ -27,9 +27,9 @@ The intended policy levels are:
 - `standard`: current contributor-facing safety level; include component membership, constructor storage checks, scalar output shape, Hermitian structure when explicitly configured, and conversion consistency.
 - `strict`: allow expensive or numerical checks such as full adjoint identities, basis-based Hermiticity, positive-definiteness probes, batched/single consistency, and cross-backend conformance checks.
 
-Boolean `enable_checks` is a deprecated compatibility shim: `False` maps to
-`none`; `True` maps to `standard`; passing it together with `check_level` raises
-`TypeError`.
+Boolean `enable_checks` was a deprecated compatibility shim (`False` mapped to
+`none`, `True` to `standard`); it was removed in 0.5.0a, and `check_level` is the
+only spelling.
 
 ## Rationale
 

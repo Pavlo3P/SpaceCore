@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted (implemented)
+Accepted (implemented); **moved out (0.5.0a, 2026-10-06).** The adapters now live in
+the separate `spacecore-optimize` package; SpaceCore itself ships no optimizer adapters.
 
 ## Context
 

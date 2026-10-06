@@ -6,7 +6,10 @@
 `spacecore.kernels.specs`, `dispatch`, `dispatch_mode` — was removed. Its batched specs
 applied only to eager NumPy, where they measured mostly slower than the generic loops
 (as ADR-022 had already recorded for 0.4.1), and never under `jax.jit`. Six of its ten
-specs were never selected. The core-kernel layer below stands unchanged.
+specs were never selected. **Superseded in full (0.5.0a, 2026-10-06):** the core-kernel
+layer was folded into the classes it served — each check-free core is now an
+`_apply_core`/`_value_core`-style method on its operator or functional, and the
+`spacecore.kernels` package no longer exists.
 
 Accepted for the kernel-layer architecture and for the optimized-kernel
 **dispatch policy** (see "Decision — optimized-kernel dispatch" below). The

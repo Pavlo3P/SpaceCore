@@ -2,7 +2,8 @@
 
 ## Status
 
-Proposed.
+Proposed; **withdrawn from the package (0.5.0a, 2026-10-06).** The `bench` package
+left the SpaceCore repository with the notebooks and examples; nothing here is shipped.
 
 This ADR specifies the benchmark framework SpaceCore *should* provide: a
 top-level `bench` package runnable as `python -m bench` that measures SpaceCore

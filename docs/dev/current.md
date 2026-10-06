@@ -150,8 +150,9 @@ demonstrated by tutorials outside the core package; reliable interoperability
 adapters; benchmarks and regression tracking running in CI; a defined
 deprecation/compatibility policy.
 
-**Final work** — freeze the public API; remove the `enable_checks` deprecation
-shim and any abandoned experimental surface; complete the typing
+**Final work** — freeze the public API; remove any abandoned experimental surface
+(the `enable_checks` shim, `opfamily`, the `kernels` package and the legacy
+`BlockDiagonalLinOp` form already went in 0.5.0a); complete the typing
 (`docs/dev/typing-audit.md`, `uvx pyright` baseline), naming, and documentation
 audits; run full downstream migration and artifact verification.
 
