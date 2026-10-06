@@ -100,23 +100,6 @@ class ComposedFunctional(Functional):
         self.F = F.convert(A.ctx)
         self.A = A
 
-    @checked_method(in_space="domain", out_space="codomain")
-    def value(self, x: Any) -> Any:
-        """
-        Evaluate ``F(A x)``.
-
-        Parameters
-        ----------
-        x:
-            Element of ``A.domain``.
-
-        Returns
-        -------
-        Any
-            Scalar-like value returned by the composed functional.
-        """
-        return self._value_core(x)
-
     @checked_method(in_space="domain", out_space="domain")
     def grad(self, x: Any) -> Any:
         r"""

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from abc import abstractmethod
 from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
 from .._batching import _leading_batch_size, _warn_vmap_fallback_once
@@ -72,7 +71,7 @@ class Functional(Mapping, Generic[Domain]):
         """Domain space of this scalar-valued map."""
         return self.dom
 
-    @abstractmethod
+    @checked_method(in_space="domain", out_space="codomain")
     def value(self, x: Any, *args: Any, **kwargs: Any) -> Any:
         """Evaluate this functional at an element of ``self.domain``.
 
@@ -80,6 +79,7 @@ class Functional(Mapping, Generic[Domain]):
         parameters such as data, temperature, or a penalty weight — that are not
         part of the domain. Overrides that take only ``x`` remain valid.
         """
+        return self._value_core(x, *args, **kwargs)
 
     def grad(self, x: Any, *args: Any, **kwargs: Any) -> Any:
         """Gradient at an element of ``self.domain``.
@@ -173,7 +173,9 @@ class Functional(Mapping, Generic[Domain]):
         raise NotImplementedError(f"{type(self).__name__} does not implement vgrad().")
 
     def _value_core(self, x: Any, *args: Any, **kwargs: Any) -> Any:
-        """Check-free value core; the base falls back to the checked ``value``."""
+        """Check-free value core; the base falls back to an overridden ``value``."""
+        if type(self).value is Functional.value:
+            raise NotImplementedError(f"{type(self).__name__} defines neither value nor _value_core.")
         return self.value(x, *args, **kwargs)
 
     def _grad_core(self, x: Any, *args: Any, **kwargs: Any) -> Any:
@@ -181,8 +183,15 @@ class Functional(Mapping, Generic[Domain]):
         return self.grad(x, *args, **kwargs)
 
     def _vvalue_core(self, xs: Any) -> Any:
-        """Check-free batched-value core; the base falls back to ``vvalue``."""
-        return self.vvalue(xs)
+        """Check-free batched-value core; the base vmaps ``value`` unless ``vvalue`` is overridden."""
+        if type(self).vvalue is not Functional.vvalue:
+            return self.vvalue(xs)
+        return self._vmap_vvalue(xs)
+
+    def _vmap_vvalue(self, xs: Any) -> Any:
+        # Generic batching: vmap the single-element value over the leading axis.
+        _warn_vmap_fallback_once(self, "vvalue", _leading_batch_size(self.domain, xs))
+        return self.ops.vmap(self.value, in_axes=0, out_axes=0)(xs)
 
     def _vgrad_core(self, xs: Any) -> Any:
         """Check-free batched-gradient core; the base falls back to ``vgrad``."""
@@ -213,8 +222,7 @@ class Functional(Mapping, Generic[Domain]):
     @checked_method(in_space="domain", in_batched=True, out_batched_scalar=True)
     def vvalue(self, xs: Any) -> Any:
         """Evaluate over a leading batch axis. Input must have shape ``(N,) + domain.shape``; use ``moveaxis`` for other layouts."""
-        _warn_vmap_fallback_once(self, "vvalue", _leading_batch_size(self.domain, xs))
-        return self.ops.vmap(self.value, in_axes=0, out_axes=0)(xs)
+        return self._vvalue_core(xs)
 
     def assert_domain(self, x: Any) -> None:
         """Raise if ``x`` is not in the domain."""

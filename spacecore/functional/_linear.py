@@ -183,16 +183,6 @@ class InnerProductFunctional(LinearFunctional[Domain]):
         """Stored domain element ``c`` defining ``ell_c(x) = <c, x>``."""
         return self._c
 
-    @checked_method(in_space="domain", out_space="codomain")
-    def value(self, x: Any) -> Any:
-        """Return ``domain.inner(representer, x)``."""
-        return self._value_core(x)
-
-    @checked_method(in_space="domain", in_batched=True, out_batched_scalar=True)
-    def vvalue(self, xs: Any) -> Any:
-        """Evaluate ``domain.inner(representer, xs[i])`` without a Python loop."""
-        return self._vvalue_core(xs)
-
     def __eq__(self, other: Any) -> bool:
         """Return whether another inner-product functional has the same representer."""
         if not self.same_math(other):              # Tier 1: backend
@@ -252,7 +242,7 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
 
     def _vvalue_core(self, xs: Any) -> Any:
         if self.vvalue_fn is None:
-            return self.ops.vmap(self.value, in_axes=0, out_axes=0)(xs)
+            return self._vmap_vvalue(xs)
         return self.vvalue_fn(xs)
 
     def __init__(
@@ -296,23 +286,6 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
             This property never returns; it raises ``NotImplementedError``.
         """
         raise NotImplementedError(f"{type(self).__name__} does not store a Riesz representer.")
-
-    @checked_method(in_space="domain", out_space="codomain")
-    def value(self, x: Any) -> Any:
-        """
-        Evaluate the scalar functional.
-
-        Parameters
-        ----------
-        x:
-            Element of ``self.domain`` passed to ``value_fn``.
-
-        Returns
-        -------
-        Any
-            Scalar-like backend value returned by ``value_fn``.
-        """
-        return self._value_core(x)
 
     # NOT ``out_batched_scalar=True``: the decorator derives the expected batch
     # shape as ``(_leading_batch_size(domain, xs),)`` — one leading axis, the

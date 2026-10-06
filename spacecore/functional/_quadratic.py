@@ -149,11 +149,6 @@ class LinOpQuadraticForm(QuadraticForm[Domain]):
         if result is False:
             raise ValueError("LinOpQuadraticForm requires Q to be Hermitian/self-adjoint.")
 
-    @checked_method(in_space="domain", out_space="codomain")
-    def value(self, x: Any) -> Any:
-        """Return ``1/2 * <x, Qx> + linear(x) + a``."""
-        return self._value_core(x)
-
     @checked_method(in_space="domain", out_space="domain")
     def grad(self, x: Any) -> Any:
         """
@@ -184,11 +179,6 @@ class LinOpQuadraticForm(QuadraticForm[Domain]):
     def hess_apply(self, x: Any) -> Any:
         """Return the Hessian action ``Q x`` under the Hermitian assumption."""
         return self.Q.apply(x)
-
-    @checked_method(in_space="domain", in_batched=True, out_batched_scalar=True)
-    def vvalue(self, xs: Any) -> Any:
-        """Evaluate the quadratic objective over a leading batch axis."""
-        return self._vvalue_core(xs)
 
     @checked_method(in_space="domain", out_space="domain", in_batched=True, out_batched=True)
     def vgrad(self, xs: Any) -> Any:
