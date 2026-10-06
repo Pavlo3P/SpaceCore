@@ -25,10 +25,9 @@ def test_both_families_are_mappings(ops):
 def test_cross_family_rules(ops):
     ctx, A, _, F = ops
     x = ctx.asarray([1.0, -2.0, 0.5])
-    assert (F * A) == (A * F)
     assert (F @ A) == F.compose(A)
     np.testing.assert_allclose((F @ A)(x), F(A(x)))
-    for undefined in (lambda: A + F, lambda: A @ F, lambda: F - A):
+    for undefined in (lambda: A + F, lambda: A @ F, lambda: F - A, lambda: F * A):
         with pytest.raises(TypeError):
             undefined()
 

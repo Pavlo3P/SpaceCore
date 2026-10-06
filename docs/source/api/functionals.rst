@@ -131,34 +131,13 @@ and use conjugate-linearity in the first inner-product argument to obtain the
 displayed rule. It also holds for real-valued factors using the real pairing.
 Arbitrary complex-valued, real-differentiable maps need more than one gradient.
 
-Operator families (``F · A``)
------------------------------
+Mapping
+-------
 
 .. autosummary::
    :nosignatures:
 
    spacecore.Mapping
-   spacecore.FunctionalScaledOperator
-   spacecore.make_functional_scaled_operator
-
-``F * A`` for a ``Functional`` and a ``LinOp`` is the functional-weighted map
-:math:`m(x) = F(x)\,Ax`. This is **not** linear — both the scale and the
-direction move with ``x`` — so it is *not* a ``LinOp``; it is a
-``Mapping``, the common parent of ``LinOp`` and ``Functional``, read as a
-point-indexed family :math:`x \mapsto A_x`.
-
-When ``DF`` is linear over the domain field, the two operators are:
-
-* ``m.at(x)`` — the **frozen member** ``F(x) · A``, an ordinary ``LinOp`` that
-  composes, sums, and has an adjoint. Freezing the point is what recovers
-  linearity.
-* ``m.linearize_at(x)`` — the **derivative** :math:`Dm(x)`, for Newton-type
-  steps, with extra term ``DF(x)[h] A x`` from expanding ``F(x+h) A(x+h)``.
-  A nonconstant real-valued ``F`` on a complex domain generally has only a
-  real-linear derivative, outside this ``LinOp`` interpretation.
-
-A ``ConstantFunctional`` weight collapses to an ordinary ``ScaledLinOp``, so the
-linear case is never forced through the non-linear type.
 
 Linear functionals
 ------------------

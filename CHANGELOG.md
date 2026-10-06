@@ -62,9 +62,10 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   to eager NumPy, where they ran mostly slower than the plain per-block loops, and
   never under `jax.jit`. The core kernels stay. The bench harness now runs the
   `baseline` regime only, and tutorial 09 covers fusion alone.
-- **`OperatorFamily`** (breaking). `FunctionalScaledOperator` is now a `Mapping`
-  and keeps `at`, `apply` and `linearize_at`; the base-class defaults went with
-  the class.
+- **`spacecore.opfamily`** (breaking): `OperatorFamily`, `FunctionalScaledOperator`
+  and `make_functional_scaled_operator` are gone, and `Functional * LinOp` raises
+  `TypeError`. Nothing used the functional-weighted map; write `F(x) * A` for a
+  frozen member.
 - **The `enable_checks` boolean shim** (breaking): `check_level` accepts only
   `"none"`/`"cheap"`/`"standard"`/`"strict"` or `None`, and the
   `normalize_check_level(enable_checks=...)`, `level_to_enabled`,

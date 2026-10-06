@@ -73,10 +73,6 @@ from .functional import (
 )
 from .mapping import Mapping
 from .sets import Set, NonnegativeOrthant
-from .opfamily import (
-    FunctionalScaledOperator,
-    make_functional_scaled_operator,
-)
 from .linalg import (
     CGResult,
     ExpmMultiplyResult,
@@ -185,7 +181,6 @@ __all__ = [
     "SumToSingleLinOp",
     "StackedLinOp",
     "ComposedFunctional",
-    "FunctionalScaledOperator",
     "Functional",
     "LinearFunctional",
     "InnerProductFunctional",
@@ -201,7 +196,6 @@ __all__ = [
     "make_functional_sum",
     "make_scaled_functional",
     "make_constant_functional",
-    "make_functional_scaled_operator",
     "make_functional_product",
     "make_shifted_functional",
     "least_squares",
