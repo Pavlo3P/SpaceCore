@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+from functools import cache
 from typing import Any
 
 from ._context import Context
@@ -10,16 +11,11 @@ from ..backend import BackendFamily, BackendOps
 from ..backend import ops_registry as _ops_registry
 
 
-_contextual: Contextual | None = None
-
-
+@cache
 def _state() -> Contextual:
     """Return the process-wide contextual singleton."""
     # Create the process-wide state lazily, on first use.
-    global _contextual
-    if _contextual is None:
-        _contextual = Contextual()
-    return _contextual
+    return Contextual()
 
 
 def set_context(

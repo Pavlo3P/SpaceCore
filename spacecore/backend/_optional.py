@@ -15,12 +15,6 @@ _OPTIONAL_OPS: tuple[tuple[str, str, str], ...] = (
 )
 
 
-
-def _backend_absent(exc: ModuleNotFoundError, dep: str) -> bool:
-    """Return True iff the failure is the backend dependency itself being missing."""
-    return exc.name == dep
-
-
 def import_backend(module: str, dep: str):
     """
     Import an optional backend submodule, or return ``None`` if its dependency is absent.
@@ -44,7 +38,7 @@ def import_backend(module: str, dep: str):
     try:
         return importlib.import_module(module, package=__package__)
     except ImportError as exc:
-        if isinstance(exc, ModuleNotFoundError) and _backend_absent(exc, dep):
+        if isinstance(exc, ModuleNotFoundError) and exc.name == dep:
             return None
         warnings.warn(
             f"Optional backend {module!r} is installed but failed to import "
@@ -78,58 +72,3 @@ def available_ops() -> tuple[type[BackendOps], ...]:
             ops.append(cls)
     return tuple(ops)
 
-
-def available_families() -> tuple[str, ...]:
-    """Backend family names whose optional dependency is importable.
-
-    Returns
-    -------
-    tuple of str
-        Lowercase family names (for example ``("numpy", "jax")``), always
-        starting with ``"numpy"``.
-    """
-    return tuple(o._family for o in available_ops())
-
-
-def is_available(family: str) -> bool:
-    """Whether a backend ``family`` can be imported in this environment.
-
-    Parameters
-    ----------
-    family : str
-        Lowercase backend family name (for example ``"jax"``).
-
-    Returns
-    -------
-    bool
-        ``True`` if the family's ops class is importable.
-    """
-    return family in available_families()
-
-
-def require_backend(family: str) -> type[BackendOps]:
-    """
-    Return the backend class for ``family``, or raise ``ImportError`` naming the extra to install.
-
-    Parameters
-    ----------
-    family : str
-        Lowercase family name, e.g. ``"jax"``.
-
-    Returns
-    -------
-    type of BackendOps
-        The backend class.
-
-    Raises
-    ------
-    ImportError
-        If the family's dependency is not installed.
-    """
-    for o in available_ops():
-        if o._family == family:
-            return o
-    raise ImportError(
-        f"The {family!r} backend requires an optional dependency that is not "
-        f"installed. Install it with: pip install spacecore[{family}]"
-    )

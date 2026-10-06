@@ -38,11 +38,8 @@ class JaxOps(BackendOps[NativeArray]):
 
     xp = jnp
 
-    _family = BackendFamily.jax.value.lower()
+    _family = BackendFamily.jax.value
     _allow_sparse = True
-
-    def __init__(self) -> None:
-        super().__init__()
 
     @classmethod
     def install_pytree_protocol(cls) -> None:

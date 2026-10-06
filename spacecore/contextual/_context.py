@@ -144,15 +144,11 @@ class Context(Generic[DenseT]):
         The loosest context relation, used by context resolution: operands on one backend
         combine, and their dtypes are reconciled by conversion.
         """
-        if isinstance(other, Context):
-            return self.ops == other.ops
-        return False
+        return isinstance(other, Context) and self.ops == other.ops
 
     def __eq__(self, other: Any) -> bool:
         """Return whether ``other`` is a ``Context`` with equal ops and dtype."""
-        if isinstance(other, Context):
-            return self.ops == other.ops and self.dtype == other.dtype
-        return False
+        return isinstance(other, Context) and self.ops == other.ops and self.dtype == other.dtype
 
     def __repr__(self) -> str:
         return f"Context(ops={self.ops!r}, dtype={self.dtype!r})"

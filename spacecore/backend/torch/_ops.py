@@ -35,7 +35,7 @@ class TorchOps(EagerControlFlowMixin, BackendOps[NativeArray]):
 
     xp = LazyNamespace("array_api_compat.torch")
 
-    _family = BackendFamily.torch.value.lower()
+    _family = BackendFamily.torch.value
     _allow_sparse = True
 
     _sparse_layouts = (
@@ -45,9 +45,6 @@ class TorchOps(EagerControlFlowMixin, BackendOps[NativeArray]):
         torch.sparse_bsr,
         torch.sparse_bsc,
     )
-
-    def __init__(self) -> None:
-        super().__init__()
 
     @classmethod
     def install_pytree_protocol(cls) -> None:

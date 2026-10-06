@@ -34,11 +34,8 @@ class NumpyOps(EagerControlFlowMixin, BackendOps[NativeArray]):
     np: Any = _np
     sp: Any = _sp
 
-    _family = BackendFamily.numpy.value.lower()
+    _family = BackendFamily.numpy.value
     _allow_sparse = True
-
-    def __init__(self) -> None:
-        super().__init__()
 
     @property
     def dense_array(self) -> Type[Any]:

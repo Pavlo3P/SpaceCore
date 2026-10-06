@@ -14,6 +14,7 @@ from typing import Any, Mapping
 from .._errors import ContextConflictError, UnknownBackendError
 from ._family import BackendFamily
 from ._ops import BackendOps
+from ._optional import available_ops
 
 #: Anything that can name a backend: a family string, the enum, an ops instance
 #: or class, or a Context (duck-typed via ``.ops`` to avoid importing contextual).
@@ -34,12 +35,12 @@ def backend_key(x: BackendKeyLike) -> str:
     if isinstance(x, type) and issubclass(x, BackendOps):
         return backend_key(x._family)
     if isinstance(x, BackendFamily):
-        return x.value.lower()
+        return x.value
     if isinstance(x, str):
         key = x.lower()
         return "torch" if key == "pytorch" else key
     ops = getattr(x, "ops", None)
-    if ops is not None and isinstance(ops, BackendOps):
+    if isinstance(ops, BackendOps):
         return backend_key(ops)
     raise TypeError(f"Unsupported backend key source: {type(x)!r}")
 
@@ -150,12 +151,5 @@ class OpsRegistry:
         return matched
 
 
-def _seeded_registry() -> OpsRegistry:
-    """Build the process registry from whatever backends are importable."""
-    from ._optional import available_ops
-
-    return OpsRegistry(available_ops())
-
-
 #: Process-wide backend registry used by :mod:`spacecore.contextual`.
-registry = _seeded_registry()
+registry = OpsRegistry(available_ops())

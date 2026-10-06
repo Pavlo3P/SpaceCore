@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 import importlib
+import math
 from typing import Any, Sequence, Tuple, Callable, Optional, Type, ClassVar, Generic, cast
 
 from ..types._array import DenseT
@@ -73,9 +74,7 @@ class BackendOps(ABC, Generic[DenseT]):
         return
 
     def __eq__(self, other: Any) -> bool:
-        if isinstance(other, BackendOps):
-            return self.family == other.family
-        return False
+        return isinstance(other, BackendOps) and self.family == other.family
 
     def __hash__(self) -> int:
         return hash((type(self).__name__, self.family))
@@ -453,10 +452,7 @@ class BackendOps(ABC, Generic[DenseT]):
 
     def size(self, x: Any) -> int:
         """Return the total number of elements in x."""
-        result = 1
-        for dim in self.shape(x):
-            result *= int(dim)
-        return result
+        return math.prod(map(int, self.shape(x)))
 
     def asarray(self, x: Any, dtype: DType | None = None, **backend_kwargs: Any) -> DenseT:
         """Convert input to a dense backend array (delegates to xp.asarray)."""
@@ -761,9 +757,7 @@ class BackendOps(ABC, Generic[DenseT]):
             mapped = {i: self.asarray(args[i]) for i in positions}
             out_shape = self._broadcast_shapes(*(self.shape(mapped[i]) for i in positions))
             flat = {i: self.ravel(self.broadcast_to(mapped[i], out_shape)) for i in positions}
-            count = 1
-            for dim in out_shape:
-                count *= int(dim)
+            count = math.prod(map(int, out_shape))
             outputs = []
             for k in range(count):
                 call_args = list(args)

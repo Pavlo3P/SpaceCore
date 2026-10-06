@@ -58,21 +58,10 @@ def check_level_at_least(actual: CheckLevel, required: CheckLevel) -> bool:
 
 def minimum_check_level(levels: tuple[CheckLevel, ...]) -> CheckLevel:
     """Return the least expensive policy shared by all supplied levels."""
-    if not levels:
-        return "none"
-    return min(levels, key=_CHECK_LEVEL_ORDER.__getitem__)
+    return min(levels, key=_CHECK_LEVEL_ORDER.__getitem__, default="none")
 
 
 _Method = TypeVar("_Method", bound=Callable[..., Any])
-
-
-def _as_positions(arg_positions: int | tuple[int, ...] | None) -> tuple[int, ...]:
-    """Normalize the checked-argument selector to a tuple of positions."""
-    if arg_positions is None:
-        return (0,)
-    if isinstance(arg_positions, int):
-        return (arg_positions,)
-    return tuple(arg_positions)
 
 
 def checked_method(
@@ -114,7 +103,11 @@ def checked_method(
         # the decorator's argument combination, not a bad runtime value.
         raise TypeError("out_batched_scalar requires in_space to locate the batch size.")
     # Precompute which arguments to check, so the wrapper stays cheap.
-    positions = _as_positions(arg_positions)
+    positions = (
+        (0,) if arg_positions is None
+        else (arg_positions,) if isinstance(arg_positions, int)
+        else tuple(arg_positions)
+    )
     # Resolve positions to a single-element fast path or a tuple iteration.
     single_pos = positions[0] if len(positions) == 1 else None
     # The batch size for out_batched_scalar comes from the first checked input.

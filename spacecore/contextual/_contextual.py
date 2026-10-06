@@ -54,7 +54,6 @@ class Contextual:
         # Baseline: NumPy at the default dtype and check level.
         ops = NumpyOps()
         self._baseline_ctx = Context(ops=ops, dtype=ops.sanitize_dtype(self._default_dtype))
-        self._baseline_check_level = type(self)._baseline_check_level
         self._ops_registry = ops_registry if ops_registry is not None else _default_ops_registry
 
     @property
@@ -190,28 +189,17 @@ class Contextual:
         return self.ctx_from_ops(ops, dtype)
 
     def infer_contexts(self, values: Iterable[Any]) -> Tuple[Context, ...]:
-        out: list[Context] = []
-        for x in values:
-            ctx = self.infer_context(x)
-            if ctx is not None:
-                out.append(ctx)
-        return tuple(out)
+        return tuple(c for c in map(self.infer_context, values) if c is not None)
 
     def are_compatible_contexts(self, *ctxs: Context) -> bool:
         # Compatible means same backend; dtypes are reconciled later.
-        if len(ctxs) < 2:
-            return True
-        first = ctxs[0]
-        return all(ctx.same_backend(first) for ctx in ctxs[1:])
+        return all(ctx.same_backend(ctxs[0]) for ctx in ctxs[1:])
 
     def are_compatible_values(self, *values: Any) -> bool:
         return self.are_compatible_contexts(*self.infer_contexts(values))
 
     def are_compatible_ops(self, *ops: BackendOps) -> bool:
-        if not ops:
-            return True
-        first = ops[0]
-        return all(op == first for op in ops)
+        return all(op == ops[0] for op in ops)
 
     def resolve_context_priority(
         self,

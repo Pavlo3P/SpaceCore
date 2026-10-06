@@ -37,9 +37,7 @@ def _leading_batch_size(space: Any, xs: Any) -> int:
     if isinstance(xs, tuple) and xs:
         return _leading_batch_size(getattr(space, "spaces", (space,))[0], xs[0])
     shape = tuple(getattr(xs, "shape", ()))
-    if not shape:
-        return 0
-    return int(shape[0])
+    return int(shape[0]) if shape else 0
 
 
 def _warn_vmap_fallback_once(obj: Any, method: str, batch_size: int) -> None:
