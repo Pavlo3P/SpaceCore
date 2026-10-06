@@ -27,3 +27,10 @@ docs/dev/representation-vision-research.md
 docs/dev/representation_vision_probe.py
 docs/source/dev/vision.rst
 docs/source/design/vision.rst
+
+# Tool artefacts and local history (kept on disk, not in the package repository).
+archive/
+graphify-out/
+.omc/
+.idea/
+.codex/
