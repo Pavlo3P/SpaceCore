@@ -35,10 +35,8 @@ class ExpmMultiplyResult(NamedTuple):
         return result_repr(
             "ExpmMultiplyResult",
             {
-                "converged": self.converged,
-                "krylov_dim": self.krylov_dim,
-                "residual_estimate": self.residual_estimate,
-                "result": self.result,
+                k: getattr(self, k)
+                for k in ("converged", "krylov_dim", "residual_estimate", "result")
             },
         )
 

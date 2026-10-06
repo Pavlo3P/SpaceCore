@@ -41,11 +41,8 @@ class PowerIterationResult(NamedTuple):
         return result_repr(
             "PowerIterationResult",
             {
-                "converged": self.converged,
-                "num_iters": self.num_iters,
-                "eigenvalue": self.eigenvalue,
-                "residual_norm": self.residual_norm,
-                "eigenvector": self.eigenvector,
+                k: getattr(self, k)
+                for k in ("converged", "num_iters", "eigenvalue", "residual_norm", "eigenvector")
             },
         )
 

@@ -40,12 +40,7 @@ class CGResult(NamedTuple):
         """Return a compact summary without printing the full solution array."""
         return result_repr(
             "CGResult",
-            {
-                "converged": self.converged,
-                "num_iters": self.num_iters,
-                "residual_norm": self.residual_norm,
-                "x": self.x,
-            },
+            {k: getattr(self, k) for k in ("converged", "num_iters", "residual_norm", "x")},
         )
 
 

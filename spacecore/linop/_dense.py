@@ -11,12 +11,11 @@ from ._base import Codomain, Domain, LinOp
 from .._checks import CheckLevel
 from .._checks import checked_method
 from ._metric import (
-    _metric_is_hermitian_by_basis, _requires_euclidean_or_riesz, metric_rapply, metric_rvapply,
+    _VECTOR_SPACES, _metric_is_hermitian_by_basis, _requires_euclidean_or_riesz, metric_rapply,
+    metric_rvapply,
 )
 from ..space import (
     DenseCoordinateSpace,
-    DenseVectorSpace,
-    ElementwiseJordanSpace,
     WeightedInnerProduct,
 )
 from ..types import DenseArray
@@ -214,16 +213,8 @@ class DenseLinOp(LinOp[Domain, Codomain]):
         """Select the dense computation mode once for this operator."""
         # Weighted flat vectors: fused weighted adjoint; Euclidean: plain matmul;
         # anything else: the general Riesz-map path.
-        vector_dom = type(self.dom) in (
-            DenseCoordinateSpace,
-            DenseVectorSpace,
-            ElementwiseJordanSpace,
-        )
-        vector_cod = type(self.cod) in (
-            DenseCoordinateSpace,
-            DenseVectorSpace,
-            ElementwiseJordanSpace,
-        )
+        vector_dom = type(self.dom) in _VECTOR_SPACES
+        vector_cod = type(self.cod) in _VECTOR_SPACES
         if (
             vector_dom
             and vector_cod

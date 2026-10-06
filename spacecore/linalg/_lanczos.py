@@ -4,7 +4,7 @@ from typing import Any, NamedTuple
 
 
 from ..linop import LinOp
-from ..space import DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace
+from ..linop._metric import _VECTOR_SPACES
 from ..types import DenseArray
 from ._utils import DEFAULT_CONVERGENCE_CHECK_INTERVAL, SpaceCoreOps, check_interval
 from ._utils import require_linop, require_square, resolve_apply, safe_inverse_nonneg
@@ -37,16 +37,7 @@ class LanczosResult(NamedTuple):
 
     def __repr__(self) -> str:
         """Return a compact summary without printing the full eigenvector."""
-        return result_repr(
-            "LanczosResult",
-            {
-                "eigenvalue": self.eigenvalue,
-                "eigenvector": self.eigenvector,
-                "residual_norm": self.residual_norm,
-                "krylov_dim": self.krylov_dim,
-                "converged": self.converged,
-            },
-        )
+        return result_repr("LanczosResult", self._asdict())
 
 
 class _LanczosBasisResult(NamedTuple):
@@ -54,7 +45,6 @@ class _LanczosBasisResult(NamedTuple):
 
     V: Any
     T: DenseArray
-    alphas: DenseArray
     betas: DenseArray
     krylov_dim: Any
     initial_norm: Any
@@ -75,9 +65,7 @@ class _KrylovBasis:
         self.ops = space.ops
         self.dom = SpaceCoreOps(space)
         self.capacity = capacity
-        self.dense = type(space) in (
-            DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace
-        )
+        self.dense = type(space) in _VECTOR_SPACES
         self.euclidean = self.dense and space.is_euclidean
         self.tree = None
         if self.dense:
@@ -168,21 +156,9 @@ def _build_tridiagonal(
     alphas_full = ops.where(mask_alpha, alphas, inactive_sentinel)
     betas_full = ops.where(full_indices == m, ops.asarray(0.0, dtype=real_dtype), betas)
 
-    # Fill the diagonal, then the symmetric off-diagonals.
-    T = ops.zeros((max_iter, max_iter), dtype=real_dtype)
-
-    def fill_diag(ii: int, T_in: DenseArray) -> DenseArray:
-        return ops.index_set(T_in, (ii, ii), alphas_full[ii], copy=True)
-
-    T = ops.fori_loop(0, max_iter, fill_diag, T)
-
-    def fill_off(ii: int, T_in: DenseArray) -> DenseArray:
-        b = betas_full[ii + 1]
-        T_in = ops.index_set(T_in, (ii, ii + 1), b, copy=True)
-        T_in = ops.index_set(T_in, (ii + 1, ii), b, copy=True)
-        return T_in
-
-    return ops.fori_loop(0, max_iter - 1, fill_off, T)
+    # The diagonal, then the symmetric off-diagonals.
+    off = betas_full[1:max_iter]
+    return ops.diag(alphas_full) + ops.diag(off, 1) + ops.diag(off, -1)
 
 
 def _lanczos_basis_and_tridiag(
@@ -267,7 +243,7 @@ def _lanczos_basis_and_tridiag(
     # Krylov dimension actually reached, and the projected tridiagonal T.
     m = ops.minimum(m_true, ops.asarray(i_final))
     T = _build_tridiagonal(ops, alphas, betas, max_iter, m, real_dtype)
-    return _LanczosBasisResult(V, T, alphas, betas, m, v0_norm, tol_s, v0_unit)
+    return _LanczosBasisResult(V, T, betas, m, v0_norm, tol_s, v0_unit)
 
 
 def lanczos_smallest(

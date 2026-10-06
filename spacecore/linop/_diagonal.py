@@ -7,7 +7,8 @@ from typing import Any, cast
 
 from ._base import LinOp
 from ._metric import (
-    _metric_is_hermitian_by_basis, _requires_euclidean_or_riesz, metric_rapply, metric_rvapply,
+    _VECTOR_SPACES, _metric_is_hermitian_by_basis, _requires_euclidean_or_riesz, metric_rapply,
+    metric_rvapply,
 )
 from .._checks import CheckLevel
 from .._checks import checked_method
@@ -15,15 +16,10 @@ from ..contextual import Context
 from ..space import (
     CoordinateSpace,
     DenseCoordinateSpace,
-    DenseVectorSpace,
-    ElementwiseJordanSpace,
     WeightedInnerProduct,
 )
 from ..types import DenseArray
 from ..contextual import resolve_context_priority
-
-
-_VECTOR_SPACES = (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace)
 
 
 class _DiagonalMode(Enum):
@@ -174,11 +170,11 @@ class DiagonalLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
         """Select the diagonal computation mode once for this operator."""
         # Euclidean: multiply by the diagonal; weighted: fused path; else general Riesz maps.
         if (
-            type(self.domain) in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace)
+            type(self.domain) in _VECTOR_SPACES
         ) and cast(Any, self.domain).is_euclidean:
             return _DiagonalMode.EUCLIDEAN
         if (
-            type(self.domain) in (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace)
+            type(self.domain) in _VECTOR_SPACES
         ) and type(cast(Any, self.domain).geometry) is WeightedInnerProduct:
             return _DiagonalMode.WEIGHTED_FUSED
         return _DiagonalMode.GENERAL_METRIC

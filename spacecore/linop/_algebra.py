@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import warnings
 from typing import Any, Callable, Sequence, cast
 
@@ -121,6 +122,19 @@ def make_scaled(scalar: Any, op: LinOp) -> LinOp:
     return make_scaled_of(LinOp, scalar, op)
 
 
+def _check_composable(left: LinOp, right: LinOp) -> tuple[LinOp, LinOp]:
+    """Validate ``left @ right``: both LinOps, same context, matching middle space."""
+    left = _require_linop(left, "left")
+    right = _require_linop(right, "right")
+    _require_same_context((left, right))
+    if not _same_space_for_algebra(right.codomain, left.domain):
+        raise ValueError(
+            "ComposedLinOp requires right.codomain == left.domain; "
+            f"got {right.codomain!r} and {left.domain!r}."
+        )
+    return left, right
+
+
 def make_composed(left: LinOp, right: LinOp) -> LinOp:
     """
     Return ``left @ right``, dropping identity factors and collapsing zero factors.
@@ -137,15 +151,7 @@ def make_composed(left: LinOp, right: LinOp) -> LinOp:
     LinOp
         The composition.
     """
-    # Validate: both LinOps, same context, matching middle space.
-    left = _require_linop(left, "left")
-    right = _require_linop(right, "right")
-    _require_same_context((left, right))
-    if not _same_space_for_algebra(right.codomain, left.domain):
-        raise ValueError(
-            "ComposedLinOp requires right.codomain == left.domain; "
-            f"got {right.codomain!r} and {left.domain!r}."
-        )
+    left, right = _check_composable(left, right)
 
     # Local rewrites: identity factors vanish, zero factors give a zero map.
     if isinstance(right, IdentityLinOp):
@@ -411,15 +417,7 @@ class ComposedLinOp(LinOp[Domain, Codomain]):
         right: LinOp,
         check_level: CheckLevel | None = None,
     ) -> None:
-        # Validate: both LinOps, same context, matching middle space.
-        left = _require_linop(left, "left")
-        right = _require_linop(right, "right")
-        _require_same_context((left, right))
-        if not _same_space_for_algebra(right.codomain, left.domain):
-            raise ValueError(
-                "ComposedLinOp requires right.codomain == left.domain; "
-                f"got {right.codomain!r} and {left.domain!r}."
-            )
+        left, right = _check_composable(left, right)
         # Bind with right's domain and left's codomain.
         if check_level is None:
             check_level = minimum_check_level((left.check_level, right.check_level))
@@ -570,8 +568,7 @@ class IdentityLinOp(LinOp[Domain, Domain]):
         return x
 
     _rapply_core = _apply_core
-    def _vapply_core(self, xs: Any) -> Any:
-        return xs
+    _vapply_core = _apply_core
 
     def __init__(
         self,
@@ -604,10 +601,7 @@ class IdentityLinOp(LinOp[Domain, Domain]):
         require(self.domain, _CAP_COORDINATE, "IdentityLinOp.to_dense")
         require(self.codomain, _CAP_COORDINATE, "IdentityLinOp.to_dense")
         # The identity matrix, reshaped to cod.shape + dom.shape.
-        size = 1
-        for dim in self.domain.shape:
-            size *= dim
-        eye = self.ops.eye(size, dtype=self.dtype)
+        eye = self.ops.eye(math.prod(self.domain.shape), dtype=self.dtype)
         return self.ops.reshape(eye, tuple(self.codomain.shape) + tuple(self.domain.shape))
 
     def is_hermitian(self) -> bool:

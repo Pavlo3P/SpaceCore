@@ -68,11 +68,6 @@ class ScaledFunctional(ScaledNode, Functional):
         """The scaled functional."""
         return self.operand
 
-    @checked_method(in_space="domain", out_space="codomain")
-    def value(self, x: Any, *args: Any, **kwargs: Any) -> Any:
-        """Return ``scalar * functional.value(x)``."""
-        return self._value_core(x, *args, **kwargs)
-
     def _value_core(self, x: Any, *args: Any, **kwargs: Any) -> Any:
         """Check-free scaled value."""
         return self.scalar * self.functional._value_core(x, *args, **kwargs)
@@ -145,11 +140,6 @@ class SumFunctional(SumNode, Functional):
     def terms(self) -> tuple[Functional, ...]:
         """The summed functionals (alias of ``parts``)."""
         return self.parts
-
-    @checked_method(in_space="domain", out_space="codomain")
-    def value(self, x: Any, *args: Any, **kwargs: Any) -> Any:
-        """Return the sum of the term values at ``x``."""
-        return self._value_core(x, *args, **kwargs)
 
     def _value_core(self, x: Any, *args: Any, **kwargs: Any) -> Any:
         """Check-free sum of term values."""
@@ -234,11 +224,6 @@ class ZeroFunctional(ZeroNode, Functional):
     def _of(cls, domain: Any, codomain: Any, ctx: Any, check_level: Any = None) -> "ZeroFunctional":
         return cls(domain, ctx, check_level, cod=codomain)
 
-    @checked_method(in_space="domain", out_space="codomain")
-    def value(self, x: Any, *args: Any, **kwargs: Any) -> Any:
-        """Return the scalar zero."""
-        return self._value_core(x, *args, **kwargs)
-
     def _value_core(self, x: Any, *args: Any, **kwargs: Any) -> Any:
         """Check-free scalar zero in the codomain dtype."""
         return self.codomain.ctx.asarray(0.0)
@@ -288,11 +273,6 @@ class ConstantFunctional(Functional):
             raise TypeError(f"constant must be scalar-like, got {type(constant).__name__}.")
         super().__init__(dom, ctx, check_level=check_level, cod=cod)
         self.constant = constant
-
-    @checked_method(in_space="domain", out_space="codomain")
-    def value(self, x: Any, *args: Any, **kwargs: Any) -> Any:
-        """Return the stored constant."""
-        return self._value_core(x, *args, **kwargs)
 
     def _value_core(self, x: Any, *args: Any, **kwargs: Any) -> Any:
         """Check-free constant in the codomain dtype (mirrors ``ZeroFunctional``)."""

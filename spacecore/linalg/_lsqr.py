@@ -37,11 +37,8 @@ class LSQRResult(NamedTuple):
         return result_repr(
             "LSQRResult",
             {
-                "converged": self.converged,
-                "num_iters": self.num_iters,
-                "residual_norm": self.residual_norm,
-                "normal_residual_norm": self.normal_residual_norm,
-                "x": self.x,
+                k: getattr(self, k)
+                for k in ("converged", "num_iters", "residual_norm", "normal_residual_norm", "x")
             },
         )
 

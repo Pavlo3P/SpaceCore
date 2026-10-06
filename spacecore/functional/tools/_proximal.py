@@ -123,14 +123,6 @@ def generalized_shrinkage(
     return _soft_threshold(ops, v, tau)
 
 
-def _require_step(t: Any, fname: str, X: Any) -> Any:
-    """Validate and return a finite, nonnegative scalar proximal step ``t``."""
-    from .._prox import validate_step
-
-    validate_step(t, X, fname, positive=False)
-    return t
-
-
 def prox_l1(v: Any, t: Any, X: Any, *, nonneg: bool = False) -> Any:
     r"""
     Prox of ``t ||.||_1`` in the space metric: soft-threshold with width ``t / w_i``.
@@ -154,7 +146,9 @@ def prox_l1(v: Any, t: Any, X: Any, *, nonneg: bool = False) -> Any:
         Beck, *First-Order Methods in Optimization*, Example 6.8.
     """
     # prox of t ||.||_1 = shrinkage with c = 0, x0 = v, eps = 1/2.
-    t = _require_step(t, "prox_l1", X)
+    from .._prox import validate_step
+
+    validate_step(t, X, "prox_l1", positive=False)
     v = X.ctx.asarray(v)
     _require_member_shape(X, v, "v", "prox_l1")
     return generalized_shrinkage(X, c=X.zeros(), x0=v, eps=0.5, lam=t, nonneg=nonneg)
@@ -182,7 +176,9 @@ def prox_l2sq(v: Any, t: Any, X: Any, *, nonneg: bool = False) -> Any:
         Beck, *First-Order Methods in Optimization*, Sec. 6.2.3.
     """
     # prox of (t/2) ||.||^2 = shrinkage with c = -v, x0 = 0, eps = (1 + t) / 2.
-    t = _require_step(t, "prox_l2sq", X)
+    from .._prox import validate_step
+
+    validate_step(t, X, "prox_l2sq", positive=False)
     v = X.ctx.asarray(v)
     _require_member_shape(X, v, "v", "prox_l2sq")
     return generalized_shrinkage(

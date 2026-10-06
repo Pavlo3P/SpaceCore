@@ -47,7 +47,6 @@ class TreeLinOp(LinOp[Domain, Codomain]):
 
         # Bind the parts, then cache each part's check-free apply and adjoint.
         self.parts = tuple(op.convert(self.ctx) for op in parts)
-        self._num_parts = len(self.parts)
         self._apply_parts = tuple(op._apply_core for op in self.parts)
         self._rapply_parts = tuple(op._rapply_core for op in self.parts)
         self._check_layout()

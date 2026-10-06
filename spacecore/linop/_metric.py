@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import warnings
 
+from ..space import DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace
 from ..space.base import CoordinateSpace, InnerProduct, InnerProductSpace
 from ..space._capabilities import require
 
+
+_VECTOR_SPACES = (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace)
 
 _METRIC_BATCH_FALLBACK_ERRORS = (TypeError, ValueError, NotImplementedError)
 

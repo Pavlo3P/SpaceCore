@@ -132,7 +132,8 @@ class LinOpQuadraticForm(QuadraticForm[Domain]):
         Q = Q.convert(resolved_ctx)
         if Q.domain != Q.codomain:
             raise ValueError("LinOpQuadraticForm requires Q.domain == Q.codomain.")
-        self._check_hermitian_structure(Q)
+        if Q.is_hermitian() is False:
+            raise ValueError("LinOpQuadraticForm requires Q to be Hermitian/self-adjoint.")
         if linear is not None:
             linear = linear.convert(resolved_ctx)
             if linear.domain != Q.domain:
@@ -144,13 +145,6 @@ class LinOpQuadraticForm(QuadraticForm[Domain]):
         # The constant offset must be a scalar.
         self.a = self.ctx.asarray(a)
         _check_scalar_shape(self.a, ())
-
-    @staticmethod
-    def _check_hermitian_structure(Q: LinOp[Domain, Domain]) -> None:
-        """Raise when ``Q`` is structurally known to be non-Hermitian."""
-        result = Q.is_hermitian()
-        if result is False:
-            raise ValueError("LinOpQuadraticForm requires Q to be Hermitian/self-adjoint.")
 
     @checked_method(in_space="domain", out_space="domain")
     def grad(self, x: Any) -> Any:
