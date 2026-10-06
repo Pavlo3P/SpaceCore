@@ -32,8 +32,6 @@ from .linop import (
     make_sum,
 )
 from .functional import (
-    RealifiedFunctional,
-    realify,
     ComposedFunctional,
     Functional,
     ConstantFunctional,
@@ -179,12 +177,10 @@ __all__ = [
     "SquaredL2NormFunctional",
     "LpNormFunctional",
     "L1NormFunctional",
-    "RealifiedFunctional",
     "Mapping",
     "DenseElement",
     "Element",
     "LowRankElement",
-    "realify",
     "CGResult",
     "ExpmMultiplyResult",
     "LanczosResult",

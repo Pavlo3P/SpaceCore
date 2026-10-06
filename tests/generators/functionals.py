@@ -457,36 +457,6 @@ def _algebra_cases(dtype: Any, check_level: sc.CheckLevel | str) -> tuple[Functi
     )
 
 
-def _realified_case(dtype, check_level):
-    """Generated case for ``RealifiedFunctional`` over stacked real coordinates.
-
-    ``F(v) = 1/2 ||v||^2`` on a complex space has metric gradient ``v``, so the
-    realified gradient is the stacked real vector itself — the identity map,
-    which is a reference no part of the implementation shares.
-    """
-    ctx = _context(dtype, check_level)
-    base_domain = sc.DenseCoordinateSpace((2,), ctx=ctx)
-    base = sc.SquaredL2NormFunctional(base_domain)
-    obj = sc.RealifiedFunctional(base)
-    v = np.asarray([3.0 + 4.0j, 1.0 - 2.0j], dtype=dtype)
-    w = np.concatenate([v.real, v.imag])
-    target_ctx = _context(np.dtype(_target_dtype(dtype)).type(0).real.dtype, check_level)
-    return FunctionalCase(
-        obj=obj,
-        reference={
-            "kind": "realified",
-            "domain": obj.domain,
-            "x": obj.domain.ctx.asarray(w),
-            "value": 0.5 * float(np.sum(np.abs(v) ** 2)),
-            "gradient": obj.domain.ctx.asarray(w),
-            "target_ctx": target_ctx,
-            "check_level": check_level,
-        },
-        capabilities=frozenset({"gradient", "conversion", "euclidean"}),
-        id=f"realified-squared-l2-{np.dtype(dtype).name}-checks-{check_level}",
-    )
-
-
 def _indicator_case(check_level, weighted, feasible):
     ctx = _context(np.float64, check_level)
     domain = _space(ctx, weighted)
@@ -525,8 +495,6 @@ def functional_cases(
                 cases.extend(_algebra_cases(dtype, check_level))
             # ADR-019 battery functionals are real-coordinate objectives; generate
             # them once per check level for float64 when that dtype is requested.
-            if any(np.dtype(d) == np.dtype(np.complex128) for d in dtypes):
-                cases.append(_realified_case(np.complex128, check_level))
             if any(np.dtype(d) == np.dtype(np.float64) for d in dtypes):
                 cases.extend(_indicator_case(check_level, weighted, feasible)
                              for weighted in (False, True) for feasible in (False, True))

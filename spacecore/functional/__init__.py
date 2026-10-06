@@ -21,7 +21,6 @@ from ._algebra import (
 from ._composed import ComposedFunctional, make_functional_composed
 from ._linear import InnerProductFunctional, LinearFunctional, MatrixFreeLinearFunctional
 from ._quadratic import LinOpQuadraticForm, QuadraticForm
-from ._realified import RealifiedFunctional, realify
 from ._indicator import IndicatorFunctional
 from .tools import (
     L1NormFunctional,
@@ -43,7 +42,6 @@ __all__ = [
     "MatrixFreeLinearFunctional",
     "ProductFunctional",
     "QuadraticForm",
-    "RealifiedFunctional",
     "ScaledFunctional",
     "SquaredL2NormFunctional",
     "SumFunctional",
@@ -54,5 +52,4 @@ __all__ = [
     "make_functional_sum",
     "make_scaled_functional",
     "make_shifted_functional",
-    "realify",
 ]

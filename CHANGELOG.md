@@ -74,7 +74,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 - **Functional catalogue** (breaking): `least_squares`, `NegativeEntropyFunctional`,
   `KLDivergenceFunctional`, `HuberFunctional`, `SpectralFunctional`, `spectralize`,
   `eigenvalue_space`, `NuclearNormFunctional`, `generalized_shrinkage`, `prox_l1`,
-  `prox_l2sq` and `project_nonneg` moved to `spacecore-optimize` (`spo.<Name>`).
+  `prox_l2sq`, `project_nonneg`, `RealifiedFunctional` and `realify` moved to
+  `spacecore-optimize` (`spo.<Name>`).
   SpaceCore keeps the norms used by the prox rules (`LpNormFunctional`,
   `SquaredL2NormFunctional`, with the `L1NormFunctional` wrapper), the
   prox/conjugate machinery, indicators and sets, and the coordinate-gradient base

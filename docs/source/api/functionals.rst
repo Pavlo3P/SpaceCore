@@ -169,8 +169,8 @@ Quadratic functionals
 Norm functionals
 ----------------
 
-Coordinate norms (the ones the closed-form prox rules cover) and the realified
-view. Their gradients are metric (Riesz) gradients under the domain geometry.
+Coordinate norms (the ones the closed-form prox rules cover). Their gradients are
+metric (Riesz) gradients under the domain geometry.
 
 .. autosummary::
    :nosignatures:
@@ -178,17 +178,14 @@ view. Their gradients are metric (Riesz) gradients under the domain geometry.
    spacecore.functional.SquaredL2NormFunctional
    spacecore.functional.LpNormFunctional
    spacecore.functional.L1NormFunctional
-   spacecore.functional.RealifiedFunctional
-   spacecore.functional.realify
 
 * ``SquaredL2NormFunctional`` is ``1/2 ||x||_X^2`` (gradient ``x``, clean shrinkage prox).
 * ``LpNormFunctional`` / ``L1NormFunctional`` are coordinate ``p``-norms.
-* ``RealifiedFunctional`` / ``realify`` present a complex-domain functional over
-  stacked real coordinates, for real-only optimizers.
 
 The norms live in the :mod:`spacecore.functional.tools` subpackage and are
 re-exported from :mod:`spacecore.functional` and the top-level ``spacecore`` namespace.
-Least squares, entropy, Huber, spectral lifts and the shrinkage helpers are in
+Least squares, entropy, Huber, spectral lifts, the realified view
+(``RealifiedFunctional``, ``realify``) and the shrinkage helpers are in
 `spacecore-optimize <https://github.com/Pavlo3P/spacecore-optimize>`_.
 
 Autodoc
@@ -232,7 +229,3 @@ Autodoc
 
 .. autofunction:: spacecore.functional.L1NormFunctional
 
-.. autoclass:: spacecore.functional.RealifiedFunctional
-   :members:
-
-.. autofunction:: spacecore.functional.realify

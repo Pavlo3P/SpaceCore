@@ -69,8 +69,9 @@ the fields cannot express the object:
   flattening it would let a traced rebuild resurrect a stale cache.
 * **arrays that need more than** ``asarray`` — ``SparseLinOp`` converts its matrix
   with ``assparse`` and a dtype cast.
-* **a context that is not the target** — ``RealifiedFunctional`` converts its base
-  functional to the complex partner of the target dtype.
+* **a context that is not the target** — ``RealifiedFunctional`` (in
+  ``spacecore-optimize``) converts its base functional to the complex partner of
+  the target dtype.
 * **a structure that is not a constructor argument** — ``BlockMatrixLinOp`` and
   ``BlockDiagonalLinOp`` flatten their blocks and keep the tree definitions as aux.
 
