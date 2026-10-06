@@ -251,26 +251,6 @@ class DenseLinOp(LinOp[Domain, Codomain]):
         """
         return self._A
 
-    @checked_method(in_space="domain", out_space="codomain")
-    def apply(self, x: DenseArray) -> DenseArray:
-        """Apply the dense operator to ``x``."""
-        return self._apply_core(x)
-
-    @checked_method(in_space="codomain", out_space="domain")
-    def rapply(self, y: DenseArray) -> DenseArray:
-        r"""Apply the adjoint dense operator to ``y``.
-
-        Euclidean spaces use the conjugate transpose of the flattened matrix.
-        Non-Euclidean spaces apply the codomain and domain Riesz maps around
-        that Euclidean adjoint.
-        """
-        return self._rapply_core(y)
-
-    @checked_method(in_space="domain", in_batched=True)
-    def vapply(self, xs: DenseArray) -> DenseArray:
-        """Apply over a leading batch axis. Input must have shape ``(N,) + domain.shape``; use ``moveaxis`` for other layouts."""
-        return self._vapply_core(xs)
-
     @checked_method(in_space="codomain", out_space="domain", in_batched=True, out_batched=True)
     def rvapply(self, ys: DenseArray) -> DenseArray:
         """Apply the adjoint over a leading batch axis. Input must have shape ``(N,) + codomain.shape``; use ``moveaxis`` for other layouts."""

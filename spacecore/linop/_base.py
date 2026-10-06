@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import warnings
-from abc import abstractmethod
 from functools import cached_property
 from math import prod
 from typing import Any, Generic, TypeVar
@@ -100,11 +99,12 @@ class LinOp(Mapping, Generic[Domain, Codomain]):
             f"{type(self).__name__} does not define a native numerical representation."
         )
 
-    @abstractmethod
+    @checked_method(in_space="domain", out_space="codomain")
     def apply(self, x: Any) -> Any:
         """Apply the forward map to an element of ``self.domain``."""
+        return self._apply_core(x)
 
-    @abstractmethod
+    @checked_method(in_space="codomain", out_space="domain")
     def rapply(self, y: Any) -> Any:
         r"""Apply the adjoint map to an element of ``self.codomain``.
 
@@ -115,22 +115,37 @@ class LinOp(Mapping, Generic[Domain, Codomain]):
         The dual map sends a linear functional ``phi`` to ``phi o A``; writing
         ``phi(y) = b^T y`` gives dual coordinates ``A^T b``, even over the complex field.
         """
+        return self._rapply_core(y)
 
+    # Subclasses implement the check-free cores, which the checked public methods
+    # call. A subclass that overrides a public method instead gets a core that
+    # calls it back.
     def _apply_core(self, x: Any) -> Any:
-        """Apply without adding validation beyond the concrete implementation."""
+        if type(self).apply is LinOp.apply:
+            raise NotImplementedError(f"{type(self).__name__} defines neither apply nor _apply_core.")
         return self.apply(x)
 
     def _rapply_core(self, y: Any) -> Any:
-        """Apply the adjoint without adding validation beyond the implementation."""
+        if type(self).rapply is LinOp.rapply:
+            raise NotImplementedError(f"{type(self).__name__} defines neither rapply nor _rapply_core.")
         return self.rapply(y)
 
     def _vapply_core(self, xs: Any) -> Any:
-        """Apply to a batch without adding validation beyond the implementation."""
-        return self.vapply(xs)
+        if type(self).vapply is not LinOp.vapply:
+            return self.vapply(xs)
+        # Generic batching: vmap the single-element apply over the leading axis.
+        require(self.domain, _CAP_BATCH, "LinOp.vapply")
+        require(self.codomain, _CAP_BATCH, "LinOp.vapply")
+        _warn_vmap_fallback_once(self, "vapply", _leading_batch_size(self.domain, xs))
+        return self.ops.vmap(self.apply, in_axes=0, out_axes=0)(xs)
 
     def _rvapply_core(self, ys: Any) -> Any:
-        """Apply the adjoint to a batch without adding validation beyond the implementation."""
-        return self.rvapply(ys)
+        if type(self).rvapply is not LinOp.rvapply:
+            return self.rvapply(ys)
+        require(self.domain, _CAP_BATCH, "LinOp.rvapply")
+        require(self.codomain, _CAP_BATCH, "LinOp.rvapply")
+        _warn_vmap_fallback_once(self, "rvapply", _leading_batch_size(self.codomain, ys))
+        return self.ops.vmap(self.rapply, in_axes=0, out_axes=0)(ys)
 
     def __call__(self, x: Any) -> Any:
         """Apply this linear operator to ``x``."""
@@ -158,20 +173,12 @@ class LinOp(Mapping, Generic[Domain, Codomain]):
     @checked_method(in_space="domain", in_batched=True)
     def vapply(self, xs: Any) -> Any:
         """Apply over a leading batch axis. Input must have shape ``(N,) + domain.shape``; use ``moveaxis`` for other layouts."""
-        # Generic batching: vmap the single-element apply over the leading axis.
-        require(self.domain, _CAP_BATCH, "LinOp.vapply")
-        require(self.codomain, _CAP_BATCH, "LinOp.vapply")
-        _warn_vmap_fallback_once(self, "vapply", _leading_batch_size(self.domain, xs))
-        return self.ops.vmap(self.apply, in_axes=0, out_axes=0)(xs)
+        return self._vapply_core(xs)
 
     @checked_method(in_space="codomain", in_batched=True)
     def rvapply(self, ys: Any) -> Any:
         """Apply the adjoint over a leading batch axis. Input must have shape ``(N,) + codomain.shape``; use ``moveaxis`` for other layouts."""
-        # Same for the adjoint.
-        require(self.domain, _CAP_BATCH, "LinOp.rvapply")
-        require(self.codomain, _CAP_BATCH, "LinOp.rvapply")
-        _warn_vmap_fallback_once(self, "rvapply", _leading_batch_size(self.codomain, ys))
-        return self.ops.vmap(self.rapply, in_axes=0, out_axes=0)(ys)
+        return self._rvapply_core(ys)
 
     @property
     def H(self) -> LinOp:

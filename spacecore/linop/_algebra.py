@@ -198,16 +198,6 @@ class ScaledLinOp(ScaledNode, LinOp[Domain, Codomain]):
         """The scaled operand."""
         return self.operand
 
-    @checked_method(in_space="domain", out_space="codomain")
-    def apply(self, x: Any) -> Any:
-        """Return ``scalar * op.apply(x)``."""
-        return self._apply_core(x)
-
-    @checked_method(in_space="codomain", out_space="domain")
-    def rapply(self, y: Any) -> Any:
-        """Return ``conj(scalar) * op.rapply(y)``."""
-        return self._rapply_core(y)
-
     @checked_method(in_space="domain", out_space="codomain", in_batched=True, out_batched=True)
     def vapply(self, xs: Any) -> Any:
         """Return ``scalar * op.vapply(xs)``."""
@@ -307,16 +297,6 @@ class SumLinOp(SumNode, LinOp[Domain, Codomain]):
     def ops_tuple(self) -> tuple[LinOp[Domain, Codomain], ...]:
         """The summed operators (alias of ``parts``)."""
         return self.parts
-
-    @checked_method(in_space="domain", out_space="codomain")
-    def apply(self, x: Any) -> Any:
-        """Return ``sum_i ops[i].apply(x)``."""
-        return self._apply_core(x)
-
-    @checked_method(in_space="codomain", out_space="domain")
-    def rapply(self, y: Any) -> Any:
-        """Return ``sum_i ops[i].rapply(y)``."""
-        return self._rapply_core(y)
 
     @checked_method(in_space="domain", out_space="codomain", in_batched=True, out_batched=True)
     def vapply(self, xs: Any) -> Any:
@@ -446,16 +426,6 @@ class ComposedLinOp(LinOp[Domain, Codomain]):
         # instead of re-walking the binary ComposedLinOp tree.
         self._apply_chain = _compose_chain(right) + _compose_chain(left)
 
-    @checked_method(in_space="domain", out_space="codomain")
-    def apply(self, x: Any) -> Any:
-        """Return ``left.apply(right.apply(x))``."""
-        return self._apply_core(x)
-
-    @checked_method(in_space="codomain", out_space="domain")
-    def rapply(self, z: Any) -> Any:
-        """Return ``right.rapply(left.rapply(z))``."""
-        return self._rapply_core(z)
-
     @checked_method(in_space="domain", out_space="codomain", in_batched=True, out_batched=True)
     def vapply(self, xs: Any) -> Any:
         """Return ``left.vapply(right.vapply(xs))``."""
@@ -559,16 +529,6 @@ class ZeroLinOp(ZeroNode, LinOp[Domain, Codomain]):
     def _vapply_core(self, xs: Any) -> Any:
         return _batched_zeros(self.codomain, _leading_shape(self.domain, xs))
 
-    @checked_method(in_space="domain", out_space="codomain")
-    def apply(self, x: Any) -> Any:
-        """Return the zero element of the codomain."""
-        return self._apply_core(x)
-
-    @checked_method(in_space="codomain", out_space="domain")
-    def rapply(self, y: Any) -> Any:
-        """Return the zero element of the domain."""
-        return self._rapply_core(y)
-
     @checked_method(in_space="domain", in_batched=True)
     def vapply(self, xs: Any) -> Any:
         """Return the batched zero element of the codomain."""
@@ -635,16 +595,6 @@ class IdentityLinOp(LinOp[Domain, Domain]):
         check_level: CheckLevel | None = None,
     ) -> None:
         super().__init__(space, space, ctx, check_level=check_level)
-
-    @checked_method(in_space="domain", out_space="codomain")
-    def apply(self, x: Any) -> Any:
-        """Return ``x`` after domain validation."""
-        return self._apply_core(x)
-
-    @checked_method(in_space="codomain", out_space="domain")
-    def rapply(self, x: Any) -> Any:
-        """Return ``x`` after codomain validation."""
-        return self._rapply_core(x)
 
     @checked_method(in_space="domain", in_batched=True)
     def vapply(self, xs: Any) -> Any:
@@ -750,13 +700,23 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
     def _apply_core(self, x: Any) -> Any:
         return self.apply_fn(x)
 
+    # Capability requirements hold at every check level: an adjoint needs inner
+    # products, a batch needs batchable spaces.
     def _rapply_core(self, y: Any) -> Any:
+        require(self.domain, InnerProductSpace, "MatrixFreeLinOp.rapply")
+        require(self.codomain, InnerProductSpace, "MatrixFreeLinOp.rapply")
         return self.rapply_fn(y)
 
     def _vapply_core(self, xs: Any) -> Any:
-        if self.vapply_fn is None:
-            return self.ops.vmap(self.apply, in_axes=0, out_axes=0)(xs)
-        return self.vapply_fn(xs)
+        # The supplied batched map, else the generic vmap fallback.
+        require(self.domain, _CAP_BATCH, "MatrixFreeLinOp.vapply")
+        require(self.codomain, _CAP_BATCH, "MatrixFreeLinOp.vapply")
+        return super()._vapply_core(xs) if self.vapply_fn is None else self.vapply_fn(xs)
+
+    def _rvapply_core(self, ys: Any) -> Any:
+        require(self.domain, _CAP_BATCH, "MatrixFreeLinOp.rvapply")
+        require(self.codomain, _CAP_BATCH, "MatrixFreeLinOp.rvapply")
+        return super()._rvapply_core(ys) if self.rvapply_fn is None else self.rvapply_fn(ys)
 
     def __init__(
         self,
@@ -950,88 +910,6 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
             euclidean_adjoint=True,
         )
 
-    @checked_method(in_space="domain", out_space="codomain")
-    def apply(self, x: Any) -> Any:
-        """
-        Apply the forward callable.
-
-        Parameters
-        ----------
-        x:
-            Element of ``self.domain`` passed to ``apply_fn``.
-
-        Returns
-        -------
-        Any
-            Element of ``self.codomain`` returned by ``apply_fn``.
-        """
-        return self._apply_core(x)
-
-    @checked_method(in_space="codomain", out_space="domain")
-    def rapply(self, y: Any) -> Any:
-        """
-        Apply the adjoint callable.
-
-        Parameters
-        ----------
-        y:
-            Element of ``self.codomain`` passed to ``rapply_fn``.
-
-        Returns
-        -------
-        Any
-            Element of ``self.domain`` returned by ``rapply_fn``.
-        """
-        require(self.domain, InnerProductSpace, "MatrixFreeLinOp.rapply")
-        require(self.codomain, InnerProductSpace, "MatrixFreeLinOp.rapply")
-        return self._rapply_core(y)
-
-    @checked_method(in_space="domain", out_space="codomain", in_batched=True, out_batched=True)
-    def vapply(self, xs: Any) -> Any:
-        """
-        Apply this operator to a batch of domain elements.
-
-        Parameters
-        ----------
-        xs:
-            Batched element of ``self.domain``.
-
-        Returns
-        -------
-        Any
-            Batched element of ``self.codomain`` produced by ``vapply_fn`` or
-            by the fallback batching implementation.
-        """
-        require(self.domain, _CAP_BATCH, "MatrixFreeLinOp.vapply")
-        require(self.codomain, _CAP_BATCH, "MatrixFreeLinOp.vapply")
-        # Use the supplied batched map, else the generic vmap fallback.
-        if self.vapply_fn is None:
-            return super().vapply(xs)
-        return self.vapply_fn(xs)
-
-    @checked_method(in_space="codomain", out_space="domain", in_batched=True, out_batched=True)
-    def rvapply(self, ys: Any) -> Any:
-        """
-        Apply the adjoint operator to a batch of codomain elements.
-
-        Parameters
-        ----------
-        ys:
-            Batched element of ``self.codomain``.
-
-        Returns
-        -------
-        Any
-            Batched element of ``self.domain`` produced by ``rvapply_fn`` or by
-            the fallback batching implementation.
-        """
-        require(self.domain, _CAP_BATCH, "MatrixFreeLinOp.rvapply")
-        require(self.codomain, _CAP_BATCH, "MatrixFreeLinOp.rvapply")
-        # Use the supplied batched adjoint, else the generic vmap fallback.
-        if self.rvapply_fn is None:
-            return super().rvapply(ys)
-        return self.rvapply_fn(ys)
-
     def fuse(self, *, materialize: bool = False) -> LinOp:
         """Stay matrix-free unless ``materialize=True`` is requested (ADR-021/ADR-008).
 
@@ -1154,16 +1032,6 @@ class _AdjointViewLinOp(LinOp[Codomain, Domain]):
             check_level = op.check_level
         super().__init__(op.codomain, op.domain, op.ctx, check_level=check_level)
         self.op = op
-
-    @checked_method(in_space="domain", out_space="codomain")
-    def apply(self, y: Any) -> Any:
-        """Return ``op.rapply(y)``."""
-        return self._apply_core(y)
-
-    @checked_method(in_space="codomain", out_space="domain")
-    def rapply(self, x: Any) -> Any:
-        """Return ``op.apply(x)``."""
-        return self._rapply_core(x)
 
     def vapply(self, ys: Any) -> Any:
         """Return ``op.rvapply(ys)`` over a batch."""

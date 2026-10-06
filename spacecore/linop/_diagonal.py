@@ -185,21 +185,6 @@ class DiagonalLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
         """Dense tensor representation of this diagonal operator."""
         return self.to_dense()
 
-    @checked_method(in_space="domain", out_space="codomain")
-    def apply(self, x: DenseArray) -> DenseArray:
-        """Apply the diagonal operator to ``x``."""
-        return self._apply_core(x)
-
-    @checked_method(in_space="codomain", out_space="domain")
-    def rapply(self, y: DenseArray) -> DenseArray:
-        """Apply the adjoint diagonal operator to ``y``."""
-        return self._rapply_core(y)
-
-    @checked_method(in_space="domain", in_batched=True)
-    def vapply(self, xs: DenseArray) -> DenseArray:
-        """Apply over a leading batch axis. Input must have shape ``(N,) + domain.shape``; use ``moveaxis`` for other layouts."""
-        return self._vapply_core(xs)
-
     @checked_method(in_space="codomain", out_space="domain", in_batched=True, out_batched=True)
     def rvapply(self, ys: DenseArray) -> DenseArray:
         """Apply the adjoint over a leading batch axis. Input must have shape ``(N,) + codomain.shape``; use ``moveaxis`` for other layouts."""

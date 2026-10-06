@@ -250,28 +250,6 @@ class SparseLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
         """
         return self._A
 
-    @checked_method(in_space="domain", out_space="codomain")
-    def apply(self, x: DenseArray) -> DenseArray:
-        """
-        Forward action ``y = A @ x`` in Euclidean coordinates.
-
-        x must have shape dom.shape (dense).
-        """
-        return self._apply_core(x)
-
-    @checked_method(in_space="codomain", out_space="domain")
-    def rapply(self, y: DenseArray) -> DenseArray:
-        """
-        Metric-aware adjoint action.
-
-        y must have shape cod.shape (dense).
-        """
-        return self._rapply_core(y)
-
-    @checked_method(in_space="domain", in_batched=True)
-    def vapply(self, xs: DenseArray) -> DenseArray:
-        return self._vapply_core(xs)
-
     @checked_method(in_space="codomain", out_space="domain", in_batched=True, out_batched=True)
     def rvapply(self, ys: DenseArray) -> DenseArray:
         return self._rvapply_core(ys)
