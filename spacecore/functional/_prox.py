@@ -6,7 +6,7 @@ import numbers
 from typing import Any
 
 from .._errors import CapabilityError
-from ..mapping import _find_rule, register
+from ..mapping._base import _find_rule, register
 from ..space import EuclideanInnerProduct, WeightedInnerProduct
 from ._algebra import ConstantFunctional, ScaledFunctional, SumFunctional, ZeroFunctional
 from .tools._norms import LpNormFunctional, SquaredL2NormFunctional

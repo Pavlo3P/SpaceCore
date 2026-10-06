@@ -17,7 +17,7 @@ from ..space import Field
 from .._checks import checked_method
 from .._checks import CheckLevel, minimum_check_level
 from ..contextual import Context
-from .._lazy_algebra import (
+from ..mapping._lazy_algebra import (
     is_scalar_like as is_scalar_like,  # re-exported for functional/_base.py
     scalar_eq,
 )
