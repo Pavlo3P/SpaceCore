@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any, Callable, Sequence, cast
 
 import optree
 
-from ..._check_policy import minimum_check_level, normalize_check_level
+from ..._checks import minimum_check_level, normalize_check_level
 from ..._checks import checked_method
 from ...contextual import resolve_context_priority
 from ...contextual import Context

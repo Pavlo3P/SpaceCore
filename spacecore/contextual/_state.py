@@ -5,7 +5,7 @@ from typing import Any
 
 from ._context import Context
 from ._contextual import Contextual
-from .._check_policy import CheckLevel
+from .._checks import CheckLevel
 from ..backend import BackendFamily, BackendOps
 from ..backend import ops_registry as _ops_registry
 

@@ -5,7 +5,7 @@ from typing import Any, Tuple
 
 from ..base import CoordinateSpace, EuclideanInnerProduct, InnerProduct, InnerProductSpace
 from ..checks import BackendCheck, DTypeCheck, FieldCheck, ShapeCheck, SpaceCheck
-from ..._check_policy import CheckLevel
+from ..._checks import CheckLevel
 from ..._checks import checked_method
 from ...contextual import Context
 from ...types import DenseArray

@@ -11,7 +11,7 @@ from .._batching import (
 )
 from ._linear import LinearFunctional, InnerProductFunctional
 from .._checks import checked_method
-from .._check_policy import CheckLevel
+from .._checks import CheckLevel
 from ..contextual import resolve_context_priority
 from ..contextual import Context
 from ..linop import LinOp

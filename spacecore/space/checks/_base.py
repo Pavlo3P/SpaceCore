@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any, ClassVar
 
-from ..._check_policy import CheckLevel, check_level_at_least, normalize_check_level
+from ..._checks import CheckLevel, check_level_at_least, normalize_check_level
 
 
 class SpaceValidationError(ValueError, TypeError):

@@ -1,4 +1,4 @@
-"""Tests for :mod:`spacecore._check_policy` pure helper functions.
+"""Tests for :mod:`spacecore._checks` pure helper functions.
 
 Book justification: these are pure functions, pinned directly against their
 contract rather than only through ``Context`` (Hunt & Thomas, *The Pragmatic
@@ -30,7 +30,7 @@ import numpy as np  # noqa: F401  (kept for convention parity across the suite)
 import pytest
 
 import spacecore as sc  # noqa: F401  (convention import; helpers are private)
-from spacecore._check_policy import (
+from spacecore._checks import (
     CHECK_LEVELS,
     check_level_at_least,
     minimum_check_level,

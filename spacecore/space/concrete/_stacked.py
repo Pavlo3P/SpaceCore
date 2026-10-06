@@ -17,7 +17,7 @@ from .._capabilities import (
     _CAP_EUCLIDEAN_JORDAN, _space_capabilities, registry_key,
 )
 from ..._checks import checked_method
-from ..._check_policy import CheckLevel
+from ..._checks import CheckLevel
 from ...contextual import resolve_context_priority
 from ...contextual import Context
 from ...backend import BackendOps

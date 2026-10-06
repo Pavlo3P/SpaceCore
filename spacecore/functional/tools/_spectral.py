@@ -11,7 +11,7 @@ from typing import Any, cast
 
 from .._base import Domain, Functional
 from ...contextual import Context
-from ..._check_policy import CheckLevel
+from ..._checks import CheckLevel
 from ...space import JordanAlgebraSpace
 from ..._checks import checked_method
 from ._coordinate import _CoordinateFunctional

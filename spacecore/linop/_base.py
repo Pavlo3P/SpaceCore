@@ -7,7 +7,7 @@ from math import prod
 from typing import Any, Generic, TypeVar
 
 from .._batching import _leading_batch_size, _warn_vmap_fallback_once
-from .._check_policy import CheckLevel
+from .._checks import CheckLevel
 from .._checks import checked_method
 from ..space._capabilities import _CAP_BATCH, _CAP_COORDINATE, require
 from ..space import VectorSpace, Field

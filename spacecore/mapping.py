@@ -14,7 +14,7 @@ from __future__ import annotations
 from abc import abstractmethod
 from typing import Any, Callable
 
-from ._check_policy import minimum_check_level
+from ._checks import minimum_check_level
 from ._lazy_algebra import is_scalar_like, scalar_eq
 from ._repr import describe_space
 from .backend import PyTreeNode

@@ -6,7 +6,7 @@ from ._base import Functional
 from ._linear import InnerProductFunctional, LinearFunctional
 from ._quadratic import LinOpQuadraticForm
 from .._checks import checked_method
-from .._check_policy import CheckLevel, minimum_check_level
+from .._checks import CheckLevel, minimum_check_level
 from ..contextual import Context
 from ..linop import LinOp
 from ..mapping import register

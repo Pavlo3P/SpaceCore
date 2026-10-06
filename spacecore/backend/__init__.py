@@ -8,7 +8,7 @@ if TYPE_CHECKING:
     from .cupy import CuPyOps as CuPyOps
 
 
-from .._check_policy import CHECK_LEVELS, CheckLevel
+from .._checks import CHECK_LEVELS, CheckLevel
 from ._container import PyTreeNode, PyTreeRegistry, registry as pytree_registry
 from ._ops import BackendOps
 from ._family import BackendFamily

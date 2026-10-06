@@ -10,7 +10,7 @@ from ..mapping import (
 )
 from ..space import DenseElement, Element
 from ._metric import _requires_euclidean_or_riesz, metric_rapply, metric_rvapply
-from .._check_policy import CheckLevel, minimum_check_level
+from .._checks import CheckLevel, minimum_check_level
 from .._checks import checked_method
 from ..space.base import CoordinateSpace, InnerProductSpace
 from ..space._capabilities import _CAP_BATCH, _CAP_COORDINATE, probe_element, require

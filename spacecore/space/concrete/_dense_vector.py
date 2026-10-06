@@ -9,7 +9,7 @@ from ..base import (
     JordanAlgebraSpace,
     StarSpace,
 )
-from ..._check_policy import CheckLevel, require_mutually_exclusive
+from ..._checks import CheckLevel, require_mutually_exclusive
 from ..._checks import checked_method
 from ...contextual import normalize_context
 from ...contextual import Context

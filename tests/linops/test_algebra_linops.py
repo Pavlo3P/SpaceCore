@@ -750,7 +750,7 @@ class TestAlgebraClassHierarchy:
         assert issubclass(sc.IdentityLinOp, sc.LinOp)
         assert issubclass(sc.MatrixFreeLinOp, sc.LinOp)
 
-    def test_check_policy_mismatch_does_not_block_algebra(self, numpy_ctx):
+    def test_checks_mismatch_does_not_block_algebra(self, numpy_ctx):
         """Operands with differing ``check_level`` still combine (dtype matches)."""
         A = self._op(numpy_ctx, check_level="standard")
         B = self._op(numpy_ctx, check_level="none")

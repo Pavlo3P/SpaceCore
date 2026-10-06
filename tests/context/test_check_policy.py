@@ -19,7 +19,7 @@ import numpy as np
 import pytest
 
 import spacecore as sc
-from spacecore._check_policy import normalize_check_level
+from spacecore._checks import normalize_check_level
 
 
 def _ctx(dtype=np.float64) -> sc.Context:

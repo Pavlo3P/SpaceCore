@@ -5,7 +5,7 @@ from typing import Tuple, Sequence, Any, Self
 
 from .._base import LinOp, Domain, Codomain
 from ...contextual import Context
-from ..._check_policy import CheckLevel
+from ..._checks import CheckLevel
 
 
 class TreeLinOp(LinOp[Domain, Codomain]):

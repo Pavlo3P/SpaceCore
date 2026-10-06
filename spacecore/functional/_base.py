@@ -8,7 +8,7 @@ from .._batching import _leading_batch_size, _warn_vmap_fallback_once
 from .._checks import checked_method
 from ..mapping import Mapping
 from ..contextual import Context, resolve_context_priority
-from .._check_policy import CheckLevel
+from .._checks import CheckLevel
 from ..space import Space, Field
 
 if TYPE_CHECKING:

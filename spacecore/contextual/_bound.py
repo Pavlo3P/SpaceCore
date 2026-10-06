@@ -4,7 +4,7 @@ from abc import ABC
 from typing import Any, Self
 
 from ..backend import BackendFamily, BackendOps
-from .._check_policy import (
+from .._checks import (
     CheckLevel,
     check_level_at_least,
     minimum_check_level,

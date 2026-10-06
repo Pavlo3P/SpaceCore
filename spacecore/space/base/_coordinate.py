@@ -4,7 +4,7 @@ from abc import abstractmethod
 from math import prod
 from typing import Any, Tuple
 
-from ..._check_policy import CheckLevel
+from ..._checks import CheckLevel
 from ...contextual import Context
 from ..._repr import shape_descriptor
 from ...types import DenseArray

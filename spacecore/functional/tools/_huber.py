@@ -6,7 +6,7 @@ from typing import Any
 
 from .._base import Domain
 from ...contextual import Context
-from ..._check_policy import CheckLevel
+from ..._checks import CheckLevel
 from ..._checks import checked_method
 from ._coordinate import _CoordinateFunctional
 

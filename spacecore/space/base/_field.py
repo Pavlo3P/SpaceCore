@@ -5,7 +5,7 @@ from abc import abstractmethod
 from dataclasses import dataclass
 from typing import ClassVar
 
-from ..._check_policy import CheckLevel
+from ..._checks import CheckLevel
 from ...contextual import Context
 from ..checks import SpaceCheck
 from ._inner_product import EuclideanInnerProduct, InnerProductSpace

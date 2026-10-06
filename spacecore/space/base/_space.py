@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, ClassVar, Literal
 
-from ..._check_policy import CheckLevel, check_level_at_least, normalize_check_level
+from ..._checks import CheckLevel, check_level_at_least, normalize_check_level
 from ..._lazy_algebra import is_recognizably_nonreal
 from ...contextual import ContextBound
 from ..._repr import field_symbol

@@ -23,7 +23,7 @@ Covers the free helpers that gate operator algebra and context resolution.
   seeds the bound object instead.
 
 References are independent: NumPy dtypes, explicit family strings, and the
-source contracts read from ``_state.py`` / ``_bound.py`` / ``_check_policy.py``.
+source contracts read from ``_state.py`` / ``_bound.py`` / ``_checks.py``.
 """
 from __future__ import annotations
 

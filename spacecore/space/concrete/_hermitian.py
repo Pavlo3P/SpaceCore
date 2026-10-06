@@ -5,7 +5,7 @@ from typing import Any, Tuple, Callable, cast
 from ..checks import HermitianCheck, SquareMatrixCheck
 from ..base import EuclideanJordanAlgebraSpace, StarSpace
 from ._dense_coordinate import DenseCoordinateSpace
-from ..._check_policy import CheckLevel
+from ..._checks import CheckLevel
 from ..._checks import checked_method
 from ...types import DenseArray
 from ...contextual import Context

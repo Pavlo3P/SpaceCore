@@ -15,7 +15,7 @@ from ._linear import LinearFunctional
 from ..mapping import Scalar, ScaledNode, SumNode, ZeroNode, make_scaled_of, make_sum_of, register
 from ..space import Field
 from .._checks import checked_method
-from .._check_policy import CheckLevel, minimum_check_level
+from .._checks import CheckLevel, minimum_check_level
 from ..contextual import Context
 from .._lazy_algebra import (
     is_scalar_like as is_scalar_like,  # re-exported for functional/_base.py

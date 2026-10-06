@@ -5,7 +5,7 @@ from contextvars import ContextVar
 from typing import Any, Iterable, Iterator, Tuple
 from warnings import warn
 
-from .._check_policy import CheckLevel, normalize_check_level
+from .._checks import CheckLevel, normalize_check_level
 from ..types import DType
 from ..backend import BackendFamily, BackendOps, NumpyOps, OpsRegistry
 from ..backend import ops_registry as _default_ops_registry

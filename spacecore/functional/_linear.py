@@ -7,7 +7,7 @@ from ..space import Field
 from ._base import Domain, Functional
 from .._batching import _check_scalar_shape
 from .._checks import checked_method
-from .._check_policy import CheckLevel
+from .._checks import CheckLevel
 from ..contextual import Context
 from ..space import Space, CoordinateSpace, TreeElement, TreeSpace
 

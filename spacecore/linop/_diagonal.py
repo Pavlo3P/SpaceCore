@@ -9,7 +9,7 @@ from ._base import LinOp
 from ._metric import (
     _metric_is_hermitian_by_basis, _requires_euclidean_or_riesz, metric_rapply, metric_rvapply,
 )
-from .._check_policy import CheckLevel
+from .._checks import CheckLevel
 from .._checks import checked_method
 from ..contextual import Context
 from ..space import (

@@ -10,7 +10,7 @@ from .._algebra import _same_space_for_algebra
 from .._base import LinOp
 from ..._checks import checked_method
 from ...contextual import Context
-from ..._check_policy import CheckLevel
+from ..._checks import CheckLevel
 from ...space import TreeSpace
 
 
