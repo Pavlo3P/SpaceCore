@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from enum import Enum, auto
 from functools import cached_property
 from math import prod
 from typing import Any, cast
 
 from ._base import LinOp
-from ._metric import _metric_is_hermitian_by_basis, _requires_euclidean_or_riesz
+from ._metric import (
+    _metric_is_hermitian_by_basis, _requires_euclidean_or_riesz, metric_rapply, metric_rvapply,
+)
 from .._check_policy import CheckLevel
 from .._checks import checked_method
 from ..space import (
@@ -18,13 +21,6 @@ from ..space import (
 from ..types import DenseArray, SparseArray
 from ..contextual import Context
 from ..contextual import resolve_context_priority
-from ..kernels.core.sparse import (
-    sparse_apply_core,
-    sparse_rapply_core,
-    sparse_rvapply_core,
-    sparse_vapply_core,
-    _SparseMode,
-)
 
 
 _VECTOR_SPACE_ONLY = (
@@ -32,6 +28,16 @@ _VECTOR_SPACE_ONLY = (
     "CoordinateSpace objects. Non-vector or exotic spaces should use "
     "MatrixFreeLinOp with explicit forward and adjoint callbacks."
 )
+
+
+class _SparseMode(Enum):
+    """Private computation modes for sparse coordinate operators."""
+
+    EUCLIDEAN_FLAT = auto()
+    EUCLIDEAN_TENSOR = auto()
+    WEIGHTED_FUSED = auto()
+    GENERAL_METRIC = auto()
+
 
 
 class SparseLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
@@ -67,10 +73,81 @@ class SparseLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
     array([1., 2.])
     """
 
-    _apply_core = sparse_apply_core
-    _rapply_core = sparse_rapply_core
-    _vapply_core = sparse_vapply_core
-    _rvapply_core = sparse_rvapply_core
+    def _apply_core(self, x: Any) -> Any:
+        # Flat or fused: one matvec. Tensor: reshape around it. Else the spaces' flatten/unflatten.
+        if self._mode is _SparseMode.EUCLIDEAN_FLAT:
+            return self._A @ x
+        if self._mode is _SparseMode.EUCLIDEAN_TENSOR:
+            return (self._A @ x.reshape((self._dom_size,))).reshape(self.cod.shape)
+        if self._mode is _SparseMode.WEIGHTED_FUSED:
+            return self._A @ x
+        x1 = self.dom.flatten(x)
+        y1 = self._A @ x1
+        return self.cod.unflatten(y1)
+
+    def _rapply_core(self, y: Any) -> Any:
+        # Euclidean: A^H. Diagonal weights: W_X^{-1} A^H W_Y y. Else wrap A^H with the metrics.
+        if self._mode is _SparseMode.EUCLIDEAN_FLAT or self._mode is _SparseMode.EUCLIDEAN_TENSOR:
+            return self._euclidean_rapply_core(y)
+        if self._mode is _SparseMode.WEIGHTED_FUSED:
+            return (self._AH @ (self._cod_weights * y)) / self._dom_weights
+        return metric_rapply(
+            self.domain, self.codomain, self._euclidean_rapply_core, y
+        )
+
+    def _vapply_core(self, xs: Any) -> Any:
+        # Sparse @ dense wants the batch as columns: (A X^T)^T.
+        if self._mode is _SparseMode.EUCLIDEAN_FLAT:
+            return (self._A @ xs.reshape((-1, self._dom_size)).T).T
+        if self._mode is _SparseMode.EUCLIDEAN_TENSOR:
+            lead = tuple(xs.shape[: len(xs.shape) - len(self.dom.shape)])
+            xs2 = xs.reshape((-1, self._dom_size))
+            ys2 = (self._A @ xs2.T).T
+            return ys2.reshape(lead + tuple(self.cod.shape))
+        if self._mode is _SparseMode.WEIGHTED_FUSED:
+            return (self._A @ xs.reshape((-1, self._dom_size)).T).T
+        xs_flat = self.domain.flatten_batch(xs)
+        ys_flat = (self._A @ xs_flat.T).T
+        return self.codomain.unflatten_batch(ys_flat)
+
+    def _rvapply_core(self, ys: Any) -> Any:
+        # Batched form of _rapply_core.
+        if self._mode is _SparseMode.EUCLIDEAN_FLAT or self._mode is _SparseMode.EUCLIDEAN_TENSOR:
+            return self._euclidean_rvapply_core(ys)
+        if self._mode is _SparseMode.WEIGHTED_FUSED:
+            return (self._AH @ (ys * self._cod_weights).T).T / self._dom_weights
+        return metric_rvapply(
+            self.domain,
+            self.codomain,
+            self._euclidean_rapply_core,
+            self._euclidean_rvapply_core,
+            ys,
+            opname=type(self).__name__,
+            ops=self.ops,
+        )
+
+    def _euclidean_rapply_core(self, y: Any) -> Any:
+        # Plain conjugate transpose A^H, no metric.
+        if self._mode is _SparseMode.EUCLIDEAN_FLAT:
+            return self._AH @ y
+        if self._mode is _SparseMode.EUCLIDEAN_TENSOR:
+            return (self._AH @ y.reshape((self._cod_size,))).reshape(self.dom.shape)
+        y1 = self.cod.flatten(y)
+        x1 = self._AH @ y1
+        return self.dom.unflatten(x1)
+
+    def _euclidean_rvapply_core(self, ys: Any) -> Any:
+        # (A^H Y^T)^T for a batch of rows.
+        if self._mode is _SparseMode.EUCLIDEAN_FLAT:
+            return (self._AH @ ys.reshape((-1, self._cod_size)).T).T
+        if self._mode is _SparseMode.EUCLIDEAN_TENSOR:
+            lead = tuple(ys.shape[: len(ys.shape) - len(self.cod.shape)])
+            ys2 = ys.reshape((-1, self._cod_size))
+            xs2 = (self._AH @ ys2.T).T
+            return xs2.reshape(lead + tuple(self.dom.shape))
+        ys_flat = self.codomain.flatten_batch(ys)
+        xs_flat = (self._AH @ ys_flat.T).T
+        return self.domain.unflatten_batch(xs_flat)
 
     def __init__(
         self,

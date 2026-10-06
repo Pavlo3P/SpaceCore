@@ -125,10 +125,6 @@ convention = "numpy"
 [tool.ruff.lint.per-file-ignores]
 "tests/*.py" = ["E701"]
 "tests/*" = ["D"]
-# Internal duck-typed check-free kernel cores: registered by name and documented
-# at module level, not part of the public API, so they are exempt from the
-# per-function missing-docstring rule.
-"spacecore/kernels/core/*" = ["D103"]
 
 [tool.numpydoc_validation]
 checks = [

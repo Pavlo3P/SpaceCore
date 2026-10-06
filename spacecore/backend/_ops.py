@@ -535,7 +535,7 @@ class BackendOps(ABC, Generic[DenseT]):
     # SpaceCore flattens in **C order** (row-major: the last axis varies
     # fastest), on every backend, always. This is the vec convention that the
     # coordinate layer is built on -- ``CoordinateSpace.flatten``,
-    # ``LinOp.to_matrix``, and the Kronecker identities in ``kernels/`` all
+    # ``LinOp.to_matrix`` and the Kronecker identities all
     # assume it, and vec(A x) = (I ⊗ A) vec(x) rather than (Aᵀ ⊗ I) is exactly
     # this choice. It is a *declared* convention rather than a forwarded
     # ``order=`` argument because Torch has no Fortran-order reshape at all:

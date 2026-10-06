@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from enum import Enum, auto
 from functools import cached_property
 from math import prod
 from typing import Any, cast
 
 from ._base import LinOp
-from ._metric import _metric_is_hermitian_by_basis, _requires_euclidean_or_riesz
+from ._metric import (
+    _metric_is_hermitian_by_basis, _requires_euclidean_or_riesz, metric_rapply, metric_rvapply,
+)
 from .._check_policy import CheckLevel
 from .._checks import checked_method
 from ..contextual import Context
@@ -18,13 +21,18 @@ from ..space import (
 )
 from ..types import DenseArray
 from ..contextual import resolve_context_priority
-from ..kernels.core.diagonal import (
-    diagonal_apply_core,
-    diagonal_rapply_core,
-    diagonal_rvapply_core,
-    diagonal_vapply_core,
-    _DiagonalMode,
-)
+
+
+_VECTOR_SPACES = (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace)
+
+
+class _DiagonalMode(Enum):
+    """Private computation modes for diagonal coordinate operators."""
+
+    EUCLIDEAN = auto()
+    WEIGHTED_FUSED = auto()
+    GENERAL_METRIC = auto()
+
 
 
 class DiagonalLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
@@ -56,10 +64,79 @@ class DiagonalLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
     array([ 8., 15.])
     """
 
-    _apply_core = diagonal_apply_core
-    _rapply_core = diagonal_rapply_core
-    _vapply_core = diagonal_vapply_core
-    _rvapply_core = diagonal_rvapply_core
+    def _apply_core(self, x: Any) -> Any:
+        # Vector-shaped or fused: elementwise product. Else on flat coordinates.
+        if self._mode is _DiagonalMode.EUCLIDEAN:
+            return self.diagonal * x
+        if self._mode is _DiagonalMode.WEIGHTED_FUSED:
+            return self.diagonal * x
+        if type(self.domain) in _VECTOR_SPACES:
+            return self.diagonal * x
+        x_flat = self.domain.flatten(x)
+        y_flat = self._diag_flat * x_flat
+        return self.codomain.unflatten(y_flat)
+
+    def _rapply_core(self, y: Any) -> Any:
+        # Euclidean: conj diagonal. Fused: precomputed. Else wrap it with the metrics.
+        if self._mode is _DiagonalMode.EUCLIDEAN:
+            return self._euclidean_rapply_core(y)
+        if self._mode is _DiagonalMode.WEIGHTED_FUSED:
+            return self._diag_adjoint * y
+        return metric_rapply(
+            self.domain, self.codomain, self._euclidean_rapply_core, y
+        )
+
+    def _vapply_core(self, xs: Any) -> Any:
+        # Elementwise, broadcasting over the leading batch axis.
+        if self._mode is _DiagonalMode.EUCLIDEAN:
+            return self.diagonal * xs
+        if self._mode is _DiagonalMode.WEIGHTED_FUSED:
+            return self.diagonal * xs
+        if type(self.domain) in _VECTOR_SPACES:
+            return self.diagonal * xs
+        xs_flat = self.domain.flatten_batch(xs)
+        ys_flat = xs_flat * self._diag_flat
+        return self.codomain.unflatten_batch(ys_flat)
+
+    def _rvapply_core(self, ys: Any) -> Any:
+        # Batched form of _rapply_core.
+        if self._mode is _DiagonalMode.EUCLIDEAN:
+            return self._euclidean_rvapply_core(ys)
+        if self._mode is _DiagonalMode.WEIGHTED_FUSED:
+            return self._diag_adjoint * ys
+        return metric_rvapply(
+            self.domain,
+            self.codomain,
+            self._euclidean_rapply_core,
+            self._euclidean_rvapply_core,
+            ys,
+            opname=type(self).__name__,
+            ops=self.ops,
+        )
+
+    def _euclidean_rapply_core(self, y: Any) -> Any:
+        # The adjoint diagonal, elementwise or on flat coordinates.
+        if self._mode is _DiagonalMode.EUCLIDEAN:
+            return self._diag_adjoint * y
+        if self._mode is _DiagonalMode.WEIGHTED_FUSED:
+            return self._diag_adjoint * y
+        if type(self.domain) in _VECTOR_SPACES:
+            return self._diag_adjoint * y
+        y_flat = self.codomain.flatten(y)
+        x_flat = self._diag_adjoint_flat * y_flat
+        return self.domain.unflatten(x_flat)
+
+    def _euclidean_rvapply_core(self, ys: Any) -> Any:
+        # Adjoint diagonal over the batch.
+        if self._mode is _DiagonalMode.EUCLIDEAN:
+            return self._diag_adjoint * ys
+        if self._mode is _DiagonalMode.WEIGHTED_FUSED:
+            return self._diag_adjoint * ys
+        if type(self.domain) in _VECTOR_SPACES:
+            return self._diag_adjoint * ys
+        ys_flat = self.codomain.flatten_batch(ys)
+        xs_flat = ys_flat * self._diag_adjoint_flat
+        return self.domain.unflatten_batch(xs_flat)
 
     def __init__(
         self,
@@ -80,7 +157,7 @@ class DiagonalLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
             raise TypeError(
                 f"Expected diagonal.shape == space.shape == {expected}, got {diagonal.shape}"
             )
-        # Cache flat and conjugated copies for the kernels, then pick the strategy.
+        # Cache flat and conjugated copies for the cores, then pick the strategy.
         self.diagonal = diagonal
         self._diag_flat = diagonal.reshape((prod(self.domain.shape),))
         dtype = self.ops.get_dtype(diagonal)

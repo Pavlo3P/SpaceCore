@@ -62,8 +62,8 @@ class CoordinateSpace(VectorSpace):
         vec convention on every backend -- see the flattening-order note in
         :mod:`spacecore.backend._ops`. It is what makes ``to_matrix`` and
         ``flatten`` compose: ``to_matrix() @ flatten(x) == flatten(A.apply(x))``
-        holds only for a consistent choice, and the Kronecker identities in
-        ``kernels/`` assume this one.
+        holds only for a consistent choice, and the Kronecker identities assume
+        this one.
         """
 
     @abstractmethod

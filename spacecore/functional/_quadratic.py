@@ -4,6 +4,7 @@ from typing import Any
 
 from ._base import Domain, Functional
 from .._batching import (
+    _batched_inner,
     _check_scalar_shape,
     _leading_batch_size,
     _warn_vmap_fallback_once,
@@ -13,12 +14,6 @@ from .._checks import checked_method
 from .._check_policy import CheckLevel
 from ..contextual import resolve_context_priority
 from ..contextual import Context
-from ..kernels.core.functional import (
-    linop_quadratic_grad_core,
-    linop_quadratic_value_core,
-    linop_quadratic_vgrad_core,
-    linop_quadratic_vvalue_core,
-)
 from ..linop import LinOp
 
 
@@ -77,10 +72,41 @@ class LinOpQuadraticForm(QuadraticForm[Domain]):
         Validation level; the ambient default when omitted.
     """
 
-    _value_core = linop_quadratic_value_core
-    _grad_core = linop_quadratic_grad_core
-    _vvalue_core = linop_quadratic_vvalue_core
-    _vgrad_core = linop_quadratic_vgrad_core
+    def _value_core(self, x: Any) -> Any:
+        # f(x) = 1/2 <x, Q x> + l(x) + a.
+        qx = self.Q._apply_core(x)
+        inner = getattr(self.domain, "_inner_core", self.domain.inner)
+        value = 0.5 * inner(x, qx)
+        if self.linear is not None:
+            value = value + self.linear._value_core(x)
+        return value + self.a
+
+    def _grad_core(self, x: Any) -> Any:
+        # grad f(x) = Q x + the representer of l.
+        grad = self.Q._apply_core(x)
+        if self.linear is not None:
+            add = getattr(self.domain, "_add_core", self.domain.add)
+            grad = add(grad, self.linear.representer)
+        return grad
+
+    def _vvalue_core(self, xs: Any) -> Any:
+        # Euclidean arrays: sum conj(x_i) * (Q x_i) over non-batch axes; else the batched inner.
+        qxs = self.Q._vapply_core(xs)
+        if self.domain.is_euclidean and hasattr(xs, "shape"):
+            axes = tuple(range(1, len(tuple(xs.shape))))
+            values = 0.5 * self.ops.sum(self.ops.conj(xs) * qxs, axis=axes)
+        else:
+            values = 0.5 * _batched_inner(self.domain, xs, qxs)
+        if self.linear is not None:
+            values = values + self.linear._vvalue_core(xs)
+        return values + self.a
+
+    def _vgrad_core(self, xs: Any) -> Any:
+        # Q x_i + grad l, row-wise.
+        grads = self.Q._vapply_core(xs)
+        if self.linear is not None:
+            grads = self.domain.add_batch(grads, self.linear._vgrad_core(xs))
+        return grads
 
     def __init__(
         self,

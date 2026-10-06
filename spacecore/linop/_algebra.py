@@ -16,37 +16,44 @@ from ..space.base import CoordinateSpace, InnerProductSpace
 from ..space._capabilities import _CAP_BATCH, _CAP_COORDINATE, probe_element, require
 from .._repr import summarize_value
 from ..contextual import Context
-from ..kernels.core.algebra import (
-    adjoint_apply_core,
-    adjoint_rapply_core,
-    adjoint_vapply_core,
-    composed_apply_core,
-    composed_rapply_core,
-    composed_vapply_core,
-    identity_apply_core,
-    identity_vapply_core,
-    matrixfree_apply_core,
-    matrixfree_rapply_core,
-    matrixfree_vapply_core,
-    scaled_apply_core,
-    scaled_rapply_core,
-    scaled_vapply_core,
-    sum_apply_core,
-    sum_rapply_core,
-    sum_vapply_core,
-    zero_apply_core,
-    zero_rapply_core,
-    zero_vapply_core,
-    batched_zeros as _batched_zeros,
-    compose_chain as _compose_chain,
-    conjugate_scalar as _conjugate_scalar,
-    leading_shape as _leading_shape,
+from .._lazy_algebra import conjugate_scalar as _conjugate_scalar
+from .._lazy_algebra import (
+    is_scalar_like as is_scalar_like,  # re-exported for linop/_base.py
 )
 
 
-from .._lazy_algebra import (
-    is_scalar_like as is_scalar_like,  # re-exported for linop/_base.py
-    )
+def _compose_chain(op: Any) -> tuple:
+    """Flatten ``op`` into its leaf operators in application order.
+
+    This is the *fusion rule*: a composed operator exposes a precomputed
+    ``_apply_chain`` (its leaves, first applied first); every other operator
+    contributes itself as a single-element chain. Concatenating the chains of a
+    composition's operands fuses an arbitrarily deep ``A @ B @ C @ ...`` into one
+    flat sequence, so the composed core loops once instead of re-walking the
+    nested binary tree.
+    """
+    chain = getattr(op, "_apply_chain", None)
+    return chain if chain is not None else (op,)
+
+
+def _leading_shape(space: Any, value: Any) -> tuple[int, ...]:
+    """Infer the leading batch dimensions of ``value`` relative to ``space``."""
+    # Product spaces: batch shape of the first component. Else strip the trailing space shape.
+    parts = getattr(space, "spaces", None)
+    if parts is not None and isinstance(value, tuple) and value:
+        return _leading_shape(parts[0], value[0])
+    shape = tuple(getattr(value, "shape", ()))
+    base = tuple(space.shape)
+    return shape if not base else shape[: len(shape) - len(base)]
+
+
+def _batched_zeros(space: Any, leading: tuple[int, ...]) -> Any:
+    """Return a batched zero element of ``space`` with leading shape ``leading``."""
+    # Product spaces get a tuple of per-component zero batches.
+    parts = getattr(space, "spaces", None)
+    if parts is not None:
+        return tuple(_batched_zeros(part, leading) for part in parts)
+    return space.ops.zeros(leading + tuple(space.shape), dtype=space.dtype)
 
 
 #: Sentinel for "the caller did not mention ``euclidean_adjoint`` at all".
@@ -169,9 +176,19 @@ class ScaledLinOp(ScaledNode, LinOp[Domain, Codomain]):
         Validation level; the ambient default when omitted.
     """
 
-    _apply_core = scaled_apply_core
-    _rapply_core = scaled_rapply_core
-    _vapply_core = scaled_vapply_core
+    def _apply_core(self, x: Any) -> Any:
+        y = self.op._apply_core(x)
+        scale = getattr(self.codomain, "_scale_core", self.codomain.scale)
+        return scale(self.scalar, y)
+
+    def _rapply_core(self, y: Any) -> Any:
+        x = self.op._rapply_core(y)
+        scale = getattr(self.domain, "_scale_core", self.domain.scale)
+        return scale(_conjugate_scalar(self.scalar), x)
+
+    def _vapply_core(self, xs: Any) -> Any:
+        ys = self.op._vapply_core(xs)
+        return self.codomain.scale_batch(self.scalar, ys)
 
     def __init__(self, scalar: Any, op: LinOp[Domain, Codomain], check_level: CheckLevel | None = None) -> None:
         super().__init__(scalar, op, check_level)
@@ -256,9 +273,32 @@ class SumLinOp(SumNode, LinOp[Domain, Codomain]):
         Validation level; the ambient default when omitted.
     """
 
-    _apply_core = sum_apply_core
-    _rapply_core = sum_rapply_core
-    _vapply_core = sum_vapply_core
+    def _apply_core(self, x: Any) -> Any:
+        # A1 x + ... + Ak x, with the codomain's unchecked add when it has one.
+        parts = self.ops_tuple
+        add = getattr(self.codomain, "_add_core", self.codomain.add)
+        acc = parts[0]._apply_core(x)
+        for part in parts[1:]:
+            acc = add(acc, part._apply_core(x))
+        return acc
+
+    def _rapply_core(self, y: Any) -> Any:
+        # A1* y + ... + Ak* y, added in the domain.
+        parts = self.ops_tuple
+        add = getattr(self.domain, "_add_core", self.domain.add)
+        acc = parts[0]._rapply_core(y)
+        for part in parts[1:]:
+            acc = add(acc, part._rapply_core(y))
+        return acc
+
+    def _vapply_core(self, xs: Any) -> Any:
+        # Row-wise sum of the batched applies.
+        parts = self.ops_tuple
+        add_batch = self.codomain.add_batch
+        acc = parts[0]._vapply_core(xs)
+        for part in parts[1:]:
+            acc = add_batch(acc, part._vapply_core(xs))
+        return acc
 
     def __init__(self, ops: Sequence[LinOp[Domain, Codomain]], check_level: CheckLevel | None = None) -> None:
         super().__init__(ops, check_level)
@@ -364,9 +404,20 @@ class ComposedLinOp(LinOp[Domain, Codomain]):
         Validation level; the ambient default when omitted.
     """
 
-    _apply_core = composed_apply_core
-    _rapply_core = composed_rapply_core
-    _vapply_core = composed_vapply_core
+    def _apply_core(self, x: Any) -> Any:
+        for leaf in self._apply_chain:
+            x = leaf._apply_core(x)
+        return x
+
+    def _rapply_core(self, z: Any) -> Any:
+        for leaf in reversed(self._apply_chain):
+            z = leaf._rapply_core(z)
+        return z
+
+    def _vapply_core(self, xs: Any) -> Any:
+        for leaf in self._apply_chain:
+            xs = leaf._vapply_core(xs)
+        return xs
 
     def __init__(
         self,
@@ -499,9 +550,14 @@ class ZeroLinOp(ZeroNode, LinOp[Domain, Codomain]):
         Validation level; the ambient default when omitted.
     """
 
-    _apply_core = zero_apply_core
-    _rapply_core = zero_rapply_core
-    _vapply_core = zero_vapply_core
+    def _apply_core(self, x: Any) -> Any:
+        return self.codomain.zeros()
+
+    def _rapply_core(self, y: Any) -> Any:
+        return self.domain.zeros()
+
+    def _vapply_core(self, xs: Any) -> Any:
+        return _batched_zeros(self.codomain, _leading_shape(self.domain, xs))
 
     @checked_method(in_space="domain", out_space="codomain")
     def apply(self, x: Any) -> Any:
@@ -565,9 +621,12 @@ class IdentityLinOp(LinOp[Domain, Domain]):
         Validation level; the ambient default when omitted.
     """
 
-    _apply_core = identity_apply_core
-    _rapply_core = identity_apply_core
-    _vapply_core = identity_vapply_core
+    def _apply_core(self, x: Any) -> Any:
+        return x
+
+    _rapply_core = _apply_core
+    def _vapply_core(self, xs: Any) -> Any:
+        return xs
 
     def __init__(
         self,
@@ -688,9 +747,16 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
         coordinate adjoint there is silently wrong.
     """
 
-    _apply_core = matrixfree_apply_core
-    _rapply_core = matrixfree_rapply_core
-    _vapply_core = matrixfree_vapply_core
+    def _apply_core(self, x: Any) -> Any:
+        return self.apply_fn(x)
+
+    def _rapply_core(self, y: Any) -> Any:
+        return self.rapply_fn(y)
+
+    def _vapply_core(self, xs: Any) -> Any:
+        if self.vapply_fn is None:
+            return self.ops.vmap(self.apply, in_axes=0, out_axes=0)(xs)
+        return self.vapply_fn(xs)
 
     def __init__(
         self,
@@ -1068,9 +1134,14 @@ class _AdjointViewLinOp(LinOp[Codomain, Domain]):
         Validation level; the ambient default when omitted.
     """
 
-    _apply_core = adjoint_apply_core
-    _rapply_core = adjoint_rapply_core
-    _vapply_core = adjoint_vapply_core
+    def _apply_core(self, y: Any) -> Any:
+        return self.op._rapply_core(y)
+
+    def _rapply_core(self, x: Any) -> Any:
+        return self.op._apply_core(x)
+
+    def _vapply_core(self, ys: Any) -> Any:
+        return self.op.rvapply(ys)
 
     def __init__(
         self,

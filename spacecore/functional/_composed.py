@@ -8,11 +8,6 @@ from ._quadratic import LinOpQuadraticForm
 from .._checks import checked_method
 from .._check_policy import CheckLevel, minimum_check_level
 from ..contextual import Context
-from ..kernels.core.functional import (
-    composed_functional_grad_core,
-    composed_functional_value_core,
-    composed_functional_vgrad_core,
-)
 from ..linop import LinOp
 from ..mapping import register
 
@@ -79,9 +74,17 @@ class ComposedFunctional(Functional):
         Validation level; the ambient default when omitted.
     """
 
-    _value_core = composed_functional_value_core
-    _grad_core = composed_functional_grad_core
-    _vgrad_core = composed_functional_vgrad_core
+    def _value_core(self, x: Any) -> Any:
+        return self.F._value_core(self.A._apply_core(x))
+
+    def _grad_core(self, x: Any) -> Any:
+        # Chain rule in Riesz form: grad(F o A)(x) = A^#(grad F(A x)).
+        # ``rapply`` IS the metric adjoint A^# (ADR-009), so no extra Riesz map is
+        # applied here; inserting one would count the geometry twice.
+        return self.A._rapply_core(self.F._grad_core(self.A._apply_core(x)))
+
+    def _vgrad_core(self, xs: Any) -> Any:
+        return self.A._rvapply_core(self.F._vgrad_core(self.A._vapply_core(xs)))
 
     def __init__(
         self,

@@ -9,15 +9,21 @@ from .._batching import _check_scalar_shape
 from .._checks import checked_method
 from .._check_policy import CheckLevel
 from ..contextual import Context
-from ..kernels.core.functional import (
-    inner_product_value_core,
-    inner_product_vvalue_core,
-    linear_grad_core,
-    linear_vgrad_core,
-    matrixfree_linear_value_core,
-    matrixfree_linear_vvalue_core,
-)
 from ..space import Space, CoordinateSpace, TreeElement, TreeSpace
+
+
+def _broadcast_space_element(space: Any, value: Any, n: int) -> Any:
+    """Broadcast a single space element to a leading-axis batch of size ``n``."""
+    # Tree spaces broadcast leaf by leaf; array spaces to (n, *shape).
+    if isinstance(space, TreeSpace):
+        return space.unflatten_tree(
+            tuple(
+                _broadcast_space_element(part, component, n)
+                for part, component in zip(space.leaf_spaces, space.flatten_tree(value))
+            )
+        )
+    return space.ops.broadcast_to(value, (n,) + tuple(space.shape))
+
 
 
 def _convert_space_element(space: Space, value: Any) -> Any:
@@ -59,8 +65,15 @@ class LinearFunctional(Functional[Domain]):
         Scalar codomain; the domain's ``scalars`` by default.
     """
 
-    _grad_core = linear_grad_core
-    _vgrad_core = linear_vgrad_core
+    def _grad_core(self, x: Any) -> Any:
+        return self.representer
+
+    def _vgrad_core(self, xs: Any) -> Any:
+        # A linear functional's gradient is its representer, repeated per batch row.
+        dom = self.dom
+        sample = dom.flatten_tree(xs)[0] if isinstance(dom, TreeSpace) else xs
+        n = int(getattr(sample, "shape", (0,))[0])
+        return _broadcast_space_element(dom, self.representer, n)
 
     @property
     def scalar_field(self) -> str:
@@ -125,8 +138,24 @@ class InnerProductFunctional(LinearFunctional[Domain]):
     """
 
     # A real codomain requests the real pairing, including on complex storage.
-    _value_core = inner_product_value_core
-    _vvalue_core = inner_product_vvalue_core
+    def _value_core(self, x: Any) -> Any:
+        inner = getattr(self.domain, "_inner_core", self.domain.inner)
+        value = inner(self._c, x)
+        return self.ops.real(value) if self.real_linear else value
+
+    def _vvalue_core(self, xs: Any) -> Any:
+        # <c, x_i> = conj(c) . x_i on flat coordinates; non-Euclidean spaces use R c.
+        dom = self.dom
+        ops = self.ops
+        if dom.is_euclidean and len(tuple(dom.shape)) == 1:
+            xs_flat = xs
+            c_flat = ops.conj(self._c)
+        else:
+            c_dual = self._c if dom.is_euclidean else dom.riesz(self._c)
+            c_flat = ops.conj(dom.flatten(c_dual))
+            xs_flat = dom.flatten_batch(xs)
+        value = xs_flat @ c_flat
+        return ops.real(value) if self.real_linear else value
 
     def __init__(
         self,
@@ -218,8 +247,13 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
         The callable is used unchanged; no real-part projection is applied.
     """
 
-    _value_core = matrixfree_linear_value_core
-    _vvalue_core = matrixfree_linear_vvalue_core
+    def _value_core(self, x: Any) -> Any:
+        return self.value_fn(x)
+
+    def _vvalue_core(self, xs: Any) -> Any:
+        if self.vvalue_fn is None:
+            return self.ops.vmap(self.value, in_axes=0, out_axes=0)(xs)
+        return self.vvalue_fn(xs)
 
     def __init__(
         self,

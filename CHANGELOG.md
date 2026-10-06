@@ -60,8 +60,12 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   the dispatch errors and the memory-budget knobs, together with the ADR-022
   `CachedStackParts` cache. Dispatch was off by default; its batched specs applied only
   to eager NumPy, where they ran mostly slower than the plain per-block loops, and
-  never under `jax.jit`. The core kernels stay. The bench harness now runs the
+  never under `jax.jit`. The bench harness now runs the
   `baseline` regime only, and tutorial 09 covers fusion alone.
+- **The `spacecore.kernels` package.** Each check-free core (`_apply_core`,
+  `_rapply_core`, `_value_core`, ...) is now a method on the class it served, so the
+  duck-typed free functions, their binding lines and the lazy imports that broke
+  the `linop` ↔ `kernels` cycle are gone. The fast paths are unchanged.
 - **`spacecore.opfamily`** (breaking): `OperatorFamily`, `FunctionalScaledOperator`
   and `make_functional_scaled_operator` are gone, and `Functional * LinOp` raises
   `TypeError`. Nothing used the functional-weighted map; write `F(x) * A` for a

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import warnings
 
+from enum import Enum, auto
 from functools import cached_property
 from math import prod
 from typing import Any, cast
@@ -9,7 +10,9 @@ from typing import Any, cast
 from ._base import Codomain, Domain, LinOp
 from .._check_policy import CheckLevel
 from .._checks import checked_method
-from ._metric import _metric_is_hermitian_by_basis, _requires_euclidean_or_riesz
+from ._metric import (
+    _metric_is_hermitian_by_basis, _requires_euclidean_or_riesz, metric_rapply, metric_rvapply,
+)
 from ..space import (
     DenseCoordinateSpace,
     DenseVectorSpace,
@@ -19,13 +22,16 @@ from ..space import (
 from ..types import DenseArray
 from ..contextual import Context
 from ..contextual import resolve_context_priority
-from ..kernels.core.dense import (
-    dense_apply_core,
-    dense_rapply_core,
-    dense_rvapply_core,
-    dense_vapply_core,
-    _DenseMode,
-)
+
+
+class _DenseMode(Enum):
+    """Private computation modes for dense coordinate operators."""
+
+    EUCLIDEAN_FLAT = auto()
+    EUCLIDEAN_TENSOR = auto()
+    WEIGHTED_FUSED = auto()
+    GENERAL_METRIC = auto()
+
 
 
 class DenseLinOp(LinOp[Domain, Codomain]):
@@ -60,10 +66,81 @@ class DenseLinOp(LinOp[Domain, Codomain]):
     array([2., 6.])
     """
 
-    _apply_core = dense_apply_core
-    _rapply_core = dense_rapply_core
-    _vapply_core = dense_vapply_core
-    _rvapply_core = dense_rvapply_core
+    def _apply_core(self, x: Any) -> Any:
+        # Flat or fused: one matvec. Tensor: reshape around it. Else the spaces' flatten/unflatten.
+        if self._mode is _DenseMode.EUCLIDEAN_FLAT:
+            return self._A2 @ x
+        if self._mode is _DenseMode.EUCLIDEAN_TENSOR:
+            return (self._A2 @ x.reshape((self._dom_size,))).reshape(self.cod.shape)
+        if self._mode is _DenseMode.WEIGHTED_FUSED:
+            return self._A2 @ x
+        x1 = self.dom.flatten(x)
+        y1 = self._A2 @ x1
+        return self.cod.unflatten(y1)
+
+    def _rapply_core(self, y: Any) -> Any:
+        # Euclidean: A^H. Fused: the precomputed weighted adjoint. Else wrap A^H with the metrics.
+        if self._mode is _DenseMode.EUCLIDEAN_FLAT or self._mode is _DenseMode.EUCLIDEAN_TENSOR:
+            return self._euclidean_rapply_core(y)
+        if self._mode is _DenseMode.WEIGHTED_FUSED:
+            return self._weighted_A2H @ y
+        return metric_rapply(
+            self.domain, self.codomain, self._euclidean_rapply_core, y
+        )
+
+    def _vapply_core(self, xs: Any) -> Any:
+        # A batch of rows: X A^T on flat coordinates, reshaped to the codomain.
+        if self._mode is _DenseMode.EUCLIDEAN_FLAT:
+            return xs.reshape((-1, self._dom_size)) @ self._A2T
+        if self._mode is _DenseMode.EUCLIDEAN_TENSOR:
+            lead = tuple(xs.shape[: len(xs.shape) - len(self.dom.shape)])
+            xs2 = xs.reshape((-1, self._dom_size))
+            ys2 = xs2 @ self._A2T
+            return ys2.reshape(lead + tuple(self.cod.shape))
+        if self._mode is _DenseMode.WEIGHTED_FUSED:
+            return xs.reshape((-1, self._dom_size)) @ self._A2T
+        xs_flat = self.domain.flatten_batch(xs)
+        ys_flat = xs_flat @ self._A2T
+        return self.codomain.unflatten_batch(ys_flat)
+
+    def _rvapply_core(self, ys: Any) -> Any:
+        # Batched form of _rapply_core.
+        if self._mode is _DenseMode.EUCLIDEAN_FLAT or self._mode is _DenseMode.EUCLIDEAN_TENSOR:
+            return self._euclidean_rvapply_core(ys)
+        if self._mode is _DenseMode.WEIGHTED_FUSED:
+            return ys @ self._weighted_A2H.T
+        return metric_rvapply(
+            self.domain,
+            self.codomain,
+            self._euclidean_rapply_core,
+            self._euclidean_rvapply_core,
+            ys,
+            opname=type(self).__name__,
+            ops=self.ops,
+        )
+
+    def _euclidean_rapply_core(self, y: Any) -> Any:
+        # Plain conjugate transpose A^H, no metric.
+        if self._mode is _DenseMode.EUCLIDEAN_FLAT:
+            return self._A2H @ y
+        if self._mode is _DenseMode.EUCLIDEAN_TENSOR:
+            return (self._A2H @ y.reshape((self._cod_size,))).reshape(self.dom.shape)
+        y1 = self.cod.flatten(y)
+        x1 = self._A2H @ y1
+        return self.dom.unflatten(x1)
+
+    def _euclidean_rvapply_core(self, ys: Any) -> Any:
+        # A batch of rows: Y (A^H)^T.
+        if self._mode is _DenseMode.EUCLIDEAN_FLAT:
+            return ys.reshape((-1, self._cod_size)) @ self._A2H.T
+        if self._mode is _DenseMode.EUCLIDEAN_TENSOR:
+            lead = tuple(ys.shape[: len(ys.shape) - len(self.cod.shape)])
+            ys2 = ys.reshape((-1, self._cod_size))
+            xs2 = ys2 @ self._A2H.T
+            return xs2.reshape(lead + tuple(self.dom.shape))
+        ys_flat = self.codomain.flatten_batch(ys)
+        xs_flat = ys_flat @ self._A2H.T
+        return self.domain.unflatten_batch(xs_flat)
 
     def __init__(
         self,
@@ -109,7 +186,7 @@ class DenseLinOp(LinOp[Domain, Codomain]):
                 f"Expected A.shape == cod.shape + dom.shape == {expected}, got {A.shape}"
             )
 
-        # Precompute the 2-D matrix and its (conjugate) transpose once, for the kernels.
+        # Precompute the 2-D matrix and its (conjugate) transpose once, for the cores.
         self._A = A  # Intentionally no dtype conversion to avoid extra memory use.
         self._cod_size = prod(self.cod.shape)
         self._dom_size = prod(self.dom.shape)
