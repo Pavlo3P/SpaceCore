@@ -97,6 +97,9 @@ class BlockDiagonalLinOp(TreeLinOp[TreeSpace, TreeSpace]):
         Validation level; the ambient default when omitted.
     """
 
+    _fields = ("blocks:dom", "cod", "parts", "ctx")
+    _dynamic = ("parts",)
+
     def __init__(
         self,
         blocks: Any,
@@ -214,16 +217,6 @@ class BlockDiagonalLinOp(TreeLinOp[TreeSpace, TreeSpace]):
     def from_operators(cls, parts: Sequence[LinOp]) -> BlockDiagonalLinOp:
         """Build a tuple-structured block-diagonal operator."""
         return cls(tuple(parts))
-
-    def _convert(self, new_ctx: Context) -> BlockDiagonalLinOp:
-        """Convert spaces and blocks while retaining explicit tree layouts."""
-        return BlockDiagonalLinOp(
-            self.dom.convert(new_ctx),
-            self.cod.convert(new_ctx),
-            tuple(op.convert(new_ctx) for op in self.parts),
-            new_ctx,
-        )
-
 
 class BlockMatrixLinOp(TreeLinOp[TreeSpace, TreeSpace]):
     r"""

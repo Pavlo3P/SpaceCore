@@ -188,10 +188,3 @@ class StackedLinOp(TreeLinOp[Domain, TreeSpace]):
         dom = parts[0].dom
 
         return cls(dom, cod, parts)
-
-    def _convert(self, new_ctx: Context) -> StackedLinOp:
-        """Convert spaces and component operators to ``new_ctx``."""
-        new_dom = self.dom.convert(new_ctx)
-        new_cod = self.cod.convert(new_ctx)
-        new_parts = [op.convert(new_ctx) for op in self.parts]
-        return StackedLinOp(new_dom, new_cod, new_parts, new_ctx)

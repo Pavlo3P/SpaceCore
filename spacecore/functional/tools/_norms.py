@@ -39,6 +39,8 @@ class SquaredL2NormFunctional(_CoordinateFunctional[Domain]):
     array([3., 4.])
     """
 
+    _fields = ("dom", "ctx")
+
     def __init__(
         self,
         dom: Domain,
@@ -60,21 +62,6 @@ class SquaredL2NormFunctional(_CoordinateFunctional[Domain]):
     def _coordinate_grad(self, x: Any) -> Any:
         """Euclidean coordinate gradient ``G x`` of ``1/2 <x, x>_X``."""
         return cast(Any, self.domain).riesz(x)
-
-    def tree_flatten(self):
-        """Flatten this functional for pytree registration."""
-        return (), (self.domain, self.ctx)
-
-    @classmethod
-    def tree_unflatten(cls, aux, children):
-        """Rebuild this functional from pytree data."""
-        domain, ctx = aux
-        return cls(domain, ctx)
-
-    def _convert(self, new_ctx: Context) -> "SquaredL2NormFunctional":
-        """Convert this functional to ``new_ctx``."""
-        return SquaredL2NormFunctional(self.domain.convert(new_ctx), new_ctx)
-
 
 class LpNormFunctional(_CoordinateFunctional[Domain]):
     r"""
@@ -107,6 +94,8 @@ class LpNormFunctional(_CoordinateFunctional[Domain]):
     6.0
     """
 
+    _fields = ("dom", "p", "ctx")
+
     def __init__(
         self,
         dom: Domain,
@@ -129,21 +118,6 @@ class LpNormFunctional(_CoordinateFunctional[Domain]):
     def _coordinate_grad(self, x: Any) -> Any:
         """Euclidean coordinate gradient of the ``p``-norm (zero at the origin)."""
         return lp_coordinate_grad(self.ops, x, self.p)
-
-    def tree_flatten(self):
-        """Flatten this functional for pytree registration."""
-        return (), (self.domain, self.p, self.ctx)
-
-    @classmethod
-    def tree_unflatten(cls, aux, children):
-        """Rebuild this functional from pytree data."""
-        domain, p, ctx = aux
-        return cls(domain, p, ctx)
-
-    def _convert(self, new_ctx: Context) -> "LpNormFunctional":
-        """Convert this functional to ``new_ctx``."""
-        return LpNormFunctional(self.domain.convert(new_ctx), self.p, new_ctx)
-
 
 def L1NormFunctional(
     dom: Domain,

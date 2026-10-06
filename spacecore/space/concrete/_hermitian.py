@@ -38,6 +38,8 @@ class HermitianSpace(DenseCoordinateSpace, StarSpace, EuclideanJordanAlgebraSpac
     # Hermitian matrices with complex entries form a *real* vector space of
     # dimension n^2 -- their complex span is all of Mat(n, C). The dtype says
     # "complex" (correctly, about the entries); the scalars are real either way.
+    _fields = ("n", "atol", "rtol", "enforce_herm", "ctx")
+
     declared_scalar_field = "real"
 
     def __init__(
@@ -198,10 +200,6 @@ class HermitianSpace(DenseCoordinateSpace, StarSpace, EuclideanJordanAlgebraSpac
         X = self.symmetrize(X)
         self._check_unbatched_member(X)
         return X
-
-    def _convert(self, new_ctx: Context) -> HermitianSpace:
-        """Convert this Hermitian space to ``new_ctx``."""
-        return HermitianSpace(self.n, self.atol, self.rtol, self.enforce_herm, new_ctx)
 
     def _apply_entrywise(self, x: DenseArray, f: Callable[[DenseArray], DenseArray]) -> DenseArray:
         """Apply ``f`` entrywise and verify that shape is preserved."""

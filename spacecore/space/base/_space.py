@@ -205,6 +205,3 @@ class Space(ContextBound):
     def check_member(self, x: Any) -> None:
         if self.check_level != "none":
             self._check_member(x)
-
-    def _convert(self, new_ctx: Context) -> Space:
-        raise NotImplementedError()

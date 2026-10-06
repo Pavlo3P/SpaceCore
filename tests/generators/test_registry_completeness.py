@@ -25,6 +25,7 @@ import inspect
 import pytest
 
 import spacecore as sc
+from spacecore.backend import PyTreeNode
 from tests.generators import (
     dense_coordinate_space_cases,
     dense_vector_space_cases,
@@ -55,7 +56,13 @@ ALLOWLIST: frozenset[str] = frozenset({"StackedSpace"})
 
 # === Helpers ===============================================================
 def _is_abstract(cls: type) -> bool:
-    return inspect.isabstract(cls) or bool(getattr(cls, "__abstractmethods__", frozenset()))
+    # A pytree container that neither declares fields nor flattens itself cannot be built.
+    unbuildable = (
+        issubclass(cls, PyTreeNode)
+        and cls.tree_flatten is PyTreeNode.tree_flatten
+        and not getattr(cls, "_fields", ())
+    )
+    return unbuildable or inspect.isabstract(cls) or bool(getattr(cls, "__abstractmethods__", frozenset()))
 
 
 def _concrete_public_subclasses(base: type) -> dict[str, type]:

@@ -92,6 +92,8 @@ class StackedSpace(PyTreeNode, CoordinateSpace):
         Validation level; the ambient default when omitted.
     """
 
+    _fields = ("base", "count", "ctx")
+
     def __new__(
         cls,
         base: Space,
@@ -190,24 +192,9 @@ class StackedSpace(PyTreeNode, CoordinateSpace):
         vs = self._coerce_dense(vs)
         return vs.reshape((vs.shape[0],) + self.shape)
 
-    def _convert(self, new_ctx: Context) -> StackedSpace:
-        """Convert the base space and rebuild the stacked space."""
-        return StackedSpace(self.base.convert(new_ctx), self.count, new_ctx)
-
     def stacked(self, count: int) -> StackedSpace:
         """Return a flattened stack of this stack: ``base.stacked(count * k)``."""
         return StackedSpace(self.base, self.count * int(count), self.ctx)
-
-    def tree_flatten(self):
-        """Flatten this space for JAX pytree registration."""
-        return (), (self.base, self.count, self.ctx)
-
-    @classmethod
-    def tree_unflatten(cls, aux, children):
-        """Rebuild this space from pytree aux data."""
-        base, count, ctx = aux
-        return cls(base, count, ctx)
-
 
 class _StackedInnerProductMixin:
     """Inner-product operations for stacks whose base supports them."""

@@ -176,6 +176,9 @@ class ScaledLinOp(ScaledNode, LinOp[Domain, Codomain]):
         Validation level; the ambient default when omitted.
     """
 
+    _fields = ("scalar", "op:operand")
+    _dynamic = ("scalar", "op")
+
     def _apply_core(self, x: Any) -> Any:
         y = self.op._apply_core(x)
         scale = getattr(self.codomain, "_scale_core", self.codomain.scale)
@@ -262,6 +265,9 @@ class SumLinOp(SumNode, LinOp[Domain, Codomain]):
     check_level : {"none", "cheap", "standard", "strict"}, optional
         Validation level; the ambient default when omitted.
     """
+
+    _fields = ("ops:parts",)
+    _dynamic = ("ops",)
 
     def _apply_core(self, x: Any) -> Any:
         # A1 x + ... + Ak x, with the codomain's unchecked add when it has one.
@@ -384,6 +390,9 @@ class ComposedLinOp(LinOp[Domain, Codomain]):
         Validation level; the ambient default when omitted.
     """
 
+    _fields = ("left", "right")
+    _dynamic = ("left", "right")
+
     def _apply_core(self, x: Any) -> Any:
         for leaf in self._apply_chain:
             x = leaf._apply_core(x)
@@ -478,31 +487,8 @@ class ComposedLinOp(LinOp[Domain, Codomain]):
             return True
         return None
 
-    def __eq__(self, other: Any) -> bool:
-        """Return whether another composition has the same operands, in order."""
-        if not self.same_math(other):              # Tier 1: backend
-            return NotImplemented
-        return self.left == other.left and self.right == other.right
-
     def _repr_body(self) -> str:
         return f"{self.left._short_repr()} ∘ {self.right._short_repr()}"
-
-    def tree_flatten(self):
-        """Flatten this operator for pytree registration."""
-        children = (self.left, self.right)
-        aux = ()
-        return children, aux
-
-    @classmethod
-    def tree_unflatten(cls, aux, children):
-        """Rebuild this operator from pytree data."""
-        left, right = children
-        return cls(left, right)
-
-    def _convert(self, new_ctx: Context) -> ComposedLinOp:
-        """Convert both operands to ``new_ctx``."""
-        return ComposedLinOp(self.left.convert(new_ctx), self.right.convert(new_ctx))
-
 
 class ZeroLinOp(ZeroNode, LinOp[Domain, Codomain]):
     r"""
@@ -581,6 +567,8 @@ class IdentityLinOp(LinOp[Domain, Domain]):
         Validation level; the ambient default when omitted.
     """
 
+    _fields = ("space:domain", "ctx")
+
     def _apply_core(self, x: Any) -> Any:
         return x
 
@@ -636,33 +624,10 @@ class IdentityLinOp(LinOp[Domain, Domain]):
         """
         return True
 
-    def __eq__(self, other: Any) -> bool:
-        """Return whether another identity map has the same space."""
-        if not self.same_math(other):              # Tier 1: backend
-            return NotImplemented
-        return self.domain == other.domain                      # Tier 2 (square: cod == dom)
-
     def _repr_body(self) -> str:
         from .._repr import describe_space
 
         return describe_space(self.domain)
-
-    def tree_flatten(self):
-        """Flatten this operator for pytree registration."""
-        children = ()
-        aux = (self.domain, self.ctx)
-        return children, aux
-
-    @classmethod
-    def tree_unflatten(cls, aux, children):
-        """Rebuild this operator from pytree data."""
-        domain, ctx = aux
-        return cls(domain, ctx)
-
-    def _convert(self, new_ctx: Context) -> IdentityLinOp:
-        """Convert the identity space to ``new_ctx``."""
-        return IdentityLinOp(self.domain.convert(new_ctx), new_ctx)
-
 
 class MatrixFreeLinOp(LinOp[Domain, Codomain]):
     """
@@ -696,6 +661,8 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
         metric adjoint. Omitting it on a non-Euclidean space warns, because a
         coordinate adjoint there is silently wrong.
     """
+
+    _fields = ("apply:apply_fn", "rapply:rapply_fn", "dom:domain", "cod:codomain", "ctx", "vapply:vapply_fn", "rvapply:rvapply_fn")
 
     def _apply_core(self, x: Any) -> Any:
         return self.apply_fn(x)
@@ -926,47 +893,6 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
 
         return DenseLinOp(self.to_dense(), self.domain, self.codomain, self.ctx)
 
-    def __eq__(self, other: Any) -> bool:
-        if not self.same_math(other):              # Tier 1: backend
-            return NotImplemented
-        # Tier 2: spaces + callable identity. Extensional equality of callables
-        # is undecidable, so 'is' is the only sound comparison.
-        if self.domain != other.domain or self.codomain != other.codomain:
-            return False
-        return (
-            self.apply_fn is other.apply_fn
-            and self.vapply_fn is other.vapply_fn
-            and self.rapply_fn is other.rapply_fn
-            and self.rvapply_fn is other.rvapply_fn
-        )
-
-    def tree_flatten(self):
-        # No array children: the callables and spaces are static data.
-        children = ()
-        aux = (
-            self.apply_fn,
-            self.rapply_fn,
-            self.domain,
-            self.codomain,
-            self.ctx,
-            self.vapply_fn,
-            self.rvapply_fn,
-        )
-        return children, aux
-
-    @classmethod
-    def tree_unflatten(cls, aux, children):
-        (
-            apply_fn,
-            rapply_fn,
-            domain,
-            codomain,
-            ctx,
-            vapply_fn,
-            rvapply_fn,
-        ) = aux
-        return cls(apply_fn, rapply_fn, domain, codomain, ctx, vapply_fn, rvapply_fn)
-
     def _convert(self, new_ctx: Context) -> MatrixFreeLinOp:
         """
         Convert this matrix-free operator to ``new_ctx``.
@@ -1011,6 +937,9 @@ class _AdjointViewLinOp(LinOp[Codomain, Domain]):
     check_level : {"none", "cheap", "standard", "strict"}, optional
         Validation level; the ambient default when omitted.
     """
+
+    _fields = ("op",)
+    _dynamic = ("op",)
 
     def _apply_core(self, y: Any) -> Any:
         return self.op._rapply_core(y)
@@ -1061,30 +990,12 @@ class _AdjointViewLinOp(LinOp[Codomain, Domain]):
         """Original operator viewed as the adjoint of this adjoint view."""
         return self.op
 
-    def __eq__(self, other: Any) -> bool:
-        if not self.same_math(other):              # Tier 1: backend
-            return NotImplemented
-        return self.op == other.op
-
     def _repr_class_name(self) -> str:
         """Present a clean public label for the private adjoint-view class."""
         return "AdjointLinOp"
 
     def _repr_body(self) -> str:
         return f"{self.op._short_repr()}.H"
-
-    def tree_flatten(self):
-        children = (self.op,)
-        aux = ()
-        return children, aux
-
-    @classmethod
-    def tree_unflatten(cls, aux, children):
-        return cls(children[0])
-
-    def _convert(self, new_ctx: Context) -> _AdjointViewLinOp:
-        return _AdjointViewLinOp(self.op.convert(new_ctx))
-
 
 LinOp._Sum, LinOp._Scaled, LinOp._Zero = SumLinOp, ScaledLinOp, ZeroLinOp
 

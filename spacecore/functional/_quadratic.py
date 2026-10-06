@@ -72,6 +72,9 @@ class LinOpQuadraticForm(QuadraticForm[Domain]):
         Validation level; the ambient default when omitted.
     """
 
+    _fields = ("Q", "linear", "a", "ctx")
+    _dynamic = ("Q", "linear", "a")
+
     def _value_core(self, x: Any) -> Any:
         # f(x) = 1/2 <x, Q x> + l(x) + a.
         qx = self.Q._apply_core(x)
@@ -184,30 +187,3 @@ class LinOpQuadraticForm(QuadraticForm[Domain]):
     def vgrad(self, xs: Any) -> Any:
         """Evaluate the Riesz gradient over a leading batch axis."""
         return self._vgrad_core(xs)
-
-    def __eq__(self, other: Any) -> bool:
-        """Return whether another quadratic form has the same stored terms."""
-        if not self.same_math(other):              # Tier 1: backend
-            return NotImplemented
-        if self.Q != other.Q:                                   # Tier 2/3: operator (own gate)
-            return False
-        if self.linear != other.linear:                         # Tier 2/3: linear term (None-safe)
-            return False
-        return bool(self.ops.allclose(self.a, other.a, equal_nan=True))  # Tier 3: scalar offset
-
-    def tree_flatten(self):
-        """Flatten this quadratic form for pytree registration."""
-        children = (self.Q, self.linear, self.a)
-        aux = ()
-        return children, aux
-
-    @classmethod
-    def tree_unflatten(cls, aux, children):
-        """Rebuild this quadratic form from pytree data."""
-        Q, linear, a = children
-        return cls(Q, linear, a, Q.ctx)
-
-    def _convert(self, new_ctx: Context) -> LinOpQuadraticForm:
-        """Convert stored terms to ``new_ctx``."""
-        linear = None if self.linear is None else self.linear.convert(new_ctx)
-        return LinOpQuadraticForm(self.Q.convert(new_ctx), linear, self.a, new_ctx)

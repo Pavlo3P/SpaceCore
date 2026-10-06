@@ -95,6 +95,9 @@ class SpectralFunctional(_CoordinateFunctional[Domain]):
     -0.6931471805599453
     """
 
+    _fields = ("dom", "base", "ctx")
+    _dynamic = ("base",)
+
     def _derivative_from_gradient(self, gradient):
         if self.codomain.scalar_field == "complex":
             raise NotImplementedError(
@@ -148,30 +151,6 @@ class SpectralFunctional(_CoordinateFunctional[Domain]):
         domain = cast(Any, self.domain)
         eigvals, frame = domain.spectral_decompose(x)
         return domain.from_spectrum(self.base.grad(eigvals), frame)
-
-    def __eq__(self, other: Any) -> bool:
-        """Return whether another spectral functional has the same domain and base."""
-        if not self.same_math(other):
-            return NotImplemented
-        return self.domain == other.domain and self.base == other.base
-
-    def tree_flatten(self):
-        """Flatten this functional for pytree registration."""
-        return (self.base,), (self.domain, self.ctx)
-
-    @classmethod
-    def tree_unflatten(cls, aux, children):
-        """Rebuild this functional from pytree data."""
-        domain, ctx = aux
-        (base,) = children
-        return cls(domain, base, ctx)
-
-    def _convert(self, new_ctx: Context) -> "SpectralFunctional":
-        """Convert this functional and its base to ``new_ctx``."""
-        return SpectralFunctional(
-            self.domain.convert(new_ctx), self.base.convert(new_ctx), new_ctx
-        )
-
 
 def spectralize(
     dom: Domain,

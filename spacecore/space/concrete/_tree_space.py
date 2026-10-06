@@ -265,6 +265,8 @@ class TreeSpace(PyTreeNode, CoordinateSpace):
     array([2., 4.])
     """
 
+    _fields = ("treedef", "leaf_spaces", "ctx")
+
     def __new__(
         cls,
         treedef: optree.PyTreeSpec | Any,
@@ -545,14 +547,6 @@ class TreeSpace(PyTreeNode, CoordinateSpace):
         """Validate an element according to this space's check level."""
         self.check_member(x)
 
-    def _convert(self, new_ctx: Context) -> "TreeSpace":
-        """Convert all leaf spaces while preserving structure and paths."""
-        return TreeSpace(
-            self.treedef,
-            tuple(space.convert(new_ctx) for space in self.leaf_spaces),
-            ctx=new_ctx,
-        )
-
     def convert_element(
         self, x: Any, new_ctx: Context | str | None = None
     ) -> Any:
@@ -566,17 +560,6 @@ class TreeSpace(PyTreeNode, CoordinateSpace):
             coordinates = source_space.flatten(leaf)
             converted.append(target_space.unflatten(target.ctx.asarray(coordinates)))
         return target._from_components(tuple(converted))
-
-    def tree_flatten(self):
-        """Flatten this space as static JAX pytree data."""
-        return (), (self.treedef, self.leaf_spaces, self.ctx)
-
-    @classmethod
-    def tree_unflatten(cls, aux: Any, children: Sequence[Any]) -> "TreeSpace":
-        """Rebuild this space from JAX pytree auxiliary data."""
-        treedef, leaf_spaces, ctx = aux
-        return cls(treedef, leaf_spaces, ctx=ctx)
-
 
 class _LeafwiseHostMixin:
     """Type-only declarations of the TreeSpace host surface used by leaf mixins."""

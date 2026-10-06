@@ -13,7 +13,7 @@ import pytest
 
 import spacecore as sc
 
-from tests._helpers import has_jax, to_numpy
+from tests._helpers import to_numpy
 
 
 class _SumSquares(sc.Functional):

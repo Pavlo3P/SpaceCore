@@ -56,6 +56,8 @@ class NonnegativeOrthant(Set):
         Validation policy; inherited from the ambient space by default.
     """
 
+    _fields = ("ambient", "check_level")
+
     is_convex = True
 
     def __init__(self, ambient, *, check_level=None):
@@ -76,16 +78,3 @@ class NonnegativeOrthant(Set):
     def project(self, x: Any) -> Any:
         """Return the metric projection, coordinatewise ``max(x, 0)``."""
         return self.ops.maximum(x, self.ops.zeros_like(x))
-
-    def tree_flatten(self):
-        """Keep the ambient space and geometry as static pytree metadata."""
-        return (), (self.ambient, self.check_level)
-
-    @classmethod
-    def tree_unflatten(cls, aux, children):
-        """Rebuild from an ambient space and validation policy."""
-        ambient, check_level = aux
-        return cls(ambient, check_level=check_level)
-
-    def _convert(self, ctx):
-        return type(self)(self.ambient.convert(ctx), check_level=self.check_level)

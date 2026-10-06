@@ -101,6 +101,14 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **Field declarations replace hand-written pytree, convert and equality hooks.** A
+  class lists its constructor fields once (`_fields`, with `_dynamic` naming the
+  children); `PyTreeNode` derives `tree_flatten`/`tree_unflatten`, `ContextBound`
+  derives `_convert`, and `Mapping` derives `__eq__`. Coordinate functionals that
+  compared by identity (`SquaredL2NormFunctional`, `LpNormFunctional`, `HuberFunctional`,
+  the entropy functionals, `IndicatorFunctional`) now compare by their fields. A
+  `PyTreeNode` that neither declares fields nor flattens itself refuses construction.
+  The pytree `aux` of these classes is now a tuple of `(field, value)` pairs.
 - Lanczos and `expm_multiply` now retain native elements through a private basis
   adapter and space algebra, with dense fast paths and fixed-shape JAX pytree
   support. No coordinate conversion is required for custom spaces.

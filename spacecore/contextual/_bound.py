@@ -4,6 +4,7 @@ from abc import ABC
 from typing import Any, Self
 
 from ..backend import BackendFamily, BackendOps
+from ..backend._container import field_values, rebuild_class
 from .._checks import (
     CheckLevel,
     check_level_at_least,
@@ -180,8 +181,24 @@ class ContextBound(ABC):
         return f"{self._repr_class_name()}({inner})"
 
     def _convert(self, new_ctx: Context) -> Self:
-        """Rebuild this object in ``new_ctx``."""
-        raise NotImplementedError()
+        """Rebuild this object in ``new_ctx`` from its declared ``_fields``."""
+        if not getattr(type(self), "_fields", ()):
+            raise NotImplementedError(f"{type(self).__name__} declares no _fields to convert.")
+        ops = self.ops
+
+        def move(name: str, value: Any) -> Any:
+            # The context is replaced, convertible objects and dense arrays move, the rest stays.
+            if name == "ctx":
+                return new_ctx
+            if hasattr(value, "convert"):
+                return value.convert(new_ctx)
+            if isinstance(value, (tuple, list)) and value and all(hasattr(v, "convert") for v in value):
+                return tuple(v.convert(new_ctx) for v in value)
+            if ops.is_dense(value):
+                return new_ctx.asarray(value)
+            return value
+
+        return rebuild_class(type(self))(**{name: move(name, value) for name, value in field_values(self).items()})
 
     def convert(self, new_ctx: Context | BackendFamily | str | None = None) -> Self:
         """Return this object represented in ``new_ctx``.

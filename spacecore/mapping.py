@@ -18,6 +18,7 @@ from ._checks import minimum_check_level
 from ._lazy_algebra import is_scalar_like, scalar_eq
 from ._repr import describe_space
 from .backend import PyTreeNode
+from .backend._container import field_values
 from .contextual import ContextBound
 
 
@@ -152,8 +153,27 @@ class Mapping(Algebraic, PyTreeNode, ContextBound):
         """Codomain: a space for operators, a :class:`~spacecore.space.Field` for functionals."""
 
     def __eq__(self, other: Any) -> bool:
-        """No algebraic equality here; ``NotImplemented`` falls back to identity symmetrically."""
-        return NotImplemented
+        """Compare declared ``_fields``; without them, fall back to identity symmetrically."""
+        if not getattr(type(self), "_fields", ()) or not self.same_math(other):
+            return NotImplemented
+        ops = self.ops
+        mine, theirs = field_values(self), field_values(other)
+        for name, a in mine.items():
+            b = theirs[name]
+            if name in ("ctx", "check_level"):
+                continue
+            if ops.is_dense(a) or ops.is_dense(b):
+                # Arrays: same shape and numerically close, NaN matching NaN.
+                if not (ops.is_dense(a) and ops.is_dense(b) and tuple(a.shape) == tuple(b.shape)
+                        and bool(ops.allclose(a, b, equal_nan=True))):
+                    return False
+            elif callable(a) and not isinstance(a, Mapping):
+                # User callables: equal only when they are the same object.
+                if a is not b:
+                    return False
+            elif not scalar_eq(a, b):
+                return False
+        return True
 
     def _arrow(self) -> str:
         """Return the ``domain → codomain`` descriptor."""
@@ -220,25 +240,6 @@ class ScaledNode:
         self._init_map(operand.domain, operand.codomain, operand.ctx, level)
         self.scalar, self.operand = scalar, operand.convert(self.ctx)
 
-    def __eq__(self, other: Any) -> bool:
-        """Return whether ``other`` has the same scalar and operand."""
-        if not self.same_math(other):
-            return NotImplemented
-        return scalar_eq(self.scalar, other.scalar) and self.operand == other.operand
-
-    def tree_flatten(self):
-        """Expose the scalar (traced) and the operand as children."""
-        return (self.scalar, self.operand), ()
-
-    @classmethod
-    def tree_unflatten(cls, aux, children):
-        """Rebuild from the scalar and the operand."""
-        return cls(*children)
-
-    def _convert(self, new_ctx: Any) -> Any:
-        return type(self)(self.scalar, self.operand.convert(new_ctx))
-
-
 class SumNode:
     """Lazy finite sum of operands sharing domain and codomain; the family class adds evaluation."""
 
@@ -249,28 +250,6 @@ class SumNode:
             check_level = minimum_check_level(tuple(part.check_level for part in parts))
         self._init_map(parts[0].domain, parts[0].codomain, parts[0].ctx, check_level)
         self.parts = tuple(part.convert(self.ctx) for part in parts)
-
-    def __eq__(self, other: Any) -> bool:
-        """Return whether ``other`` has the same operands, in order (``A + B != B + A``)."""
-        if not self.same_math(other):
-            return NotImplemented
-        # Ordered comparison: A + B is not structurally equal to B + A.
-        return len(self.parts) == len(other.parts) and all(
-            a == b for a, b in zip(self.parts, other.parts)
-        )
-
-    def tree_flatten(self):
-        """Expose the operands as children."""
-        return self.parts, ()
-
-    @classmethod
-    def tree_unflatten(cls, aux, children):
-        """Rebuild from the operands."""
-        return cls(tuple(children))
-
-    def _convert(self, new_ctx: Any) -> Any:
-        return type(self)(tuple(part.convert(new_ctx) for part in self.parts))
-
 
 class ZeroNode:
     """The zero map of a family; the family class adds evaluation."""

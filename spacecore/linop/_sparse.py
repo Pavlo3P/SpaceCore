@@ -73,6 +73,9 @@ class SparseLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
     array([1., 2.])
     """
 
+    _fields = ("A", "dom", "cod", "ctx")
+    _dynamic = ("A",)
+
     def _apply_core(self, x: Any) -> Any:
         # Flat or fused: one matvec. Tensor: reshape around it. Else the spaces' flatten/unflatten.
         if self._mode is _SparseMode.EUCLIDEAN_FLAT:
@@ -345,17 +348,6 @@ class SparseLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
             except Exception:
                 return None
         return None
-
-    def tree_flatten(self):
-        aux = (self.dom, self.cod, self.ctx)
-        children = (self.A,)
-        return children, aux
-
-    @classmethod
-    def tree_unflatten(cls, aux, children):
-        dom, cod, ctx = aux
-        A = children[0]
-        return cls(A, dom, cod, ctx)
 
     def _convert(self, new_ctx: Context) -> SparseLinOp:
         # Move the spaces and the matrix, fixing the dtype if conversion kept the old one.

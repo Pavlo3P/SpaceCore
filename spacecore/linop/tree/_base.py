@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import abstractmethod
-from typing import Tuple, Sequence, Any, Self
+from typing import Tuple, Sequence, Any
 
 from .._base import LinOp, Domain, Codomain
 from ...contextual import Context
@@ -26,6 +26,9 @@ class TreeLinOp(LinOp[Domain, Codomain]):
     check_level : {"none", "cheap", "standard", "strict"}, optional
         Validation level; the ambient default when omitted.
     """
+
+    _fields = ("dom", "cod", "parts", "ctx")
+    _dynamic = ("parts",)
 
     parts: Tuple[LinOp, ...]
 
@@ -85,15 +88,3 @@ class TreeLinOp(LinOp[Domain, Codomain]):
         if len(self.parts) != len(other.parts):                     # Tier 2c: count before zip
             return False
         return all(op1 == op2 for op1, op2 in zip(self.parts, other.parts))  # Tier 3: per-part
-
-    def tree_flatten(self) -> tuple[tuple[Any, ...], Any]:
-        """Flatten this operator for pytree registration."""
-        children = tuple(self.parts)
-        aux = (self.dom, self.cod, self.ctx)
-        return children, aux
-
-    @classmethod
-    def tree_unflatten(cls, aux: Any, children: Any) -> Self:
-        """Rebuild this operator from pytree data."""
-        dom, cod, ctx = aux
-        return cls(dom, cod, tuple(children), ctx)

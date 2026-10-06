@@ -30,6 +30,9 @@ class IndicatorFunctional(Functional):
     raises ``CapabilityError``; neither operation is synthesized numerically.
     """
 
+    _fields = ("constraint", "check_level")
+    _dynamic = ("constraint",)
+
     def __init__(self, constraint: Set, *, check_level=None):
         if not isinstance(constraint, Set) or not constraint.is_convex:
             raise CapabilityError("IndicatorFunctional requires a declared closed convex Set.")
@@ -46,18 +49,5 @@ class IndicatorFunctional(Functional):
             raise CapabilityError("Indicator value requires set membership (contains).")
         return self.ops.where(member, self.codomain.ctx.asarray(0.0),
                               self.codomain.ctx.asarray(float("inf")))
-
-    def tree_flatten(self):
-        """Expose the constraint as a pytree child."""
-        return (self.constraint,), self.check_level
-
-    @classmethod
-    def tree_unflatten(cls, aux, children):
-        """Rebuild from the constraint and validation policy."""
-        return cls(children[0], check_level=aux)
-
-    def _convert(self, ctx):
-        return type(self)(self.constraint.convert(ctx), check_level=self.check_level)
-
 
 register("prox", IndicatorFunctional, object, lambda f, geometry, x, step: f.constraint.project(x))

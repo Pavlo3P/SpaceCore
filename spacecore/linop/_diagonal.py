@@ -64,6 +64,9 @@ class DiagonalLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
     array([ 8., 15.])
     """
 
+    _fields = ("diagonal", "space:domain", "ctx")
+    _dynamic = ("diagonal",)
+
     def _apply_core(self, x: Any) -> Any:
         # Vector-shaped or fused: elementwise product. Else on flat coordinates.
         if self._mode is _DiagonalMode.EUCLIDEAN:
@@ -216,31 +219,3 @@ class DiagonalLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
             return bool(self.ops.allclose(self.diagonal, self._diag_adjoint))
         except Exception:
             return None
-
-    def __eq__(self, other: Any) -> bool:
-        """Return whether another diagonal operator has the same space and values."""
-        if not self.same_math(other):                  # Tier 1: backend
-            return NotImplemented
-        if self.domain != other.domain:                             # Tier 2: space before allclose
-            return False
-        return bool(self.ops.allclose(self.diagonal, other.diagonal, equal_nan=True))  # Tier 3
-
-    def tree_flatten(self):
-        """Flatten this operator for pytree registration."""
-        children = (self.diagonal,)
-        aux = (self.domain, self.ctx)
-        return children, aux
-
-    @classmethod
-    def tree_unflatten(cls, aux, children):
-        """Rebuild this operator from pytree data."""
-        domain, ctx = aux
-        return cls(children[0], domain, ctx)
-
-    def _convert(self, new_ctx: Context) -> DiagonalLinOp:
-        """Convert the stored diagonal and space to ``new_ctx``."""
-        return DiagonalLinOp(
-            new_ctx.asarray(self.diagonal),
-            self.domain.convert(new_ctx),
-            new_ctx,
-        )

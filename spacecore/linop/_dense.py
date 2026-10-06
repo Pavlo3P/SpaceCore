@@ -66,6 +66,9 @@ class DenseLinOp(LinOp[Domain, Codomain]):
     array([2., 6.])
     """
 
+    _fields = ("A", "dom", "cod", "ctx")
+    _dynamic = ("A",)
+
     def _apply_core(self, x: Any) -> Any:
         # Flat or fused: one matvec. Tensor: reshape around it. Else the spaces' flatten/unflatten.
         if self._mode is _DenseMode.EUCLIDEAN_FLAT:
@@ -296,32 +299,3 @@ class DenseLinOp(LinOp[Domain, Codomain]):
             return bool(self.ops.allclose(self._A2, self._A2H))
         except Exception:
             return None
-
-    def __eq__(self, other: Any) -> bool:
-        """Return whether another dense operator has the same spaces and values."""
-        if not self.same_math(other):                  # Tier 1: backend
-            return NotImplemented
-        if self.dom != other.dom or self.cod != other.cod:          # Tier 2: spaces before allclose
-            return False
-        return bool(self.ops.allclose(self.A, other.A, equal_nan=True))  # Tier 3: values
-
-    def tree_flatten(self):
-        """Flatten this operator for pytree registration."""
-        aux = (self.dom, self.cod, self.ctx)
-        children = (self.A,)
-        return children, aux
-
-    @classmethod
-    def tree_unflatten(cls, aux, children):
-        """Rebuild this operator from pytree data."""
-        dom, cod, ctx = aux
-        A = children[0]
-        return cls(A, dom, cod, ctx)
-
-    def _convert(self, new_ctx: Context) -> DenseLinOp:
-        """Convert spaces and stored dense tensor to ``new_ctx``."""
-        # Move the spaces and the matrix onto the new context.
-        new_dom = self.dom.convert(new_ctx)
-        new_cod = self.cod.convert(new_ctx)
-        new_A = new_ctx.asarray(self.A)
-        return DenseLinOp(new_A, new_dom, new_cod, new_ctx)

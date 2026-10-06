@@ -60,6 +60,9 @@ class ScaledFunctional(ScaledNode, Functional):
         Validation level; the ambient default when omitted.
     """
 
+    _fields = ("scalar", "functional:operand")
+    _dynamic = ("scalar", "functional")
+
     def __init__(self, scalar: Any, functional: Functional, check_level: CheckLevel | None = None) -> None:
         super().__init__(scalar, functional, check_level)
 
@@ -134,6 +137,9 @@ class SumFunctional(SumNode, Functional):
     check_level : {"none", "cheap", "standard", "strict"}, optional
         Validation level; the ambient default when omitted.
     """
+
+    _fields = ("terms:parts",)
+    _dynamic = ("terms",)
 
     def __init__(self, terms: Any, check_level: CheckLevel | None = None) -> None:
         super().__init__(terms, check_level)
@@ -269,6 +275,9 @@ class ConstantFunctional(Functional):
         Scalar codomain; the domain's ``scalars`` by default.
     """
 
+    _fields = ("dom", "constant", "ctx", "check_level", "cod")
+    _dynamic = ("constant",)
+
     def __init__(
         self,
         dom: Any,
@@ -299,29 +308,6 @@ class ConstantFunctional(Functional):
     def value_and_grad(self, x: Any, *args: Any, **kwargs: Any) -> tuple[Any, Any]:
         """Return ``(constant, X.zeros())``."""
         return self._value_core(x, *args, **kwargs), self.domain.zeros()
-
-    def __eq__(self, other: Any) -> bool:
-        """Return whether another constant functional has the same domain and value."""
-        if not self.same_math(other):
-            return NotImplemented
-        return self.domain == other.domain and self.codomain == other.codomain and scalar_eq(self.constant, other.constant)
-
-    def tree_flatten(self):
-        """Flatten this functional for pytree registration (constant is a traced child)."""
-        return (self.constant,), (self.domain, self.ctx, self.codomain, self.check_level)
-
-    @classmethod
-    def tree_unflatten(cls, aux, children):
-        """Rebuild this functional from pytree data."""
-        dom, ctx, cod, check_level = aux
-        (constant,) = children
-        return cls(dom, constant, ctx, check_level=check_level, cod=cod)
-
-    def _convert(self, new_ctx: Context) -> "ConstantFunctional":
-        """Convert the constant functional to ``new_ctx``."""
-        return ConstantFunctional(self.domain.convert(new_ctx), self.constant, new_ctx,
-                                  check_level=self.check_level, cod=self.codomain)
-
 
 def make_constant_functional(
     dom: Any,
@@ -397,6 +383,9 @@ class ProductFunctional(Functional):
         Validation level; the ambient default when omitted.
     """
 
+    _fields = ("left", "right")
+    _dynamic = ("left", "right")
+
     def __init__(
         self,
         left: Functional,
@@ -467,33 +456,6 @@ class ProductFunctional(Functional):
         lv, ld = self.left.value_and_derivative(x, *args, **kwargs)
         rv, rd = self.right.value_and_derivative(x, *args, **kwargs)
         return lv * rv, rv * ld + lv * rd
-
-    def __eq__(self, other: Any) -> bool:
-        """Return whether another product has the same ordered factors.
-
-        Ordered, like :class:`SumFunctional`: the operation commutes, but this is
-        structural equality of expression trees, not semantic equivalence.
-        """
-        if not self.same_math(other):
-            return NotImplemented
-        return self.left == other.left and self.right == other.right
-
-    def tree_flatten(self):
-        """Flatten this functional for pytree registration."""
-        return (self.left, self.right), ()
-
-    @classmethod
-    def tree_unflatten(cls, aux, children):
-        """Rebuild this functional from pytree data."""
-        left, right = children
-        return cls(left, right)
-
-    def _convert(self, new_ctx: Context) -> "ProductFunctional":
-        """Convert both factors to ``new_ctx``."""
-        return ProductFunctional(
-            self.left.convert(new_ctx), self.right.convert(new_ctx)
-        )
-
 
 def make_functional_product(left: Functional, right: Functional) -> Functional:
     """

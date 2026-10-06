@@ -11,7 +11,7 @@ Euclidean; a non-Euclidean ``X`` requires the displayed Riesz conversion.
 """
 from __future__ import annotations
 
-from typing import Any, Self, Tuple
+from typing import Any, Tuple
 
 from .._checks import checked_method
 from ..contextual import Context
@@ -58,6 +58,9 @@ class RealifiedFunctional(Functional):
     >>> float(R.value(R.to_real(ctx.asarray([3.0 + 4.0j, 0.0]))))
     12.5
     """
+
+    _fields = ("base",)
+    _dynamic = ("base",)
 
     def __init__(self, base: Functional) -> None:
         # Only complex coordinate spaces can be split into real and imaginary parts.
@@ -120,12 +123,6 @@ class RealifiedFunctional(Functional):
         gv = X.flatten(X.riesz(g))
         return val, ops.concatenate([ops.real(gv), ops.imag(gv)])
 
-    def __eq__(self, other: Any) -> bool:
-        """Return whether another realified functional wraps an equal base."""
-        if not self.same_math(other):
-            return NotImplemented
-        return self.base == other.base
-
     def _convert(self, new_ctx: Context) -> "RealifiedFunctional":
         """Convert the wrapped functional to ``new_ctx`` and re-derive the view.
 
@@ -139,17 +136,6 @@ class RealifiedFunctional(Functional):
         ops = new_ctx.ops
         base_ctx = Context(ops, dtype=ops.complex_dtype(new_ctx.dtype))
         return RealifiedFunctional(self.base.convert(base_ctx))
-
-    def tree_flatten(self) -> tuple[tuple[Any, ...], Any]:
-        """Flatten this functional for pytree registration."""
-        return (self.base,), ()
-
-    @classmethod
-    def tree_unflatten(cls, aux: Any, children: Any) -> Self:
-        """Rebuild this functional from pytree data."""
-        (base,) = children
-        return cls(base)
-
 
 def realify(F: Functional) -> Functional:
     """

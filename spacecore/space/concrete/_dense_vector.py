@@ -99,10 +99,6 @@ class DenseVectorSpace(DenseCoordinateSpace, StarSpace):
         """Return elementwise conjugation."""
         return self.ops.conj(x)
 
-    def _convert(self, new_ctx: Context) -> DenseVectorSpace:
-        return DenseVectorSpace(self.shape, new_ctx, geometry=self.geometry.convert(new_ctx))
-
-
 class ElementwiseJordanSpace(PyTreeNode, JordanAlgebraSpace, DenseCoordinateSpace, StarSpace):
     """
     Dense coordinates with the elementwise Jordan product, real or complex.
@@ -207,20 +203,6 @@ class ElementwiseJordanSpace(PyTreeNode, JordanAlgebraSpace, DenseCoordinateSpac
     def spectral_apply(self, x: DenseArray, f: Callable[[DenseArray], DenseArray]) -> DenseArray:
         """Apply a scalar function coordinatewise."""
         return self._apply_entrywise(x, f)
-
-    def _convert(self, new_ctx: Context) -> ElementwiseJordanSpace:
-        return ElementwiseJordanSpace(self.shape, new_ctx, geometry=self.geometry.convert(new_ctx))
-
-    def tree_flatten(self):
-        """Flatten this space for JAX pytree registration."""
-        return (), (self.shape, self.ctx, self.geometry)
-
-    @classmethod
-    def tree_unflatten(cls, aux, children):
-        """Rebuild this space from pytree aux data."""
-        shape, ctx, geometry = aux
-        return cls(shape, ctx, geometry=geometry)
-
 
 class EuclideanElementwiseJordanSpace(ElementwiseJordanSpace, EuclideanJordanAlgebraSpace):
     """

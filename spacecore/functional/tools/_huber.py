@@ -42,6 +42,8 @@ class HuberFunctional(_CoordinateFunctional[Domain]):
     2.625
     """
 
+    _fields = ("dom", "delta", "ctx")
+
     def __init__(
         self,
         dom: Domain,
@@ -74,17 +76,3 @@ class HuberFunctional(_CoordinateFunctional[Domain]):
         d = self.delta
         a = o.abs(x)
         return o.where(a <= d, x, d * o.sign(x))
-
-    def tree_flatten(self):
-        """Flatten this functional for pytree registration."""
-        return (), (self.domain, self.delta, self.ctx)
-
-    @classmethod
-    def tree_unflatten(cls, aux, children):
-        """Rebuild this functional from pytree data."""
-        domain, delta, ctx = aux
-        return cls(domain, delta, ctx)
-
-    def _convert(self, new_ctx: Context) -> "HuberFunctional":
-        """Convert this functional to ``new_ctx``."""
-        return HuberFunctional(self.domain.convert(new_ctx), self.delta, new_ctx)

@@ -28,6 +28,8 @@ class DenseCoordinateSpace(CoordinateSpace, InnerProductSpace):
         Validation level; the ambient default when omitted.
     """
 
+    _fields = ("shape", "ctx", "geometry")
+
     def __init__(
         self,
         shape: Tuple[int, ...],
@@ -137,7 +139,3 @@ class DenseCoordinateSpace(CoordinateSpace, InnerProductSpace):
         """
         if self.check_level != "none" and tuple(getattr(x, "shape", ())) == self.shape:
             self._check_member(x)
-
-    def _convert(self, new_ctx: Context) -> DenseCoordinateSpace:
-        """Convert this dense coordinate space to ``new_ctx`` without changing shape."""
-        return DenseCoordinateSpace(self.shape, new_ctx, geometry=self.geometry.convert(new_ctx))

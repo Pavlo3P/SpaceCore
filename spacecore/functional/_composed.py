@@ -7,7 +7,6 @@ from ._linear import InnerProductFunctional, LinearFunctional
 from ._quadratic import LinOpQuadraticForm
 from .._checks import checked_method
 from .._checks import CheckLevel, minimum_check_level
-from ..contextual import Context
 from ..linop import LinOp
 from ..mapping import register
 
@@ -73,6 +72,9 @@ class ComposedFunctional(Functional):
     check_level : {"none", "cheap", "standard", "strict"}, optional
         Validation level; the ambient default when omitted.
     """
+
+    _fields = ("F", "A")
+    _dynamic = ("F", "A")
 
     def _value_core(self, x: Any) -> Any:
         return self.F._value_core(self.A._apply_core(x))
@@ -147,31 +149,8 @@ class ComposedFunctional(Functional):
         """Evaluate the chain-rule gradient over a leading batch axis."""
         return self._vgrad_core(xs)
 
-    def __eq__(self, other: Any) -> bool:
-        """Return whether another composed functional has the same operands."""
-        if not self.same_math(other):              # Tier 1: backend
-            return NotImplemented
-        return self.F == other.F and self.A == other.A
-
     def _repr_body(self) -> str:
         return f"{self.F._short_repr()} ∘ {self.A._short_repr()}"
-
-    def tree_flatten(self):
-        """Flatten this functional for pytree registration."""
-        children = (self.F, self.A)
-        aux = ()
-        return children, aux
-
-    @classmethod
-    def tree_unflatten(cls, aux, children):
-        """Rebuild this functional from pytree data."""
-        F, A = children
-        return cls(F, A)
-
-    def _convert(self, new_ctx: Context) -> ComposedFunctional:
-        """Convert the composed functional and operator to ``new_ctx``."""
-        return type(self)(self.F.convert(new_ctx), self.A.convert(new_ctx))
-
 
 class _ComposedLinearFunctional(ComposedFunctional, LinearFunctional):
     """Pullback that needs only forward application for directional evaluation."""

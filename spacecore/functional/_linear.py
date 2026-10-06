@@ -138,6 +138,9 @@ class InnerProductFunctional(LinearFunctional[Domain]):
     """
 
     # A real codomain requests the real pairing, including on complex storage.
+    _fields = ("c:_c", "dom", "ctx", "cod", "check_level", "real_linear")
+    _dynamic = ("c",)
+
     def _value_core(self, x: Any) -> Any:
         inner = getattr(self.domain, "_inner_core", self.domain.inner)
         value = inner(self._c, x)
@@ -195,25 +198,6 @@ class InnerProductFunctional(LinearFunctional[Domain]):
             equal_nan=True,
         ))
 
-    def tree_flatten(self):
-        """Flatten this functional for pytree registration."""
-        children = (self._c,)
-        aux = (self.domain, self.ctx, self.codomain, self.check_level, self.real_linear)
-        return children, aux
-
-    @classmethod
-    def tree_unflatten(cls, aux, children):
-        """Rebuild this functional from pytree data."""
-        domain, ctx, cod, check_level, real_linear = aux
-        c = children[0]
-        return cls(c, domain, ctx, cod=cod, check_level=check_level, real_linear=real_linear)
-
-    def _convert(self, new_ctx: Context) -> InnerProductFunctional:
-        """Convert the domain and representer to ``new_ctx``."""
-        return InnerProductFunctional(self._c, self.domain.convert(new_ctx), new_ctx,
-                                      cod=self.codomain, check_level=self.check_level, real_linear=self.real_linear)
-
-
 class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
     """
     Linear functional given by an evaluation callable; no Riesz representer is stored.
@@ -236,6 +220,8 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
         Declare real linearity for a complex-valued callable on complex inputs.
         The callable is used unchanged; no real-part projection is applied.
     """
+
+    _fields = ("value:value_fn", "dom", "ctx", "vvalue:vvalue_fn", "check_level", "cod", "real_linear")
 
     def _value_core(self, x: Any) -> Any:
         return self.value_fn(x)
@@ -319,50 +305,3 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
             leading = shape if not base else shape[: len(shape) - len(base)]
             _check_scalar_shape(values, leading)
         return values
-
-    def __eq__(self, other: Any) -> bool:
-        """Return whether another matrix-free functional uses the same callables."""
-        if not self.same_math(other):              # Tier 1: backend
-            return NotImplemented
-        if self.domain != other.domain or self.codomain != other.codomain:  # Tier 2: endpoints
-            return False
-        # Callable identity: extensional equality of callables is undecidable.
-        return (self.value_fn is other.value_fn and self.vvalue_fn is other.vvalue_fn
-                and self.real_linear == other.real_linear)
-
-    def tree_flatten(self):
-        """Flatten this functional for pytree registration."""
-        children = ()
-        aux = (self.value_fn, self.domain, self.ctx, self.vvalue_fn, self.codomain, self.check_level, self.real_linear)
-        return children, aux
-
-    @classmethod
-    def tree_unflatten(cls, aux, children):
-        """Rebuild this functional from pytree data."""
-        value_fn, domain, ctx, vvalue_fn, cod, check_level, real_linear = aux
-        return cls(value_fn, domain, ctx, vvalue_fn, check_level=check_level, cod=cod, real_linear=real_linear)
-
-    def _convert(self, new_ctx: Context) -> MatrixFreeLinearFunctional:
-        """
-        Convert this functional to ``new_ctx``.
-
-        Parameters
-        ----------
-        new_ctx:
-            Concrete target context for the converted domain.
-
-        Returns
-        -------
-        MatrixFreeLinearFunctional
-            Functional with converted domain and the same user-supplied
-            callables.
-        """
-        return MatrixFreeLinearFunctional(
-            self.value_fn,
-            self.domain.convert(new_ctx),
-            new_ctx,
-            self.vvalue_fn,
-            check_level=self.check_level,
-            cod=self.codomain,
-            real_linear=self.real_linear,
-        )

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import threading
 import warnings
-from abc import ABC, abstractmethod
+from abc import ABC
 from typing import Any, Callable, Self
 
 #: Registers one class with one backend's pytree system. Supplied by that
@@ -120,6 +120,29 @@ class PyTreeRegistry:
 registry = PyTreeRegistry()
 
 
+def field_values(obj: Any) -> dict[str, Any]:
+    """Map each constructor field ``obj`` declares in ``_fields`` to its current value."""
+    values = {}
+    for spec in type(obj)._fields:
+        param, _, attr = spec.partition(":")
+        values[param] = getattr(obj, attr or param)
+    return values
+
+
+def rebuild_class(cls: type) -> type:
+    """Return the class a conversion rebuilds ``cls`` through: the nearest one whose ``__new__`` picks the subclass.
+
+    Unflattening keeps the exact class, so a traced rebuild re-validates its invariants;
+    converting may change them (a real space becoming complex), so it goes through the factory.
+    """
+    for base in cls.__mro__:
+        if base is PyTreeNode or base is object:
+            break
+        if "__new__" in vars(base):
+            return base
+    return cls
+
+
 class PyTreeNode(ABC):
     """Capability: a structured container exposed to backends' transform systems.
 
@@ -138,7 +161,13 @@ class PyTreeNode(ABC):
 
     __slots__ = ()
 
-    @abstractmethod
+    # A subclass may declare ``_fields``, the constructor keywords that rebuild it
+    # (``"param:attr"`` reads ``attr`` when the attribute is named differently), and
+    # ``_dynamic``, the subset that are children rather than aux. That gives the
+    # generic flatten/unflatten here and the generic convert and equality of the
+    # context-bound bases; classes with derived or cached state override instead.
+    # No defaults live here, so a declaration on any base in the MRO is found.
+
     def tree_flatten(self) -> tuple[tuple[Any, ...], Any]:
         """Return ``(children, aux)`` for this container.
 
@@ -148,9 +177,11 @@ class PyTreeNode(ABC):
             ``children`` — dynamic, array-bearing members, in a stable order;
             ``aux`` — static metadata sufficient, with ``children``, to rebuild.
         """
+        values = field_values(self)
+        children = tuple(values.pop(name) for name in getattr(self, "_dynamic", ()))
+        return children, tuple(values.items())
 
     @classmethod
-    @abstractmethod
     def tree_unflatten(cls, aux: Any, children: tuple[Any, ...]) -> Self:
         """Rebuild an instance from ``aux`` and ``children``.
 
@@ -161,6 +192,15 @@ class PyTreeNode(ABC):
         children : tuple
             The dynamic members, possibly transformed or traced.
         """
+        return cls(**dict(aux), **dict(zip(getattr(cls, "_dynamic", ()), children)))
+
+    def __new__(cls, *args: Any, **kwargs: Any) -> Self:
+        # A container that cannot flatten is abstract: refuse to build it.
+        if cls.tree_flatten is PyTreeNode.tree_flatten and not getattr(cls, "_fields", ()):
+            raise TypeError(
+                f"Can't instantiate {cls.__name__}: it declares no _fields and does not implement tree_flatten."
+            )
+        return super().__new__(cls)
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         """
@@ -170,7 +210,7 @@ class PyTreeNode(ABC):
         class that is never instantiated is harmless.
         """
         super().__init_subclass__(**kwargs)
-        # Abstract bases are skipped; concrete subclasses register on definition.
-        if getattr(cls.tree_flatten, "__isabstractmethod__", False):
+        # Classes that neither declare fields nor flatten themselves are skipped.
+        if cls.tree_flatten is PyTreeNode.tree_flatten and not getattr(cls, "_fields", ()):
             return
         registry.register_class(cls)

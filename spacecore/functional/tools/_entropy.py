@@ -43,6 +43,8 @@ class NegativeEntropyFunctional(_CoordinateFunctional[Domain]):
     array([1., 1.])
     """
 
+    _fields = ("dom", "ctx")
+
     def __init__(
         self,
         dom: Domain,
@@ -63,21 +65,6 @@ class NegativeEntropyFunctional(_CoordinateFunctional[Domain]):
     def _coordinate_grad(self, x: Any) -> Any:
         """Euclidean coordinate gradient ``log x_i + 1`` (defined for ``x_i > 0``)."""
         return self.ops.log(x) + 1.0
-
-    def tree_flatten(self):
-        """Flatten this functional for pytree registration."""
-        return (), (self.domain, self.ctx)
-
-    @classmethod
-    def tree_unflatten(cls, aux, children):
-        """Rebuild this functional from pytree data."""
-        domain, ctx = aux
-        return cls(domain, ctx)
-
-    def _convert(self, new_ctx: Context) -> "NegativeEntropyFunctional":
-        """Convert this functional to ``new_ctx``."""
-        return NegativeEntropyFunctional(self.domain.convert(new_ctx), new_ctx)
-
 
 class KLDivergenceFunctional(_CoordinateFunctional[Domain]):
     r"""
@@ -112,6 +99,9 @@ class KLDivergenceFunctional(_CoordinateFunctional[Domain]):
     array([1., 1.])
     """
 
+    _fields = ("target:_target", "dom", "ctx")
+    _dynamic = ("target",)
+
     def __init__(
         self,
         target: Any,
@@ -142,17 +132,3 @@ class KLDivergenceFunctional(_CoordinateFunctional[Domain]):
     def _coordinate_grad(self, x: Any) -> Any:
         """Euclidean coordinate gradient ``log(x_i / t_i) + 1`` (for ``x_i > 0``)."""
         return self.ops.log(x / self._target) + 1.0
-
-    def tree_flatten(self):
-        """Flatten this functional for pytree registration."""
-        return (self._target,), (self.domain, self.ctx)
-
-    @classmethod
-    def tree_unflatten(cls, aux, children):
-        """Rebuild this functional from pytree data."""
-        domain, ctx = aux
-        return cls(children[0], domain, ctx)
-
-    def _convert(self, new_ctx: Context) -> "KLDivergenceFunctional":
-        """Convert this functional to ``new_ctx``."""
-        return KLDivergenceFunctional(self._target, self.domain.convert(new_ctx), new_ctx)
