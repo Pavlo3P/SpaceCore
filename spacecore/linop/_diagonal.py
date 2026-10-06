@@ -65,11 +65,8 @@ class DiagonalLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
 
     def _apply_core(self, x: Any) -> Any:
         # Vector-shaped or fused: elementwise product. Else on flat coordinates.
-        if self._mode is _DiagonalMode.EUCLIDEAN:
-            return self.diagonal * x
-        if self._mode is _DiagonalMode.WEIGHTED_FUSED:
-            return self.diagonal * x
-        if type(self.domain) in _VECTOR_SPACES:
+        # EUCLIDEAN and WEIGHTED_FUSED imply a vector-space domain; check them first.
+        if self._mode is not _DiagonalMode.GENERAL_METRIC or type(self.domain) in _VECTOR_SPACES:
             return self.diagonal * x
         x_flat = self.domain.flatten(x)
         y_flat = self._diag_flat * x_flat
@@ -87,11 +84,7 @@ class DiagonalLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
 
     def _vapply_core(self, xs: Any) -> Any:
         # Elementwise, broadcasting over the leading batch axis.
-        if self._mode is _DiagonalMode.EUCLIDEAN:
-            return self.diagonal * xs
-        if self._mode is _DiagonalMode.WEIGHTED_FUSED:
-            return self.diagonal * xs
-        if type(self.domain) in _VECTOR_SPACES:
+        if self._mode is not _DiagonalMode.GENERAL_METRIC or type(self.domain) in _VECTOR_SPACES:
             return self.diagonal * xs
         xs_flat = self.domain.flatten_batch(xs)
         ys_flat = xs_flat * self._diag_flat
@@ -115,11 +108,7 @@ class DiagonalLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
 
     def _euclidean_rapply_core(self, y: Any) -> Any:
         # The adjoint diagonal, elementwise or on flat coordinates.
-        if self._mode is _DiagonalMode.EUCLIDEAN:
-            return self._diag_adjoint * y
-        if self._mode is _DiagonalMode.WEIGHTED_FUSED:
-            return self._diag_adjoint * y
-        if type(self.domain) in _VECTOR_SPACES:
+        if self._mode is not _DiagonalMode.GENERAL_METRIC or type(self.domain) in _VECTOR_SPACES:
             return self._diag_adjoint * y
         y_flat = self.codomain.flatten(y)
         x_flat = self._diag_adjoint_flat * y_flat
@@ -127,11 +116,7 @@ class DiagonalLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
 
     def _euclidean_rvapply_core(self, ys: Any) -> Any:
         # Adjoint diagonal over the batch.
-        if self._mode is _DiagonalMode.EUCLIDEAN:
-            return self._diag_adjoint * ys
-        if self._mode is _DiagonalMode.WEIGHTED_FUSED:
-            return self._diag_adjoint * ys
-        if type(self.domain) in _VECTOR_SPACES:
+        if self._mode is not _DiagonalMode.GENERAL_METRIC or type(self.domain) in _VECTOR_SPACES:
             return self._diag_adjoint * ys
         ys_flat = self.codomain.flatten_batch(ys)
         xs_flat = ys_flat * self._diag_adjoint_flat

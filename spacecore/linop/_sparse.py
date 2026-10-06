@@ -76,12 +76,10 @@ class SparseLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
 
     def _apply_core(self, x: Any) -> Any:
         # Flat or fused: one matvec. Tensor: reshape around it. Else the spaces' flatten/unflatten.
-        if self._mode is _SparseMode.EUCLIDEAN_FLAT:
+        if self._mode is _SparseMode.EUCLIDEAN_FLAT or self._mode is _SparseMode.WEIGHTED_FUSED:
             return self._A @ x
         if self._mode is _SparseMode.EUCLIDEAN_TENSOR:
             return (self._A @ x.reshape((self._dom_size,))).reshape(self.cod.shape)
-        if self._mode is _SparseMode.WEIGHTED_FUSED:
-            return self._A @ x
         x1 = self.dom.flatten(x)
         y1 = self._A @ x1
         return self.cod.unflatten(y1)
@@ -98,15 +96,13 @@ class SparseLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
 
     def _vapply_core(self, xs: Any) -> Any:
         # Sparse @ dense wants the batch as columns: (A X^T)^T.
-        if self._mode is _SparseMode.EUCLIDEAN_FLAT:
+        if self._mode is _SparseMode.EUCLIDEAN_FLAT or self._mode is _SparseMode.WEIGHTED_FUSED:
             return (self._A @ xs.reshape((-1, self._dom_size)).T).T
         if self._mode is _SparseMode.EUCLIDEAN_TENSOR:
             lead = tuple(xs.shape[: len(xs.shape) - len(self.dom.shape)])
             xs2 = xs.reshape((-1, self._dom_size))
             ys2 = (self._A @ xs2.T).T
             return ys2.reshape(lead + tuple(self.cod.shape))
-        if self._mode is _SparseMode.WEIGHTED_FUSED:
-            return (self._A @ xs.reshape((-1, self._dom_size)).T).T
         xs_flat = self.domain.flatten_batch(xs)
         ys_flat = (self._A @ xs_flat.T).T
         return self.codomain.unflatten_batch(ys_flat)
