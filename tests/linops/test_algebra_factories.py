@@ -19,11 +19,10 @@ import numpy as np
 import pytest
 
 import spacecore as sc
-from spacecore.mapping._lazy_algebra import is_recognizably_nonreal, scalar_eq
+from spacecore.mapping._lazy_algebra import is_recognizably_nonreal, is_scalar_like, scalar_eq
 from tests._helpers import has_jax
 from spacecore.linop._algebra import (
     _conjugate_scalar,
-    is_scalar_like,
     make_composed,
     make_scaled,
     make_sum,

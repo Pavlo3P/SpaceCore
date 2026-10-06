@@ -84,51 +84,41 @@ class BlockDiagonalLinOp(TreeLinOp[TreeSpace, TreeSpace]):
 
     Parameters
     ----------
-    blocks : tree of LinOp or TreeSpace
-        Block tree, each leaf mapping ``X_i`` to ``Y_i``. In the legacy
-        ``(dom, cod, parts, ctx)`` form, the domain tree.
-    cod : TreeSpace or None, optional
-        Codomain tree (legacy form only).
-    parts : sequence of LinOp or None, optional
-        Blocks (legacy form only).
+    blocks : tree of LinOp
+        Block tree, each leaf mapping ``X_i`` to ``Y_i``.
     ctx : Context, str, or None, optional
         Backend context; resolved from the blocks when omitted.
     check_level : {"none", "cheap", "standard", "strict"}, optional
         Validation level; the ambient default when omitted.
     """
 
-    _fields = ("blocks:dom", "cod", "parts", "ctx")
-    _dynamic = ("parts",)
-
     def __init__(
         self,
         blocks: Any,
-        cod: TreeSpace | None = None,
-        parts: Sequence[LinOp] | None = None,
         ctx: Context | str | None = None,
         check_level: CheckLevel | None = None,
     ) -> None:
-        # Legacy form: explicit dom, cod and parts.
-        if isinstance(blocks, TreeSpace):
-            dom = blocks
-            if not isinstance(cod, TreeSpace):
-                raise TypeError("Legacy BlockDiagonalLinOp construction requires a TreeSpace cod.")
-            if parts is None:
-                raise TypeError("Legacy BlockDiagonalLinOp construction requires component blocks.")
-            block_parts = _validate_blocks(parts, type(self).__name__)
-        else:
-            # Tree form: flatten the blocks and build both tree spaces from them.
-            if cod is not None or parts is not None:
-                raise TypeError(
-                    "BlockDiagonalLinOp(blocks) accepts only a block tree; "
-                    "use the legacy (dom, cod, blocks, ctx) form for explicit layouts."
-                )
-            leaves, treedef = optree.tree_flatten(blocks)
-            block_parts = _validate_blocks(leaves, type(self).__name__)
-            dom = TreeSpace(treedef, tuple(block.domain for block in block_parts), ctx=ctx)
-            cod = TreeSpace(treedef, tuple(block.codomain for block in block_parts), ctx=ctx)
-
+        # Flatten the blocks and build both tree spaces from them.
+        leaves, treedef = optree.tree_flatten(blocks)
+        block_parts = _validate_blocks(leaves, type(self).__name__)
+        dom = TreeSpace(treedef, tuple(block.domain for block in block_parts), ctx=ctx)
+        cod = TreeSpace(treedef, tuple(block.codomain for block in block_parts), ctx=ctx)
         super().__init__(dom, cod, block_parts, ctx, check_level=check_level)
+
+    def _with_blocks(self, parts: Sequence[LinOp], ctx: Any = None) -> BlockDiagonalLinOp:
+        # Rebuild in this operator's tree layout from new leaf blocks.
+        return BlockDiagonalLinOp(optree.tree_unflatten(self.dom.treedef, list(parts)), ctx or self.ctx)
+
+    def tree_flatten(self):
+        return self.parts, (self.dom.treedef, self.ctx)
+
+    @classmethod
+    def tree_unflatten(cls, aux, children):
+        treedef, ctx = aux
+        return cls(optree.tree_unflatten(treedef, list(children)), ctx)
+
+    def _convert(self, new_ctx: Context) -> BlockDiagonalLinOp:
+        return self._with_blocks([op.convert(new_ctx) for op in self.parts], new_ctx)
 
     def _check_layout(self) -> None:
         """Check that each block maps the corresponding pair of tree leaves."""
@@ -144,22 +134,12 @@ class BlockDiagonalLinOp(TreeLinOp[TreeSpace, TreeSpace]):
             if not _same_space_for_algebra(block.codomain, self.cod.leaf_spaces[index]):
                 raise TypeError(f"Block {index} has an incompatible codomain leaf.")
 
-    @checked_method(in_space="domain", out_space="codomain")
-    def apply(self, x: Any) -> Any:
-        """Apply each block to the matching direct-product component."""
-        return self._apply_unchecked(x)
-
-    def _apply_unchecked(self, x: Any) -> Any:
+    def _apply_core(self, x: Any) -> Any:
         x_parts = self.dom._components(x)
         y_parts = _block_diagonal_apply(self.parts, x_parts)
         return self.cod._from_components(y_parts)
 
-    @checked_method(in_space="codomain", out_space="domain")
-    def rapply(self, y: Any) -> Any:
-        """Apply each block's metric adjoint to the matching component."""
-        return self._rapply_unchecked(y)
-
-    def _rapply_unchecked(self, y: Any) -> Any:
+    def _rapply_core(self, y: Any) -> Any:
         y_parts = self.cod._components(y)
         x_parts = _block_diagonal_rapply(self.parts, y_parts)
         return self.dom._from_components(x_parts)
@@ -169,9 +149,9 @@ class BlockDiagonalLinOp(TreeLinOp[TreeSpace, TreeSpace]):
     )
     def vapply(self, x: Any) -> Any:
         """Apply each block over a tree of leading-axis batches."""
-        return self._vapply_unchecked(x)
+        return self._vapply_core(x)
 
-    def _vapply_unchecked(self, x: Any) -> Any:
+    def _vapply_core(self, x: Any) -> Any:
         x_parts = self.dom._components(x)
         y_parts = _block_diagonal_vapply(self.parts, x_parts)
         return self.cod._from_components(y_parts)
@@ -181,9 +161,9 @@ class BlockDiagonalLinOp(TreeLinOp[TreeSpace, TreeSpace]):
     )
     def rvapply(self, y: Any) -> Any:
         """Apply each metric adjoint over a tree of leading-axis batches."""
-        return self._rvapply_unchecked(y)
+        return self._rvapply_core(y)
 
-    def _rvapply_unchecked(self, y: Any) -> Any:
+    def _rvapply_core(self, y: Any) -> Any:
         y_parts = self.cod._components(y)
         x_parts = _block_diagonal_rvapply(self.parts, y_parts)
         return self.dom._from_components(x_parts)
@@ -194,24 +174,14 @@ class BlockDiagonalLinOp(TreeLinOp[TreeSpace, TreeSpace]):
         # The adjoint is block diagonal in the blocks' adjoints; cache both ways.
         view = getattr(self, "_adjoint_view", None)
         if view is None:
-            view = BlockDiagonalLinOp(
-                self.codomain,
-                self.domain,
-                tuple(block.H for block in self.parts),
-                self.ctx,
-            )
+            view = self._with_blocks([block.H for block in self.parts])
             self._adjoint_view = view
             view._adjoint_view = self
         return view
 
     def fuse(self, *, materialize: bool = False) -> BlockDiagonalLinOp:
         """Fuse each block (ADR-021), preserving the tree layout and context."""
-        return BlockDiagonalLinOp(
-            self.dom,
-            self.cod,
-            tuple(op.fuse(materialize=materialize) for op in self.parts),
-            self.ctx,
-        )
+        return self._with_blocks([op.fuse(materialize=materialize) for op in self.parts])
 
     @classmethod
     def from_operators(cls, parts: Sequence[LinOp]) -> BlockDiagonalLinOp:
@@ -313,12 +283,7 @@ class BlockMatrixLinOp(TreeLinOp[TreeSpace, TreeSpace]):
                 if not _same_space_for_algebra(block.codomain, self.cod.leaf_spaces[row]):
                     raise ValueError(f"Block ({row}, {column}) has an incompatible codomain.")
 
-    @checked_method(in_space="domain", out_space="codomain")
-    def apply(self, x: Any) -> Any:
-        """Apply the block matrix and sum each output row."""
-        return self._apply_unchecked(x)
-
-    def _apply_unchecked(self, x: Any) -> Any:
+    def _apply_core(self, x: Any) -> Any:
         # y_i = sum_j A_ij x_j, row by row.
         x_parts = self.dom._components(x)
         y_parts = []
@@ -330,12 +295,7 @@ class BlockMatrixLinOp(TreeLinOp[TreeSpace, TreeSpace]):
             y_parts.append(_sum_values(codomain, values, batched=False))
         return self.cod._from_components(tuple(y_parts))
 
-    @checked_method(in_space="codomain", out_space="domain")
-    def rapply(self, y: Any) -> Any:
-        """Apply the metric-adjoint blocks and sum each transposed column."""
-        return self._rapply_unchecked(y)
-
-    def _rapply_unchecked(self, y: Any) -> Any:
+    def _rapply_core(self, y: Any) -> Any:
         # x_j = sum_i A_ij* y_i, column by column.
         y_parts = self.cod._components(y)
         x_parts = []

@@ -17,10 +17,7 @@ from ..space import Field
 from .._checks import checked_method
 from .._checks import CheckLevel, minimum_check_level
 from ..contextual import Context
-from ..mapping._lazy_algebra import (
-    is_scalar_like as is_scalar_like,  # re-exported for functional/_base.py
-    scalar_eq,
-)
+from ..mapping._lazy_algebra import is_scalar_like, scalar_eq
 
 
 def _require_same_domain(terms: Any, node: str = "SumFunctional") -> None:

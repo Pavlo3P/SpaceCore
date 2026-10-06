@@ -50,6 +50,11 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Removed
 
+- **Legacy `BlockDiagonalLinOp(dom, cod, parts, ctx)` construction** (breaking).
+  `BlockDiagonalLinOp(blocks, ctx)` takes the block tree only; its tree is the element
+  structure, so a NamedTuple of blocks gives NamedTuple elements. The tree operators'
+  `_*_unchecked` methods are now the standard `_*_core` cores, and the
+  `_apply_unchecked` fallback in `TreeLinOp` is gone.
 - **`spacecore.optimize`** (breaking): `minimize_scipy`, `line_search_scipy`,
   `minimize_optax` and `OptaxResult` moved to the separate
   [`spacecore-optimize`](https://github.com/Pavlo3P/spacecore-optimize) package

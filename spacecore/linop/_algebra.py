@@ -17,9 +17,6 @@ from ..space._capabilities import _CAP_BATCH, _CAP_COORDINATE, probe_element, re
 from .._repr import summarize_value
 from ..contextual import Context
 from ..mapping._lazy_algebra import conjugate_scalar as _conjugate_scalar
-from ..mapping._lazy_algebra import (
-    is_scalar_like as is_scalar_like,  # re-exported for linop/_base.py
-)
 
 
 def _compose_chain(op: Any) -> tuple:

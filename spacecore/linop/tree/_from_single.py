@@ -78,12 +78,7 @@ class StackedLinOp(TreeLinOp[Domain, TreeSpace]):
             else:
                 raise TypeError(f"Component op {i} must map dom -> cod.leaf_spaces[{i}].")
 
-    @checked_method(in_space="domain", out_space="codomain")
-    def apply(self, x: Any) -> Any:
-        """Apply each component operator and return a codomain product element."""
-        return self._apply_unchecked(x)
-
-    def _apply_unchecked(self, x: Any) -> Any:
+    def _apply_core(self, x: Any) -> Any:
         """Apply component operators without checks and rebuild codomain representation."""
         # Apply each part to the shared input; two parts unrolled.
         if self._num_parts == 2:
@@ -92,12 +87,7 @@ class StackedLinOp(TreeLinOp[Domain, TreeSpace]):
             y_parts = tuple(apply(x) for apply in self._apply_parts)
         return self.cod._from_components(y_parts)
 
-    @checked_method(in_space="codomain", out_space="domain")
-    def rapply(self, y: Any) -> Any:
-        """Apply component adjoints from a codomain product element and sum them."""
-        return self._rapply_unchecked(y)
-
-    def _rapply_unchecked(self, y: Any) -> Any:
+    def _rapply_core(self, y: Any) -> Any:
         """Apply component adjoints without membership checks."""
         # Adjoint: sum of the parts' adjoints, with cached matrices when available.
         y_parts = self.cod._components(y)
@@ -129,9 +119,9 @@ class StackedLinOp(TreeLinOp[Domain, TreeSpace]):
     @checked_method(in_space="domain", out_space="codomain", in_batched=True, out_batched=True)
     def vapply(self, x: Any) -> Any:
         """Apply this stacked operator over a batch and preserve codomain structure."""
-        return self._vapply_unchecked(x)
+        return self._vapply_core(x)
 
-    def _vapply_unchecked(self, x: Any) -> Any:
+    def _vapply_core(self, x: Any) -> Any:
         """Apply over a batch without checks and rebuild codomain representation."""
         y_parts = tuple(op.vapply(x) for op in self.parts)
         return self.cod._from_components(y_parts)
@@ -139,9 +129,9 @@ class StackedLinOp(TreeLinOp[Domain, TreeSpace]):
     @checked_method(in_space="codomain", out_space="domain", in_batched=True, out_batched=True)
     def rvapply(self, y: Any) -> Any:
         """Apply the adjoint stacked operator over a structured product batch."""
-        return self._rvapply_unchecked(y)
+        return self._rvapply_core(y)
 
-    def _rvapply_unchecked(self, y: Any) -> Any:
+    def _rvapply_core(self, y: Any) -> Any:
         """Apply the adjoint over a product batch without membership checks."""
         # Batched adjoint: same sum over a leading batch axis.
         y_parts = self.cod._components(y)

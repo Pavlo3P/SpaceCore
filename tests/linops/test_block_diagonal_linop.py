@@ -81,10 +81,6 @@ def _block_parts(ctx):
     )
 
 
-def _structured_tree(spaces, template, ctx):
-    return sc.TreeSpace.from_template(template, tuple(spaces), ctx=ctx)
-
-
 def _slice_tree_batch(xs, i):
     return tuple(_slice_tree_batch(xi, i) if isinstance(xi, tuple) else xi[i] for xi in xs)
 
@@ -147,7 +143,7 @@ class TestInferenceAndStructure:
 
 
 # ===========================================================================
-# Structured-tree (NamedTuple template) layouts via the legacy 4-arg form
+# Structured-tree (NamedTuple) layouts: the block tree is the element structure
 # ===========================================================================
 class TestStructuredTreeLayout:
     @pytest.mark.parametrize("kind", ["numpy", "jax"])
@@ -155,17 +151,7 @@ class TestStructuredTreeLayout:
         # Folded from tests/linops/test_tree_structure.py.
         ctx = _ctx(kind)
         parts = _block_parts(ctx)
-        dom = _structured_tree(
-            (parts[0].domain, parts[1].domain),
-            State(ctx.asarray([0.0, 0.0]), ctx.asarray([0.0, 0.0, 0.0])),
-            ctx,
-        )
-        cod = _structured_tree(
-            (parts[0].codomain, parts[1].codomain),
-            State(ctx.asarray([0.0, 0.0]), ctx.asarray([0.0])),
-            ctx,
-        )
-        op = sc.BlockDiagonalLinOp(dom, cod, parts, ctx)
+        op = sc.BlockDiagonalLinOp(State(parts[0], parts[1]), ctx)
 
         x = State(ctx.asarray([10.0, 20.0]), ctx.asarray([1.0, 2.0, 3.0]))
         y = op.apply(x)
@@ -181,17 +167,7 @@ class TestStructuredTreeLayout:
         # Folded from tests/linops/test_tree_structure.py.
         ctx = _ctx(kind)
         parts = _block_parts(ctx)
-        dom = _structured_tree(
-            (parts[0].domain, parts[1].domain),
-            State(ctx.asarray([0.0, 0.0]), ctx.asarray([0.0, 0.0, 0.0])),
-            ctx,
-        )
-        cod = _structured_tree(
-            (parts[0].codomain, parts[1].codomain),
-            State(ctx.asarray([0.0, 0.0]), ctx.asarray([0.0])),
-            ctx,
-        )
-        op = sc.BlockDiagonalLinOp(dom, cod, parts, ctx)
+        op = sc.BlockDiagonalLinOp(State(parts[0], parts[1]), ctx)
 
         xb = State(
             ctx.asarray([[10.0, 20.0], [1.0, 2.0]]),
