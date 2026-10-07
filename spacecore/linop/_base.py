@@ -9,7 +9,7 @@ from .._batching import _leading_batch_size, _warn_vmap_fallback_once
 from .._checks import CheckLevel
 from .._checks import checked_method
 from ..space._capabilities import _CAP_BATCH, _CAP_COORDINATE, require
-from ..space import VectorSpace, Field
+from ..space import VectorSpace, RealField
 from ..contextual import Context
 from ..mapping import Mapping
 
@@ -62,9 +62,9 @@ class LinOp(Mapping, Generic[Domain, Codomain]):
         check_level: CheckLevel | None = None,
     ):
         # Scalar-valued maps are Functionals, not LinOps (ADR-010).
-        if isinstance(cod, Field):
+        if isinstance(cod, RealField):
             raise TypeError(
-                "LinOp codomain cannot be a Field (ADR-010); use Functional "
+                "LinOp codomain cannot be a RealField (ADR-010); use Functional "
                 "for scalar-valued maps and Riesz gradients."
             )
         self.dom, self.cod = self._bind_context(ctx, dom, cod, check_level=check_level)

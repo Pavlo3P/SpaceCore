@@ -1,4 +1,4 @@
-"""Scalar fields preserve coefficient mathematics independently of storage."""
+"""The real field and declared scalar fields, independent of storage."""
 import numpy as np
 import pytest
 
@@ -26,12 +26,7 @@ def test_scalar_storage_table(dtype, declared):
             cls((2,), ctx)
         return
     space = cls((2,), ctx)
-    original_ctx = space.ctx
-    field = space.scalars
-    assert isinstance(field, sc.RealField if declared == 'real' else sc.ComplexField)
-    assert field.dtype == (ctx.ops.real_dtype(ctx.dtype) if declared == 'real' else ctx.dtype)
-    assert field.ops == ctx.ops
-    assert space.ctx is original_ctx
+    assert space.scalar_field == declared
     assert space.dtype == np.dtype(dtype)
     if declared == 'real':
         with pytest.raises(sc.SpaceValidationError):
@@ -39,24 +34,22 @@ def test_scalar_storage_table(dtype, declared):
 
 
 @pytest.mark.parametrize('dtype', ['int32', 'int64', 'bool'])
-@pytest.mark.parametrize('cls', [sc.RealField, sc.ComplexField, sc.DenseCoordinateSpace])
+@pytest.mark.parametrize('cls', [sc.RealField, sc.DenseCoordinateSpace])
 def test_integer_boolean_storage_rejected(dtype, cls):
     ctx = sc.Context(sc.NumpyOps(), dtype=dtype)
     with pytest.raises(TypeError, match='floating storage'):
         cls((2,), ctx) if cls is sc.DenseCoordinateSpace else cls(ctx)
 
 
-@pytest.mark.parametrize('cls,dtype', [(sc.RealField, 'float64'), (sc.ComplexField, 'complex128')])
-def test_field_laws_geometry_probe_and_missing_coordinates(cls, dtype):
-    field = cls(sc.Context(sc.NumpyOps(), dtype=dtype))
+def test_field_laws_geometry_probe_and_missing_coordinates():
+    field = sc.RealField(sc.Context(sc.NumpyOps(), dtype='float64'))
     assert isinstance(field, sc.VectorSpace)
     assert isinstance(field, sc.InnerProductSpace)
     assert not isinstance(field, sc.CoordinateSpace)
     for name in ('shape', 'size', 'flatten', 'stacked'):
         assert not hasattr(field, name)
-    a = field.ctx.asarray(2 + 3j if cls is sc.ComplexField else 2.)
-    b = field.ctx.asarray(4.)
-    np.testing.assert_allclose(field.inner(a, b), np.conj(a) * b)
+    a, b = field.ctx.asarray(2.), field.ctx.asarray(4.)
+    np.testing.assert_allclose(field.inner(a, b), a * b)
     assert field.riesz(a) is a
     assert field.riesz_inverse(a) is a
     assert field.is_euclidean
@@ -82,15 +75,9 @@ def test_scalar_member_check_levels(level, raises):
         field.check_member(np.ones(2))
 
 
-def test_hermitian_scalars_do_not_mutate_storage():
-    ctx = sc.Context(sc.NumpyOps(), dtype=np.complex128)
-    space = sc.HermitianSpace(2, ctx=ctx)
-    original_ctx = space.ctx
-    field = space.scalars
-    assert isinstance(field, sc.RealField)
-    assert field.dtype == np.dtype('float64')
+def test_hermitian_space_is_real_over_complex_storage():
+    space = sc.HermitianSpace(2, ctx=sc.Context(sc.NumpyOps(), dtype=np.complex128))
     assert space.dtype == np.dtype('complex128')
-    assert space.ctx is original_ctx
     assert space.field == 'complex' and space.scalar_field == 'real'
 
 
@@ -99,25 +86,19 @@ def test_fields_preserve_backend_and_precision(family):
     if family != 'numpy':
         pytest.importorskip(family)
     ops = normalize_context(family).ops
-    ctx = sc.Context(ops, dtype='complex64')
-    space = sc.HermitianSpace(2, ctx=ctx)
-    assert space.scalars.ops == ops
-    assert space.scalars.dtype == ops.sanitize_dtype('float32')
-    assert space.scalars.ones().dtype == ops.sanitize_dtype('float32')
-    assert sc.ComplexField(ctx).ones().dtype == ops.sanitize_dtype('complex64')
+    field = sc.RealField(sc.Context(ops, dtype='complex64'))
+    assert field.ops == ops
+    assert field.dtype == ops.sanitize_dtype('float32')
+    assert field.ones().dtype == ops.sanitize_dtype('float32')
 
 
 def test_default_fields_and_conversion_keep_mathematical_field():
     assert sc.RealField().field == 'real'
-    assert sc.ComplexField().field == 'complex'
-    ctx = sc.Context(sc.NumpyOps(), dtype='float32')
-    assert sc.ComplexField().convert(ctx).dtype == np.dtype('complex64')
     assert sc.RealField().convert(sc.Context(sc.NumpyOps(), 'complex64')).dtype == np.dtype('float32')
 
 
 def test_linop_rejects_field_codomain_at_construction():
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
     dom = sc.DenseCoordinateSpace((2,), ctx)
-    for field in (sc.RealField(ctx), sc.ComplexField()):
-        with pytest.raises(TypeError, match='ADR-010'):
-            sc.MatrixFreeLinOp(lambda x: x.sum(), lambda y: np.ones(2) * y, dom, field)
+    with pytest.raises(TypeError, match='ADR-010'):
+        sc.MatrixFreeLinOp(lambda x: x.sum(), lambda y: np.ones(2) * y, dom, sc.RealField(ctx))

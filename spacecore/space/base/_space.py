@@ -79,21 +79,6 @@ class Space(ContextBound):
         """
         return self.declared_scalar_field or self.field
 
-    @property
-    def scalars(self):
-        """Return the coefficient field on this backend without changing storage.
-
-        Real coefficients over complex storage use the corresponding real
-        precision; entry and coefficient fields remain separate properties.
-        """
-        from ._field import RealField, ComplexField
-
-        # Real coefficients keep the storage precision but drop the imaginary part.
-        if self.scalar_field == "real":
-            ctx = Context(self.ops, self.ops.real_dtype(self.dtype))
-            return RealField(ctx, check_level=self.check_level)
-        return ComplexField(self.ctx, check_level=self.check_level)
-
     def _check_scalar(self, a: Any) -> None:
         """Raise if ``a`` is not an admissible multiplier for this space."""
         # Only a provably non-real scalar is rejected, so traced scalars pass.

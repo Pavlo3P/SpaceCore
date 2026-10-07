@@ -599,7 +599,6 @@ def vector_space_law_cases(*, seed: int | None = DEFAULT_SEED) -> tuple[SpaceCas
             capabilities=frozenset({"vector", "inner_product", field.field}),
             id=f"field-{field.field}",
         )
-        for field in (sc.RealField(_context(np.float64)),
-                      sc.ComplexField(_context(np.complex128)))
+        for field in (sc.RealField(_context(np.float64)),)
     )
     return tuple(dense) + tuple(vectors) + tuple(trees) + jordan + fields

@@ -9,14 +9,12 @@ from ._inner_product import (
     InnerProductSpace,
     WeightedInnerProduct,
 )
-from ._field import Field, RealField, ComplexField
+from ._field import RealField
 from ._star import StarSpace
 from ._jordan import JordanAlgebraSpace, EuclideanJordanAlgebraSpace
 
 __all__ = [
-    "Field",
     "RealField",
-    "ComplexField",
     "Space",
     "VectorSpace",
     "CoordinateSpace",

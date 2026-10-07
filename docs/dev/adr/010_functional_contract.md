@@ -10,16 +10,16 @@ From 0.5.0a, Functionals are real-valued scalar maps on spaces, including comple
 
 ## Current design
 
-`Functional` owns a domain space, a scalar `Field` codomain, and a context. The codomain is always `RealField`. Subclasses implement `value(x)`. `vvalue(xs)` evaluates over a leading batch axis through backend `vmap` unless overridden. `LinearFunctional` adds a Riesz-gradient contract through `representer`, `grad`, and `vgrad`. `InnerProductFunctional` stores a representer and evaluates `Re<c, x>`. `MatrixFreeLinearFunctional` requires real outputs from user evaluation callables and has no stored representer. `QuadraticForm` defines optional `grad`, `vgrad`, and `hess_apply`; `LinOpQuadraticForm` stores a Hermitian operator, optional linear term, and scalar offset. Pull-backs are built by composing with a LinOp and have specializations for inner-product and quadratic functionals.
+`Functional` owns a domain space, a `RealField` codomain, and a context. Subclasses implement `value(x)`. `vvalue(xs)` evaluates over a leading batch axis through backend `vmap` unless overridden. `LinearFunctional` adds a Riesz-gradient contract through `representer`, `grad`, and `vgrad`. `InnerProductFunctional` stores a representer and evaluates `Re<c, x>`. `MatrixFreeLinearFunctional` requires real outputs from user evaluation callables and has no stored representer. `QuadraticForm` defines optional `grad`, `vgrad`, and `hess_apply`; `LinOpQuadraticForm` stores a Hermitian operator, optional linear term, and scalar offset. Pull-backs are built by composing with a LinOp and have specializations for inner-product and quadratic functionals.
 
 ## Decision
 
-A functional is not a LinOp with a one-dimensional codomain. It owns a domain, a real `Field` codomain and real scalar-valued evaluation, and gradients are space elements with respect to the domain geometry when implemented.
+A functional is not a LinOp with a one-dimensional codomain. It owns a domain, a `RealField` codomain and real scalar-valued evaluation, and gradients are space elements with respect to the domain geometry when implemented.
 
-`Field` inherits `InnerProductSpace` (and therefore `VectorSpace`), but not
+`RealField` inherits `InnerProductSpace` (and therefore `VectorSpace`), but not
 `CoordinateSpace`. Since `LinOp` now accepts `VectorSpace` endpoints, the type
 bound alone cannot maintain this separation. `LinOp.__init__` explicitly rejects
-a `Field` codomain with an error citing ADR-010. Use a `Functional` for that map.
+a `RealField` codomain with an error citing ADR-010. Use a `Functional` for that map.
 
 Scalar output validation uses `out_space="codomain"` and the field's
 `ScalarShapeCheck`, active only at `standard` and `strict`. Exact batch output

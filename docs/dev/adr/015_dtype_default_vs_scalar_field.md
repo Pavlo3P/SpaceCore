@@ -22,24 +22,16 @@ For 0.4.0 Stage 1, `Space.field` is derived from `Context.dtype`; no constructor
 
 Exact dtype equality and cross-precision compatibility remain strict until concrete workloads justify relaxing them. Solver workspaces should be operand-driven: real diagnostics for complex operators use `ops.real_dtype(ctx.dtype)`, while vector workspaces use the operator/context dtype.
 
-`Space.scalars` returns a public `RealField` or `ComplexField` on the same
-backend. It is separate from both string accessors and does not mutate the
-owning space's context. Fields have Euclidean inner products and scalar shape
-membership, but no coordinate or batching capability.
+A declared complex coefficient field over real floating storage is rejected at
+construction; integer and Boolean storage are rejected. For example, a
+`HermitianSpace` over `complex128` is a real vector space that keeps its
+`complex128` storage. `RealField`, the codomain of every functional, stores
+values in the real dtype corresponding to its context and converts to the
+target backend at that real precision. It has a Euclidean inner product and
+scalar shape membership, but no coordinate or batching capability.
 
-| Coefficient field | Element storage | Scalar field storage |
-| --- | --- | --- |
-| real | real floating | same dtype |
-| real | complex floating | corresponding real dtype |
-| complex | real floating | rejected at construction |
-| complex | complex floating | same dtype |
-
-Integer and Boolean space storage are rejected. For example, a
-`HermitianSpace` over `complex128` has a `RealField` over `float64`, while the
-Hermitian space retains `complex128`. A functional's explicit field codomain
-is validated independently: a real domain can have complex-valued output.
-Field conversion preserves its real/complex identity and uses the target
-backend and corresponding precision.
+(0.5.0a removed `Space.scalars` and `ComplexField`: once functionals became
+real-valued nothing consumed the object-valued coefficient field.)
 
 ## Rationale
 
@@ -57,6 +49,6 @@ Using exact dtype as the only field proxy was rejected because real-vs-complex m
 
 - `Context.dtype` controls representation defaults and constructors.
 - `Space.field` describes entries and is derived from the context dtype.
-- `Space.scalar_field` describes coefficients; `Space.scalars` is their object-valued field.
+- `Space.scalar_field` describes coefficients.
 - Current dtype membership remains exact and strict.
 - Solver scalar diagnostics should use real workspaces when mathematically real, especially for complex operators.

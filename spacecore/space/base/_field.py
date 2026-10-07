@@ -1,7 +1,6 @@
 """Scalar fields, independent of finite coordinate representations."""
 from __future__ import annotations
 
-from abc import abstractmethod
 from dataclasses import dataclass
 from numbers import Real
 from typing import ClassVar
@@ -49,13 +48,12 @@ class RealScalarCheck(SpaceCheck):
         return f"Expected a real value, got {getattr(x, 'dtype', type(x).__name__)}."
 
 
-class Field(InnerProductSpace):
+class RealField(InnerProductSpace):
     """
-    Euclidean scalar field with no coordinate or batching capability.
+    Real scalars, represented in a real floating dtype, with no coordinate or batching capability.
 
-    Field membership checks scalar shape at standard and strict levels.
-    Its context records the representation of coefficients, independently of
-    the storage dtype of a vector space using those coefficients.
+    Its context records the representation of values, independently of the
+    storage dtype of a vector space they are computed on.
 
     Parameters
     ----------
@@ -65,13 +63,13 @@ class Field(InnerProductSpace):
         Validation level; the ambient default when omitted.
     """
 
-    checks = (ScalarShapeCheck(),)
+    declared_scalar_field = "real"
+    checks = (RealScalarCheck(), ScalarShapeCheck())
     geometry = EuclideanInnerProduct()
 
-    @property
-    @abstractmethod
-    def declared_scalar_field(self):
-        """The real or complex coefficient field."""
+    def __init__(self, ctx=None, check_level=None):
+        super().__init__(ctx, check_level=check_level)
+        self._ctx = Context(self.ops, self.ops.real_dtype(self.dtype))
 
     def zeros(self):
         """Return scalar zero in the field's context."""
@@ -90,57 +88,10 @@ class Field(InnerProductSpace):
         return s * a
 
     def inner(self, a, b):
-        """Return ``conj(a) * b``."""
-        return self.ops.conj(a) * b
+        """Return ``a * b``."""
+        return a * b
 
     def _convert(self, new_ctx):
-        # Endpoint binding chooses a backend and precision, not a different
-        # mathematical field. In particular complex codomains survive binding
-        # to functionals whose domains use real storage.
-        dtype = (new_ctx.ops.real_dtype(new_ctx.dtype) if self.scalar_field == "real"
-                 else new_ctx.ops.complex_dtype(new_ctx.dtype))
-        return type(self)(Context(new_ctx.ops, dtype), check_level=self.check_level)
-
-
-class RealField(Field):
-    """
-    Real scalars, represented in a real floating dtype.
-
-    Parameters
-    ----------
-    ctx : Context, str, or None, optional
-        Backend context specification. Default is the ambient context.
-    check_level : {"none", "cheap", "standard", "strict"}, optional
-        Validation level; the ambient default when omitted.
-    """
-
-    declared_scalar_field = "real"
-    checks = (RealScalarCheck(), ScalarShapeCheck())
-
-    def __init__(self, ctx=None, check_level=None):
-        super().__init__(ctx, check_level=check_level)
-        self._ctx = Context(self.ops, self.ops.real_dtype(self.dtype))
-
-
-class ComplexField(Field):
-    """
-    Complex scalars; explicit contexts must use complex floating storage.
-
-    Parameters
-    ----------
-    ctx : Context, str, or None, optional
-        Backend context specification. Default is the ambient context.
-    check_level : {"none", "cheap", "standard", "strict"}, optional
-        Validation level; the ambient default when omitted.
-    """
-
-    declared_scalar_field = "complex"
-
-    def __init__(self, ctx=None, check_level=None):
-        # Default: the ambient backend at its complex precision.
-        if ctx is None:
-            from ...contextual import normalize_context
-
-            default = normalize_context(None)
-            ctx = Context(default.ops, default.ops.complex_dtype(default.dtype))
-        super().__init__(ctx, check_level=check_level)
+        # The target chooses a backend and precision; the values stay real.
+        return type(self)(Context(new_ctx.ops, new_ctx.ops.real_dtype(new_ctx.dtype)),
+                          check_level=self.check_level)

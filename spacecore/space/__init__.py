@@ -12,9 +12,7 @@ from .checks import (
     SquareMatrixCheck,
 )
 from .base import (
-    Field,
     RealField,
-    ComplexField,
     CoordinateSpace,
     EuclideanInnerProduct,
     EuclideanJordanAlgebraSpace,
@@ -51,9 +49,7 @@ __all__ = [
     "InnerProduct",
     "EuclideanInnerProduct",
     "WeightedInnerProduct",
-    "Field",
     "RealField",
-    "ComplexField",
     "CoordinateSpace",
     "InnerProductSpace",
     "StarSpace",

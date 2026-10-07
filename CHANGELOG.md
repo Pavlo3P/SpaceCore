@@ -49,6 +49,10 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Removed
 
+- **`ComplexField`, the `Field` base class and `Space.scalars`** (breaking). Nothing
+  used them once functionals became real-valued; `RealField` is the one scalar
+  field and absorbs `Field`'s behaviour. A space's `scalar_field` still declares
+  real or complex coefficients.
 - **`StackedLinOp` and `SumToSingleLinOp`** (breaking). `BlockMatrixLinOp` covers
   both: a side given as a plain one-element list or tuple is a single space, not a
   one-leaf tree, and the containers of rows and of each row are the codomain and

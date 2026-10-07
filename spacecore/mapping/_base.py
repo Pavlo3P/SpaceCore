@@ -151,7 +151,7 @@ class Mapping(Algebraic, PyTreeNode, ContextBound):
     @property
     @abstractmethod
     def codomain(self) -> Any:
-        """Codomain: a space for operators, a :class:`~spacecore.space.Field` for functionals."""
+        """Codomain: a space for operators, a :class:`~spacecore.space.RealField` for functionals."""
 
     def __eq__(self, other: Any) -> bool:
         """Compare declared ``_fields``; without them, fall back to identity symmetrically."""

@@ -21,7 +21,7 @@ Added
   ``Set`` / ``NonnegativeOrthant`` / ``IndicatorFunctional`` projection surface
   (:doc:`design/proximal_contract`).
 * ``Element``, a formal context-bound member of a space; ``Mapping``, the common
-  parent of ``LinOp`` and ``Functional``; ``Field`` scalar spaces as the codomain
+  parent of ``LinOp`` and ``Functional``; ``RealField`` as the codomain
   of functionals.
 * A field declaration for extensions: a class lists its constructor ``_fields``
   once and gets pytree flattening, ``convert`` and (for maps) equality from it

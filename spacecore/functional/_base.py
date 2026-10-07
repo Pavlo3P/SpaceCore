@@ -9,7 +9,7 @@ from .._checks import checked_method
 from ..mapping import Mapping
 from ..contextual import Context, resolve_context_priority
 from .._checks import CheckLevel
-from ..space import Space, Field, RealField
+from ..space import Space, RealField
 
 if TYPE_CHECKING:
     from ..linop import LinOp
@@ -82,7 +82,7 @@ class Functional(Mapping, Generic[Domain]):
         Functional.__init__(self, domain, ctx, check_level=check_level)
 
     @property
-    def codomain(self) -> Field:
+    def codomain(self) -> RealField:
         """The independently bound scalar field of this functional's values."""
         return self.cod
 
