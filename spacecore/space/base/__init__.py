@@ -8,6 +8,7 @@ from ._inner_product import (
     InnerProduct,
     InnerProductSpace,
     WeightedInnerProduct,
+    OperatorInnerProduct,
 )
 from ._field import RealField
 from ._star import StarSpace
@@ -21,6 +22,7 @@ __all__ = [
     "InnerProduct",
     "EuclideanInnerProduct",
     "WeightedInnerProduct",
+    "OperatorInnerProduct",
     "InnerProductSpace",
     "StarSpace",
     "JordanAlgebraSpace",

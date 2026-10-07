@@ -23,6 +23,7 @@ from .base import (
     StarSpace,
     VectorSpace,
     WeightedInnerProduct,
+    OperatorInnerProduct,
 )
 from .concrete import (
     DenseCoordinateSpace,
@@ -49,6 +50,7 @@ __all__ = [
     "InnerProduct",
     "EuclideanInnerProduct",
     "WeightedInnerProduct",
+    "OperatorInnerProduct",
     "RealField",
     "CoordinateSpace",
     "InnerProductSpace",

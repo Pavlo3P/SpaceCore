@@ -9,6 +9,11 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- `OperatorInnerProduct(M, M_inverse=None)`: a metric given by a self-adjoint
+  positive-definite operator on the Euclidean coordinates, with `M` as the Riesz
+  map and an optional, possibly inexact, inverse. Block, Kronecker and matrix-free
+  metrics work with the existing metric adjoints, and CG in such a space is
+  preconditioned CG.
 - Optional `Functional.prox` rules in the existing mapping table, Hilbert-space
   `conjugate_prox` via Moreau, positive scaling, and finite constant shifts.
   Rules cover the squared space norm, coordinate L1 in diagonal geometry, and

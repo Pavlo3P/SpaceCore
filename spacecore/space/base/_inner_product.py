@@ -161,6 +161,84 @@ class WeightedInnerProduct(InnerProduct):
             raise ValueError("WeightedInnerProduct weights must be strictly positive.")
 
 
+class OperatorInnerProduct(InnerProduct):
+    r"""
+    Operator-metric geometry :math:`\langle x, y\rangle = \langle x, M y\rangle_E`.
+
+    ``M`` is a self-adjoint, positive-definite linear operator on the space's
+    Euclidean coordinates: block, Kronecker, low-rank-plus-diagonal or any
+    matrix-free metric. The Riesz map is ``M``; its inverse is ``M_inverse``, which
+    may be any operator approximating it, such as one that runs ``sc.cg`` to a
+    tolerance. Without ``M_inverse``, ``riesz_inverse`` raises ``CapabilityError``.
+
+    Parameters
+    ----------
+    M : LinOp
+        Self-adjoint positive-definite operator from the Euclidean coordinate space
+        of the target space to itself.
+    M_inverse : LinOp or None, optional
+        Operator applying (an approximation of) the inverse of ``M``.
+    """
+
+    def __init__(self, M, M_inverse=None):
+        self.M = M
+        self.M_inverse = M_inverse
+
+    def __eq__(self, other):
+        return (type(other) is type(self) and self.M == other.M
+                and self.M_inverse == other.M_inverse)
+
+    def __repr__(self) -> str:
+        return f"OperatorInnerProduct(M={self.M._short_repr()})"
+
+    @staticmethod
+    def _act(op, x):
+        # A single element, or a leading-axis batch folded into one batch axis.
+        core = tuple(op.domain.shape)
+        lead = tuple(x.shape[: len(x.shape) - len(core)])
+        if not lead:
+            return op._apply_core(x)
+        return op._vapply_core(x.reshape((-1,) + core)).reshape(lead + core)
+
+    def inner(self, ops, x, y):
+        return ops.vdot(x, self._act(self.M, y))
+
+    def riesz(self, ops, x):
+        return self._act(self.M, x)
+
+    def riesz_inverse(self, ops, x):
+        if self.M_inverse is None:
+            from ..._errors import CapabilityError
+
+            raise CapabilityError("OperatorInnerProduct needs M_inverse to invert its Riesz map.")
+        return self._act(self.M_inverse, x)
+
+    def convert(self, ctx):
+        M_inverse = None if self.M_inverse is None else self.M_inverse.convert(ctx)
+        return OperatorInnerProduct(self.M.convert(ctx), M_inverse)
+
+    def validate_for(self, space: InnerProductSpace) -> None:
+        """Check that ``M`` (and ``M_inverse``) act on the space's Euclidean coordinates."""
+        if not isinstance(space, CoordinateSpace):
+            raise TypeError("OperatorInnerProduct requires a CoordinateSpace.")
+        for name, op in (("M", self.M), ("M_inverse", self.M_inverse)):
+            if op is None:
+                continue
+            for end in (op.domain, op.codomain):
+                if tuple(end.shape) != tuple(space.shape) or not end.is_euclidean:
+                    raise ValueError(
+                        f"OperatorInnerProduct {name} must map the Euclidean coordinate space "
+                        f"of shape {space.shape} to itself."
+                    )
+            if op.ops.family != space.ops.family or op.dtype != space.dtype:
+                raise TypeError(
+                    f"OperatorInnerProduct {name} must use the space backend and dtype "
+                    f"({space.ops.family}, {space.dtype})."
+                )
+        if space._checks_at_least("standard") and self.M.is_hermitian() is False:
+            raise ValueError("OperatorInnerProduct M must be self-adjoint.")
+
+
 class InnerProductSpace(VectorSpace):
     """
     Vector space capability with an inner-product geometry.

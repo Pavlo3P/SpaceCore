@@ -49,11 +49,13 @@ Inner products and geometries
    spacecore.space.InnerProduct
    spacecore.space.EuclideanInnerProduct
    spacecore.space.WeightedInnerProduct
+   spacecore.space.OperatorInnerProduct
    spacecore.space.InnerProductSpace
 
 * ``InnerProduct`` defines ``inner`` and Riesz maps.
 * ``EuclideanInnerProduct`` is the standard coordinate ``vdot`` geometry.
 * ``WeightedInnerProduct`` is a positive diagonal metric with weights stored as a backend array.
+* ``OperatorInnerProduct`` is the metric of a self-adjoint positive-definite operator ``M``; ``M_inverse``, possibly inexact, inverts its Riesz map.
 * ``InnerProductSpace`` exposes ``inner``, ``norm``, ``riesz``, and ``riesz_inverse``.
 
 Star and Jordan-capable spaces
@@ -111,6 +113,9 @@ Autodoc
    :members:
 
 .. autoclass:: spacecore.space.WeightedInnerProduct
+   :members:
+
+.. autoclass:: spacecore.space.OperatorInnerProduct
    :members:
 
 .. autoclass:: spacecore.space.InnerProductSpace

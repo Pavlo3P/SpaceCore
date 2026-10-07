@@ -54,6 +54,30 @@ The common diagonal-metric case is built in:
    dual = X.riesz(x)            # weights * x
    primal = X.riesz_inverse(dual)
 
+Operator Metrics
+----------------
+
+``OperatorInnerProduct(M, M_inverse)`` takes the metric from a self-adjoint
+positive-definite operator ``M`` on the Euclidean coordinates, so block,
+Kronecker or matrix-free metrics need no new geometry class:
+
+.. math::
+
+   \langle x, y\rangle_X = \langle x, M y\rangle_E, \qquad R_X = M.
+
+``M_inverse`` applies the inverse Riesz map and may be inexact, for example a
+``MatrixFreeLinOp`` that runs ``cg`` on ``M``. Without it, operations that need
+the inverse raise ``CapabilityError``. CG on a space with this geometry is
+preconditioned CG: for ``A = M^{-1} B`` with ``B`` symmetric positive definite,
+``cg(A, M^{-1} b)`` solves ``B x = b``.
+
+.. code-block:: python
+
+   E = sc.DenseCoordinateSpace((n,), ctx)
+   M = sc.DenseLinOp(M_matrix, E, E, ctx)
+   X = sc.DenseCoordinateSpace((n,), ctx,
+                               geometry=sc.OperatorInnerProduct(M, M_inverse))
+
 Custom Geometry
 ---------------
 
