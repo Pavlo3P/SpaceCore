@@ -171,6 +171,10 @@ class OperatorInnerProduct(InnerProduct):
     may be any operator approximating it, such as one that runs ``sc.cg`` to a
     tolerance. Without ``M_inverse``, ``riesz_inverse`` raises ``CapabilityError``.
 
+    From ``standard`` checks upward, an ``M`` known to be non-self-adjoint, or with
+    non-positive curvature on a fixed probe vector, is rejected; at ``strict``, its
+    Lanczos estimate of the smallest eigenvalue must also be positive.
+
     Parameters
     ----------
     M : LinOp
@@ -235,8 +239,22 @@ class OperatorInnerProduct(InnerProduct):
                     f"OperatorInnerProduct {name} must use the space backend and dtype "
                     f"({space.ops.family}, {space.dtype})."
                 )
-        if space._checks_at_least("standard") and self.M.is_hermitian() is False:
+        if not space._checks_at_least("standard"):
+            return
+        if self.M.is_hermitian() is False:
             raise ValueError("OperatorInnerProduct M must be self-adjoint.")
+        # A deterministic probe: positive curvature is necessary for positive definiteness.
+        probe = space.ctx.asarray(_np.random.default_rng(0).standard_normal(tuple(space.shape)))
+        if not float(space.ops.real(space.ops.vdot(probe, self.M._apply_core(probe)))) > 0:
+            raise ValueError("OperatorInnerProduct M must be positive definite; "
+                             "its quadratic form is not positive on a probe vector.")
+        if space._checks_at_least("strict"):
+            from ...linalg import lanczos_smallest
+
+            smallest = lanczos_smallest(self.M, probe, max_iter=min(space.size, 100)).eigenvalue
+            if not float(space.ops.real(smallest)) > 0:
+                raise ValueError("OperatorInnerProduct M must be positive definite; "
+                                 f"its smallest eigenvalue estimate is {float(space.ops.real(smallest)):.3g}.")
 
 
 class InnerProductSpace(VectorSpace):

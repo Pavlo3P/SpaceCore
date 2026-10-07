@@ -130,3 +130,18 @@ def test_jit_through_an_operator_metric():
     A = sc.DenseLinOp(ctx.asarray(np.eye(N, dtype=np.float32)), X, X, ctx, check_level="none")
     y = ctx.asarray(np.arange(1., N + 1, dtype=np.float32))
     np.testing.assert_allclose(jax.jit(lambda op, v: op.rapply(v))(A, y), y, rtol=1e-5)
+
+
+def test_non_positive_metrics_are_caught_when_checks_are_on(ctx):
+    E = sc.DenseCoordinateSpace((N,), ctx)
+    negative = sc.DenseLinOp(ctx.asarray(-_spd()), E, E, ctx)
+    with pytest.raises(ValueError, match="positive definite"):
+        sc.DenseCoordinateSpace((N,), ctx, geometry=sc.OperatorInnerProduct(negative))
+    # One negative eigenvalue can hide from a single probe; strict finds it.
+    indefinite_np = np.diag([5., 4., 3., -1e-3])
+    indefinite = sc.DenseLinOp(ctx.asarray(indefinite_np), E, E, ctx)
+    sc.DenseCoordinateSpace((N,), ctx, geometry=sc.OperatorInnerProduct(indefinite))  # probe passes
+    with pytest.raises(ValueError, match="smallest eigenvalue"):
+        sc.DenseCoordinateSpace((N,), ctx, geometry=sc.OperatorInnerProduct(indefinite),
+                                check_level="strict")
+    sc.DenseCoordinateSpace((N,), ctx, geometry=sc.OperatorInnerProduct(negative), check_level="none")

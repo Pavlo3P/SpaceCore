@@ -67,7 +67,10 @@ Kronecker or matrix-free metrics need no new geometry class:
 
 ``M_inverse`` applies the inverse Riesz map and may be inexact, for example a
 ``MatrixFreeLinOp`` that runs ``cg`` on ``M``. Without it, operations that need
-the inverse raise ``CapabilityError``. CG on a space with this geometry is
+the inverse raise ``CapabilityError``. ``M`` must be self-adjoint and positive definite.
+From ``standard`` checks upward a known non-self-adjoint ``M``, or one with
+non-positive curvature on a probe vector, is rejected; ``strict`` also requires a
+positive Lanczos estimate of its smallest eigenvalue. CG on a space with this geometry is
 preconditioned CG: for ``A = M^{-1} B`` with ``B`` symmetric positive definite,
 ``cg(A, M^{-1} b)`` solves ``B x = b``.
 
