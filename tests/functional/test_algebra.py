@@ -91,19 +91,10 @@ class TestScaled:
         with pytest.raises(TypeError, match="Functional"):
             sc.ScaledFunctional(2.0, "nope")
 
-    def test_complex_scalar_conjugates_gradient(self):
-        # Riesz gradient of a*F is conj(a)*grad(F): the inner product conjugates
-        # its first argument, so <grad(aF), h> must recover a * <grad(F), h>.
-        ctx = sc.Context(sc.NumpyOps(), dtype=np.complex128)
-        X = sc.DenseCoordinateSpace((3,), ctx, check_level="standard")
-        c = ctx.asarray([1 + 1j, 2 - 0.5j, -1 + 0.3j])
-        F = sc.InnerProductFunctional(c, X, ctx, check_level="standard")
-        a = 2 + 3j
-        x = ctx.asarray([0.5 - 1j, 1 + 0j, -2 + 0.5j])
-        h = ctx.asarray([1 + 0j, 0 + 1j, 0.5 - 0.5j])
-        lhs = complex(to_numpy(X.inner((a * F).grad(x), h)))
-        rhs = a * complex(to_numpy(X.inner(c, h)))
-        assert np.isclose(lhs, rhs)
+    def test_complex_scalar_is_rejected(self, numpy_ctx):
+        _, F, _ = _dense(numpy_ctx)
+        with pytest.raises(TypeError, match="real-valued"):
+            2j * F
 
 
 class TestScaledFactory:
@@ -436,12 +427,8 @@ class TestProduct:
         children, aux = P.tree_flatten()
         assert sc.ProductFunctional.tree_unflatten(aux, children) == P
 
-    def test_complex_factors_conjugate_the_cofactor(self):
-        """Riesz convention: coefficients enter conjugated, as in ``ScaledFunctional``.
-
-        With ``F = <a,·>`` and ``G = <b,·>``, ``<grad(FG)(x), h>`` must recover
-        ``G(x)<a,h> + F(x)<b,h>``.
-        """
+    def test_real_factors_on_complex_domain_use_product_rule(self):
+        """The real pairing of the product gradient matches the directional derivative."""
         ctx = sc.Context(sc.NumpyOps(), dtype=np.complex128)
         X = sc.DenseCoordinateSpace((3,), ctx, check_level="standard")
         a = ctx.asarray([1 + 1j, 2 - 0.5j, -1 + 0.3j])
@@ -451,7 +438,7 @@ class TestProduct:
 
         F = sc.InnerProductFunctional(a, X, ctx)
         G = sc.InnerProductFunctional(b, X, ctx)
-        expected = G.value(x) * X.inner(a, h) + F.value(x) * X.inner(b, h)
+        expected = G.value(x) * X.inner(a, h).real + F.value(x) * X.inner(b, h).real
         np.testing.assert_allclose(
-            to_numpy(X.inner((F * G).grad(x), h)), to_numpy(expected)
+            to_numpy(X.inner((F * G).grad(x), h)).real, to_numpy(expected)
         )

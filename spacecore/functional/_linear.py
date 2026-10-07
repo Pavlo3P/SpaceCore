@@ -62,7 +62,7 @@ class LinearFunctional(Functional[Domain]):
     check_level : {"none", "cheap", "standard", "strict"}, optional
         Validation level; the ambient default when omitted.
     cod : Field or None, optional
-        Scalar codomain; the domain's ``scalars`` by default.
+        Real scalar codomain; defaults to ``RealField``.
     """
 
     def _grad_core(self, x: Any) -> Any:
@@ -78,9 +78,7 @@ class LinearFunctional(Functional[Domain]):
     @property
     def scalar_field(self) -> str:
         """Field over which the map is linear, independent of storage dtype."""
-        if self.domain.scalar_field == "real" or self.codomain.scalar_field == "real":
-            return "real"
-        return "complex"
+        return "real"
 
     def derivative_at(self, x: Any, *args: Any, **kwargs: Any) -> "LinearFunctional":
         """Return this linear functional itself, even without a representer."""
@@ -102,7 +100,7 @@ class LinearFunctional(Functional[Domain]):
         """
         Return the constant Riesz gradient of this linear functional.
 
-        For ``ell(x) = <c, x>_X``, the gradient is the space element ``c``.
+        For ``ell(x) = Re<c, x>_X``, the gradient is the space element ``c``.
         Matrix-free functionals without a stored representer inherit the
         ``NotImplementedError`` raised by :attr:`representer`.
         """
@@ -116,10 +114,10 @@ class LinearFunctional(Functional[Domain]):
 
 class InnerProductFunctional(LinearFunctional[Domain]):
     r"""
-    The functional :math:`x \mapsto \langle c, x\rangle_X` of a representer ``c``.
+    The functional :math:`x \mapsto \operatorname{Re}\langle c, x\rangle_X` of a representer ``c``.
 
-    A real codomain or ``real_linear=True`` selects the real part of this
-    pairing. This represents real differentials on complex parameter spaces.
+    The real part of this pairing is always used. This represents real
+    differentials on complex parameter spaces.
 
     Parameters
     ----------
@@ -132,9 +130,9 @@ class InnerProductFunctional(LinearFunctional[Domain]):
     check_level : {"none", "cheap", "standard", "strict"}, optional
         Validation level; the ambient default when omitted.
     cod : Field or None, optional
-        Scalar output field; defaults to the domain's scalar field.
+        Real scalar output field; defaults to ``RealField``.
     real_linear : bool, optional
-        Evaluate the real pairing, even with a complex scalar codomain.
+        Compatibility option; the real pairing is always used.
     """
 
     # A real codomain requests the real pairing, including on complex storage.
@@ -144,7 +142,7 @@ class InnerProductFunctional(LinearFunctional[Domain]):
     def _value_core(self, x: Any) -> Any:
         inner = getattr(self.domain, "_inner_core", self.domain.inner)
         value = inner(self._c, x)
-        return self.ops.real(value) if self.real_linear else value
+        return self.ops.real(value)
 
     def _vvalue_core(self, xs: Any) -> Any:
         # <c, x_i> = conj(c) . x_i on flat coordinates; non-Euclidean spaces use R c.
@@ -158,7 +156,7 @@ class InnerProductFunctional(LinearFunctional[Domain]):
             c_flat = ops.conj(dom.flatten(c_dual))
             xs_flat = dom.flatten_batch(xs)
         value = xs_flat @ c_flat
-        return ops.real(value) if self.real_linear else value
+        return ops.real(value)
 
     def __init__(
         self,
@@ -171,7 +169,7 @@ class InnerProductFunctional(LinearFunctional[Domain]):
         real_linear: bool = False,
     ) -> None:
         super().__init__(dom, ctx, check_level=check_level, cod=cod)
-        self.real_linear = real_linear or self.codomain.scalar_field == "real"
+        self.real_linear = True
         # Store the representer on the functional's backend, and check it belongs.
         self._c = _convert_space_element(self.domain, c)
         if self._checks_at_least("standard"):
@@ -183,7 +181,7 @@ class InnerProductFunctional(LinearFunctional[Domain]):
 
     @property
     def representer(self) -> Any:
-        """Stored domain element ``c`` defining ``ell_c(x) = <c, x>``."""
+        """Stored domain element ``c`` defining ``ell_c(x) = Re<c, x>``."""
         return self._c
 
     def __eq__(self, other: Any) -> bool:
@@ -215,10 +213,10 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
     check_level : {"none", "cheap", "standard", "strict"}, optional
         Validation level; the ambient default when omitted.
     cod : Field or None, optional
-        Scalar codomain; ``dom.scalars`` by default.
+        Real scalar codomain; defaults to ``RealField``.
     real_linear : bool, optional
-        Declare real linearity for a complex-valued callable on complex inputs.
-        The callable is used unchanged; no real-part projection is applied.
+        Compatibility option; functionals are always real-linear.
+        The callable must return real values; no projection is applied.
     """
 
     _fields = ("value:value_fn", "dom", "ctx", "vvalue:vvalue_fn", "check_level", "cod", "real_linear")
@@ -248,13 +246,13 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
         if vvalue is not None and not callable(vvalue):
             raise TypeError(f"vvalue must be callable, got {type(vvalue).__name__}.")
         super().__init__(dom, ctx, check_level=check_level, cod=cod)
-        self.real_linear = real_linear
+        self.real_linear = True
         self.value_fn = value
         self.vvalue_fn = vvalue
 
     @property
     def scalar_field(self) -> str:
-        """Allow a real-linear callable even when its output is complex."""
+        """The callable is linear over the real scalars."""
         return "real" if self.real_linear else super().scalar_field
 
     @property

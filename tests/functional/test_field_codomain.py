@@ -7,47 +7,47 @@ from spacecore._checks import checked_method
 
 
 @pytest.fixture
-def complex_valued():
+def real_valued():
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
     dom = sc.DenseCoordinateSpace((2,), ctx)
     return sc.MatrixFreeLinearFunctional(
-        lambda x: (1 + 2j) * x.sum(), dom,
-        cod=sc.ComplexField(sc.Context(ctx.ops, dtype=np.complex128)),
+        lambda x: 2 * x.sum(), dom,
+        cod=sc.RealField(ctx),
     )
 
 
-def test_real_domain_complex_codomain(complex_valued):
-    f = complex_valued
+def test_real_domain_real_codomain(real_valued):
+    f = real_valued
     assert f.domain.dtype == np.dtype('float64')
     assert f.ctx.dtype == np.dtype('float64')
-    assert isinstance(f.codomain, sc.ComplexField)
-    assert f.codomain.dtype == np.dtype('complex128')
-    assert f.value(np.array([1., 2.])) == 3 + 6j
-    assert 'ℝ' in repr(f) and 'ℂ' in repr(f)
+    assert isinstance(f.codomain, sc.RealField)
+    assert f.codomain.dtype == np.dtype('float64')
+    assert f.value(np.array([1., 2.])) == 6
+    assert 'ℝ' in repr(f)
 
 
 @pytest.mark.parametrize('build', [lambda f: f, lambda f: 2 * f, lambda f: f + f,
                                   lambda f: f + 1, lambda f: f * f,
                                   lambda f: 0 * f,
                                   lambda f: f.compose(sc.IdentityLinOp(f.domain))])
-def test_codomain_survives_algebra_conversion_and_pytree(complex_valued, build):
-    f = build(complex_valued)
+def test_codomain_survives_algebra_conversion_and_pytree(real_valued, build):
+    f = build(real_valued)
     x = np.array([1., 2.])
     children, aux = f.tree_flatten()
     restored = type(f).tree_unflatten(aux, children)
     converted = f.convert(sc.Context(sc.NumpyOps(), dtype=np.float32))
     for obj in (f, restored, converted):
-        assert isinstance(obj.codomain, sc.ComplexField)
+        assert isinstance(obj.codomain, sc.RealField)
         assert obj.domain.field == 'real'
         np.testing.assert_allclose(obj.value(obj.ctx.asarray(x)), f.value(x))
-    assert converted.codomain.dtype == np.dtype('complex64')
+    assert converted.codomain.dtype == np.dtype('float32')
     assert converted.domain.dtype == np.dtype('float32')
 
 
-def test_explicit_codomain_participates_in_equality(complex_valued):
-    f = complex_valued
+def test_explicit_real_codomain_matches_default(real_valued):
+    f = real_valued
     real = sc.MatrixFreeLinearFunctional(f.value_fn, f.domain)
-    assert f != real
+    assert f == real
 
 
 def test_default_hermitian_codomain_is_real():
@@ -100,15 +100,15 @@ def test_exact_batch_check_is_stronger_than_scalar_field_batch_membership():
         f.vvalue(np.ones((3, 2)))
 
 
-def test_complex_constant_and_zero_round_trip():
+def test_real_constant_and_zero_round_trip():
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
     dom = sc.DenseCoordinateSpace((2,), ctx)
-    field = sc.ComplexField()
-    for f in (sc.ConstantFunctional(dom, 1j, cod=field), sc.ZeroFunctional(dom, cod=field)):
+    field = sc.RealField()
+    for f in (sc.ConstantFunctional(dom, 1., cod=field), sc.ZeroFunctional(dom, cod=field)):
         children, aux = f.tree_flatten()
         restored = type(f).tree_unflatten(aux, children)
         assert restored == f
-        assert isinstance(restored.codomain, sc.ComplexField)
+        assert isinstance(restored.codomain, sc.RealField)
         np.testing.assert_allclose(restored.value(dom.zeros()), f.value(dom.zeros()))
 
 

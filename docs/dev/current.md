@@ -7,6 +7,14 @@ disagree, this document wins.
 
 ## Now
 
+### `0.5.0a` real functional contract — 2026-10-07
+
+All Functionals have a real codomain and produce real values, including on
+complex domains. Complex outputs, codomains, scaling coefficients and offsets
+are rejected even at `check_level="none"`. Inner-product functionals and
+Hermitian quadratic forms use the real pairing. Batch, fused, conversion and
+pytree paths preserve the contract; see ADR-010.
+
 ### `0.5.0a` simplification pass — 2026-10-06
 
 The package lost layers without changing the Backend → Space → Mapping

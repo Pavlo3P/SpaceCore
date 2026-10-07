@@ -88,13 +88,13 @@ def test_native_derivative_algebra_and_forward_only_pullback():
     np.testing.assert_allclose((g + 2 * g).grad(x), 3 * g.grad(x))
 
 
-def test_complex_linear_and_general_real_linear_maps():
+def test_real_linear_maps_on_complex_domains():
     X = space(complex_=True)
     x, h = np.array([1+2j, 3-1j]), np.array([.5+1j, -2j])
     f = sc.InnerProductFunctional(np.array([2+1j, 3-4j]), X)
     assert check_direction(f, x, h) is f
-    assert f.scalar_field == 'complex'
-    d = sc.MatrixFreeLinearFunctional(lambda v: np.conj(v[0]), X, real_linear=True)
+    assert f.scalar_field == 'real'
+    d = sc.MatrixFreeLinearFunctional(lambda v: np.real(v[0]), X, real_linear=True)
     assert d.scalar_field == 'real'
     check_direction(d * d + f, x, h)
     children, aux = d.tree_flatten()
@@ -167,13 +167,8 @@ def test_no_array_conversion_for_native_representation():
     assert (2 * d + d)(h) == 42
 
 
-def test_complex_scaled_real_differential_does_not_invent_a_representer():
+def test_complex_scaled_real_differential_is_rejected():
     X = space(complex_=True)
     d = sc.SquaredL2NormFunctional(X).derivative_at(np.array([1+2j, 3-1j]))
-    h = np.array([.5+1j, -2j])
-    scaled = 1j * d
-    np.testing.assert_allclose(scaled(h), 1j * d(h))
-    with pytest.raises(NotImplementedError, match='single Riesz'):
-        scaled.grad(h)
-    with pytest.raises(NotImplementedError, match='single Riesz'):
-        scaled.value_and_grad(h)
+    with pytest.raises(TypeError, match='real-valued'):
+        1j * d

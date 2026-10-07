@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ._base import Functional
+from ._base import Functional, _require_real
 from ._linear import LinearFunctional
 from ..mapping import Scalar, ScaledNode, SumNode, ZeroNode, make_scaled_of, make_sum_of, register
 from ..space import Field
@@ -62,6 +62,11 @@ class ScaledFunctional(ScaledNode, Functional):
 
     def __init__(self, scalar: Any, functional: Functional, check_level: CheckLevel | None = None) -> None:
         super().__init__(scalar, functional, check_level)
+        _require_real(scalar, self.ops)
+
+    def _convert(self, new_ctx: Context) -> "ScaledFunctional":
+        scalar = self.codomain.convert(new_ctx).ctx.asarray(self.scalar)
+        return type(self)(scalar, self.functional.convert(new_ctx), self.check_level)
 
     @property
     def functional(self) -> Functional:
@@ -73,21 +78,13 @@ class ScaledFunctional(ScaledNode, Functional):
         return self.scalar * self.functional._value_core(x, *args, **kwargs)
 
     def grad(self, x: Any, *args: Any, **kwargs: Any) -> Any:
-        """Return the Riesz gradient ``conj(scalar) * functional.grad(x)``.
-
-        The value scales by ``scalar`` but the metric gradient scales by its
-        conjugate: the domain inner product conjugates its first argument, so
-        ``<conj(a) g, h> = a <g, h>`` recovers ``D(a F)(x)[h]`` (mirrors
-        ``ScaledLinOp.rapply``). For a real scalar this is just ``scalar``.
-        """
-        conj_scalar = self.ops.conj(self.scalar)
-        return self.domain.scale(conj_scalar, self.functional.grad(x, *args, **kwargs))
+        """Return the real scalar times the child's Riesz gradient."""
+        return self.domain.scale(self.scalar, self.functional.grad(x, *args, **kwargs))
 
     def value_and_grad(self, x: Any, *args: Any, **kwargs: Any) -> tuple[Any, Any]:
-        """Return ``(scalar * value, conj(scalar) * grad)`` from one fused child eval."""
+        """Return ``(scalar * value, scalar * grad)`` from one fused child evaluation."""
         value, grad = self.functional.value_and_grad(x, *args, **kwargs)
-        conj_scalar = self.ops.conj(self.scalar)
-        return self.scalar * value, self.domain.scale(conj_scalar, grad)
+        return self.scalar * value, self.domain.scale(self.scalar, grad)
 
 
     def derivative_at(self, x: Any, *args: Any, **kwargs: Any) -> LinearFunctional:
@@ -114,6 +111,7 @@ def make_scaled_functional(scalar: Any, functional: Functional) -> Functional:
     Functional
         The scaled functional.
     """
+    _require_real(scalar, functional.ops)
     family = LinearFunctional if isinstance(functional, LinearFunctional) else Functional
     return make_scaled_of(family, scalar, functional)
 
@@ -217,7 +215,7 @@ class ZeroFunctional(ZeroNode, Functional):
     check_level : {"none", "cheap", "standard", "strict"}, optional
         Validation level; the ambient default when omitted.
     cod : Field or None, optional
-        Scalar codomain; the domain's ``scalars`` by default.
+        Real scalar codomain; defaults to ``RealField``.
     """
 
     @classmethod
@@ -254,7 +252,7 @@ class ConstantFunctional(Functional):
     check_level : {"none", "cheap", "standard", "strict"}, optional
         Validation level; the ambient default when omitted.
     cod : Field or None, optional
-        Scalar codomain; the domain's ``scalars`` by default.
+        Real scalar codomain; defaults to ``RealField``.
     """
 
     _fields = ("dom", "constant", "ctx", "check_level", "cod")
@@ -272,7 +270,13 @@ class ConstantFunctional(Functional):
         if not is_scalar_like(constant):
             raise TypeError(f"constant must be scalar-like, got {type(constant).__name__}.")
         super().__init__(dom, ctx, check_level=check_level, cod=cod)
+        _require_real(constant, self.ops)
         self.constant = constant
+
+    def _convert(self, new_ctx: Context) -> "ConstantFunctional":
+        cod = self.codomain.convert(new_ctx)
+        return type(self)(self.domain.convert(new_ctx), cod.ctx.asarray(self.constant),
+                          new_ctx, self.check_level, cod=cod)
 
     def _value_core(self, x: Any, *args: Any, **kwargs: Any) -> Any:
         """Check-free constant in the codomain dtype (mirrors ``ZeroFunctional``)."""
@@ -311,6 +315,9 @@ def make_constant_functional(
     # A zero constant is the additive identity, kept as ZeroFunctional.
     if not is_scalar_like(constant):
         raise TypeError(f"constant must be scalar-like, got {type(constant).__name__}.")
+    from ..contextual import resolve_context_priority
+
+    _require_real(constant, resolve_context_priority(ctx, dom).ops)
     if scalar_eq(constant, 0):
         return ZeroFunctional(dom, ctx)
     return ConstantFunctional(dom, constant, ctx)
@@ -336,6 +343,7 @@ def make_shifted_functional(functional: Functional, offset: Any) -> Functional:
         raise TypeError(f"functional must be a Functional, got {type(functional).__name__}.")
     if not is_scalar_like(offset):
         raise TypeError(f"offset must be scalar-like, got {type(offset).__name__}.")
+    _require_real(offset, functional.ops)
     if scalar_eq(offset, 0):
         return functional
     constant = ConstantFunctional(functional.domain, offset, functional.ctx,
@@ -347,10 +355,8 @@ class ProductFunctional(Functional):
     r"""
     Lazy pointwise product ``(F * G)(x) = F(x) G(x)`` on a shared domain.
 
-    The gradient is :math:`\overline{G(x)} \nabla F(x) + \overline{F(x)} \nabla G(x)`:
-    the coefficients are conjugated because the inner product conjugates its first
-    argument. Expanding ``D(FG)[h] = G DF[h] + F DG[h]`` gives this rule for
-    complex-linear differentials, or real-valued factors with the real pairing.
+    The gradient is :math:`G(x) \nabla F(x) + F(x) \nabla G(x)`.
+    Expanding ``D(FG)[h] = G DF[h] + F DG[h]`` gives this rule with the real pairing.
 
     Parameters
     ----------
@@ -406,8 +412,7 @@ class ProductFunctional(Functional):
     def _product_grad(self, lv: Any, lg: Any, rv: Any, rg: Any) -> Any:
         """Combine factor values/gradients by the product rule, in domain ops."""
         domain = self.domain
-        conj = self.ops.conj
-        return domain.add(domain.scale(conj(rv), lg), domain.scale(conj(lv), rg))
+        return domain.add(domain.scale(rv, lg), domain.scale(lv, rg))
 
     def grad(self, x: Any, *args: Any, **kwargs: Any) -> Any:
         """Return the product-rule Riesz gradient at ``x``.
@@ -483,9 +488,7 @@ class _ScaledLinearFunctional(ScaledFunctional, LinearFunctional):
 
     @property
     def representer(self) -> Any:
-        if self.scalar_field == "real" and self.codomain.scalar_field == "complex":
-            raise NotImplementedError("A general real-linear complex-valued map has no single Riesz representer.")
-        return self.domain.scale(self.ops.conj(self.scalar), self.functional.representer)
+        return self.domain.scale(self.scalar, self.functional.representer)
 
 
 class _SumLinearFunctional(SumFunctional, LinearFunctional):
@@ -498,12 +501,10 @@ class _SumLinearFunctional(SumFunctional, LinearFunctional):
 
     @property
     def scalar_field(self) -> str:
-        return "real" if any(t.scalar_field == "real" for t in self.terms) else "complex"
+        return "real"
 
     @property
     def representer(self) -> Any:
-        if self.scalar_field == "real" and self.codomain.scalar_field == "complex":
-            raise NotImplementedError("A general real-linear complex-valued map has no single Riesz representer.")
         result = self.terms[0].representer
         for term in self.terms[1:]:
             result = self.domain.add(result, term.representer)

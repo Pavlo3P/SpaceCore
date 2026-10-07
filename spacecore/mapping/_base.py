@@ -63,15 +63,16 @@ def _find_rule(op: str, a: Any, b: Any) -> Callable[..., Any] | None:
 
 def _combine(op: str, a: Any, b: Any) -> Any:
     """Build ``a <op> b`` from the most specific registered rule, or ``NotImplemented``."""
-    # m + 0 and 0 + m are m, so builtin sum() can start from 0.
+    # Family rules validate scalar operands before neutral-element shortcuts.
+    rule = _find_rule(op, a, b)
+    if rule is not None:
+        return rule(a, b)
+    # Families without scalar addition still support builtin sum().
     if op == "add":
         if _is_zero(b):
             return a
         if _is_zero(a):
             return b
-    rule = _find_rule(op, a, b)
-    if rule is not None:
-        return rule(a, b)
     # No rule: Python tries the reflected operator, then raises TypeError.
     return NotImplemented
 

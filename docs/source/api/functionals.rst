@@ -1,7 +1,7 @@
 Functionals API
 ===============
 
-Functionals are scalar-valued maps on a domain space :math:`f : X \to R`.
+Functionals are real scalar-valued maps on a domain space :math:`f : X \to R`.
 Gradients are represented as elements of ``X`` using the domain geometry: for a
 differentiable functional, ``grad(x)`` satisfies
 :math:`\operatorname{Re}\langle \nabla f(x), v \rangle_X = D f(x)[v]` when implemented.
@@ -41,18 +41,19 @@ A callable differential can be pulled back through ``A`` using only forward
 application: :math:`(Df(x)\circ A)[h]=Df(x)[Ah]`. Retrieving its gradient may
 additionally require a representer and the metric adjoint.
 
-``df.scalar_field`` records whether the differential is real- or complex-linear.
-An ``InnerProductFunctional`` with a real codomain, or with
-``real_linear=True``, evaluates :math:`\operatorname{Re}\langle c,h\rangle`.
-For ``MatrixFreeLinearFunctional``, ``real_linear=True`` declares the callable's
-linearity; its output is not projected to its real part. This also permits
-complex-valued, real-linear derivatives such as complex conjugation.
+From 0.5.0a, real output is a hard contract at every check level, including
+``none``. The codomain is always a real ``Field``; complex domains remain
+supported. Complex output dtypes, coefficients, and offsets raise ``TypeError``,
+even if their imaginary part is zero. Batched and fused evaluations and subclass
+overrides follow the same rule. Extended-real indicator values remain valid.
 
-The default gradient adapter assumes complex linearity for a complex codomain.
-Real-valued built-in coordinate objectives explicitly select the real pairing,
-even when their legacy scalar codomain is complex. General complex-valued,
-real-linear derivatives may have no single Riesz representer. Complex-valued
-spectral objectives require an explicit differential implementation.
+``df.scalar_field`` is always ``"real"``. ``InnerProductFunctional`` evaluates
+:math:`\operatorname{Re}\langle c,h\rangle` and Hermitian quadratic forms
+use the real part of their quadratic pairing. Matrix-free callables must return
+real values explicitly; SpaceCore never discards their imaginary part.
+The ``real_linear`` argument remains accepted for compatibility, but all
+functionals use real linearity regardless of its value.
+
 At a nonsmooth point, a chosen subgradient does not become a Frechet derivative;
 use these interfaces where the objective is differentiable.
 
@@ -114,22 +115,20 @@ types, never values.
    spacecore.functional.make_constant_functional
    spacecore.functional.make_functional_product
 
-* ``ScaledFunctional`` is ``a * F``; the Riesz gradient scales by ``conj(a)``.
+* ``ScaledFunctional`` is ``a * F``; the Riesz gradient scales by the real scalar ``a``.
 * ``SumFunctional`` is ``F_1 + ... + F_n`` on a shared domain.
 * ``ZeroFunctional`` is the additive identity, recognized by the canonicalizers.
 * ``ConstantFunctional`` is ``x -> c``, the embedding of a scalar into the
   algebra; ``make_constant_functional`` collapses ``c = 0`` to ``ZeroFunctional``.
 * ``ProductFunctional`` is the pointwise product ``F(x) * G(x)``, with the
   product-rule Riesz gradient
-  :math:`\overline{G(x)}\, \nabla F(x) + \overline{F(x)}\, \nabla G(x)`. Because
+  :math:`G(x)\, \nabla F(x) + F(x)\, \nabla G(x)`. Because
   functionals are scalar-valued, scaling is the constant-factor case of a
   product: ``make_functional_product`` folds a ``ConstantFunctional`` factor back
   into a ``ScaledFunctional``, and a ``ZeroFunctional`` factor to zero.
 
-For complex-linear differentials, expand ``D(FG)[h] = G DF[h] + F DG[h]``
-and use conjugate-linearity in the first inner-product argument to obtain the
-displayed rule. It also holds for real-valued factors using the real pairing.
-Arbitrary complex-valued, real-differentiable maps need more than one gradient.
+The product rule follows from ``D(FG)[h] = G DF[h] + F DG[h]`` using the
+real pairing. All values and scaling coefficients are real.
 
 Mapping
 -------

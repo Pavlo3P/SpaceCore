@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ._base import Domain, Functional
+from ._base import Domain, Functional, _require_real
 from .._batching import (
     _batched_inner,
     _check_scalar_shape,
@@ -30,7 +30,7 @@ class QuadraticForm(Functional[Domain]):
     check_level : {"none", "cheap", "standard", "strict"}, optional
         Validation level; the ambient default when omitted.
     cod : Field or None, optional
-        Scalar codomain; the domain's ``scalars`` by default.
+        Real scalar codomain; defaults to ``RealField``.
     """
 
     def hess_apply(self, x: Any) -> Any:
@@ -79,7 +79,7 @@ class LinOpQuadraticForm(QuadraticForm[Domain]):
         # f(x) = 1/2 <x, Q x> + l(x) + a.
         qx = self.Q._apply_core(x)
         inner = getattr(self.domain, "_inner_core", self.domain.inner)
-        value = 0.5 * inner(x, qx)
+        value = 0.5 * self.ops.real(inner(x, qx))
         if self.linear is not None:
             value = value + self.linear._value_core(x)
         return value + self.a
@@ -100,6 +100,7 @@ class LinOpQuadraticForm(QuadraticForm[Domain]):
             values = 0.5 * self.ops.sum(self.ops.conj(xs) * qxs, axis=axes)
         else:
             values = 0.5 * _batched_inner(self.domain, xs, qxs)
+        values = self.ops.real(values)
         if self.linear is not None:
             values = values + self.linear._vvalue_core(xs)
         return values + self.a
@@ -143,8 +144,14 @@ class LinOpQuadraticForm(QuadraticForm[Domain]):
         self.Q = Q
         self.linear = linear
         # The constant offset must be a scalar.
-        self.a = self.ctx.asarray(a)
+        _require_real(a, self.ops)
+        self.a = self.codomain.ctx.asarray(a)
         _check_scalar_shape(self.a, ())
+
+    def _convert(self, new_ctx: Context) -> "LinOpQuadraticForm":
+        linear = None if self.linear is None else self.linear.convert(new_ctx)
+        a = self.codomain.convert(new_ctx).ctx.asarray(self.a)
+        return type(self)(self.Q.convert(new_ctx), linear, a, new_ctx, self.check_level)
 
     @checked_method(in_space="domain", out_space="domain")
     def grad(self, x: Any) -> Any:
@@ -161,11 +168,7 @@ class LinOpQuadraticForm(QuadraticForm[Domain]):
         return self._grad_core(x)
 
     def derivative_at(self, x: Any, *args: Any, **kwargs: Any) -> LinearFunctional:
-        """Differentiate the Hermitian quadratic with the real pairing.
-
-        A complex linear term is kept separately: the total differential may
-        be real-linear and complex-valued, so one Riesz vector need not suffice.
-        """
+        """Differentiate the Hermitian quadratic with the real pairing."""
         quadratic = InnerProductFunctional(
             self.Q.apply(x), self.domain, self.ctx, check_level=self.check_level,
             cod=self.codomain, real_linear=True,

@@ -49,3 +49,11 @@ Keeping only `enable_checks` was rejected because it cannot express strict confo
 - Cheap checks must be deterministic and local.
 - Standard checks should match current `enable_checks=True` expectations unless documented otherwise.
 - Strict checks belong in conformance/test helpers or explicit APIs, not implicit inner loops.
+
+### Functional real-output invariant (0.5.0a)
+
+The real-valued Functional contract in ADR-010 is independent of check policy.
+Even `none` rejects complex codomains, coefficients and output dtypes, including
+batch and fused evaluations. These checks use static type/dtype metadata, not
+array values, so they also apply while tracing compiled code. Scalar shape and
+domain membership checks continue to follow the selected validation level.

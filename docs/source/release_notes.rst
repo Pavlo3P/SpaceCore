@@ -4,6 +4,11 @@ Release notes
 Version 0.5.0a
 --------------
 
+Functionals now have a hard real-valued contract: real codomains and outputs,
+real coefficients and offsets, at every check level. Complex domains remain
+supported through the real inner-product pairing. Complex-valued callbacks
+must be changed to return a real objective explicitly. This is a breaking change.
+
 Unreleased pre-release. SpaceCore 0.5.0a adds the first-order proximal surface
 and removes layers that did not earn their keep, while keeping the Backend →
 Space → Mapping (``LinOp`` / ``Functional``) → Element division. The full list is
