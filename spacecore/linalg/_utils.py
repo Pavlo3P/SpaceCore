@@ -31,7 +31,7 @@ def require_strict_cg_preconditions(A: LinOp) -> None:
         raise ValueError("cg strict checks require A to be Hermitian/self-adjoint.")
 
     x = default_initial_vector(A)
-    curvature = real_inner(A.domain, x, A.apply(x))
+    curvature = A.domain.real_inner(x, A.apply(x))
     try:
         positive = bool(curvature > 0)
     except Exception as exc:
@@ -144,6 +144,7 @@ class SpaceCoreOps:
         return self._inner(x, y)
 
     def real_inner(self, x: Any, y: Any) -> Any:
+        # Derived from the safely resolved inner, as the space derives its own.
         return self.ops.real(self._inner(x, y))
 
     def add(self, x: Any, y: Any) -> Any:
@@ -156,7 +157,7 @@ class SpaceCoreOps:
         return self._add(self._scale(a, x), y)
 
     def norm(self, x: Any) -> Any:
-        return self.ops.sqrt(self.ops.real(self._inner(x, x)))
+        return self.ops.sqrt(self.real_inner(x, x))
 
 
 def resolve_apply(A: Any) -> Any:
@@ -169,9 +170,7 @@ def resolve_rapply(A: Any) -> Any:
     return resolve_core(A, "rapply", "_rapply_core")
 
 
-def real_inner(space: Any, x: Any, y: Any) -> Any:
-    """Return the real part of ``space.inner(x, y)`` (checked; for one-shot use)."""
-    return space.ops.real(space.inner(x, y))
+
 
 
 def is_converged(residual_norm: Any, threshold_value: Any) -> Any:

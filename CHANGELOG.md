@@ -129,8 +129,9 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   functional `scalar_field` property are gone. With checks on (`cheap` and above),
   complex outputs, coefficients and offsets raise `TypeError` through `RealField`
   membership, including in batched and fused evaluations and subclass overrides.
-  Inner-product functionals evaluate the real pairing and Hermitian quadratic forms
-  its real part.
+  Functionals pair through the new `InnerProductSpace.real_inner`
+  (`Re<x, y>`), which the space norm and the solvers also use; no functional
+  applies a real part of its own.
 
 - **`LinOp` and `Functional` own their checked public methods.** `apply`, `rapply`,
   `vapply`, `rvapply`, `value` and `vvalue` validate on the base class and call the

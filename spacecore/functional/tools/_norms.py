@@ -8,7 +8,7 @@ from .._base import Domain
 from ...contextual import Context
 from ..._checks import CheckLevel
 from ..._checks import checked_method
-from ._coordinate import _CoordinateFunctional, _inner_core, lp_coordinate_grad, lp_value
+from ._coordinate import _CoordinateFunctional, lp_coordinate_grad, lp_value
 
 
 class SquaredL2NormFunctional(_CoordinateFunctional[Domain]):
@@ -52,7 +52,7 @@ class SquaredL2NormFunctional(_CoordinateFunctional[Domain]):
     @checked_method(in_space="domain", out_space="codomain")
     def value(self, x: Any) -> Any:
         """Return ``1/2 <x, x>_X`` as a real scalar."""
-        return 0.5 * self.ops.real(_inner_core(self.domain, x, x))
+        return 0.5 * self.domain._real_inner_core(x, x)
 
     @checked_method(in_space="domain", out_space="domain")
     def grad(self, x: Any) -> Any:

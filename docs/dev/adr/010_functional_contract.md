@@ -43,7 +43,7 @@ New functionals must validate domain inputs and scalar output shape when checks 
 
 - `value` returns a real scalar-like backend value; batch and fused evaluators obey the same rule.
 - With checks on (`cheap` and above), complex dtypes (even with zero imaginary part), coefficients, and offsets raise `TypeError` through `RealField` membership; overriding public evaluators are checked the same way. At `none` nothing is checked. The check uses dtype metadata and is compatible with tracing.
-- Built-in inner-product and Hermitian quadratic formulas take the real part as part of their definition. User callbacks are not projected. Extended-real indicator values remain supported.
+- Functionals pair through the domain's real inner product `real_inner(x, y) = Re<x, y>` and apply no real part of their own; user callbacks are not projected. Extended-real indicator values remain supported.
 - Conversion and pytree reconstruction preserve the real codomain independently of domain storage.
 - `grad` returns a domain element when implemented.
 - Matrix-free functionals do not imply a stored representer.

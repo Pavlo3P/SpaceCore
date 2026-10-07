@@ -4,7 +4,7 @@ from typing import Any
 
 from ._base import Domain, Functional
 from .._batching import (
-    _batched_inner,
+    _batched_real_inner,
     _check_scalar_shape,
     _leading_batch_size,
     _warn_vmap_fallback_once,
@@ -76,8 +76,7 @@ class LinOpQuadraticForm(QuadraticForm[Domain]):
     def _value_core(self, x: Any) -> Any:
         # f(x) = 1/2 <x, Q x> + l(x) + a.
         qx = self.Q._apply_core(x)
-        inner = getattr(self.domain, "_inner_core", self.domain.inner)
-        value = 0.5 * self.ops.real(inner(x, qx))
+        value = 0.5 * self.domain._real_inner_core(x, qx)
         if self.linear is not None:
             value = value + self.linear._value_core(x)
         return value + self.a
@@ -91,14 +90,7 @@ class LinOpQuadraticForm(QuadraticForm[Domain]):
         return grad
 
     def _vvalue_core(self, xs: Any) -> Any:
-        # Euclidean arrays: sum conj(x_i) * (Q x_i) over non-batch axes; else the batched inner.
-        qxs = self.Q._vapply_core(xs)
-        if self.domain.is_euclidean and hasattr(xs, "shape"):
-            axes = tuple(range(1, len(tuple(xs.shape))))
-            values = 0.5 * self.ops.sum(self.ops.conj(xs) * qxs, axis=axes)
-        else:
-            values = 0.5 * _batched_inner(self.domain, xs, qxs)
-        values = self.ops.real(values)
+        values = 0.5 * _batched_real_inner(self.domain, xs, self.Q._vapply_core(xs))
         if self.linear is not None:
             values = values + self.linear._vvalue_core(xs)
         return values + self.a

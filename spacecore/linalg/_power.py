@@ -80,7 +80,7 @@ def _action_from_linop(A: LinOp) -> _SelfAdjointAction:
         apply,
         A.domain,
         A.ctx,
-        lambda x, y: A.ops.real(sops.inner(x, y)),
+        sops.real_inner,
         lambda x, y, eigenvalue: sops.norm(sops.axpy(-eigenvalue, x, y)),
     )
 
@@ -96,8 +96,7 @@ def _action_from_quadratic_form(q: QuadraticForm) -> _SelfAdjointAction:
             return q.ops.real(cast(Any, hess_quad)(x, Hx=y))
     else:
 
-        def rayleigh(x, y):
-            return q.ops.real(sops.inner(x, y))
+        rayleigh = sops.real_inner
 
     hess_residual_norm = getattr(q, "hess_residual_norm", None)
     if callable(hess_residual_norm):

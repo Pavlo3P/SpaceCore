@@ -366,8 +366,8 @@ def lanczos_smallest(
     # Report the Rayleigh quotient in the original space.
     Ax = A.apply(x)
 
-    num = ops.real(A.domain.inner(x, Ax))
-    den = ops.real(A.domain.inner(x, x))
+    num = A.domain.real_inner(x, Ax)
+    den = A.domain.real_inner(x, x)
     lam = ops.where(den > 0, num * safe_inverse_nonneg(ops, den), ops.asarray(float("nan"), dtype=real_dtype))
 
     return LanczosResult(lam, x, residual_norm, m, converged)

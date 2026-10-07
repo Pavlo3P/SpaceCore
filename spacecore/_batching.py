@@ -58,6 +58,21 @@ def _warn_vmap_fallback_once(obj: Any, method: str, batch_size: int) -> None:
     )
 
 
+def _batched_real_inner(space: Any, xs: Any, ys: Any) -> Any:
+    """Return ``space.real_inner(xs[i], ys[i])`` for a leading-axis batch."""
+    return space.ops.real(_batched_inner(space, xs, ys))
+
+
+def _batched_real_pairing(space: Any, c: Any, xs: Any) -> Any:
+    """Return ``space.real_inner(c, xs[i])`` for one element ``c`` and a leading-axis batch."""
+    # Re <c, x_i> = Re conj(R c) . x_i on flat coordinates.
+    ops = space.ops
+    if space.is_euclidean and len(tuple(space.shape)) == 1:
+        return ops.real(xs @ ops.conj(c))
+    c_dual = c if space.is_euclidean else space.riesz(c)
+    return ops.real(space.flatten_batch(xs) @ ops.conj(space.flatten(c_dual)))
+
+
 def _batched_inner(space: Any, xs: Any, ys: Any) -> Any:
     """Return ``space.inner(xs[i], ys[i])`` for a leading-axis batch."""
     require(space, _CAP_BATCH, "_batched_inner")

@@ -4,7 +4,7 @@ from abc import abstractmethod
 from typing import Any, Callable
 
 from ._base import Domain, Functional
-from .._batching import _check_scalar_shape
+from .._batching import _batched_real_pairing, _check_scalar_shape
 from .._checks import checked_method
 from .._checks import CheckLevel
 from ..contextual import Context
@@ -128,23 +128,10 @@ class InnerProductFunctional(LinearFunctional[Domain]):
     _dynamic = ("c",)
 
     def _value_core(self, x: Any) -> Any:
-        inner = getattr(self.domain, "_inner_core", self.domain.inner)
-        value = inner(self._c, x)
-        return self.ops.real(value)
+        return self.domain._real_inner_core(self._c, x)
 
     def _vvalue_core(self, xs: Any) -> Any:
-        # <c, x_i> = conj(c) . x_i on flat coordinates; non-Euclidean spaces use R c.
-        dom = self.dom
-        ops = self.ops
-        if dom.is_euclidean and len(tuple(dom.shape)) == 1:
-            xs_flat = xs
-            c_flat = ops.conj(self._c)
-        else:
-            c_dual = self._c if dom.is_euclidean else dom.riesz(self._c)
-            c_flat = ops.conj(dom.flatten(c_dual))
-            xs_flat = dom.flatten_batch(xs)
-        value = xs_flat @ c_flat
-        return ops.real(value)
+        return _batched_real_pairing(self.domain, self._c, xs)
 
     def __init__(
         self,

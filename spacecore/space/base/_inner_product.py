@@ -185,6 +185,14 @@ class InnerProductSpace(VectorSpace):
             )
         return geometry.inner(self.ops, x, y)
 
+    def real_inner(self, x: Any, y: Any) -> Any:
+        r"""Return the real inner product :math:`\operatorname{Re}\langle x, y\rangle_X`."""
+        return self.ops.real(self.inner(x, y))
+
+    def _real_inner_core(self, x: Any, y: Any) -> Any:
+        """Return :meth:`real_inner` without membership checks when the space has a core."""
+        return self.ops.real(getattr(self, "_inner_core", self.inner)(x, y))
+
     def riesz(self, x: Any) -> Any:
         geometry = getattr(self, "geometry", None)
         return x if geometry is None else geometry.riesz(self.ops, x)
@@ -194,8 +202,7 @@ class InnerProductSpace(VectorSpace):
         return x if geometry is None else geometry.riesz_inverse(self.ops, x)
 
     def norm(self, x: Any) -> Any:
-        value = self.ops.real(self.inner(x, x))
-        return self.ops.sqrt(value)
+        return self.ops.sqrt(self.real_inner(x, x))
 
     @property
     def is_euclidean(self) -> bool:

@@ -47,8 +47,10 @@ dtype, coefficient or offset raises ``TypeError``, even with a zero imaginary
 part; this covers batched and fused evaluations and subclass overrides.
 Extended-real indicator values remain valid.
 
-``InnerProductFunctional`` evaluates :math:`\operatorname{Re}\langle c,h\rangle`
-and Hermitian quadratic forms evaluate :math:`\tfrac12\operatorname{Re}\langle x,Qx\rangle`.
+Functionals pair through the domain's real inner product
+``real_inner(x, y)`` :math:`=\operatorname{Re}\langle x,y\rangle_X`: ``InnerProductFunctional``
+evaluates ``real_inner(c, h)`` and ``LinOpQuadraticForm`` evaluates
+``real_inner(x, Qx) / 2``.
 Matrix-free callables return real values themselves.
 
 At a nonsmooth point, a chosen subgradient does not become a Frechet derivative;
