@@ -93,7 +93,7 @@ class TestScaled:
 
     def test_complex_scalar_is_rejected(self, numpy_ctx):
         _, F, _ = _dense(numpy_ctx)
-        with pytest.raises(TypeError, match="real-valued"):
+        with pytest.raises(TypeError, match="real value"):
             2j * F
 
 

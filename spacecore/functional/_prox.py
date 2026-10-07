@@ -77,16 +77,15 @@ def _lp(f, geometry, x, step):
 
 def _constant(f, geometry, x, step):
     if isinstance(f, ConstantFunctional):
-        # An infinite or non-real constant is not a proper convex objective.
+        # An infinite constant is not a proper convex objective; an unchecked
+        # array constant may be traced, so it is not inspected.
         if not isinstance(f.constant, numbers.Number) and f.check_level == "none":
-            if not f.ops.xp.isdtype(f.constant.dtype, ("real floating", "integral")):
-                raise CapabilityError("prox requires a finite real constant.")
             return x
         try:
-            value = complex(f.constant)
+            value = float(f.constant)
         except (TypeError, ValueError) as exc:
             raise CapabilityError("prox requires a known finite real constant.") from exc
-        if value.imag or not math.isfinite(value.real):
+        if not math.isfinite(value):
             raise CapabilityError("prox requires a finite real constant.")
     return x
 

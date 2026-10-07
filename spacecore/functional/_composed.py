@@ -45,7 +45,6 @@ def make_functional_composed(F: Functional, A: LinOp) -> Functional:
     # Closed forms: <c, A x> = <A* c, x>, and a quadratic form pulls back to A* Q A.
     if isinstance(F, InnerProductFunctional):
         return InnerProductFunctional(A.H.apply(F.representer), A.domain, A.ctx,
-                                      cod=F.codomain, real_linear=F.real_linear,
                                       check_level=minimum_check_level((F.check_level, A.check_level)))
     if isinstance(F, LinOpQuadraticForm):
         Q = A.H @ F.Q @ A
@@ -98,7 +97,7 @@ class ComposedFunctional(Functional):
         # The pull-back lives on A's domain and keeps F's scalar codomain.
         if check_level is None:
             check_level = minimum_check_level((F.check_level, A.check_level))
-        super().__init__(A.domain, A.ctx, check_level=check_level, cod=F.codomain)
+        super().__init__(A.domain, A.ctx, check_level=check_level)
         self.F = F.convert(A.ctx)
         self.A = A
 
@@ -157,9 +156,6 @@ class _ComposedLinearFunctional(ComposedFunctional, LinearFunctional):
 
     derivative_at = LinearFunctional.derivative_at
 
-    @property
-    def scalar_field(self) -> str:
-        return "real" if self.domain.scalar_field == "real" else self.F.scalar_field
 
     @property
     def representer(self) -> Any:

@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 from functools import wraps
-from numbers import Real
 from typing import TYPE_CHECKING, Any, Callable, Generic, TypeVar, cast
 
-from .._batching import _leading_batch_size, _warn_vmap_fallback_once
+from .._batching import _check_batched, _leading_batch_size, _warn_vmap_fallback_once
 
 from .._checks import checked_method
 from ..mapping import Mapping
@@ -23,31 +22,20 @@ Domain = TypeVar("Domain", bound=Space)
 _Method = TypeVar("_Method", bound=Callable[..., Any])
 
 
-def _require_real(value: Any, ops: Any) -> None:
-    """Enforce the real-output contract using static dtype metadata, even under JIT."""
-    if isinstance(value, (tuple, list)):
-        for item in value:
-            _require_real(item, ops)
-        return
-    dtype = getattr(value, "dtype", None)
-    if dtype is None:
-        valid = isinstance(value, Real)
-    else:
-        kind = getattr(dtype, "kind", None)
-        valid = not ops.is_complex_dtype(dtype) and (kind is None or kind in "biuf")
-    if not valid:
-        raise TypeError("Functionals require real-valued output and coefficients; "
-                        "return real numeric values, using an explicit real part for complex data.")
-
-
-def _real_output(method: _Method, name: str | None = None) -> _Method:
-    paired = (name or method.__name__) in ("value_and_grad", "value_and_derivative")
+def _real_output(method: _Method, name: str) -> _Method:
+    """Check an overriding evaluator's output against the real codomain."""
+    paired = name in ("value_and_grad", "value_and_derivative")
+    batched = name == "vvalue"
 
     @wraps(method)
     def wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
         result = method(self, *args, **kwargs)
-        value = result[0] if paired else result
-        _require_real(value, self.ops)
+        if self._check_level != "none":
+            value = result[0] if paired else result
+            if batched:
+                _check_batched(self.codomain, value)
+            else:
+                self.codomain._check_member(value)
         return result
     return cast(_Method, wrapper)
 
@@ -67,16 +55,12 @@ class Functional(Mapping, Generic[Domain]):
         Backend context; resolved from ``dom`` when omitted.
     check_level : {"none", "cheap", "standard", "strict"}, optional
         Validation level; the ambient default when omitted.
-    cod : Field or None, optional
-        Real scalar codomain; defaults to ``RealField`` on the domain backend.
     """
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
-        # Overrides, including fused evaluators and private algebra cores, must
-        # preserve the same contract as the base methods at every check level.
-        for name in ("value", "vvalue", "value_and_grad", "value_and_derivative",
-                     "_value_core", "_vvalue_core"):
+        # Overridden public evaluators get the same output check as the base ones.
+        for name in ("value", "vvalue", "value_and_grad", "value_and_derivative"):
             if name in cls.__dict__:
                 setattr(cls, name, _real_output(cls.__dict__[name], name))
 
@@ -85,26 +69,17 @@ class Functional(Mapping, Generic[Domain]):
         dom: Domain,
         ctx: Context | str | None = None,
         check_level: CheckLevel | None = None,
-        *,
-        cod: Field | None = None,
     ) -> None:
-        # Domain storage may be complex; functional values always use real scalars.
+        # Domain storage may be complex; functional values are real scalars.
         resolved = resolve_context_priority(ctx, dom)
         dom = dom.convert(resolved)
-        if cod is None:
-            cod = RealField(resolved)
-        if not isinstance(cod, Field):
-            raise TypeError("Functional codomain must be a Field.")
-        if cod.scalar_field != "real":
-            raise TypeError("Functional codomain must be a real Field.")
-        self.dom, self.cod = self._bind_context(resolved, dom, cod, check_level=check_level)
-        # Output checks follow the functional's policy, even when its domain
-        # or explicitly supplied field uses a different validation level.
-        self.cod = self.cod._with_check_level(self.check_level)
+        (self.dom,) = self._bind_context(resolved, dom, check_level=check_level)
+        # Output checks follow the functional's policy.
+        self.cod = RealField(self.ctx, check_level=self.check_level)
 
     def _init_map(self, domain: Any, codomain: Any, ctx: Any, check_level: Any) -> None:
         """Bind a node of this family (the hook the shared lazy nodes in ``mapping`` call)."""
-        Functional.__init__(self, domain, ctx, check_level=check_level, cod=codomain)
+        Functional.__init__(self, domain, ctx, check_level=check_level)
 
     @property
     def codomain(self) -> Field:
@@ -116,7 +91,6 @@ class Functional(Mapping, Generic[Domain]):
         """Domain space of this scalar-valued map."""
         return self.dom
 
-    @_real_output
     @checked_method(in_space="domain", out_space="codomain")
     def value(self, x: Any, *args: Any, **kwargs: Any) -> Any:
         """Evaluate this functional at an element of ``self.domain``.
@@ -138,7 +112,6 @@ class Functional(Mapping, Generic[Domain]):
             return self.derivative_at(x, *args, **kwargs).representer
         raise NotImplementedError(f"{type(self).__name__} does not implement grad().")
 
-    @_real_output
     def value_and_grad(self, x: Any, *args: Any, **kwargs: Any) -> tuple[Any, Any]:
         """Return ``(value, gradient)`` at ``x``.
 
@@ -195,10 +168,8 @@ class Functional(Mapping, Generic[Domain]):
 
         return InnerProductFunctional(
             gradient, self.domain, self.ctx, check_level=self.check_level,
-            cod=self.codomain,
         )
 
-    @_real_output
     def value_and_derivative(self, x: Any, *args: Any, **kwargs: Any) -> tuple[Any, "LinearFunctional"]:
         """Return value and differential, preserving fused gradient evaluators.
 
@@ -265,8 +236,8 @@ class Functional(Mapping, Generic[Domain]):
 
         return make_functional_composed(self, A)
 
-    @_real_output
-    @checked_method(in_space="domain", in_batched=True, out_batched_scalar=True)
+    @checked_method(in_space="domain", out_space="codomain", in_batched=True, out_batched=True,
+                    out_batched_scalar=True)
     def vvalue(self, xs: Any) -> Any:
         """Evaluate over a leading batch axis. Input must have shape ``(N,) + domain.shape``; use ``moveaxis`` for other layouts."""
         return self._vvalue_core(xs)

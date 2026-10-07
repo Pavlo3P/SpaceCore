@@ -32,7 +32,6 @@ def test_metric_and_complex_direction(complex_, weighted):
     f = sc.SquaredL2NormFunctional(X)
     d = check_direction(f, x, h)
     np.testing.assert_allclose(d.representer, f.grad(x))
-    assert d.scalar_field == 'real'
     check_direction(2 * f + f * f + 3, x, h)
     if complex_:
         assert not np.allclose(d(1j * h), 1j * d(h))
@@ -93,13 +92,8 @@ def test_real_linear_maps_on_complex_domains():
     x, h = np.array([1+2j, 3-1j]), np.array([.5+1j, -2j])
     f = sc.InnerProductFunctional(np.array([2+1j, 3-4j]), X)
     assert check_direction(f, x, h) is f
-    assert f.scalar_field == 'real'
-    d = sc.MatrixFreeLinearFunctional(lambda v: np.real(v[0]), X, real_linear=True)
-    assert d.scalar_field == 'real'
+    d = sc.MatrixFreeLinearFunctional(lambda v: np.real(v[0]), X)
     check_direction(d * d + f, x, h)
-    children, aux = d.tree_flatten()
-    assert type(d).tree_unflatten(aux, children).scalar_field == 'real'
-    assert d.convert(sc.Context(sc.NumpyOps(), dtype=np.complex64)).scalar_field == 'real'
     q = sc.LinOpQuadraticForm(sc.IdentityLinOp(X), f)
     check_direction(q, x, h)
     check_direction(2 * q, x, h)
@@ -107,15 +101,13 @@ def test_real_linear_maps_on_complex_domains():
 
 def test_real_pairing_roundtrip_batch_and_pullback():
     X = space(complex_=True, weighted=True)
-    real = sc.RealField(sc.Context(sc.NumpyOps(), dtype=np.float64))
-    d = sc.InnerProductFunctional(np.array([1+2j, 3-1j]), X, cod=real)
+    d = sc.InnerProductFunctional(np.array([1+2j, 3-1j]), X)
     h = np.array([.5+1j, -2j])
     children, aux = d.tree_flatten()
     restored = type(d).tree_unflatten(aux, children)
     A = sc.DenseLinOp(np.array([[1j, 2], [3, -1j]]), X, X)
     for expr in (d, restored, d + d, 2 * d, d @ A):
-        assert expr.scalar_field == 'real'
-        assert expr.codomain.scalar_field == 'real'
+        assert isinstance(expr.codomain, sc.RealField)
         np.testing.assert_allclose(expr(h), np.real(X.inner(expr.representer, h)))
     np.testing.assert_allclose(d.vvalue(np.stack([h, 2*h])), [d(h), 2*d(h)])
     np.testing.assert_allclose((d @ A)(h), d(A(h)))
@@ -170,5 +162,5 @@ def test_no_array_conversion_for_native_representation():
 def test_complex_scaled_real_differential_is_rejected():
     X = space(complex_=True)
     d = sc.SquaredL2NormFunctional(X).derivative_at(np.array([1+2j, 3-1j]))
-    with pytest.raises(TypeError, match='real-valued'):
+    with pytest.raises(TypeError, match='real value'):
         1j * d

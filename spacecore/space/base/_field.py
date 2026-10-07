@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from abc import abstractmethod
 from dataclasses import dataclass
+from numbers import Real
 from typing import ClassVar
 
 from ..._checks import CheckLevel
@@ -28,6 +29,24 @@ class ScalarShapeCheck(SpaceCheck):
 
     def error_message(self, space, x):
         return f"Expected scalar output with shape (), got {tuple(getattr(x, 'shape', ()))}."
+
+
+@dataclass(frozen=True)
+class RealScalarCheck(SpaceCheck):
+    """Require real numeric values at cheap validation and above."""
+
+    name: str = "real_scalar"
+    minimum_level: ClassVar[CheckLevel] = "cheap"
+
+    def is_valid(self, space, x):
+        dtype = getattr(x, "dtype", None)
+        if dtype is None:
+            return isinstance(x, Real)
+        kind = getattr(dtype, "kind", None)
+        return not space.ops.is_complex_dtype(dtype) and (kind is None or kind in "biuf")
+
+    def error_message(self, space, x):
+        return f"Expected a real value, got {getattr(x, 'dtype', type(x).__name__)}."
 
 
 class Field(InnerProductSpace):
@@ -96,6 +115,7 @@ class RealField(Field):
     """
 
     declared_scalar_field = "real"
+    checks = (RealScalarCheck(), ScalarShapeCheck())
 
     def __init__(self, ctx=None, check_level=None):
         super().__init__(ctx, check_level=check_level)

@@ -3,7 +3,6 @@ from __future__ import annotations
 from abc import abstractmethod
 from typing import Any, Callable
 
-from ..space import Field
 from ._base import Domain, Functional
 from .._batching import _check_scalar_shape
 from .._checks import checked_method
@@ -61,8 +60,6 @@ class LinearFunctional(Functional[Domain]):
         Backend context; resolved from ``dom`` when omitted.
     check_level : {"none", "cheap", "standard", "strict"}, optional
         Validation level; the ambient default when omitted.
-    cod : Field or None, optional
-        Real scalar codomain; defaults to ``RealField``.
     """
 
     def _grad_core(self, x: Any) -> Any:
@@ -75,10 +72,6 @@ class LinearFunctional(Functional[Domain]):
         n = int(getattr(sample, "shape", (0,))[0])
         return _broadcast_space_element(dom, self.representer, n)
 
-    @property
-    def scalar_field(self) -> str:
-        """Field over which the map is linear, independent of storage dtype."""
-        return "real"
 
     def derivative_at(self, x: Any, *args: Any, **kwargs: Any) -> "LinearFunctional":
         """Return this linear functional itself, even without a representer."""
@@ -129,14 +122,9 @@ class InnerProductFunctional(LinearFunctional[Domain]):
         Backend context; resolved from ``dom`` when omitted.
     check_level : {"none", "cheap", "standard", "strict"}, optional
         Validation level; the ambient default when omitted.
-    cod : Field or None, optional
-        Real scalar output field; defaults to ``RealField``.
-    real_linear : bool, optional
-        Compatibility option; the real pairing is always used.
     """
 
-    # A real codomain requests the real pairing, including on complex storage.
-    _fields = ("c:_c", "dom", "ctx", "cod", "check_level", "real_linear")
+    _fields = ("c:_c", "dom", "ctx", "check_level")
     _dynamic = ("c",)
 
     def _value_core(self, x: Any) -> Any:
@@ -164,20 +152,13 @@ class InnerProductFunctional(LinearFunctional[Domain]):
         dom: Domain,
         ctx: Context | str | None = None,
         check_level: CheckLevel | None = None,
-        *,
-        cod: Field | None = None,
-        real_linear: bool = False,
     ) -> None:
-        super().__init__(dom, ctx, check_level=check_level, cod=cod)
-        self.real_linear = True
+        super().__init__(dom, ctx, check_level=check_level)
         # Store the representer on the functional's backend, and check it belongs.
         self._c = _convert_space_element(self.domain, c)
         if self._checks_at_least("standard"):
             self.domain._check_member(self._c)
 
-    @property
-    def scalar_field(self) -> str:
-        return "real" if self.real_linear else super().scalar_field
 
     @property
     def representer(self) -> Any:
@@ -188,7 +169,7 @@ class InnerProductFunctional(LinearFunctional[Domain]):
         """Return whether another inner-product functional has the same representer."""
         if not self.same_math(other):              # Tier 1: backend
             return NotImplemented
-        if self.domain != other.domain or self.codomain != other.codomain or self.real_linear != other.real_linear:                         # Tier 2: domain before allclose
+        if self.domain != other.domain or self.codomain != other.codomain:                         # Tier 2: domain before allclose
             return False
         return bool(self.ops.allclose(                          # Tier 3: representer
             self.domain.flatten(self._c),
@@ -212,14 +193,10 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
         Batched evaluation; ``vmap`` of ``value`` by default.
     check_level : {"none", "cheap", "standard", "strict"}, optional
         Validation level; the ambient default when omitted.
-    cod : Field or None, optional
-        Real scalar codomain; defaults to ``RealField``.
-    real_linear : bool, optional
-        Compatibility option; functionals are always real-linear.
         The callable must return real values; no projection is applied.
     """
 
-    _fields = ("value:value_fn", "dom", "ctx", "vvalue:vvalue_fn", "check_level", "cod", "real_linear")
+    _fields = ("value:value_fn", "dom", "ctx", "vvalue:vvalue_fn", "check_level")
 
     def _value_core(self, x: Any) -> Any:
         return self.value_fn(x)
@@ -236,24 +213,16 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
         ctx: Context | str | None = None,
         vvalue: Callable[[Any], Any] | None = None,
         check_level: CheckLevel | None = None,
-        *,
-        cod: Field | None = None,
-        real_linear: bool = False,
     ) -> None:
         # Validate the callables, then bind the domain.
         if not callable(value):
             raise TypeError(f"value must be callable, got {type(value).__name__}.")
         if vvalue is not None and not callable(vvalue):
             raise TypeError(f"vvalue must be callable, got {type(vvalue).__name__}.")
-        super().__init__(dom, ctx, check_level=check_level, cod=cod)
-        self.real_linear = True
+        super().__init__(dom, ctx, check_level=check_level)
         self.value_fn = value
         self.vvalue_fn = vvalue
 
-    @property
-    def scalar_field(self) -> str:
-        """The callable is linear over the real scalars."""
-        return "real" if self.real_linear else super().scalar_field
 
     @property
     def representer(self) -> Any:

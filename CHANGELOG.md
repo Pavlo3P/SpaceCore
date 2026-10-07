@@ -124,11 +124,13 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
-- **Functionals are strictly real-valued** (breaking). Their codomain
-  is real even on complex domains. Complex outputs, coefficients, offsets and
-  explicit complex codomains raise `TypeError` at every check level. Inner-product
-  functionals evaluate the real pairing; Hermitian quadratic forms return real
-  values. The constraint covers batched and fused evaluations and subclass overrides.
+- **Functionals are strictly real-valued** (breaking). Their codomain is always
+  `RealField`, even on complex domains; the `cod` and `real_linear` arguments and the
+  functional `scalar_field` property are gone. With checks on (`cheap` and above),
+  complex outputs, coefficients and offsets raise `TypeError` through `RealField`
+  membership, including in batched and fused evaluations and subclass overrides.
+  Inner-product functionals evaluate the real pairing and Hermitian quadratic forms
+  its real part.
 
 - **`LinOp` and `Functional` own their checked public methods.** `apply`, `rapply`,
   `vapply`, `rvapply`, `value` and `vvalue` validate on the base class and call the

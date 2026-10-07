@@ -10,7 +10,7 @@ From 0.5.0a, Functionals are real-valued scalar maps on spaces, including comple
 
 ## Current design
 
-`Functional` owns a domain space, a scalar `Field` codomain, and a context. The codomain defaults to `RealField`; an explicit `cod=` must also be real. Subclasses implement `value(x)`. `vvalue(xs)` evaluates over a leading batch axis through backend `vmap` unless overridden. `LinearFunctional` adds a Riesz-gradient contract through `representer`, `grad`, and `vgrad`. `InnerProductFunctional` stores a representer and evaluates `Re<c, x>`. `MatrixFreeLinearFunctional` requires real outputs from user evaluation callables and has no stored representer. `QuadraticForm` defines optional `grad`, `vgrad`, and `hess_apply`; `LinOpQuadraticForm` stores a Hermitian operator, optional linear term, and scalar offset. Pull-backs are built by composing with a LinOp and have specializations for inner-product and quadratic functionals.
+`Functional` owns a domain space, a scalar `Field` codomain, and a context. The codomain is always `RealField`. Subclasses implement `value(x)`. `vvalue(xs)` evaluates over a leading batch axis through backend `vmap` unless overridden. `LinearFunctional` adds a Riesz-gradient contract through `representer`, `grad`, and `vgrad`. `InnerProductFunctional` stores a representer and evaluates `Re<c, x>`. `MatrixFreeLinearFunctional` requires real outputs from user evaluation callables and has no stored representer. `QuadraticForm` defines optional `grad`, `vgrad`, and `hess_apply`; `LinOpQuadraticForm` stores a Hermitian operator, optional linear term, and scalar offset. Pull-backs are built by composing with a LinOp and have specializations for inner-product and quadratic functionals.
 
 ## Decision
 
@@ -42,8 +42,8 @@ New functionals must validate domain inputs and scalar output shape when checks 
 ## Contributor invariants
 
 - `value` returns a real scalar-like backend value; batch and fused evaluators obey the same rule.
-- Complex dtypes (even with zero imaginary part), complex codomains, coefficients, and offsets raise `TypeError` at every check level, including `none`. This invariant also applies to subclass overrides and algebra cores; it uses dtype metadata and is compatible with tracing.
-- Built-in inner-product and Hermitian quadratic formulas explicitly take their real part. User callbacks are never silently projected. Extended-real indicator values remain supported.
+- With checks on (`cheap` and above), complex dtypes (even with zero imaginary part), coefficients, and offsets raise `TypeError` through `RealField` membership; overriding public evaluators are checked the same way. At `none` nothing is checked. The check uses dtype metadata and is compatible with tracing.
+- Built-in inner-product and Hermitian quadratic formulas take the real part as part of their definition. User callbacks are not projected. Extended-real indicator values remain supported.
 - Conversion and pytree reconstruction preserve the real codomain independently of domain storage.
 - `grad` returns a domain element when implemented.
 - Matrix-free functionals do not imply a stored representer.

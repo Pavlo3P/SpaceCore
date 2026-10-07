@@ -59,7 +59,6 @@ class _CoordinateFunctional(Functional[Domain]):
 
         return InnerProductFunctional(
             gradient, self.domain, self.ctx, check_level=self.check_level,
-            cod=self.codomain, real_linear=True,
         )
 
     @checked_method(in_space="domain", out_space="domain")

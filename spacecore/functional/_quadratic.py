@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ._base import Domain, Functional, _require_real
+from ._base import Domain, Functional
 from .._batching import (
     _batched_inner,
     _check_scalar_shape,
@@ -29,8 +29,6 @@ class QuadraticForm(Functional[Domain]):
         Backend context; resolved from ``dom`` when omitted.
     check_level : {"none", "cheap", "standard", "strict"}, optional
         Validation level; the ambient default when omitted.
-    cod : Field or None, optional
-        Real scalar codomain; defaults to ``RealField``.
     """
 
     def hess_apply(self, x: Any) -> Any:
@@ -144,7 +142,7 @@ class LinOpQuadraticForm(QuadraticForm[Domain]):
         self.Q = Q
         self.linear = linear
         # The constant offset must be a scalar.
-        _require_real(a, self.ops)
+        self.codomain._check_member(a)
         self.a = self.codomain.ctx.asarray(a)
         _check_scalar_shape(self.a, ())
 
@@ -171,7 +169,6 @@ class LinOpQuadraticForm(QuadraticForm[Domain]):
         """Differentiate the Hermitian quadratic with the real pairing."""
         quadratic = InnerProductFunctional(
             self.Q.apply(x), self.domain, self.ctx, check_level=self.check_level,
-            cod=self.codomain, real_linear=True,
         )
         return quadratic if self.linear is None else quadratic + self.linear
 

@@ -10,10 +10,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from ._base import Functional, _require_real
+from ._base import Functional
 from ._linear import LinearFunctional
 from ..mapping import Scalar, ScaledNode, SumNode, ZeroNode, make_scaled_of, make_sum_of, register
-from ..space import Field
 from .._checks import checked_method
 from .._checks import CheckLevel, minimum_check_level
 from ..contextual import Context
@@ -62,7 +61,7 @@ class ScaledFunctional(ScaledNode, Functional):
 
     def __init__(self, scalar: Any, functional: Functional, check_level: CheckLevel | None = None) -> None:
         super().__init__(scalar, functional, check_level)
-        _require_real(scalar, self.ops)
+        self.codomain._check_member(scalar)
 
     def _convert(self, new_ctx: Context) -> "ScaledFunctional":
         scalar = self.codomain.convert(new_ctx).ctx.asarray(self.scalar)
@@ -111,7 +110,6 @@ def make_scaled_functional(scalar: Any, functional: Functional) -> Functional:
     Functional
         The scaled functional.
     """
-    _require_real(scalar, functional.ops)
     family = LinearFunctional if isinstance(functional, LinearFunctional) else Functional
     return make_scaled_of(family, scalar, functional)
 
@@ -214,13 +212,11 @@ class ZeroFunctional(ZeroNode, Functional):
         Backend context.
     check_level : {"none", "cheap", "standard", "strict"}, optional
         Validation level; the ambient default when omitted.
-    cod : Field or None, optional
-        Real scalar codomain; defaults to ``RealField``.
     """
 
     @classmethod
     def _of(cls, domain: Any, codomain: Any, ctx: Any, check_level: Any = None) -> "ZeroFunctional":
-        return cls(domain, ctx, check_level, cod=codomain)
+        return cls(domain, ctx, check_level)
 
     def _value_core(self, x: Any, *args: Any, **kwargs: Any) -> Any:
         """Check-free scalar zero in the codomain dtype."""
@@ -251,11 +247,9 @@ class ConstantFunctional(Functional):
         Backend context.
     check_level : {"none", "cheap", "standard", "strict"}, optional
         Validation level; the ambient default when omitted.
-    cod : Field or None, optional
-        Real scalar codomain; defaults to ``RealField``.
     """
 
-    _fields = ("dom", "constant", "ctx", "check_level", "cod")
+    _fields = ("dom", "constant", "ctx", "check_level")
     _dynamic = ("constant",)
 
     def __init__(
@@ -264,19 +258,17 @@ class ConstantFunctional(Functional):
         constant: Any,
         ctx: Context | str | None = None,
         check_level: CheckLevel | None = None,
-        *,
-        cod: Field | None = None,
     ) -> None:
         if not is_scalar_like(constant):
             raise TypeError(f"constant must be scalar-like, got {type(constant).__name__}.")
-        super().__init__(dom, ctx, check_level=check_level, cod=cod)
-        _require_real(constant, self.ops)
+        super().__init__(dom, ctx, check_level=check_level)
+        self.codomain._check_member(constant)
         self.constant = constant
 
     def _convert(self, new_ctx: Context) -> "ConstantFunctional":
         cod = self.codomain.convert(new_ctx)
         return type(self)(self.domain.convert(new_ctx), cod.ctx.asarray(self.constant),
-                          new_ctx, self.check_level, cod=cod)
+                          new_ctx, self.check_level)
 
     def _value_core(self, x: Any, *args: Any, **kwargs: Any) -> Any:
         """Check-free constant in the codomain dtype (mirrors ``ZeroFunctional``)."""
@@ -315,9 +307,6 @@ def make_constant_functional(
     # A zero constant is the additive identity, kept as ZeroFunctional.
     if not is_scalar_like(constant):
         raise TypeError(f"constant must be scalar-like, got {type(constant).__name__}.")
-    from ..contextual import resolve_context_priority
-
-    _require_real(constant, resolve_context_priority(ctx, dom).ops)
     if scalar_eq(constant, 0):
         return ZeroFunctional(dom, ctx)
     return ConstantFunctional(dom, constant, ctx)
@@ -343,11 +332,10 @@ def make_shifted_functional(functional: Functional, offset: Any) -> Functional:
         raise TypeError(f"functional must be a Functional, got {type(functional).__name__}.")
     if not is_scalar_like(offset):
         raise TypeError(f"offset must be scalar-like, got {type(offset).__name__}.")
-    _require_real(offset, functional.ops)
     if scalar_eq(offset, 0):
         return functional
     constant = ConstantFunctional(functional.domain, offset, functional.ctx,
-                                  check_level=functional.check_level, cod=functional.codomain)
+                                  check_level=functional.check_level)
     return make_functional_sum((functional, constant))
 
 
@@ -387,7 +375,7 @@ class ProductFunctional(Functional):
         # (mirrors SumFunctional).
         if check_level is None:
             check_level = minimum_check_level((left.check_level, right.check_level))
-        super().__init__(left.domain, left.ctx, check_level=check_level, cod=left.codomain)
+        super().__init__(left.domain, left.ctx, check_level=check_level)
         self.left = left.convert(self.ctx)
         self.right = right.convert(self.ctx)
 
@@ -466,7 +454,7 @@ def make_functional_product(left: Functional, right: Functional) -> Functional:
 
     # Structural shortcuts: a zero factor gives zero, a constant factor gives scaling.
     if isinstance(left, ZeroFunctional) or isinstance(right, ZeroFunctional):
-        return ZeroFunctional(left.domain, left.ctx, cod=left.codomain)
+        return ZeroFunctional(left.domain, left.ctx)
     if isinstance(left, ConstantFunctional):
         return make_scaled_functional(left.constant, right)
     if isinstance(right, ConstantFunctional):
@@ -482,9 +470,6 @@ class _ScaledLinearFunctional(ScaledFunctional, LinearFunctional):
     vgrad = LinearFunctional.vgrad
     value_and_grad = Functional.value_and_grad
 
-    @property
-    def scalar_field(self) -> str:
-        return self.functional.scalar_field
 
     @property
     def representer(self) -> Any:
@@ -499,9 +484,6 @@ class _SumLinearFunctional(SumFunctional, LinearFunctional):
     vgrad = LinearFunctional.vgrad
     value_and_grad = Functional.value_and_grad
 
-    @property
-    def scalar_field(self) -> str:
-        return "real"
 
     @property
     def representer(self) -> Any:

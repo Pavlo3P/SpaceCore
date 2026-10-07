@@ -12,7 +12,6 @@ def real_valued():
     dom = sc.DenseCoordinateSpace((2,), ctx)
     return sc.MatrixFreeLinearFunctional(
         lambda x: 2 * x.sum(), dom,
-        cod=sc.RealField(ctx),
     )
 
 
@@ -59,21 +58,13 @@ def test_default_hermitian_codomain_is_real():
     assert f.domain.dtype == np.dtype('complex128')
 
 
-def test_codomain_must_be_a_field():
-    dom = sc.DenseCoordinateSpace((2,), sc.Context(sc.NumpyOps(), dtype=np.float64))
-    with pytest.raises(TypeError, match='must be a Field'):
-        sc.MatrixFreeLinearFunctional(lambda x: x.sum(), dom, cod=dom)
-
-
 @pytest.mark.parametrize('level,raises', [('none', False), ('cheap', False),
                                           ('standard', True), ('strict', True)])
 def test_functional_policy_controls_field_output_check(level, raises):
-    # Deliberately different policies on both supplied endpoints.
+    # The domain's policy differs deliberately; the functional's policy decides.
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
     dom = sc.DenseCoordinateSpace((2,), ctx, check_level='none')
-    cod = sc.RealField(ctx, check_level='strict')
-    f = sc.MatrixFreeLinearFunctional(lambda x: x, dom, cod=cod, check_level=level)
-    assert cod.check_level == 'strict'
+    f = sc.MatrixFreeLinearFunctional(lambda x: x, dom, check_level=level)
     for obj in (f, f.convert(sc.Context(sc.NumpyOps(), dtype=np.float32))):
         if raises:
             with pytest.raises(sc.SpaceValidationError, match='Expected scalar output'):
@@ -103,37 +94,9 @@ def test_exact_batch_check_is_stronger_than_scalar_field_batch_membership():
 def test_real_constant_and_zero_round_trip():
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
     dom = sc.DenseCoordinateSpace((2,), ctx)
-    field = sc.RealField()
-    for f in (sc.ConstantFunctional(dom, 1., cod=field), sc.ZeroFunctional(dom, cod=field)):
+    for f in (sc.ConstantFunctional(dom, 1.), sc.ZeroFunctional(dom)):
         children, aux = f.tree_flatten()
         restored = type(f).tree_unflatten(aux, children)
         assert restored == f
         assert isinstance(restored.codomain, sc.RealField)
         np.testing.assert_allclose(restored.value(dom.zeros()), f.value(dom.zeros()))
-
-
-def test_field_subclass_with_extra_constructor_args_survives_binding():
-    """The codomain is rebuilt through `_convert`, not `type(cod)(ctx, ...)`."""
-
-    class TaggedField(sc.RealField):
-        """A public-Field subclass whose constructor takes more than a context."""
-
-        def __init__(self, tag, ctx=None, check_level=None):
-            super().__init__(ctx, check_level=check_level)
-            self.tag = tag
-
-        def _convert(self, new_ctx):
-            return type(self)(self.tag, new_ctx, check_level=self.check_level)
-
-    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
-    cod = TaggedField('t', ctx, check_level='cheap')
-    f = sc.MatrixFreeLinearFunctional(
-        lambda x: x.sum(), sc.DenseCoordinateSpace((2,), ctx),
-        cod=cod, check_level='strict',
-    )
-
-    assert isinstance(f.codomain, TaggedField)
-    assert f.codomain.tag == 't'
-    assert f.codomain.check_level == 'strict'   # follows the functional's policy
-    assert cod.check_level == 'cheap'           # the caller's object is untouched
-    assert f.value(np.array([1., 2.])) == 3.

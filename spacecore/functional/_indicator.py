@@ -7,8 +7,6 @@ from .._checks import checked_method
 from .._errors import CapabilityError
 from ..mapping import register
 from ..sets import Set
-from ..space import RealField
-from ..contextual import Context
 from ._base import Functional
 
 
@@ -37,8 +35,7 @@ class IndicatorFunctional(Functional):
         if not isinstance(constraint, Set) or not constraint.is_convex:
             raise CapabilityError("IndicatorFunctional requires a declared closed convex Set.")
         level = constraint.check_level if check_level is None else check_level
-        real_ctx = Context(constraint.ops, constraint.ops.real_dtype(constraint.dtype))
-        super().__init__(constraint.ambient, check_level=level, cod=RealField(real_ctx))
+        super().__init__(constraint.ambient, check_level=level)
         self.constraint = constraint._with_check_level(self.check_level)
 
     @checked_method(in_space="domain")

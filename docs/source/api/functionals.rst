@@ -41,18 +41,15 @@ A callable differential can be pulled back through ``A`` using only forward
 application: :math:`(Df(x)\circ A)[h]=Df(x)[Ah]`. Retrieving its gradient may
 additionally require a representer and the metric adjoint.
 
-From 0.5.0a, real output is a hard contract at every check level, including
-``none``. The codomain is always a real ``Field``; complex domains remain
-supported. Complex output dtypes, coefficients, and offsets raise ``TypeError``,
-even if their imaginary part is zero. Batched and fused evaluations and subclass
-overrides follow the same rule. Extended-real indicator values remain valid.
+Functionals are real-valued. The codomain is always ``RealField``; complex
+domains remain supported. With checks on (``cheap`` and above), a complex output
+dtype, coefficient or offset raises ``TypeError``, even with a zero imaginary
+part; this covers batched and fused evaluations and subclass overrides.
+Extended-real indicator values remain valid.
 
-``df.scalar_field`` is always ``"real"``. ``InnerProductFunctional`` evaluates
-:math:`\operatorname{Re}\langle c,h\rangle` and Hermitian quadratic forms
-use the real part of their quadratic pairing. Matrix-free callables must return
-real values explicitly; SpaceCore never discards their imaginary part.
-The ``real_linear`` argument remains accepted for compatibility, but all
-functionals use real linearity regardless of its value.
+``InnerProductFunctional`` evaluates :math:`\operatorname{Re}\langle c,h\rangle`
+and Hermitian quadratic forms evaluate :math:`\tfrac12\operatorname{Re}\langle x,Qx\rangle`.
+Matrix-free callables return real values themselves.
 
 At a nonsmooth point, a chosen subgradient does not become a Frechet derivative;
 use these interfaces where the objective is differentiable.
