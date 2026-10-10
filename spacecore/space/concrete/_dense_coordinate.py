@@ -114,6 +114,10 @@ class DenseCoordinateSpace(CoordinateSpace, InnerProductSpace):
         """Return ``pair(xi, xs[i])`` for a leading-axis batch."""
         return self.ops.real(xs.reshape((-1, self._size)) @ self.ops.conj(xi.reshape((-1,))))
 
+    def dual_norm(self, xi: Any) -> Any:
+        """Return the dual norm of a covector in this space's geometry."""
+        return self.geometry.dual_norm(self.ops, xi)
+
     def _inner_core(self, x: Any, y: Any) -> Any:
         """Return the configured inner product without membership checks."""
         return self.geometry.inner(self.ops, x, y)

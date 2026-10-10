@@ -74,6 +74,26 @@ transpose (the coordinate conjugate transpose); the metric adjoint is
 ``rapply = R_X^{-1} A' R_Y``. Metric-free methods (Frank-Wolfe steps, mirror maps,
 quasi-Newton curvature pairs, Sinkhorn) need only these.
 
+Dual Norms, Cometrics and Factors
+---------------------------------
+
+Every geometry ``G`` gives the norm and the dual norm of a covector, and its dual
+geometry on covectors, whose Riesz map is ``G``'s inverse:
+
+.. math::
+
+   \|\xi\|_* = \sup_{\|x\|_G \le 1} \langle \xi, x\rangle
+   = \sqrt{\langle \xi, R_G^{-1}\xi\rangle}.
+
+``X.dual_norm(xi)`` and ``G.dual_norm(ops, xi)`` compute it; ``G.dual()`` is
+``WeightedInnerProduct(1 / w)`` for a weighted metric and swaps ``M`` and
+``M_inverse`` for an operator metric. A metric known only through its inverse, a
+solve-only preconditioner ``K``, is the cometric ``OperatorInnerProduct(M_inverse=K)``:
+it gives ``riesz_inverse`` and ``dual_norm`` and is passed to a single call, but a
+space cannot be built on it. A factor ``C`` with ``R = C^* C`` (``G.factor``,
+``G.factor_inverse``) is an isometry onto Euclidean coordinates, so a Euclidean
+black-box optimizer run on ``C x`` takes steps in the metric.
+
 Operator Metrics
 ----------------
 

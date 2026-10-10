@@ -9,6 +9,11 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Dual geometry: `InnerProduct.norm`, `dual_norm` and `dual()` (weighted `1/w`, operator
+  metrics swap `M` and `M_inverse`), `InnerProductSpace.dual_norm`, and metric factors
+  `factor`/`factor_inverse` with `R = C^* C` (Euclidean, weighted `sqrt(w)`, operator
+  `factor=`/`factor_inverse=`, checked at `strict`). `OperatorInnerProduct(M_inverse=K)` is a
+  cometric: a solve-only metric for a single call, refused as a space geometry.
 - The metric-free pairing layer: `CoordinateSpace.pair(xi, x)` and `vpair(xi, xs)`
   pair a coordinate covector with elements without any inner product;
   `Functional.differential(x)` returns the covector of the derivative (natively for
