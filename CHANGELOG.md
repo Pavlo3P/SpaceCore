@@ -14,6 +14,9 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   preconditioner.
 - `Functional.prox`, `conjugate_prox` and `Set.project` take `geometry=G`; rules exact only
   in the domain's geometry refuse a different `G`.
+- `power_iteration`, `lanczos_smallest` and `expm_multiply` take `geometry=G` for an operator
+  self-adjoint in `G` (generalized eigenproblems); `lsqr` takes `domain_geometry` and
+  `codomain_geometry`.
 - Dual geometry: `InnerProduct.norm`, `dual_norm` and `dual()` (weighted `1/w`, operator
   metrics swap `M` and `M_inverse`), `InnerProductSpace.dual_norm`, and metric factors
   `factor`/`factor_inverse` with `R = C^* C` (Euclidean, weighted `sqrt(w)`, operator

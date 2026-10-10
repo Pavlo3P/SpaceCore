@@ -289,7 +289,7 @@ class TestDispatch:
         x0 = ctx.asarray([1.0, 0.0])
         captured = {}
 
-        def fake_core(action, x, tol, maxiter):
+        def fake_core(action, x, tol, maxiter, geometry=None):
             captured["action"] = action
             captured["x"] = x
             return ctx.asarray(0.0), x, ctx.asarray(True), 0, ctx.asarray(0.0)

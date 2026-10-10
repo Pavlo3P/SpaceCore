@@ -145,6 +145,14 @@ clip) accept a foreign ``G``; the scaled, summed and indicator rules forward it.
 A rule whose closed form holds only in the domain's own geometry, such as the
 squared norm, raises ``CapabilityError`` for a different ``G``.
 
+``power_iteration``, ``lanczos_smallest`` and ``expm_multiply`` take
+``geometry=G`` for an operator that is self-adjoint in ``G`` rather than in
+``A.domain``. For ``A = M^{-1} K`` and the ``M`` metric this solves the
+generalized eigenproblem ``K x = lambda M x``; the Hermitian probe is skipped
+because it refers to ``A.domain``'s metric. ``lsqr`` takes
+``domain_geometry`` and ``codomain_geometry``: the codomain geometry sets the
+least-squares norm, and the adjoint is the one ``adjoint_in`` returns.
+
 Custom Geometry
 ---------------
 

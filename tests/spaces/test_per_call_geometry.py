@@ -93,3 +93,51 @@ def test_prox_refuses_a_foreign_geometry_without_a_closed_form(ctx):
     np.testing.assert_allclose(sc.SquaredL2NormFunctional(E).prox(x, 1.0, geometry=E.geometry), x / 2)
     with pytest.raises(sc.CapabilityError):
         sc.NonnegativeOrthant(E).project(x, geometry=_operator_geometry(ctx, E, _spd(4)))
+
+
+@pytest.fixture
+def generalized(ctx):
+    """``A = M^{-1} K`` is self-adjoint in the ``M`` metric, not in the Euclidean one."""
+    E = sc.DenseCoordinateSpace((N,), ctx)
+    K = _spd(5, shift=0.1)
+    M_np = _spd(6)
+    A = sc.DenseLinOp(ctx.asarray(np.linalg.solve(M_np, K)), E, E, ctx, check_level="standard")
+    eigenvalues, vectors = np.linalg.eig(np.linalg.solve(M_np, K))
+    order = np.argsort(eigenvalues.real)
+    return A, _operator_geometry(ctx, E, M_np), eigenvalues.real[order], vectors.real[:, order]
+
+
+def test_eigensolvers_solve_the_generalized_problem(generalized):
+    from spacecore.linalg import lanczos_smallest, power_iteration
+
+    A, G, eigenvalues, _ = generalized
+    with pytest.raises(ValueError):
+        power_iteration(A)
+    small = lanczos_smallest(A, np.ones(N), geometry=G, max_iter=N, tol=1e-10)
+    np.testing.assert_allclose(small.eigenvalue, eigenvalues[0], rtol=1e-8)
+    large = power_iteration(A, geometry=G, maxiter=3000, tol=1e-9)
+    np.testing.assert_allclose(large.eigenvalue, eigenvalues[-1], rtol=1e-6)
+
+
+def test_expm_multiply_in_the_metric_of_self_adjointness(generalized):
+    from spacecore.linalg import expm_multiply
+
+    A, G, eigenvalues, V = generalized
+    v = np.linspace(1, 2, N)
+    expected = V @ (np.exp(0.1 * eigenvalues) * np.linalg.solve(V, v))
+    np.testing.assert_allclose(expm_multiply(A, v, 0.1, geometry=G, max_iter=N).result, expected, rtol=1e-8)
+
+
+def test_lsqr_minimizes_in_the_codomain_geometry(ctx):
+    from spacecore.linalg import lsqr
+
+    X, Y = sc.DenseCoordinateSpace((3,), ctx), sc.DenseCoordinateSpace((N,), ctx)
+    A_np = np.random.default_rng(7).standard_normal((N, 3))
+    A = sc.DenseLinOp(ctx.asarray(A_np), X, Y, ctx)
+    b = np.arange(1.0, N + 1)
+    w = np.arange(1.0, N + 1) ** 2
+    expected = np.linalg.solve(A_np.T @ (w[:, None] * A_np), A_np.T @ (w * b))
+    for gx in (None, _operator_geometry(ctx, X, _spd(8, n=3))):
+        result = lsqr(A, b, domain_geometry=gx, codomain_geometry=sc.WeightedInnerProduct(ctx.asarray(w)),
+                      tol=1e-12, maxiter=50)
+        np.testing.assert_allclose(result.x, expected, rtol=1e-7)

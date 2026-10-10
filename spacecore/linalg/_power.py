@@ -67,15 +67,15 @@ class _SelfAdjointAction(NamedTuple):
         return self.ctx.dtype
 
 
-def _action_from_linop(A: LinOp) -> _SelfAdjointAction:
+def _action_from_linop(A: LinOp, geometry: Any = None) -> _SelfAdjointAction:
     """Normalize a square linear operator into a self-adjoint action."""
     # Wrap a square LinOp as a self-adjoint action with generic diagnostics.
     A = require_linop(A)
     require_square(A, "power_iteration")
-    if A._checks_at_least("standard") and A.is_hermitian() is False:
+    if geometry is None and A._checks_at_least("standard") and A.is_hermitian() is False:
         raise ValueError("power_iteration requires A to be Hermitian/self-adjoint.")
     apply = resolve_apply(A)
-    sops = SpaceCoreOps(A.domain)
+    sops = SpaceCoreOps(A.domain, geometry)
     return _SelfAdjointAction(
         apply,
         A.domain,
@@ -115,6 +115,7 @@ def power_iteration(
     x0: Any | None = None,
     tol: float = 1e-6,
     maxiter: int | None = None,
+    geometry: Any = None,
 ) -> PowerIterationResult:
     r"""
     Estimate the dominant eigenpair (largest in absolute value) of a self-adjoint action.
@@ -131,6 +132,9 @@ def power_iteration(
         Converged when ``norm(A @ x - eigenvalue * x) < tol``.
     maxiter : int or None, optional
         Iteration cap; ``prod(A.domain.shape)`` by default.
+    geometry : InnerProduct or None, optional
+        A linear ``A`` self-adjoint in this geometry instead of ``A.domain``'s; norms,
+        Rayleigh quotients and residuals then use it. Not accepted with a quadratic form.
 
     Returns
     -------
@@ -172,9 +176,11 @@ def power_iteration(
     """
     # Turn either input into one self-adjoint action.
     if isinstance(A, QuadraticForm):
+        if geometry is not None:
+            raise TypeError("power_iteration: geometry= needs a LinOp; pass the Hessian operator.")
         action = _action_from_quadratic_form(A)
     elif isinstance(A, LinOp):
-        action = _action_from_linop(A)
+        action = _action_from_linop(A, geometry)
     else:
         raise TypeError(f"A must be a LinOp or QuadraticForm, got {type(A).__name__}.")
 
@@ -183,7 +189,7 @@ def power_iteration(
     # Start from normalized ones unless x0 is given.
     x = default_initial_vector(cast(Any, action)) if x0 is None else x0
     action.domain.check_member(x)
-    return PowerIterationResult(*_power_iteration_core(action, x, tol, maxiter))
+    return PowerIterationResult(*_power_iteration_core(action, x, tol, maxiter, geometry))
 
 
 def _power_iteration_core(
@@ -191,9 +197,10 @@ def _power_iteration_core(
     x: Any,
     tol: float,
     maxiter: int,
+    geometry: Any = None,
 ) -> tuple[Any, Any, Any, Any, Any]:
     """Run the backend-loop implementation of power iteration."""
-    sops = SpaceCoreOps(action.domain)
+    sops = SpaceCoreOps(action.domain, geometry)
     # Normalize x0 and precompute y = A x.
     x, _ = core_normalize(sops, x)
     y = action.apply(x)
