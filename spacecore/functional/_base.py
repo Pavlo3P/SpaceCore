@@ -154,6 +154,16 @@ class Functional(Mapping, Generic[Domain]):
         X = self.domain
         return X.axpy(-step, self.prox(X.scale(1 / step, x), 1 / step), x)
 
+    def differential(self, x: Any, *args: Any, **kwargs: Any) -> Any:
+        r"""Return the covector :math:`df(x)` with :math:`Df(x)[h] = \langle df(x), h\rangle`.
+
+        The covector is a coordinate array paired with ``domain.pair`` and involves no
+        metric. The default reads it off the Riesz gradient, ``domain.riesz(grad(x))``;
+        functionals that compute coordinate partials directly return them. The
+        gradient in another geometry ``G`` is ``G.riesz_inverse(ops, differential(x))``.
+        """
+        return self.domain.riesz(self.grad(x, *args, **kwargs))
+
     def derivative_at(self, x: Any, *args: Any, **kwargs: Any) -> "LinearFunctional":
         """Return the differential at ``x``, acting on domain directions.
 

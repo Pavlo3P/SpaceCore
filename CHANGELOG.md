@@ -9,6 +9,12 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- The metric-free pairing layer: `CoordinateSpace.pair(xi, x)` and `vpair(xi, xs)`
+  pair a coordinate covector with elements without any inner product;
+  `Functional.differential(x)` returns the covector of the derivative (natively for
+  coordinate functionals); `LinOp.tapply(eta)` applies the pairing transpose, the
+  coordinate conjugate transpose, which relates to the metric adjoint by
+  `rapply = R_X^{-1} tapply R_Y`.
 - `OperatorInnerProduct(M, M_inverse=None)`: a metric given by a self-adjoint
   positive-definite operator on the Euclidean coordinates, with `M` as the Riesz
   map and an optional, possibly inexact, inverse. Block, Kronecker and matrix-free

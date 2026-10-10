@@ -72,6 +72,10 @@ class _CoordinateFunctional(Functional[Domain]):
         _warn_vmap_fallback_once(self, "vgrad", _leading_batch_size(self.domain, xs))
         return self.ops.vmap(self.grad, in_axes=0, out_axes=0)(xs)
 
+    def differential(self, x: Any) -> Any:
+        """Return the coordinate partials directly; they are the differential covector."""
+        return self._coordinate_grad(x)
+
     def _coordinate_grad(self, x: Any) -> Any:
         """Return the Euclidean coordinate gradient ``d phi / d x_i``."""
         raise NotImplementedError(

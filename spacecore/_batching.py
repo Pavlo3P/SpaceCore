@@ -65,12 +65,8 @@ def _batched_real_inner(space: Any, xs: Any, ys: Any) -> Any:
 
 def _batched_real_pairing(space: Any, c: Any, xs: Any) -> Any:
     """Return ``space.real_inner(c, xs[i])`` for one element ``c`` and a leading-axis batch."""
-    # Re <c, x_i> = Re conj(R c) . x_i on flat coordinates.
-    ops = space.ops
-    if space.is_euclidean and len(tuple(space.shape)) == 1:
-        return ops.real(xs @ ops.conj(c))
-    c_dual = c if space.is_euclidean else space.riesz(c)
-    return ops.real(space.flatten_batch(xs) @ ops.conj(space.flatten(c_dual)))
+    # Re <c, x_i>_X = pair(R c, x_i).
+    return space.vpair(c if space.is_euclidean else space.riesz(c), xs)
 
 
 def _batched_inner(space: Any, xs: Any, ys: Any) -> Any:

@@ -82,6 +82,18 @@ class CoordinateSpace(VectorSpace):
         xs = tuple(self.unflatten(vs[i]) for i in range(n))
         return self.ops.stack(xs, axis=0)
 
+    def pair(self, xi: Any, x: Any) -> Any:
+        r"""Return the metric-free pairing :math:`\langle \xi, x\rangle = \operatorname{Re}\,\mathrm{vdot}(\xi, x)` of a covector with an element.
+
+        A covector is an array of this space's coordinate shape; no inner product is
+        involved, so the pairing is the same under every geometry.
+        """
+        return self.ops.real(self.ops.vdot(self.flatten(xi), self.flatten(x)))
+
+    def vpair(self, xi: Any, xs: Any) -> Any:
+        """Return ``pair(xi, xs[i])`` for every element of a leading-axis batch."""
+        return self.ops.real(self.flatten_batch(xs) @ self.ops.conj(self.flatten(xi)))
+
     def add_batch(self, x: Any, y: Any) -> Any:
         """Return the leading-axis batch sum of ``x`` and ``y``."""
         return self.ops.vmap(self.add, in_axes=(0, 0), out_axes=0)(x, y)

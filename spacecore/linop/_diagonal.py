@@ -106,6 +106,10 @@ class DiagonalLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
             ops=self.ops,
         )
 
+    def _tapply_core(self, eta: Any) -> Any:
+        # The pairing transpose is the coordinate conjugate transpose, whatever the metric.
+        return self._euclidean_rapply_core(eta)
+
     def _euclidean_rapply_core(self, y: Any) -> Any:
         # The adjoint diagonal, elementwise or on flat coordinates.
         if self._mode is not _DiagonalMode.GENERAL_METRIC or type(self.domain) in _VECTOR_SPACES:

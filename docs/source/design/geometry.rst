@@ -54,6 +54,26 @@ The common diagonal-metric case is built in:
    dual = X.riesz(x)            # weights * x
    primal = X.riesz_inverse(dual)
 
+Pairing and Covectors
+---------------------
+
+A covector is a coordinate array of the space's shape. ``X.pair(xi, x)`` pairs it
+with an element and uses no metric, so it is the same under every geometry;
+``X.vpair(xi, xs)`` pairs one covector with a batch. The inner product is the
+pairing of a Riesz image, ``real_inner(x, y) = pair(riesz(x), y)``.
+
+.. math::
+
+   \langle \xi, x\rangle = \operatorname{Re}\,\mathrm{vdot}(\xi, x),
+   \qquad Df(x)[h] = \langle df(x), h\rangle,
+   \qquad \langle A'\eta, x\rangle = \langle \eta, Ax\rangle.
+
+``F.differential(x)`` is the covector ``df(x)``; the gradient in any geometry ``G``
+is ``G.riesz_inverse(ops, F.differential(x))``. ``A.tapply(eta)`` is the pairing
+transpose (the coordinate conjugate transpose); the metric adjoint is
+``rapply = R_X^{-1} A' R_Y``. Metric-free methods (Frank-Wolfe steps, mirror maps,
+quasi-Newton curvature pairs, Sinkhorn) need only these.
+
 Operator Metrics
 ----------------
 
