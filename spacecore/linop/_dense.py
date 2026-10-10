@@ -199,8 +199,9 @@ class DenseLinOp(LinOp[Domain, Codomain]):
         # Pick the apply strategy once; weighted spaces get a pre-scaled adjoint.
         self._mode = self._select_mode()
         if self._mode is _DenseMode.WEIGHTED_FUSED:
-            self._dom_weights = self.dom.geometry.weights
-            self._cod_weights = self.cod.geometry.weights
+            # Weights may be stored at any shape that broadcasts to the space's.
+            self._dom_weights = self.ops.broadcast_to(self.dom.geometry.weights, tuple(self.dom.shape))
+            self._cod_weights = self.ops.broadcast_to(self.cod.geometry.weights, tuple(self.cod.shape))
             self._weighted_A2H = (
                 self._A2H * self._cod_weights.reshape((1, self._cod_size))
             ) / self._dom_weights.reshape((self._dom_size, 1))

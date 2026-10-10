@@ -72,7 +72,7 @@ def _action_from_linop(A: LinOp) -> _SelfAdjointAction:
     # Wrap a square LinOp as a self-adjoint action with generic diagnostics.
     A = require_linop(A)
     require_square(A, "power_iteration")
-    if A.is_hermitian() is False:
+    if A._checks_at_least("standard") and A.is_hermitian() is False:
         raise ValueError("power_iteration requires A to be Hermitian/self-adjoint.")
     apply = resolve_apply(A)
     sops = SpaceCoreOps(A.domain)

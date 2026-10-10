@@ -471,14 +471,20 @@ class ComposedLinOp(LinOp[Domain, Codomain]):
 
     def is_hermitian(self) -> bool | None:
         """
-        Return ``True`` for a Gram product ``R.H @ R`` (or ``L @ L.H``), else ``None``.
+        Return ``True`` for an adjoint-palindromic chain (``R.H @ R``, ``L @ V @ L.H`` with ``V`` self-adjoint), else ``None``.
 
         Returns
         -------
         bool | None
             ``True`` when structurally Hermitian, ``None`` when unknown.
         """
-        if self.left == self.right.H:
+        # The chain c_k ... c_0 is self-adjoint when c_i# == c_(k-i) for every i and the
+        # middle factor, if any, is self-adjoint: R# R, L V L# and their nestings.
+        chain = self._apply_chain
+        k = len(chain)
+        if all(chain[i].H == chain[k - 1 - i] for i in range(k // 2)) and (
+            k % 2 == 0 or chain[k // 2].is_hermitian() is True
+        ):
             return True
         return None
 
@@ -651,9 +657,14 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
         ``R_X^-1 A^T R_Y`` (see :meth:`from_coordinate_adjoint`). ``False``: it is the
         metric adjoint. Omitting it on a non-Euclidean space warns, because a
         coordinate adjoint there is silently wrong.
+    hermitian : bool or None, optional
+        Declared self-adjointness, returned by :meth:`is_hermitian` so solvers need
+        no probe; ``None`` (the default) means unknown. At ``strict`` checks a
+        declared ``True`` is probed once against ``rapply``.
     """
 
-    _fields = ("apply:apply_fn", "rapply:rapply_fn", "dom:domain", "cod:codomain", "ctx", "vapply:vapply_fn", "rvapply:rvapply_fn")
+    _fields = ("apply:apply_fn", "rapply:rapply_fn", "dom:domain", "cod:codomain", "ctx", "vapply:vapply_fn",
+               "rvapply:rvapply_fn", "hermitian")
 
     def _apply_core(self, x: Any) -> Any:
         return self.apply_fn(x)
@@ -688,6 +699,7 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
         check_level: CheckLevel | None = None,
         *,
         euclidean_adjoint: bool | Any = _ADJOINT_UNSPECIFIED,
+        hermitian: bool | None = None,
     ) -> None:
         # Validate the callables, then bind the spaces.
         if not callable(apply):
@@ -747,6 +759,9 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
         self.rvapply_fn = rvapply
         if self._checks_at_least("strict"):
             self._check_adjoint_consistency()
+        self.hermitian = hermitian
+        if hermitian and self._checks_at_least("strict"):
+            self._check_declared_hermitian()
 
     def _wrap_coordinate_adjoint(
         self,
@@ -771,6 +786,18 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
 
             wrapped_rvapply = _wrapped_rvapply
         return wrapped_rapply, wrapped_rvapply
+
+    def is_hermitian(self) -> bool | None:
+        """Return the declared self-adjointness (``None`` when not declared)."""
+        return self.hermitian
+
+    def _check_declared_hermitian(self) -> None:
+        """Probe a declared self-adjoint operator: ``apply`` and ``rapply`` must agree."""
+        x = probe_element(self.domain, self.ops, self.dtype)
+        if self.domain != self.codomain or (
+            x is not None and not bool(self.ops.allclose(self.apply_fn(x), self.rapply_fn(x)))
+        ):
+            raise ValueError("MatrixFreeLinOp declared hermitian=True, but apply and rapply differ.")
 
     def _check_adjoint_consistency(self) -> None:
         """Probe the declared adjoint identity on deterministic space elements."""
@@ -914,6 +941,7 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
             self.vapply_fn,
             self.rvapply_fn,
             euclidean_adjoint=False,
+            hermitian=self.hermitian,
         )
 
 

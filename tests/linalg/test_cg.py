@@ -227,7 +227,7 @@ class TestRejections:
         ``is_hermitian()`` is ``False`` here, so cg must reject it at entry even
         at the default (non-strict) check level.
         """
-        ctx = make_ctx()  # default check level, not strict
+        ctx = make_ctx(check_level="standard")  # default check level, not strict
         space = _weighted_space(ctx)
         A = sc.DenseLinOp(_metric_spd_matrix(ctx), space, space, ctx)
         # The metric SPD matrix used elsewhere is asymmetric; use a plainly

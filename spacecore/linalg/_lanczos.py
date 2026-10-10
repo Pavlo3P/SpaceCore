@@ -319,7 +319,7 @@ def lanczos_smallest(
     # Validate once: square, not provably non-Hermitian, valid parameters.
     A = require_linop(A)
     require_square(A, "lanczos_smallest")
-    if A.is_hermitian() is False:
+    if A._checks_at_least("standard") and A.is_hermitian() is False:
         raise ValueError("lanczos_smallest requires A to be Hermitian/self-adjoint.")
     max_iter = _check_lanczos_max_iter(max_iter)
     check_every = check_interval(check_every)

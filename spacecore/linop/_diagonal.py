@@ -193,8 +193,10 @@ class DiagonalLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
             ``True`` or ``False`` when the structure can be checked, otherwise
             ``None``.
         """
-        # Euclidean: Hermitian iff the diagonal is real; else test by basis.
-        if not cast(Any, self.domain).is_euclidean:
+        # Euclidean or diagonal-weighted: a diagonal commutes with the metric, so it is
+        # Hermitian iff the diagonal is real; any other metric is tested by basis.
+        domain = cast(Any, self.domain)
+        if not (domain.is_euclidean or isinstance(getattr(domain, "geometry", None), WeightedInnerProduct)):
             return _metric_is_hermitian_by_basis(self)
         try:
             return bool(self.ops.allclose(self.diagonal, self._diag_adjoint))

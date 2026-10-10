@@ -155,7 +155,7 @@ class TestRejections:
             sc.lanczos_smallest(op, ctx.asarray([1.0]), max_iter=0)
 
     def test_rejects_structurally_non_hermitian_operator(self):
-        ctx = make_ctx()
+        ctx = make_ctx(check_level="standard")
         space = sc.DenseCoordinateSpace((2,), ctx)
         op = sc.DenseLinOp(ctx.asarray([[1.0, 2.0], [0.0, 3.0]]), space, space, ctx)
         with pytest.raises(ValueError, match="Hermitian"):

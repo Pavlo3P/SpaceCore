@@ -3,7 +3,7 @@ from __future__ import annotations
 import warnings
 
 from ..space import DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace
-from ..space.base import CoordinateSpace, InnerProduct, InnerProductSpace
+from ..space.base import CoordinateSpace, InnerProductSpace
 from ..space._capabilities import require
 
 
@@ -33,14 +33,7 @@ def space_has_riesz_maps(space) -> bool:
     if space_has_maps:
         return True
     geometry = getattr(space, "geometry", None)
-    if geometry is None:
-        return False
-    geometry_type = type(geometry)
-    geometry_has_maps = (
-        geometry_type.riesz is not InnerProduct.riesz
-        and geometry_type.riesz_inverse is not InnerProduct.riesz_inverse
-    )
-    return geometry_has_maps
+    return geometry is not None and geometry.has_riesz_maps
 
 
 def _requires_euclidean_or_riesz(dom, cod, opname: str) -> None:

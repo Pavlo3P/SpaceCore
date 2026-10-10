@@ -133,6 +133,21 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **Checks follow the check level throughout geometry and solvers.** `WeightedInnerProduct`
+  reads weight values (real, finite, positive) only from `standard` upward, so building a
+  space costs nothing at `none` and traced weights work under `jit`; weights may be any
+  shape that broadcasts to the space (a 0-d array scales the Euclidean metric), and two
+  weightings of one metric compare equal. `cg`, `lanczos_smallest`, `expm_multiply` and
+  `power_iteration` probe self-adjointness only from `standard` upward.
+- **Self-adjointness is decided structurally where possible.** Adjoint-palindromic
+  compositions (`R.H @ R`, `L.H @ V @ L` with `V` self-adjoint), square block matrices with
+  `A_ij# == A_ji` and self-adjoint diagonal blocks, and diagonal operators on a weighted
+  space answer `is_hermitian()` without probes. `MatrixFreeLinOp(..., hermitian=True)`
+  declares it, probed once at `strict`.
+- **`OperatorInnerProduct`.** Without `M_inverse` it reports no Riesz maps, so matrix-backed
+  operators refuse the space at construction instead of failing at `rapply`. At `strict`,
+  positivity is relative (smallest eigenvalue estimate above `1e-12` times the largest) and a
+  supplied `M_inverse` must invert `M` on a probe vector to `1e-6`.
 - **Functionals are strictly real-valued** (breaking). Their codomain is always
   `RealField`, even on complex domains; the `cod` and `real_linear` arguments and the
   functional `scalar_field` property are gone. With checks on (`cheap` and above),

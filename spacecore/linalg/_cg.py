@@ -122,7 +122,7 @@ def cg(
     # Validate once, up front: square, not provably non-Hermitian, valid b and parameters.
     A = require_linop(A)
     require_square(A, "cg")
-    if A.is_hermitian() is False:
+    if A._checks_at_least("standard") and A.is_hermitian() is False:
         raise ValueError(
             "cg requires A to be Hermitian/self-adjoint with respect to "
             "A.domain.inner, but A was determined to be provably "

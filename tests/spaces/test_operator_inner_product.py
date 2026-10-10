@@ -93,9 +93,9 @@ def test_missing_inverse_is_caught_when_needed(ctx):
     np.testing.assert_allclose(X.riesz(x), _spd() @ x)
     with pytest.raises(sc.CapabilityError, match="M_inverse"):
         X.riesz_inverse(x)
-    A = sc.DenseLinOp(ctx.asarray(np.eye(N)), X, X, ctx)
-    with pytest.raises(sc.CapabilityError, match="M_inverse"):
-        A.rapply(x)
+    # Without an inverse there is no metric adjoint, so matrix-backed operators refuse the space.
+    with pytest.raises(TypeError, match="Riesz maps"):
+        sc.DenseLinOp(ctx.asarray(np.eye(N)), X, X, ctx)
 
 
 def test_invalid_metric_operators_are_rejected(ctx):
@@ -141,7 +141,7 @@ def test_non_positive_metrics_are_caught_when_checks_are_on(ctx):
     indefinite_np = np.diag([5., 4., 3., -1e-3])
     indefinite = sc.DenseLinOp(ctx.asarray(indefinite_np), E, E, ctx)
     sc.DenseCoordinateSpace((N,), ctx, geometry=sc.OperatorInnerProduct(indefinite))  # probe passes
-    with pytest.raises(ValueError, match="smallest eigenvalue"):
+    with pytest.raises(ValueError, match="eigenvalue estimates"):
         sc.DenseCoordinateSpace((N,), ctx, geometry=sc.OperatorInnerProduct(indefinite),
                                 check_level="strict")
     sc.DenseCoordinateSpace((N,), ctx, geometry=sc.OperatorInnerProduct(negative), check_level="none")

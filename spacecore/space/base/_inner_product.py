@@ -8,6 +8,12 @@ from ._coordinate import CoordinateSpace
 from ._vector import VectorSpace
 
 
+# Strict-level tolerances: positivity relative to the largest eigenvalue, and how
+# closely a supplied M_inverse must invert M.
+_STRICT_RTOL = 1e-12
+_STRICT_RTOL_INVERSE = 1e-6
+
+
 class InnerProduct(ABC):
     """
     Geometry of a space: inner product plus Riesz maps.
@@ -46,6 +52,12 @@ class InnerProduct(ABC):
         """Whether this geometry is the Euclidean coordinate inner product."""
         return False
 
+    @property
+    def has_riesz_maps(self) -> bool:
+        """Whether both Riesz maps are available, so metric adjoints can be formed."""
+        cls = type(self)
+        return cls.riesz is not InnerProduct.riesz and cls.riesz_inverse is not InnerProduct.riesz_inverse
+
 
 class EuclideanInnerProduct(InnerProduct):
     """Standard coordinate inner product ``vdot(x, y)`` with identity Riesz maps."""
@@ -79,8 +91,9 @@ class WeightedInnerProduct(InnerProduct):
     Parameters
     ----------
     weights : array-like
-        Positive, finite diagonal weights with exactly the coordinate-space
-        shape and context dtype.
+        Positive, finite diagonal weights in the context dtype, with a shape that
+        broadcasts to the coordinate-space shape (a 0-d array gives a scaled
+        Euclidean metric). Values are checked from ``standard`` checks upward.
     """
 
     def __init__(self, weights):
@@ -95,9 +108,11 @@ class WeightedInnerProduct(InnerProduct):
             rhs = _np.asarray(other.weights)
         except Exception:
             return False
-        # Structural before numerical: guard against allclose broadcasting two
-        # mismatched-shape weight vectors into a spurious True.
-        if lhs.shape != rhs.shape:
+        # The same metric may be stored at different broadcast shapes; compare the
+        # broadcast values, but never let incompatible shapes compare equal.
+        try:
+            lhs, rhs = _np.broadcast_arrays(lhs, rhs)
+        except ValueError:
             return False
         try:
             return bool(_np.allclose(lhs, rhs))
@@ -133,10 +148,15 @@ class WeightedInnerProduct(InnerProduct):
                 "WeightedInnerProduct weights must be dense arrays for the space backend "
                 f"{space.ops.family}."
             )
-        if tuple(getattr(weights, "shape", ())) != tuple(space.shape):
+        shape = tuple(getattr(weights, "shape", ()))
+        try:
+            broadcasts = _np.broadcast_shapes(shape, tuple(space.shape)) == tuple(space.shape)
+        except ValueError:
+            broadcasts = False
+        if not broadcasts:
             raise ValueError(
-                "WeightedInnerProduct weights must have exactly the coordinate shape "
-                f"{space.shape}; got {tuple(getattr(weights, 'shape', ()))}."
+                "WeightedInnerProduct weights must broadcast to the coordinate shape "
+                f"{space.shape}; got {shape}."
             )
         dtype = space.ops.get_dtype(weights)
         if dtype != space.dtype:
@@ -145,6 +165,8 @@ class WeightedInnerProduct(InnerProduct):
                 f"got {dtype}, expected {space.dtype}."
             )
         # Then values, on the host: real, finite, strictly positive.
+        if not space._checks_at_least("standard"):
+            return
         try:
             weights_np = _np.asarray(weights)
         except Exception as exc:
@@ -210,6 +232,10 @@ class OperatorInnerProduct(InnerProduct):
     def riesz(self, ops, x):
         return self._act(self.M, x)
 
+    @property
+    def has_riesz_maps(self) -> bool:
+        return self.M_inverse is not None
+
     def riesz_inverse(self, ops, x):
         if self.M_inverse is None:
             from ..._errors import CapabilityError
@@ -248,13 +274,21 @@ class OperatorInnerProduct(InnerProduct):
         if not float(space.ops.real(space.ops.vdot(probe, self.M._apply_core(probe)))) > 0:
             raise ValueError("OperatorInnerProduct M must be positive definite; "
                              "its quadratic form is not positive on a probe vector.")
-        if space._checks_at_least("strict"):
-            from ...linalg import lanczos_smallest
+        if not space._checks_at_least("strict"):
+            return
+        from ...linalg import lanczos_smallest, power_iteration
 
-            smallest = lanczos_smallest(self.M, probe, max_iter=min(space.size, 100)).eigenvalue
-            if not float(space.ops.real(smallest)) > 0:
-                raise ValueError("OperatorInnerProduct M must be positive definite; "
-                                 f"its smallest eigenvalue estimate is {float(space.ops.real(smallest)):.3g}.")
+        iters = min(space.size, 100)
+        smallest = float(space.ops.real(lanczos_smallest(self.M, probe, max_iter=iters).eigenvalue))
+        largest = float(space.ops.real(power_iteration(self.M, x0=probe, maxiter=iters).eigenvalue))
+        if not smallest > _STRICT_RTOL * largest:
+            raise ValueError("OperatorInnerProduct M must be positive definite; its eigenvalue estimates "
+                             f"are {smallest:.3g} (smallest) and {largest:.3g} (largest).")
+        if self.M_inverse is not None:
+            # M_inverse may be an inexact solve, but at strict it must invert M to this tolerance.
+            defect = self.M_inverse._apply_core(self.M._apply_core(probe)) - probe
+            if not float(space.ops.norm(defect)) <= _STRICT_RTOL_INVERSE * float(space.ops.norm(probe)):
+                raise ValueError("OperatorInnerProduct M_inverse does not invert M on a probe vector.")
 
 
 class InnerProductSpace(VectorSpace):

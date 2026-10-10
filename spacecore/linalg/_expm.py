@@ -102,7 +102,7 @@ def expm_multiply(
     # Validate once: square, not provably non-Hermitian, valid parameters.
     A = require_linop(A)
     require_square(A, "expm_multiply")
-    if A.is_hermitian() is False:
+    if A._checks_at_least("standard") and A.is_hermitian() is False:
         raise ValueError("expm_multiply requires A to be Hermitian/self-adjoint.")
     max_iter = _check_lanczos_max_iter(max_iter)
     A.domain.check_member(v)

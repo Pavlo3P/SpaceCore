@@ -186,8 +186,9 @@ class SparseLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
         # Pick the apply strategy once.
         self._mode = self._select_mode()
         if self._mode is _SparseMode.WEIGHTED_FUSED:
-            self._dom_weights = self.dom.geometry.weights
-            self._cod_weights = self.cod.geometry.weights
+            # Weights may be stored at any shape that broadcasts to the space's.
+            self._dom_weights = self.ops.broadcast_to(self.dom.geometry.weights, tuple(self.dom.shape))
+            self._cod_weights = self.ops.broadcast_to(self.cod.geometry.weights, tuple(self.cod.shape))
 
     def _select_mode(self) -> _SparseMode:
         """Select the sparse computation mode once for this operator."""

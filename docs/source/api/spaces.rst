@@ -54,7 +54,7 @@ Inner products and geometries
 
 * ``InnerProduct`` defines ``inner`` and Riesz maps.
 * ``EuclideanInnerProduct`` is the standard coordinate ``vdot`` geometry.
-* ``WeightedInnerProduct`` is a positive diagonal metric with weights stored as a backend array.
+* ``WeightedInnerProduct`` is a positive diagonal metric whose weights broadcast to the space shape (a 0-d array scales the Euclidean metric); weight values are checked from ``standard`` upward.
 * ``OperatorInnerProduct`` is the metric of a self-adjoint positive-definite operator ``M``; ``M_inverse``, possibly inexact, inverts its Riesz map.
 * ``InnerProductSpace`` exposes ``inner``, ``norm``, ``riesz``, and ``riesz_inverse``.
 

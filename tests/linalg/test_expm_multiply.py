@@ -171,7 +171,7 @@ class TestComplexTime:
 # ===========================================================================
 class TestRejections:
     def test_rejects_structurally_non_hermitian_operator(self):
-        ctx = make_ctx()
+        ctx = make_ctx(check_level="standard")
         A = _operator(ctx, np.array([[1.0, 2.0], [0.0, 3.0]]))
         with pytest.raises(ValueError, match="Hermitian"):
             sc.expm_multiply(A, ctx.asarray([1.0, -2.0]), t=0.1, max_iter=4)

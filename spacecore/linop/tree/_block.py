@@ -350,6 +350,18 @@ class BlockMatrixLinOp(TreeLinOp[Any, Any]):
         )
         return _join(self.dom, x_parts)
 
+    def is_hermitian(self) -> bool | None:
+        """Return ``True`` when the block layout is square, ``A_ij# == A_ji`` and every diagonal block is self-adjoint."""
+        n = self._row_count
+        if n != self._column_count or self.dom != self.cod:
+            return None
+        rows = self.block_rows
+        if all(rows[i][i].is_hermitian() is True for i in range(n)) and all(
+            rows[i][j].H == rows[j][i] for i in range(n) for j in range(i + 1, n)
+        ):
+            return True
+        return None
+
     @property
     def H(self) -> BlockMatrixLinOp:
         """Transpose the block layout and replace every block by its adjoint."""

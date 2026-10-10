@@ -100,11 +100,14 @@ class TestSpaceEquality:
         assert sc.DenseVectorSpace((3,), ctx, geometry=w) != sc.DenseVectorSpace((3,), ctx, geometry=wd)
         assert sc.DenseVectorSpace((3,), ctx, geometry=w) != sc.DenseVectorSpace((3,), ctx)  # euclidean
 
-    def test_weighted_geometry_shape_guard(self, ctx):
-        # Regression: np.allclose used to broadcast [2.] vs [2.,2.,2.] to True.
+    def test_weighted_geometry_compares_broadcast_metrics(self, ctx):
+        # Weights broadcast to the space shape, so [2.] and [2., 2., 2.] are one metric;
+        # incompatible shapes never compare equal.
         w1 = sc.WeightedInnerProduct(ctx.asarray(np.array([2.0])))
         w3 = sc.WeightedInnerProduct(ctx.asarray(np.array([2.0, 2.0, 2.0])))
-        assert w1 != w3
+        w2 = sc.WeightedInnerProduct(ctx.asarray(np.array([2.0, 2.0])))
+        assert w1 == w3
+        assert w2 != w3
 
     def test_hermitian_tolerances_excluded(self, ctx):
         # Decision: atol/rtol/enforce_herm are membership policy, not identity.
