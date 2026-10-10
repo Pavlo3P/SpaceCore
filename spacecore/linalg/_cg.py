@@ -53,6 +53,7 @@ def cg(
     atol: float = 0.0,
     maxiter: int | None = None,
     check_every: int = DEFAULT_CONVERGENCE_CHECK_INTERVAL,
+    geometry: Any = None,
 ) -> CGResult:
     r"""
     Solve :math:`A x = b` by conjugate gradients.
@@ -77,6 +78,12 @@ def cg(
         Iteration cap; ``prod(A.domain.shape)`` by default.
     check_every : int, optional
         Test convergence every this many iterations, and on the last one.
+    geometry : InnerProduct or None, optional
+        Preconditioning metric ``G``: each residual ``r`` is preconditioned to
+        ``G^{-1} R_X r``, which is preconditioned CG with preconditioner ``G^{-1}``.
+        A cometric ``OperatorInnerProduct(M_inverse=K)`` supplies a solve-only ``K``.
+        ``A`` must still be self-adjoint and positive definite in ``A.domain``; the
+        residual is measured in ``A.domain``'s norm either way.
 
     Returns
     -------
@@ -145,12 +152,22 @@ def cg(
     dom = SpaceCoreOps(A.domain)
     cod = SpaceCoreOps(A.codomain)
 
-    # Initial residual r = b - A x; the first search direction is r.
+    # Preconditioning z = G^{-1} R_X r; without a geometry z = r and this is plain CG.
+    if geometry is None:
+        def precond(r: Any) -> Any:
+            return r
+    else:
+        X = A.domain
+
+        def precond(r: Any) -> Any:
+            return geometry.riesz_inverse(X.ops, X.riesz(r))
+
+    # Initial residual r = b - A x; the first search direction is z = precond(r).
     x = A.domain.zeros() if x0 is None else x0
     A.domain.check_member(x)
     r = cod.add(b, cod.scale(-1.0, apply(x)))
-    p = r
-    rs = dom.real_inner(r, r)
+    p = precond(r)
+    rs = dom.real_inner(r, p)
     residual_norm = dom.norm(r)
     # Stop when ||r|| <= atol + tol ||b||; eps guards the divisions below.
     threshold_value = threshold(cod.norm(b), tol, atol)
@@ -166,7 +183,7 @@ def cg(
         carry: tuple[Any, Any, Any, Any, Any, int, Any],
     ) -> tuple[Any, Any, Any, Any, Any, int, Any]:
         x, r, p, rs, _residual_norm, k, _active = carry
-        # Step length alpha = <r, r> / <p, A p>; freeze once curvature or residual vanishes.
+        # Step length alpha = <r, z> / <p, A p>; freeze once curvature or residual vanishes.
         Ap = apply(p)
         pAp = dom.real_inner(p, Ap)
         active = (rs > eps2) & (pAp > eps * rs)
@@ -174,18 +191,19 @@ def cg(
         # Move x along p and update the residual without another apply.
         x_next = dom.axpy(alpha, p, x)
         r_next = cod.axpy(-alpha, Ap, r)
-        rs_next = dom.real_inner(r_next, r_next)
-        # New direction p = r + beta p, with beta = <r_new, r_new> / <r, r>.
+        z_next = precond(r_next)
+        rs_next = dom.real_inner(r_next, z_next)
+        # New direction p = z + beta p, with beta = <r_new, z_new> / <r, z>.
         beta = A.ops.where(
             active, rs_next * safe_inverse_nonneg(A.ops, rs), A.ops.zeros_like(rs_next)
         )
-        p_next = dom.axpy(beta, p, r_next)
+        p_next = dom.axpy(beta, p, z_next)
         k_next = k + 1
         # Refresh the reported residual norm only on check iterations.
         should_refresh_residual = should_check_iteration(k_next, maxiter, check_every) | (~active)
         residual_norm_next = A.ops.cond(
             should_refresh_residual,
-            lambda _: A.ops.sqrt(rs_next),
+            (lambda _: A.ops.sqrt(rs_next)) if geometry is None else (lambda _: dom.norm(r_next)),
             lambda _: _residual_norm,
             A.ops.asarray(0.0, dtype=A.dtype),
         )

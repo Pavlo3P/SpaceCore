@@ -121,6 +121,23 @@ preconditioned CG: for ``A = M^{-1} B`` with ``B`` symmetric positive definite,
    X = sc.DenseCoordinateSpace((n,), ctx,
                                geometry=sc.OperatorInnerProduct(M, M_inverse))
 
+Per-Call Geometry
+-----------------
+
+A geometry can be passed to a single call without rebuilding the space.
+``A.adjoint_in(gx, gy)`` returns the adjoint for a domain geometry ``gx`` and a
+codomain geometry ``gy``:
+
+.. math::
+
+   B = g_x^{-1} A' g_y, \qquad \langle Ax, y\rangle_{g_y} = \langle x, By\rangle_{g_x}.
+
+``cg(A, b, geometry=G)`` is preconditioned CG with preconditioner ``G^{-1}``:
+each residual ``r`` becomes ``G^{-1} R_X r``. ``A`` must still be self-adjoint
+and positive definite in ``A.domain``, and the reported residual is measured in
+``A.domain``'s norm. A cometric ``OperatorInnerProduct(M_inverse=K)`` supplies a
+preconditioner ``K`` that is only ever applied, never inverted.
+
 Custom Geometry
 ---------------
 

@@ -9,6 +9,9 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Per-call geometry, first part: `LinOp.adjoint_in(gx, gy)` and `cg(..., geometry=G)`,
+  which is preconditioned CG with preconditioner `G^{-1}`; a cometric supplies a solve-only
+  preconditioner.
 - Dual geometry: `InnerProduct.norm`, `dual_norm` and `dual()` (weighted `1/w`, operator
   metrics swap `M` and `M_inverse`), `InnerProductSpace.dual_norm`, and metric factors
   `factor`/`factor_inverse` with `R = C^* C` (Euclidean, weighted `sqrt(w)`, operator

@@ -134,9 +134,13 @@ class SpaceCoreOps:
 
     __slots__ = ("ops", "_inner", "_add", "_scale")
 
-    def __init__(self, space: Any) -> None:
+    def __init__(self, space: Any, geometry: Any = None) -> None:
         self.ops = space.ops
-        self._inner = resolve_core(space, "inner", "_inner_core")
+        if geometry is None:
+            self._inner = resolve_core(space, "inner", "_inner_core")
+        else:
+            # A per-call geometry replaces the space's inner product for this solve.
+            self._inner = lambda x, y: geometry.inner(space.ops, x, y)
         self._add = resolve_core(space, "add", "_add_core")
         self._scale = resolve_core(space, "scale", "_scale_core")
 
