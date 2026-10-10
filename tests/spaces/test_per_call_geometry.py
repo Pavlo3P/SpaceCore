@@ -66,3 +66,30 @@ def test_adjoint_in_satisfies_the_geometry_adjoint_identity(ctx):
     np.testing.assert_allclose(A.adjoint_in(X.geometry, Y.geometry).apply(y), A.rapply(y))
     # rapply is B's metric adjoint in the spaces' own geometries.
     np.testing.assert_allclose(X.inner(B.apply(y), x), Y.inner(y, B.rapply(x)))
+
+
+def test_prox_in_a_per_call_weighted_geometry(ctx):
+    E = sc.DenseCoordinateSpace((N,), ctx)
+    w = np.arange(1.0, N + 1)
+    G = sc.WeightedInnerProduct(ctx.asarray(w))
+    x = np.linspace(-3, 3, N)
+    l1 = sc.LpNormFunctional(E, p=1)
+    # argmin |y|_1 + sum w (y - x)^2 / (2 s): soft threshold at s / w.
+    expected = np.sign(x) * np.maximum(np.abs(x) - 0.5 / w, 0)
+    np.testing.assert_allclose(l1.prox(x, 0.5, geometry=G), expected)
+    np.testing.assert_allclose((2.0 * l1).prox(x, 0.25, geometry=G), expected)
+    # Moreau: the conjugate prox in G is the projection onto the G-dual unit ball.
+    np.testing.assert_allclose(l1.conjugate_prox(x, 0.5, geometry=G), x - 0.5 * l1.prox(x / 0.5, 2.0, geometry=G))
+    orthant = sc.IndicatorFunctional(sc.NonnegativeOrthant(E))
+    np.testing.assert_allclose(orthant.prox(x, 1.0, geometry=G), np.maximum(x, 0))
+
+
+def test_prox_refuses_a_foreign_geometry_without_a_closed_form(ctx):
+    E = sc.DenseCoordinateSpace((N,), ctx)
+    G = sc.WeightedInnerProduct(ctx.asarray(np.arange(1.0, N + 1)))
+    x = np.ones(N)
+    with pytest.raises(sc.CapabilityError):
+        sc.SquaredL2NormFunctional(E).prox(x, 1.0, geometry=G)
+    np.testing.assert_allclose(sc.SquaredL2NormFunctional(E).prox(x, 1.0, geometry=E.geometry), x / 2)
+    with pytest.raises(sc.CapabilityError):
+        sc.NonnegativeOrthant(E).project(x, geometry=_operator_geometry(ctx, E, _spd(4)))

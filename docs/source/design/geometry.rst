@@ -138,6 +138,13 @@ and positive definite in ``A.domain``, and the reported residual is measured in
 ``A.domain``'s norm. A cometric ``OperatorInnerProduct(M_inverse=K)`` supplies a
 preconditioner ``K`` that is only ever applied, never inverted.
 
+``f.prox(x, step, geometry=G)`` minimizes ``f(y) + ||y - x||_G^2 / (2 step)``,
+and ``conjugate_prox`` and ``Set.project`` take the same argument. Rules that
+are exact in any diagonal metric (the weighted ``l1`` threshold, the orthant
+clip) accept a foreign ``G``; the scaled, summed and indicator rules forward it.
+A rule whose closed form holds only in the domain's own geometry, such as the
+squared norm, raises ``CapabilityError`` for a different ``G``.
+
 Custom Geometry
 ---------------
 

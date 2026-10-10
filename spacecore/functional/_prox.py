@@ -45,11 +45,12 @@ def validate_step(step: Any, owner: Any, operation: str, *, positive: bool = Tru
             raise ValueError(message)
 
 
-def apply_prox(functional: Any, x: Any, step: Any) -> Any:
+def apply_prox(functional: Any, x: Any, step: Any, geometry: Any = None) -> Any:
     """Resolve an exact rule without coordinates, densification, or iteration."""
     validate_step(step, functional, "prox")
     X = functional.domain
-    geometry = getattr(X, "geometry", None)
+    if geometry is None:
+        geometry = getattr(X, "geometry", None)
     rule = _find_rule("prox", functional, geometry)
     if rule is None:
         raise CapabilityError(
@@ -65,6 +66,9 @@ def apply_prox(functional: Any, x: Any, step: Any) -> Any:
 
 
 def _squared_norm(f, geometry, x, step):
+    # The closed form needs the proximal metric to be the norm's own metric.
+    if geometry != f.domain.geometry:
+        raise CapabilityError("prox: SquaredL2Norm has a closed form only in its domain's geometry.")
     return f.domain.scale(1 / (1 + step), x)
 
 
@@ -93,7 +97,7 @@ def _constant(f, geometry, x, step):
 def _scaled(f, geometry, x, step):
     # Positive scaling preserves convexity and multiplies the proximal step.
     validate_step(f.scalar, f, "scaled prox")
-    return f.functional.prox(x, step * f.scalar)
+    return f.functional.prox(x, step * f.scalar, geometry=geometry)
 
 
 def _sum(f, geometry, x, step):
@@ -106,7 +110,7 @@ def _sum(f, geometry, x, step):
     if not terms:
         return x
     if len(terms) == 1:
-        return terms[0].prox(x, step)
+        return terms[0].prox(x, step, geometry=geometry)
     raise CapabilityError("prox of a sum is unavailable; only finite constant shifts propagate.")
 
 

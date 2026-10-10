@@ -39,8 +39,8 @@ class Set(ContextBound, PyTreeNode):
         """Return a backend Boolean, or None when membership is unavailable."""
         return None
 
-    def project(self, x: Any) -> Any:
-        """Return a nearest element in the ambient metric, if implemented."""
+    def project(self, x: Any, geometry: Any = None) -> Any:
+        """Return a nearest element in ``geometry`` (the ambient metric by default), if implemented."""
         raise CapabilityError(f"{type(self).__name__} does not implement metric projection.")
 
 
@@ -75,6 +75,8 @@ class NonnegativeOrthant(Set):
         return self.ops.xp.all(x >= 0)
 
     @checked_method(in_space="ambient", out_space="ambient")
-    def project(self, x: Any) -> Any:
-        """Return the metric projection, coordinatewise ``max(x, 0)``."""
+    def project(self, x: Any, geometry: Any = None) -> Any:
+        """Return the metric projection, coordinatewise ``max(x, 0)`` in any diagonal metric."""
+        if geometry is not None and not isinstance(geometry, (EuclideanInnerProduct, WeightedInnerProduct)):
+            raise CapabilityError("NonnegativeOrthant projects in Euclidean or diagonal geometry only.")
         return self.ops.maximum(x, self.ops.zeros_like(x))
