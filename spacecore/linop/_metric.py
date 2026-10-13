@@ -1,15 +1,11 @@
 from __future__ import annotations
 
-import warnings
-
 from ..space import DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace
 from ..space.base import CoordinateSpace, InnerProductSpace
 from ..space._capabilities import require
 
 
 _VECTOR_SPACES = (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace)
-
-_METRIC_BATCH_FALLBACK_ERRORS = (TypeError, ValueError, NotImplementedError)
 
 # Metric Hermiticity checks apply the operator to every coordinate basis vector.
 # Above this size, return "unknown" instead of doing O(n) work implicitly.
@@ -77,17 +73,6 @@ def _metric_is_hermitian_by_basis(op) -> bool | None:
         return None
 
 
-def _warn_metric_batch_fallback(opname: str, error: Exception) -> None:
-    """Warn that batched Riesz maps were unavailable and vmap fallback is used."""
-    warnings.warn(
-        f"{opname}.rvapply() could not use batched Riesz maps and is falling "
-        f"back to vmap(self.rapply). Original error: "
-        f"{type(error).__name__}: {error}",
-        RuntimeWarning,
-        stacklevel=2,
-    )
-
-
 def metric_rapply(domain, codomain, euclidean_rapply, y):
     r"""Apply the metric adjoint ``R_X^{-1} A^dagger R_Y`` to one element.
 
@@ -120,24 +105,7 @@ def metric_rvapply(
     opname: str,
     ops,
 ):
-    """Apply the metric adjoint over a leading batch axis.
-
-    The fast path uses batched Riesz maps, which should broadcast over the
-    leading batch axis. If a space does not support batched Riesz maps, this
-    falls back to backend ``vmap`` over :func:`metric_rapply` and emits a
-    runtime warning.
-    """
-    # Batched version; fall back to per-element vmap if batched Riesz maps fail.
+    """Apply the metric adjoint over a leading batch axis; Riesz maps broadcast over it."""
     if domain.is_euclidean and codomain.is_euclidean:
         return euclidean_rvapply(ys)
-    try:
-        yd = codomain.riesz(ys)
-        tmp = euclidean_rvapply(yd)
-        return domain.riesz_inverse(tmp)
-    except _METRIC_BATCH_FALLBACK_ERRORS as err:
-        _warn_metric_batch_fallback(opname, err)
-
-        def per_elem(y):
-            return metric_rapply(domain, codomain, euclidean_rapply, y)
-
-        return ops.vmap(per_elem, in_axes=0, out_axes=0)(ys)
+    return domain.riesz_inverse(euclidean_rvapply(codomain.riesz(ys)))

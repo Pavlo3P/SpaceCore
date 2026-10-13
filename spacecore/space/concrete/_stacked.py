@@ -211,38 +211,18 @@ class _StackedInnerProductMixin(_StackedHostMixin):
     def inner(self, x: Any, y: Any) -> Any:
         """Return ``sum_i base.inner(x[i], y[i])`` as a scalar."""
         base = cast(InnerProductSpace, self.base)
-        # Euclidean: one vdot over all copies. Otherwise pair x with the base's Riesz map of y,
-        # falling back to vmap over copies if the base cannot batch.
-        if base.is_euclidean:
-            return self.ops.vdot(x, y)
-        try:
-            y_dual = base.riesz(y)
-            return self.ops.vdot(x, y_dual)
-        except _STACKED_FALLBACK_ERRORS:
-            values = self.ops.vmap(base.inner, in_axes=(0, 0), out_axes=0)(x, y)
-            return self.ops.sum(values)
+        # One vdot over all copies, against the base's batched Riesz map of y.
+        return self.ops.vdot(x, y if base.is_euclidean else base.riesz(y))
 
     def riesz(self, x: Any) -> Any:
         """Apply the base Riesz map to every stacked copy."""
         base = cast(InnerProductSpace, self.base)
-        # Identity on Euclidean spaces; else batched Riesz map, or vmap over copies.
-        if base.is_euclidean:
-            return x
-        try:
-            return base.riesz(x)
-        except _STACKED_FALLBACK_ERRORS:
-            return self.ops.vmap(base.riesz, in_axes=0, out_axes=0)(x)
+        return x if base.is_euclidean else base.riesz(x)
 
     def riesz_inverse(self, x: Any) -> Any:
         """Apply the base inverse Riesz map to every stacked copy."""
         base = cast(InnerProductSpace, self.base)
-        # Identity on Euclidean spaces; else batched inverse Riesz map, or vmap over copies.
-        if base.is_euclidean:
-            return x
-        try:
-            return base.riesz_inverse(x)
-        except _STACKED_FALLBACK_ERRORS:
-            return self.ops.vmap(base.riesz_inverse, in_axes=0, out_axes=0)(x)
+        return x if base.is_euclidean else base.riesz_inverse(x)
 
     @property
     def is_euclidean(self) -> bool:

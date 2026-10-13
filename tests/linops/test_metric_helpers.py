@@ -235,30 +235,3 @@ class TestMetricRvapply:
                        for w in recorded)
         # R_X(ys) = ys * weights, identity, R_X^{-1}(...) = ys.
         np.testing.assert_allclose(out, ys)
-
-    def test_fallback_warns_and_uses_per_element(self, numpy_ctx):
-        """When batched Riesz raises a documented fallback error, the helper
-        warns and falls back to vmap(metric_rapply)."""
-        weights = numpy_ctx.asarray([2.0, 3.0])
-        X = sc.DenseCoordinateSpace(
-            (2,), numpy_ctx, geometry=sc.WeightedInnerProduct(weights),
-        )
-        ys = numpy_ctx.asarray([[1.0, 2.0], [3.0, 4.0]])
-
-        def euclid_rapply(y):
-            return y * 1.0
-
-        def euclid_rvapply(zs):  # noqa: ARG001
-            raise NotImplementedError("simulated unavailable")
-
-        with warnings.catch_warnings(record=True) as recorded:
-            warnings.simplefilter("always")
-            out = metric_rvapply(
-                X, X, euclid_rapply, euclid_rvapply, ys,
-                opname="my_op", ops=numpy_ctx.ops,
-            )
-        assert any("could not use batched Riesz maps" in str(w.message)
-                   for w in recorded)
-        # The fallback applies metric_rapply per row; R_X then R_X^{-1} on
-        # identity-style euclid_rapply round-trips to ys.
-        np.testing.assert_allclose(out, ys)

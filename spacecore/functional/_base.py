@@ -159,8 +159,7 @@ class Functional(Mapping, Generic[Domain]):
 
         The covector is a coordinate array paired with ``domain.pair`` and involves no
         metric. The default reads it off the Riesz gradient, ``domain.riesz(grad(x))``;
-        functionals that compute coordinate partials directly return them. The
-        gradient in another geometry ``G`` is ``G.riesz_inverse(ops, differential(x))``.
+        functionals that compute coordinate partials directly return them.
         """
         return self.domain.riesz(self.grad(x, *args, **kwargs))
 

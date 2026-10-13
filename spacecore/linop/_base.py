@@ -147,21 +147,6 @@ class LinOp(Mapping, Generic[Domain, Codomain]):
         _warn_vmap_fallback_once(self, "rvapply", _leading_batch_size(self.codomain, ys))
         return self.ops.vmap(self.rapply, in_axes=0, out_axes=0)(ys)
 
-    @checked_method(in_space="codomain", out_space="domain")
-    def tapply(self, eta: Any) -> Any:
-        r"""Apply the pairing transpose :math:`A': Y^* \to X^*`, defined by :math:`\langle A'\eta, x\rangle = \langle \eta, Ax\rangle`.
-
-        Covectors are coordinate arrays paired with ``pair``; no metric is involved,
-        and in coordinates :math:`A'` is the conjugate transpose. The metric adjoint
-        :meth:`rapply` relates to it by :math:`A^\sharp = R_X^{-1} A' R_Y`.
-        """
-        return self._tapply_core(eta)
-
-    def _tapply_core(self, eta: Any) -> Any:
-        # Through the metric adjoint, A' = R_X A# R_Y^{-1}; leaf operators override this
-        # with their coordinate conjugate transpose.
-        return self.domain.riesz(self._rapply_core(self.codomain.riesz_inverse(eta)))
-
     def __call__(self, x: Any) -> Any:
         """Apply this linear operator to ``x``."""
         return self.apply(x)

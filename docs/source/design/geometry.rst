@@ -65,31 +65,22 @@ pairing of a Riesz image, ``real_inner(x, y) = pair(riesz(x), y)``.
 .. math::
 
    \langle \xi, x\rangle = \operatorname{Re}\,\mathrm{vdot}(\xi, x),
-   \qquad Df(x)[h] = \langle df(x), h\rangle,
-   \qquad \langle A'\eta, x\rangle = \langle \eta, Ax\rangle.
+   \qquad Df(x)[h] = \langle df(x), h\rangle.
 
-``F.differential(x)`` is the covector ``df(x)``; the gradient in any geometry ``G``
-is ``G.riesz_inverse(ops, F.differential(x))``. ``A.tapply(eta)`` is the pairing
-transpose (the coordinate conjugate transpose); the metric adjoint is
-``rapply = R_X^{-1} A' R_Y``. Metric-free methods (Frank-Wolfe steps, mirror maps,
-quasi-Newton curvature pairs, Sinkhorn) need only these.
+``F.differential(x)`` is the covector ``df(x)``, and the gradient is
+``X.riesz_inverse(F.differential(x))``. Metric-free methods (Frank-Wolfe steps,
+mirror maps, quasi-Newton curvature pairs, Sinkhorn) need only these.
 
-Dual Norms and Factors
-----------------------
+Dual Norm
+---------
 
-Every geometry ``G`` gives the norm and the dual norm of a covector, and its dual
-geometry on covectors, whose Riesz map is ``G``'s inverse:
+``X.dual_norm(xi)`` is the norm of a covector:
 
 .. math::
 
    \|\xi\|_* = \sup_{\|x\|_G \le 1} \langle \xi, x\rangle
    = \sqrt{\langle \xi, R_G^{-1}\xi\rangle}.
 
-``X.dual_norm(xi)`` and ``G.dual_norm(ops, xi)`` compute it; ``G.dual()`` is
-``WeightedInnerProduct(1 / w)`` for a weighted metric and swaps ``M`` and
-``M_inverse`` for an operator metric. A factor ``C`` with ``R = C^* C`` (``G.factor``,
-``G.factor_inverse``) is an isometry onto Euclidean coordinates, so a Euclidean
-black-box optimizer run on ``C x`` takes steps in the metric.
 
 Operator Metrics
 ----------------
@@ -157,10 +148,9 @@ To define a custom geometry, subclass ``InnerProduct`` and implement
            # Convert any stored arrays into ctx.
            return self
 
-The Riesz maps should broadcast over leading batch axes. For example, if
-``x`` can have shape ``(N,) + space.shape``, then ``riesz(ops, x)`` should
-return the corresponding batch of dual coordinates. This lets batched adjoints
-stay on the fast path.
+The Riesz maps must broadcast over leading batch axes: if ``x`` has shape
+``(N,) + space.shape``, ``riesz(ops, x)`` returns the batch of dual coordinates.
+Batched adjoints and stacked spaces rely on it.
 
 Matrix-backed operators refuse non-Euclidean spaces that do not provide usable
 Riesz maps. This avoids silently using a Euclidean coordinate adjoint as if it

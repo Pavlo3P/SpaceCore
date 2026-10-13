@@ -117,10 +117,6 @@ class DenseLinOp(LinOp[Domain, Codomain]):
             ops=self.ops,
         )
 
-    def _tapply_core(self, eta: Any) -> Any:
-        # The pairing transpose is the coordinate conjugate transpose, whatever the metric.
-        return self._euclidean_rapply_core(eta)
-
     def _euclidean_rapply_core(self, y: Any) -> Any:
         # Plain conjugate transpose A^H, no metric.
         if self._mode is _DenseMode.EUCLIDEAN_FLAT:

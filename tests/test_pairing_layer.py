@@ -1,4 +1,4 @@
-"""S2: the metric-free pairing, the differential covector and the pairing transpose."""
+"""S2: the metric-free pairing and the differential covector."""
 import numpy as np
 import pytest
 
@@ -32,36 +32,6 @@ def test_pairing_is_metric_free_and_represents_the_inner_product(ctx, kind):
     assert X.real_inner(x, y) == pytest.approx(X.pair(X.riesz(x), y))
     xs = np.stack([y, 2 * y, -y])
     np.testing.assert_allclose(X.vpair(x, xs), xs @ x)
-
-
-@pytest.mark.parametrize("dom_kind", ["euclidean", "weighted", "operator"])
-@pytest.mark.parametrize("cod_kind", ["euclidean", "weighted", "operator"])
-def test_tapply_is_the_pairing_transpose(ctx, dom_kind, cod_kind):
-    spaces = _spaces(ctx)
-    X, Y = spaces[dom_kind], spaces[cod_kind]
-    rng = np.random.default_rng(1)
-    A_np = rng.standard_normal((3, 3))
-    A = sc.DenseLinOp(ctx.asarray(A_np), X, Y, ctx)
-    D = sc.DiagonalLinOp(ctx.asarray([2.0, -1.0, 3.0]), X, ctx) if dom_kind == "weighted" else None
-    x, eta = rng.standard_normal(3), rng.standard_normal(3)
-    for op in filter(None, (A, 2.0 * A, A @ sc.IdentityLinOp(X, ctx), A + A, A.H.H, D)):
-        assert op.domain.pair(op.tapply(eta), x) == pytest.approx(op.codomain.pair(eta, op.apply(x)))
-    np.testing.assert_allclose(A.tapply(eta), A_np.T @ eta)
-
-
-def test_tapply_on_block_and_matrix_free(ctx):
-    X = _spaces(ctx)["weighted"]
-    A_np = np.arange(9.0).reshape(3, 3)
-    W = np.array([1.0, 2.0, 5.0])
-    # Metric adjoint of A on the weighted space: W^-1 A^T W.
-    op = sc.MatrixFreeLinOp(lambda x: A_np @ x, lambda y: (A_np.T @ (W * y)) / W, X, X, ctx,
-                            euclidean_adjoint=False)
-    eta = np.array([1.0, -1.0, 2.0])
-    np.testing.assert_allclose(op.tapply(eta), A_np.T @ eta)
-    B = sc.BlockMatrixLinOp([[op, op]])
-    xs = [np.ones(3), np.arange(3.0)]
-    lhs = sum(B.domain.leaf_spaces[i].pair(B.tapply(eta)[i], xs[i]) for i in range(2))
-    assert lhs == pytest.approx(B.codomain.pair(eta, B.apply(xs)))
 
 
 @pytest.mark.parametrize("kind", ["euclidean", "weighted", "operator"])

@@ -10,16 +10,11 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 ### Added
 
 - `cg(..., preconditioner=K)`: preconditioned CG with an operator `K` on `A.domain`.
-- Dual geometry: `InnerProduct.norm`, `dual_norm` and `dual()` (weighted `1/w`, operator
-  metrics swap `M` and `M_inverse`), `InnerProductSpace.dual_norm`, and metric factors
-  `factor`/`factor_inverse` with `R = C^* C` (Euclidean, weighted `sqrt(w)`, operator
-  `factor=`/`factor_inverse=`, checked at `strict`).
+- `InnerProductSpace.dual_norm(xi)`, the norm of a covector.
 - The metric-free pairing layer: `CoordinateSpace.pair(xi, x)` and `vpair(xi, xs)`
   pair a coordinate covector with elements without any inner product;
   `Functional.differential(x)` returns the covector of the derivative (natively for
-  coordinate functionals); `LinOp.tapply(eta)` applies the pairing transpose, the
-  coordinate conjugate transpose, which relates to the metric adjoint by
-  `rapply = R_X^{-1} tapply R_Y`.
+  coordinate functionals).
 - `OperatorInnerProduct(M, M_inverse=None)`: a metric given by a self-adjoint
   positive-definite operator on the Euclidean coordinates, with `M` as the Riesz
   map and an optional, possibly inexact, inverse. Block, Kronecker and matrix-free
@@ -65,6 +60,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Removed
 
+- The batched-Riesz `vmap` fallbacks in `metric_rvapply` and `StackedSpace`: Riesz maps
+  must broadcast over leading batch axes, as all built-in geometries do.
 - **`ComplexField`, the `Field` base class and `Space.scalars`** (breaking). Nothing
   used them once functionals became real-valued; `RealField` is the one scalar
   field and absorbs `Field`'s behaviour. A space's `scalar_field` still declares

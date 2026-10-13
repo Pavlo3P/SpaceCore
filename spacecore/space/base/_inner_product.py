@@ -52,32 +52,6 @@ class InnerProduct(ABC):
         """Whether this geometry is the Euclidean coordinate inner product."""
         return False
 
-    def norm(self, ops, x):
-        """Return the norm ``sqrt(Re <x, x>)`` of this geometry."""
-        return ops.sqrt(ops.real(self.inner(ops, x, x)))
-
-    def dual(self) -> InnerProduct:
-        """Return the dual geometry on covectors, whose Riesz map is this one's inverse."""
-        from ..._errors import CapabilityError
-
-        raise CapabilityError(f"{type(self).__name__} does not define its dual geometry.")
-
-    def dual_norm(self, ops, xi):
-        r"""Return the dual norm :math:`\|\xi\|_* = \sqrt{\langle \xi, R^{-1}\xi\rangle}` of a covector."""
-        return ops.sqrt(ops.real(ops.vdot(xi, self.riesz_inverse(ops, xi))))
-
-    def factor(self, ops, x):
-        """Apply a factor ``C`` with ``R = C^* C``, an isometry onto Euclidean coordinates."""
-        from ..._errors import CapabilityError
-
-        raise CapabilityError(f"{type(self).__name__} does not provide a metric factor.")
-
-    def factor_inverse(self, ops, y):
-        """Apply the inverse of :meth:`factor`."""
-        from ..._errors import CapabilityError
-
-        raise CapabilityError(f"{type(self).__name__} does not provide an inverse metric factor.")
-
     @property
     def has_riesz_maps(self) -> bool:
         """Whether both Riesz maps are available, so metric adjoints can be formed."""
@@ -105,15 +79,6 @@ class EuclideanInnerProduct(InnerProduct):
         """Return the Euclidean covector unchanged."""
         return x
 
-    def dual(self) -> EuclideanInnerProduct:
-        return self
-
-    def factor(self, ops, x):
-        return x
-
-    def factor_inverse(self, ops, y):
-        return y
-
     @property
     def is_euclidean(self) -> bool:
         return True
@@ -135,22 +100,12 @@ class WeightedInnerProduct(InnerProduct):
         self.weights = weights
 
     def __eq__(self, other):
-        # Same class and same weights; any failure to compare means unequal.
+        # The same metric may be stored at different broadcast shapes; anything that
+        # cannot be compared (traced, incompatible shapes) is unequal.
         if type(other) is not type(self):
             return False
         try:
-            lhs = _np.asarray(self.weights)
-            rhs = _np.asarray(other.weights)
-        except Exception:
-            return False
-        # The same metric may be stored at different broadcast shapes; compare the
-        # broadcast values, but never let incompatible shapes compare equal.
-        try:
-            lhs, rhs = _np.broadcast_arrays(lhs, rhs)
-        except ValueError:
-            return False
-        try:
-            return bool(_np.allclose(lhs, rhs))
+            return bool(_np.allclose(*_np.broadcast_arrays(_np.asarray(self.weights), _np.asarray(other.weights))))
         except Exception:
             return False
 
@@ -167,15 +122,6 @@ class WeightedInnerProduct(InnerProduct):
 
     def riesz_inverse(self, ops, x):
         return x / self.weights
-
-    def dual(self) -> WeightedInnerProduct:
-        return WeightedInnerProduct(1 / self.weights)
-
-    def factor(self, ops, x):
-        return ops.sqrt(self.weights) * x
-
-    def factor_inverse(self, ops, y):
-        return y / ops.sqrt(self.weights)
 
     def convert(self, ctx):
         return WeightedInnerProduct(ctx.asarray(self.weights))
@@ -235,14 +181,11 @@ class OperatorInnerProduct(InnerProduct):
     Euclidean coordinates: block, Kronecker, low-rank-plus-diagonal or any
     matrix-free metric. The Riesz map is ``M``; its inverse is ``M_inverse``, which
     may be any operator approximating it, such as one that runs ``sc.cg`` to a
-    tolerance. Without ``M_inverse``, ``riesz_inverse`` and ``dual`` raise
-    ``CapabilityError``.
+    tolerance. Without ``M_inverse``, ``riesz_inverse`` raises ``CapabilityError``.
 
     From ``standard`` checks upward, an ``M`` known to be non-self-adjoint, or with
     non-positive curvature on a fixed probe vector, is rejected; at ``strict``, its
     Lanczos estimate of the smallest eigenvalue must also be positive.
-
-    ``factor`` (with ``factor_inverse``) declares ``C`` with ``M = C^* C``.
 
     Parameters
     ----------
@@ -251,20 +194,14 @@ class OperatorInnerProduct(InnerProduct):
         of the target space to itself.
     M_inverse : LinOp or None, optional
         Operator applying (an approximation of) the inverse of ``M``.
-    factor, factor_inverse : LinOp or None, optional
-        A factor ``C`` with ``M = C^* C`` and its inverse.
     """
 
-    def __init__(self, M, M_inverse=None, *, factor=None, factor_inverse=None):
+    def __init__(self, M, M_inverse=None):
         self.M = M
         self.M_inverse = M_inverse
-        self.factor_op = factor
-        self.factor_inverse_op = factor_inverse
 
     def __eq__(self, other):
-        return (type(other) is type(self) and self.M == other.M
-                and self.M_inverse == other.M_inverse and self.factor_op == other.factor_op
-                and self.factor_inverse_op == other.factor_inverse_op)
+        return type(other) is type(self) and self.M == other.M and self.M_inverse == other.M_inverse
 
     def __repr__(self) -> str:
         return f"OperatorInnerProduct(M={self.M._short_repr()})"
@@ -277,12 +214,8 @@ class OperatorInnerProduct(InnerProduct):
 
     @staticmethod
     def _act(op, x):
-        # A single element, or a leading-axis batch folded into one batch axis.
-        core = tuple(op.domain.shape)
-        lead = tuple(x.shape[: len(x.shape) - len(core)])
-        if not lead:
-            return op._apply_core(x)
-        return op._vapply_core(x.reshape((-1,) + core)).reshape(lead + core)
+        # Fold any leading batch axes (none for a single element) into one.
+        return op._vapply_core(x.reshape((-1,) + tuple(op.domain.shape))).reshape(x.shape)
 
     def inner(self, ops, x, y):
         return ops.vdot(x, self._act(self.M, y))
@@ -299,34 +232,14 @@ class OperatorInnerProduct(InnerProduct):
             raise self._missing("M_inverse to invert its Riesz map")
         return self._act(self.M_inverse, x)
 
-    def dual(self) -> OperatorInnerProduct:
-        if self.M_inverse is None:
-            raise self._missing("M_inverse to form its dual geometry")
-        return OperatorInnerProduct(self.M_inverse, self.M)
-
-    def factor(self, ops, x):
-        if self.factor_op is None:
-            raise self._missing("factor= to apply a metric factor")
-        return self._act(self.factor_op, x)
-
-    def factor_inverse(self, ops, y):
-        if self.factor_inverse_op is None:
-            raise self._missing("factor_inverse= to invert its metric factor")
-        return self._act(self.factor_inverse_op, y)
-
     def convert(self, ctx):
-        def conv(op):
-            return None if op is None else op.convert(ctx)
-
-        return OperatorInnerProduct(self.M.convert(ctx), conv(self.M_inverse), factor=conv(self.factor_op),
-                                    factor_inverse=conv(self.factor_inverse_op))
+        return OperatorInnerProduct(self.M.convert(ctx), None if self.M_inverse is None else self.M_inverse.convert(ctx))
 
     def validate_for(self, space: InnerProductSpace) -> None:
         """Check that ``M`` (and ``M_inverse``) act on the space's Euclidean coordinates."""
         if not isinstance(space, CoordinateSpace):
             raise TypeError("OperatorInnerProduct requires a CoordinateSpace.")
-        for name, op in (("M", self.M), ("M_inverse", self.M_inverse), ("factor", self.factor_op),
-                         ("factor_inverse", self.factor_inverse_op)):
+        for name, op in (("M", self.M), ("M_inverse", self.M_inverse)):
             if op is None:
                 continue
             for end in (op.domain, op.codomain):
@@ -364,13 +277,6 @@ class OperatorInnerProduct(InnerProduct):
             defect = self.M_inverse._apply_core(self.M._apply_core(probe)) - probe
             if not float(space.ops.norm(defect)) <= _STRICT_RTOL_INVERSE * float(space.ops.norm(probe)):
                 raise ValueError("OperatorInnerProduct M_inverse does not invert M on a probe vector.")
-        if self.factor_op is not None:
-            # ||C p||^2 must equal <p, M p>.
-            cp = self.factor_op._apply_core(probe)
-            lhs = float(space.ops.real(space.ops.vdot(cp, cp)))
-            rhs = float(space.ops.real(space.ops.vdot(probe, self.M._apply_core(probe))))
-            if abs(lhs - rhs) > _STRICT_RTOL_INVERSE * abs(rhs):
-                raise ValueError("OperatorInnerProduct factor C does not satisfy M = C^* C on a probe vector.")
 
 
 class InnerProductSpace(VectorSpace):

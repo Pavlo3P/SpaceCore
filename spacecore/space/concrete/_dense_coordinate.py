@@ -106,18 +106,6 @@ class DenseCoordinateSpace(CoordinateSpace, InnerProductSpace):
         r"""Return :math:`\langle x, y\rangle_X` using this space's geometry."""
         return self._inner_core(x, y)
 
-    def pair(self, xi: Any, x: Any) -> Any:
-        """Return the metric-free pairing ``Re vdot(xi, x)`` on the dense coordinates."""
-        return self.ops.real(self.ops.vdot(xi, x))
-
-    def vpair(self, xi: Any, xs: Any) -> Any:
-        """Return ``pair(xi, xs[i])`` for a leading-axis batch."""
-        return self.ops.real(xs.reshape((-1, self._size)) @ self.ops.conj(xi.reshape((-1,))))
-
-    def dual_norm(self, xi: Any) -> Any:
-        """Return the dual norm of a covector in this space's geometry."""
-        return self.geometry.dual_norm(self.ops, xi)
-
     def _inner_core(self, x: Any, y: Any) -> Any:
         """Return the configured inner product without membership checks."""
         return self.geometry.inner(self.ops, x, y)
