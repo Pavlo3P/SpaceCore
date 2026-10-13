@@ -150,8 +150,7 @@ class StackedSpace(PyTreeNode, CoordinateSpace):
         """Return the stacked all-ones element."""
         return self.ops.ones(self.shape, dtype=self.dtype)
 
-    @checked_method(in_space="self", arg_positions=(0, 1))
-    def add(self, x: Any, y: Any) -> DenseArray:
+    def _add_core(self, x: Any, y: Any) -> DenseArray:
         """Return the stacked sum ``x + y``."""
         return x + y
 
@@ -159,8 +158,7 @@ class StackedSpace(PyTreeNode, CoordinateSpace):
         """Return the leading-axis batch sum of stacked elements."""
         return x + y
 
-    @checked_method(in_space="self", arg_positions=(1,))
-    def scale(self, a: Any, x: Any) -> DenseArray:
+    def _scale_core(self, a: Any, x: Any) -> DenseArray:
         """Return the stacked scalar product ``a * x``."""
         return a * x
 
@@ -207,8 +205,7 @@ class _StackedHostMixin:
 class _StackedInnerProductMixin(_StackedHostMixin):
     """Inner-product operations for stacks whose base supports them."""
 
-    @checked_method(in_space="self", arg_positions=(0, 1))
-    def inner(self, x: Any, y: Any) -> Any:
+    def _inner_core(self, x: Any, y: Any) -> Any:
         """Return ``sum_i base.inner(x[i], y[i])`` as a scalar."""
         base = cast(InnerProductSpace, self.base)
         # One vdot over all copies, against the base's batched Riesz map of y.

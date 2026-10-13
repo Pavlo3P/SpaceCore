@@ -184,12 +184,12 @@ class ScaledLinOp(ScaledNode, LinOp[Domain, Codomain]):
 
     def _apply_core(self, x: Any) -> Any:
         y = self.op._apply_core(x)
-        scale = getattr(self.codomain, "_scale_core", self.codomain.scale)
+        scale = self.codomain._scale_core
         return scale(self.scalar, y)
 
     def _rapply_core(self, y: Any) -> Any:
         x = self.op._rapply_core(y)
-        scale = getattr(self.domain, "_scale_core", self.domain.scale)
+        scale = self.domain._scale_core
         return scale(_conjugate_scalar(self.scalar), x)
 
     def _vapply_core(self, xs: Any) -> Any:
@@ -275,7 +275,7 @@ class SumLinOp(SumNode, LinOp[Domain, Codomain]):
     def _apply_core(self, x: Any) -> Any:
         # A1 x + ... + Ak x, with the codomain's unchecked add when it has one.
         parts = self.ops_tuple
-        add = getattr(self.codomain, "_add_core", self.codomain.add)
+        add = self.codomain._add_core
         acc = parts[0]._apply_core(x)
         for part in parts[1:]:
             acc = add(acc, part._apply_core(x))
@@ -284,7 +284,7 @@ class SumLinOp(SumNode, LinOp[Domain, Codomain]):
     def _rapply_core(self, y: Any) -> Any:
         # A1* y + ... + Ak* y, added in the domain.
         parts = self.ops_tuple
-        add = getattr(self.domain, "_add_core", self.domain.add)
+        add = self.domain._add_core
         acc = parts[0]._rapply_core(y)
         for part in parts[1:]:
             acc = add(acc, part._rapply_core(y))

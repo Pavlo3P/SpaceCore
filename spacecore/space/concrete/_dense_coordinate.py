@@ -73,11 +73,6 @@ class DenseCoordinateSpace(CoordinateSpace, InnerProductSpace):
         """Return the zero vector in this space."""
         return self.ops.zeros(self.shape, dtype=self.dtype)
 
-    @checked_method(in_space="self", arg_positions=(0, 1))
-    def add(self, x: Any, y: Any) -> DenseArray:
-        """Return the vector-space sum ``x + y``."""
-        return self._add_core(x, y)
-
     def _add_core(self, x: Any, y: Any) -> DenseArray:
         """Return ``x + y`` without membership checks."""
         result = x + y
@@ -87,11 +82,6 @@ class DenseCoordinateSpace(CoordinateSpace, InnerProductSpace):
         """Return the leading-axis batch sum ``x + y``."""
         return x + y
 
-    @checked_method(in_space="self", arg_positions=(1,))
-    def scale(self, a: Any, x: Any) -> DenseArray:
-        """Return the scalar product ``a * x``."""
-        return self._scale_core(a, x)
-
     def _scale_core(self, a: Any, x: Any) -> DenseArray:
         """Return ``a * x`` without membership checks."""
         result = a * x
@@ -100,15 +90,6 @@ class DenseCoordinateSpace(CoordinateSpace, InnerProductSpace):
     def scale_batch(self, a: Any, x: Any) -> DenseArray:
         """Return the leading-axis batch scalar product ``a * x``."""
         return a * x
-
-    @checked_method(in_space="self", arg_positions=(0, 1))
-    def inner(self, x: Any, y: Any) -> Any:
-        r"""Return :math:`\langle x, y\rangle_X` using this space's geometry."""
-        return self._inner_core(x, y)
-
-    def _inner_core(self, x: Any, y: Any) -> Any:
-        """Return the configured inner product without membership checks."""
-        return self.geometry.inner(self.ops, x, y)
 
     @checked_method(in_space="self")
     def flatten(self, X: DenseArray) -> DenseArray:

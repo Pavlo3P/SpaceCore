@@ -12,7 +12,11 @@ Cores, not public methods
 ``rvapply``. Each validates its input at the object's ``check_level`` and calls a
 check-free core: ``_apply_core``, ``_rapply_core``, ``_vapply_core`` and
 ``_rvapply_core``. ``Functional`` does the same for ``value`` and ``vvalue``
-through ``_value_core`` and ``_vvalue_core``.
+through ``_value_core`` and ``_vvalue_core``. Spaces follow the same split:
+``VectorSpace`` owns the checked ``add`` and ``scale`` over the abstract
+``_add_core`` and ``_scale_core``, and ``InnerProductSpace`` owns the checked
+``inner`` and ``real_inner`` over ``_inner_core``, which defaults to the space's
+geometry.
 
 A subclass writes the cores. Composite operators, the tree operators and the
 ``linalg`` solvers call the cores of their parts directly, so validation runs once

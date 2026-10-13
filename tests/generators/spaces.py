@@ -279,13 +279,13 @@ class _CoordinateOnlySpace(sc.CoordinateSpace):
     def zeros(self) -> Any:
         return self.ops.zeros(self.shape, dtype=self.dtype)
 
-    def add(self, x: Any, y: Any) -> Any:
+    def _add_core(self, x: Any, y: Any) -> Any:
         return x + y
 
     def add_batch(self, x: Any, y: Any) -> Any:
         return x + y
 
-    def scale(self, a: Any, x: Any) -> Any:
+    def _scale_core(self, a: Any, x: Any) -> Any:
         return a * x
 
     def scale_batch(self, a: Any, x: Any) -> Any:

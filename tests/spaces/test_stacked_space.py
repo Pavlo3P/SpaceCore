@@ -43,10 +43,10 @@ class _PairCoordinateSpace(sc.CoordinateSpace):
     def zeros(self):
         return (0.0, 0.0)
 
-    def add(self, x, y):
+    def _add_core(self, x, y):
         return (x[0] + y[0], x[1] + y[1])
 
-    def scale(self, a, x):
+    def _scale_core(self, a, x):
         return (a * x[0], a * x[1])
 
     def flatten(self, x):
@@ -64,7 +64,7 @@ class _InnerPair(_PairCoordinateSpace, sc.InnerProductSpace):
         _PairCoordinateSpace.__init__(self, ctx)
         self.geometry = sc.EuclideanInnerProduct()
 
-    def inner(self, x, y):
+    def _inner_core(self, x, y):
         return x[0] * y[0] + x[1] * y[1]
 
     def riesz(self, x):

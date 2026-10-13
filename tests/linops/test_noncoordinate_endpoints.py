@@ -21,10 +21,10 @@ class ArraySpace(VectorSpace):
     def zeros(self):
         return self.ctx.asarray([0., 0.])
 
-    def add(self, x, y):
+    def _add_core(self, x, y):
         return x + y
 
-    def scale(self, a, x):
+    def _scale_core(self, a, x):
         return a * x
 
     def _convert(self, new_ctx):

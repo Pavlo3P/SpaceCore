@@ -778,7 +778,7 @@ class TestScaledBatchedDispatch:
                 self.counter = counter
                 super().__init__(shape, ctx)
 
-            def scale(self, a, x):
+            def _scale_core(self, a, x):
                 self.counter["scale"] += 1
                 return super().scale(a, x)
 

@@ -235,9 +235,9 @@ class TestQuadraticForm:
                 super().__init__(shape, ctx)
                 self.inner_calls = 0
 
-            def inner(self, x, y):
+            def _inner_core(self, x, y):
                 self.inner_calls += 1
-                return super().inner(x, y)
+                return super()._inner_core(x, y)
 
             def _convert(self, new_ctx):
                 if new_ctx == self.ctx:

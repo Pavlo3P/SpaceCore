@@ -47,10 +47,10 @@ class _CoordinateOnlySpace(sc.CoordinateSpace):
     def zeros(self):
         return self.ops.zeros(self.shape, dtype=self.dtype)
 
-    def add(self, x, y):
+    def _add_core(self, x, y):
         return x + y
 
-    def scale(self, a, x):
+    def _scale_core(self, a, x):
         return a * x
 
     def flatten(self, x):

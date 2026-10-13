@@ -421,13 +421,12 @@ class TreeSpace(PyTreeNode, CoordinateSpace):
             parts.append(ones() if callable(ones) else self.ops.ones(space.shape, dtype=self.dtype))
         return self._from_components(tuple(parts))
 
-    @checked_method(in_space="self", arg_positions=(0, 1))
-    def add(self, x: Any, y: Any) -> Any:
+    def _add_core(self, x: Any, y: Any) -> Any:
         """Return the componentwise sum."""
         # Leafwise: each leaf space does its own operation.
         return self._from_components(
             tuple(
-                space.add(xi, yi)
+                space._add_core(xi, yi)
                 for space, xi, yi in zip(
                     self.leaf_spaces, self._components(x), self._components(y)
                 )
@@ -445,12 +444,11 @@ class TreeSpace(PyTreeNode, CoordinateSpace):
             )
         )
 
-    @checked_method(in_space="self", arg_positions=(1,))
-    def scale(self, a: Any, x: Any) -> Any:
+    def _scale_core(self, a: Any, x: Any) -> Any:
         """Return the componentwise scalar product."""
         return self._from_components(
             tuple(
-                space.scale(a, leaf)
+                space._scale_core(a, leaf)
                 for space, leaf in zip(self.leaf_spaces, self._components(x))
             )
         )
@@ -560,15 +558,14 @@ class _LeafwiseHostMixin:
 class _LeafwiseInnerProductMixin(_LeafwiseHostMixin):
     """Inner-product operations for trees whose leaves all support them."""
 
-    @checked_method(in_space="self", arg_positions=(0, 1))
-    def inner(self, x: Any, y: Any) -> Any:
+    def _inner_core(self, x: Any, y: Any) -> Any:
         """Return the sum of leaf inner products."""
         leaf_spaces = cast("Sequence[InnerProductSpace]", self.leaf_spaces)
         # Sum of the leaves' inner products.
         return reduce(
             operator.add,
             (
-                space.inner(xi, yi)
+                space._inner_core(xi, yi)
                 for space, xi, yi in zip(leaf_spaces, self._components(x), self._components(y))
             ),
         )

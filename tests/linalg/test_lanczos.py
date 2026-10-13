@@ -109,7 +109,7 @@ class TestGeometryAndFallback:
                 super().__init__(tuple(weights.shape), ctx)
                 self.weights = weights
 
-            def inner(self, x, y):
+            def _inner_core(self, x, y):
                 if self.check_level != "none":
                     self._check_member(x)
                     self._check_member(y)

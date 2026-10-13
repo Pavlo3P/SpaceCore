@@ -136,9 +136,9 @@ class SpaceCoreOps:
 
     def __init__(self, space: Any) -> None:
         self.ops = space.ops
-        self._inner = resolve_core(space, "inner", "_inner_core")
-        self._add = resolve_core(space, "add", "_add_core")
-        self._scale = resolve_core(space, "scale", "_scale_core")
+        self._inner = space._inner_core
+        self._add = space._add_core
+        self._scale = space._scale_core
 
     def inner(self, x: Any, y: Any) -> Any:
         return self._inner(x, y)

@@ -44,13 +44,13 @@ class PairSpace(sc.InnerProductSpace):
     def zeros(self):
         return Pair(self.ops.zeros((), dtype=self.dtype), self.ops.zeros((2,), dtype=self.dtype))
 
-    def add(self, x, y):
+    def _add_core(self, x, y):
         return Pair(x.head + y.head, x.tail + y.tail)
 
-    def scale(self, a, x):
+    def _scale_core(self, a, x):
         return Pair(a * x.head, a * x.tail)
 
-    def inner(self, x, y):
+    def _inner_core(self, x, y):
         return 2 * self.ops.conj(x.head) * y.head + self.ops.vdot(x.tail, y.tail)
 
     def flatten(self, x):

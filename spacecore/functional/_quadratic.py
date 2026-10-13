@@ -85,7 +85,7 @@ class LinOpQuadraticForm(QuadraticForm[Domain]):
         # grad f(x) = Q x + the representer of l.
         grad = self.Q._apply_core(x)
         if self.linear is not None:
-            add = getattr(self.domain, "_add_core", self.domain.add)
+            add = self.domain._add_core
             grad = add(grad, self.linear.representer)
         return grad
 

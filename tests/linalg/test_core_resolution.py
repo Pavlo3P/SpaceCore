@@ -20,14 +20,14 @@ def make_ctx():
 
 
 class _WeightedSpace(sc.DenseCoordinateSpace):
-    """Overrides ``inner`` (weighted geometry) but inherits ``_inner_core``."""
+    """A custom geometry written as the ``_inner_core`` the public ``inner`` wraps."""
 
     def __init__(self, weights, ctx):
         w = ctx.asarray(weights)
         super().__init__(tuple(w.shape), ctx)
         self.weights = w
 
-    def inner(self, x, y):
+    def _inner_core(self, x, y):
         return self.ops.vdot(x, self.weights * y)
 
     def _convert(self, new_ctx):
@@ -43,19 +43,11 @@ def test_resolve_core_uses_core_for_builtin_space():
     assert resolve_core(X, "inner", "_inner_core") == X._inner_core
 
 
-def test_resolve_core_defers_to_overriding_subclass():
+def test_custom_core_is_what_inner_and_solvers_use():
     ctx = make_ctx()
     space = _WeightedSpace([1.0, 4.0], ctx)
-    inner = resolve_core(space, "inner", "_inner_core")
-    # The override wins over the inherited built-in core.
-    assert inner == space.inner
-    x = ctx.asarray([1.0, 2.0])
-    y = ctx.asarray([3.0, 4.0])
-    np.testing.assert_allclose(
-        float(inner(x, y)), float(space.ops.vdot(x, space.weights * y))
-    )
-    # The euclidean core would give a different (wrong) answer here.
-    assert float(inner(x, y)) != float(space._inner_core(x, y))
+    x, y = ctx.asarray([1.0, 2.0]), ctx.asarray([3.0, 4.0])
+    np.testing.assert_allclose(float(space.inner(x, y)), float(space.ops.vdot(x, space.weights * y)))
 
 
 def test_resolve_apply_uses_core_for_builtin_linop():

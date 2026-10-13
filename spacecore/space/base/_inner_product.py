@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 import numpy as _np
 from typing import Any
 
+from ..._checks import checked_method
 from ._coordinate import CoordinateSpace
 from ._vector import VectorSpace
 
@@ -295,21 +296,28 @@ class InnerProductSpace(VectorSpace):
     #: their own Riesz representers (identity Riesz maps).
     geometry: InnerProduct
 
-    def inner(self, x: Any, y: Any) -> Any:
+    def _inner_core(self, x: Any, y: Any) -> Any:
+        """Return the inner product without membership checks; a family without a geometry overrides it."""
         geometry = getattr(self, "geometry", None)
         if geometry is None:
             raise NotImplementedError(
-                f"{type(self).__name__} has no geometry; override inner() or set one."
+                f"{type(self).__name__} has no geometry; override _inner_core() or set one."
             )
         return geometry.inner(self.ops, x, y)
 
+    @checked_method(in_space="self", arg_positions=(0, 1))
+    def inner(self, x: Any, y: Any) -> Any:
+        r"""Return :math:`\langle x, y\rangle_X`."""
+        return self._inner_core(x, y)
+
+    @checked_method(in_space="self", arg_positions=(0, 1))
     def real_inner(self, x: Any, y: Any) -> Any:
         r"""Return the real inner product :math:`\operatorname{Re}\langle x, y\rangle_X`."""
-        return self.ops.real(self.inner(x, y))
+        return self.ops.real(self._inner_core(x, y))
 
     def _real_inner_core(self, x: Any, y: Any) -> Any:
-        """Return :meth:`real_inner` without membership checks when the space has a core."""
-        return self.ops.real(getattr(self, "_inner_core", self.inner)(x, y))
+        """Return :meth:`real_inner` without membership checks."""
+        return self.ops.real(self._inner_core(x, y))
 
     def riesz(self, x: Any) -> Any:
         geometry = getattr(self, "geometry", None)

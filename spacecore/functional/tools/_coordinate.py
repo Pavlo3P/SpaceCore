@@ -16,12 +16,6 @@ from ..._batching import _leading_batch_size, _warn_vmap_fallback_once
 from ..._checks import checked_method
 
 
-def _inner_core(space: Any, x: Any, y: Any) -> Any:
-    """Return ``<x, y>`` via the space's check-free inner product when present."""
-    inner = getattr(space, "_inner_core", space.inner)
-    return inner(x, y)
-
-
 def lp_value(ops: Any, vec: Any, p: float) -> Any:
     """Return the coordinate ``p``-norm ``(sum_i |vec_i|^p)^{1/p}``."""
     return ops.sum(ops.abs(vec) ** p) ** (1.0 / p)

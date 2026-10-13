@@ -79,15 +79,15 @@ class RealField(InnerProductSpace):
         """Return scalar one for deterministic probes."""
         return self.ctx.asarray(1.)
 
-    def add(self, a, b):
+    def _add_core(self, a, b):
         """Return the sum of two scalars."""
         return a + b
 
-    def scale(self, s, a):
+    def _scale_core(self, s, a):
         """Return the product of two scalars."""
         return s * a
 
-    def inner(self, a, b):
+    def _inner_core(self, a, b):
         """Return ``a * b``."""
         return a * b
 

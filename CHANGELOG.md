@@ -58,6 +58,13 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   NumPy/CuPy `logsumexp` are promoted to zero-dimensional arrays, matching the
   existing array-result contract.
 
+### Changed
+
+- **Space cores** (breaking for custom spaces): a vector space implements `_add_core` and
+  `_scale_core`, and an inner-product space `_inner_core`, instead of the public `add`,
+  `scale` and `inner`, which the base classes now own and check. The name-based core
+  lookups in operator algebra, functionals and solvers are gone.
+
 ### Removed
 
 - The batched-Riesz `vmap` fallbacks in `metric_rvapply` and `StackedSpace`: Riesz maps
