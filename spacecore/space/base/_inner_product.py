@@ -292,18 +292,12 @@ class InnerProductSpace(VectorSpace):
         Validation level; the ambient default when omitted.
     """
 
-    #: Optional. A space without one overrides :meth:`inner`, and its elements are
-    #: their own Riesz representers (identity Riesz maps).
-    geometry: InnerProduct
+    #: The space's inner product; Euclidean unless a family sets another.
+    geometry: InnerProduct = EuclideanInnerProduct()
 
     def _inner_core(self, x: Any, y: Any) -> Any:
-        """Return the inner product without membership checks; a family without a geometry overrides it."""
-        geometry = getattr(self, "geometry", None)
-        if geometry is None:
-            raise NotImplementedError(
-                f"{type(self).__name__} has no geometry; override _inner_core() or set one."
-            )
-        return geometry.inner(self.ops, x, y)
+        """Return the inner product without membership checks."""
+        return self.geometry.inner(self.ops, x, y)
 
     @checked_method(in_space="self", arg_positions=(0, 1))
     def inner(self, x: Any, y: Any) -> Any:
@@ -320,12 +314,10 @@ class InnerProductSpace(VectorSpace):
         return self.ops.real(self._inner_core(x, y))
 
     def riesz(self, x: Any) -> Any:
-        geometry = getattr(self, "geometry", None)
-        return x if geometry is None else geometry.riesz(self.ops, x)
+        return self.geometry.riesz(self.ops, x)
 
     def riesz_inverse(self, x: Any) -> Any:
-        geometry = getattr(self, "geometry", None)
-        return x if geometry is None else geometry.riesz_inverse(self.ops, x)
+        return self.geometry.riesz_inverse(self.ops, x)
 
     def norm(self, x: Any) -> Any:
         return self.ops.sqrt(self.real_inner(x, x))
@@ -336,6 +328,4 @@ class InnerProductSpace(VectorSpace):
 
     @property
     def is_euclidean(self) -> bool:
-        # Without a geometry there is no coordinate inner product to coincide with.
-        geometry = getattr(self, "geometry", None)
-        return geometry is not None and geometry.is_euclidean
+        return self.geometry.is_euclidean

@@ -28,8 +28,7 @@ def space_has_riesz_maps(space) -> bool:
     )
     if space_has_maps:
         return True
-    geometry = getattr(space, "geometry", None)
-    return geometry is not None and geometry.has_riesz_maps
+    return space.geometry.has_riesz_maps
 
 
 def _requires_euclidean_or_riesz(dom, cod, opname: str) -> None:

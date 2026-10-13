@@ -27,12 +27,23 @@ class Pair(PyTreeNode):
         return cls(*children)
 
 
+class PairGeometry(sc.InnerProduct):
+    """<x, y> = 2 conj(x0) y0 + x1 . y1 on a Pair; Riesz map doubles the head."""
+
+    def inner(self, ops, x, y):
+        return 2 * ops.conj(x.head) * y.head + ops.vdot(x.tail, y.tail)
+
+    def riesz(self, ops, x):
+        return Pair(2 * x.head, x.tail)
+
+    def riesz_inverse(self, ops, x):
+        return Pair(x.head / 2, x.tail)
+
+
 class PairSpace(sc.InnerProductSpace):
     """Weighted geometry on two differently shaped leaves, with no shape attribute."""
 
-    @property
-    def is_euclidean(self):
-        return False
+    geometry = PairGeometry()
 
     def _check_member(self, x):
         assert isinstance(x, Pair)
@@ -49,9 +60,6 @@ class PairSpace(sc.InnerProductSpace):
 
     def _scale_core(self, a, x):
         return Pair(a * x.head, a * x.tail)
-
-    def _inner_core(self, x, y):
-        return 2 * self.ops.conj(x.head) * y.head + self.ops.vdot(x.tail, y.tail)
 
     def flatten(self, x):
         raise AssertionError("Krylov algorithms must not flatten elements")

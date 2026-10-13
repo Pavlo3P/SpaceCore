@@ -34,9 +34,10 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
-- `InnerProductSpace.geometry` is optional: a native space overrides `inner`,
-  its Riesz maps are the identity, and `MatrixFreeLinOp` no longer warns about
-  coordinate adjoints on it. `least_squares` keeps native members native.
+- `InnerProductSpace.geometry` is never `None`: it defaults to Euclidean, and a native
+  space states a non-Euclidean metric as its own `InnerProduct` (inner product and Riesz
+  maps on its native elements). `MatrixFreeLinOp` no longer warns about coordinate
+  adjoints on such a space. `least_squares` keeps native members native.
 - `Element` builds no dense form at `check_level="none"`, and `densify` is an
   optional capability: without it, fallback arithmetic raises `CapabilityError`
   instead of failing obscurely.
