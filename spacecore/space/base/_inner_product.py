@@ -313,7 +313,7 @@ class InnerProductSpace(VectorSpace):
     @checked_method(in_space="self", arg_positions=(0, 1))
     def real_inner(self, x: Any, y: Any) -> Any:
         r"""Return the real inner product :math:`\operatorname{Re}\langle x, y\rangle_X`."""
-        return self.ops.real(self._inner_core(x, y))
+        return self._real_inner_core(x, y)
 
     def _real_inner_core(self, x: Any, y: Any) -> Any:
         """Return :meth:`real_inner` without membership checks."""
