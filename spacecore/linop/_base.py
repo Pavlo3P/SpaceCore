@@ -162,27 +162,6 @@ class LinOp(Mapping, Generic[Domain, Codomain]):
         # with their coordinate conjugate transpose.
         return self.domain.riesz(self._rapply_core(self.codomain.riesz_inverse(eta)))
 
-    def adjoint_in(self, gx: Any, gy: Any) -> LinOp:
-        r"""Return the adjoint of this operator for per-call geometries ``gx`` on the domain and ``gy`` on the codomain.
-
-        The result :math:`B = g_x^{-1} A' g_y` satisfies
-        :math:`\langle Ax, y\rangle_{g_y} = \langle x, By\rangle_{g_x}`; it maps the
-        codomain to the domain and needs ``gy.riesz`` and ``gx.riesz_inverse``. With
-        the spaces' own geometries it equals :meth:`rapply`.
-        """
-        from ._algebra import MatrixFreeLinOp
-
-        X, Y, ops = self.domain, self.codomain, self.ops
-
-        def apply(y: Any) -> Any:
-            return gx.riesz_inverse(ops, self._tapply_core(gy.riesz(ops, y)))
-
-        def rapply(x: Any) -> Any:
-            # B's own metric adjoint in the spaces' geometries: R_Y^{-1} g_y A g_x^{-1} R_X.
-            return Y.riesz_inverse(gy.riesz(ops, self._apply_core(gx.riesz_inverse(ops, X.riesz(x)))))
-
-        return MatrixFreeLinOp(apply, rapply, Y, X, self.ctx, euclidean_adjoint=False)
-
     def __call__(self, x: Any) -> Any:
         """Apply this linear operator to ``x``."""
         return self.apply(x)

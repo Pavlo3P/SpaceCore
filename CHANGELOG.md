@@ -9,19 +9,11 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- Per-call geometry, first part: `LinOp.adjoint_in(gx, gy)` and `cg(..., geometry=G)`,
-  which is preconditioned CG with preconditioner `G^{-1}`; a cometric supplies a solve-only
-  preconditioner.
-- `Functional.prox`, `conjugate_prox` and `Set.project` take `geometry=G`; rules exact only
-  in the domain's geometry refuse a different `G`.
-- `power_iteration`, `lanczos_smallest` and `expm_multiply` take `geometry=G` for an operator
-  self-adjoint in `G` (generalized eigenproblems); `lsqr` takes `domain_geometry` and
-  `codomain_geometry`.
+- `cg(..., preconditioner=K)`: preconditioned CG with an operator `K` on `A.domain`.
 - Dual geometry: `InnerProduct.norm`, `dual_norm` and `dual()` (weighted `1/w`, operator
   metrics swap `M` and `M_inverse`), `InnerProductSpace.dual_norm`, and metric factors
   `factor`/`factor_inverse` with `R = C^* C` (Euclidean, weighted `sqrt(w)`, operator
-  `factor=`/`factor_inverse=`, checked at `strict`). `OperatorInnerProduct(M_inverse=K)` is a
-  cometric: a solve-only metric for a single call, refused as a space geometry.
+  `factor=`/`factor_inverse=`, checked at `strict`).
 - The metric-free pairing layer: `CoordinateSpace.pair(xi, x)` and `vpair(xi, xs)`
   pair a coordinate covector with elements without any inner product;
   `Functional.differential(x)` returns the covector of the derivative (natively for

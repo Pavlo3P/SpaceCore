@@ -122,15 +122,14 @@ class Functional(Mapping, Generic[Domain]):
         """
         return self.value(x, *args, **kwargs), self.grad(x, *args, **kwargs)
 
-    def prox(self, x: Any, step: Any, geometry: Any = None) -> Any:
-        r"""Minimize ``f(y) + ||y-x||_G^2 / (2 step)`` for positive ``step``.
+    def prox(self, x: Any, step: Any) -> Any:
+        r"""Minimize ``f(y) + ||y-x||_X^2 / (2 step)`` for positive ``step``.
 
         This optional operation uses a closed-form rule registered with
         ``register("prox", FunctionalType, GeometryType, rule)``. The rule takes
         ``(functional, geometry, x, step)`` and returns a native domain element.
         An unsupported functional/geometry pair raises ``CapabilityError``;
-        sums and linear pullbacks do not acquire a prox automatically. ``G`` is
-        ``geometry`` when given and the domain's geometry otherwise.
+        sums and linear pullbacks do not acquire a prox automatically.
 
         Prox rules assert a proper, lower-semicontinuous convex real objective
         (also on complex spaces, using the real inner product). At check level
@@ -139,13 +138,12 @@ class Functional(Mapping, Generic[Domain]):
         """
         from ._prox import apply_prox
 
-        return apply_prox(self, x, step, geometry)
+        return apply_prox(self, x, step)
 
-    def conjugate_prox(self, x: Any, step: Any, geometry: Any = None) -> Any:
+    def conjugate_prox(self, x: Any, step: Any) -> Any:
         r"""Return the conjugate prox by Hilbert-space Moreau decomposition.
 
-        The conjugate is ``f*_G(p) = sup_z Re <p,z>_G - f(z)``, with ``G`` as in
-        :meth:`prox`: dual variables
+        The conjugate is ``f*_X(p) = sup_z Re <p,z>_X - f(z)``: dual variables
         are Riesz representers in the same space, not raw coordinate covectors.
         Thus ``prox_(step f*_X)(x) = x - step prox_(f/step)(x/step)``.
         Requires a valid convex prox and a finite, strictly positive step.
@@ -154,7 +152,7 @@ class Functional(Mapping, Generic[Domain]):
 
         validate_step(step, self, "conjugate_prox")
         X = self.domain
-        return X.axpy(-step, self.prox(X.scale(1 / step, x), 1 / step, geometry), x)
+        return X.axpy(-step, self.prox(X.scale(1 / step, x), 1 / step), x)
 
     def differential(self, x: Any, *args: Any, **kwargs: Any) -> Any:
         r"""Return the covector :math:`df(x)` with :math:`Df(x)[h] = \langle df(x), h\rangle`.

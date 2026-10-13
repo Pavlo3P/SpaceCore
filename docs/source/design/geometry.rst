@@ -74,8 +74,8 @@ transpose (the coordinate conjugate transpose); the metric adjoint is
 ``rapply = R_X^{-1} A' R_Y``. Metric-free methods (Frank-Wolfe steps, mirror maps,
 quasi-Newton curvature pairs, Sinkhorn) need only these.
 
-Dual Norms, Cometrics and Factors
----------------------------------
+Dual Norms and Factors
+----------------------
 
 Every geometry ``G`` gives the norm and the dual norm of a covector, and its dual
 geometry on covectors, whose Riesz map is ``G``'s inverse:
@@ -87,10 +87,7 @@ geometry on covectors, whose Riesz map is ``G``'s inverse:
 
 ``X.dual_norm(xi)`` and ``G.dual_norm(ops, xi)`` compute it; ``G.dual()`` is
 ``WeightedInnerProduct(1 / w)`` for a weighted metric and swaps ``M`` and
-``M_inverse`` for an operator metric. A metric known only through its inverse, a
-solve-only preconditioner ``K``, is the cometric ``OperatorInnerProduct(M_inverse=K)``:
-it gives ``riesz_inverse`` and ``dual_norm`` and is passed to a single call, but a
-space cannot be built on it. A factor ``C`` with ``R = C^* C`` (``G.factor``,
+``M_inverse`` for an operator metric. A factor ``C`` with ``R = C^* C`` (``G.factor``,
 ``G.factor_inverse``) is an isometry onto Euclidean coordinates, so a Euclidean
 black-box optimizer run on ``C x`` takes steps in the metric.
 
@@ -121,37 +118,17 @@ preconditioned CG: for ``A = M^{-1} B`` with ``B`` symmetric positive definite,
    X = sc.DenseCoordinateSpace((n,), ctx,
                                geometry=sc.OperatorInnerProduct(M, M_inverse))
 
-Per-Call Geometry
------------------
+A Metric Lives in a Space
+-------------------------
 
-A geometry can be passed to a single call without rebuilding the space.
-``A.adjoint_in(gx, gy)`` returns the adjoint for a domain geometry ``gx`` and a
-codomain geometry ``gy``:
-
-.. math::
-
-   B = g_x^{-1} A' g_y, \qquad \langle Ax, y\rangle_{g_y} = \langle x, By\rangle_{g_x}.
-
-``cg(A, b, geometry=G)`` is preconditioned CG with preconditioner ``G^{-1}``:
-each residual ``r`` becomes ``G^{-1} R_X r``. ``A`` must still be self-adjoint
-and positive definite in ``A.domain``, and the reported residual is measured in
-``A.domain``'s norm. A cometric ``OperatorInnerProduct(M_inverse=K)`` supplies a
-preconditioner ``K`` that is only ever applied, never inverted.
-
-``f.prox(x, step, geometry=G)`` minimizes ``f(y) + ||y - x||_G^2 / (2 step)``,
-and ``conjugate_prox`` and ``Set.project`` take the same argument. Rules that
-are exact in any diagonal metric (the weighted ``l1`` threshold, the orthant
-clip) accept a foreign ``G``; the scaled, summed and indicator rules forward it.
-A rule whose closed form holds only in the domain's own geometry, such as the
-squared norm, raises ``CapabilityError`` for a different ``G``.
-
-``power_iteration``, ``lanczos_smallest`` and ``expm_multiply`` take
-``geometry=G`` for an operator that is self-adjoint in ``G`` rather than in
-``A.domain``. For ``A = M^{-1} K`` and the ``M`` metric this solves the
-generalized eigenproblem ``K x = lambda M x``; the Hermitian probe is skipped
-because it refers to ``A.domain``'s metric. ``lsqr`` takes
-``domain_geometry`` and ``codomain_geometry``: the codomain geometry sets the
-least-squares norm, and the adjoint is the one ``adjoint_in`` returns.
+A geometry is reachable only through the space that holds it: no solver,
+operator or functional takes a geometry argument. A different metric is a
+different space, and operators and functionals are built on it. A generalized
+eigenproblem ``K x = lambda M x`` is ``lanczos_smallest`` on the operator
+``M^{-1} K`` built on the space with metric ``M``, in which it is self-adjoint.
+Preconditioning is not a metric change: ``cg(A, b, preconditioner=K)`` takes an
+operator ``K`` on ``A.domain`` approximating the inverse of ``A``, self-adjoint
+and positive definite in ``A.domain``.
 
 Custom Geometry
 ---------------

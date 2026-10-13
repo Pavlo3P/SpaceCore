@@ -60,13 +60,13 @@ class _KrylovBasis:
     are stacked separately without converting elements to coordinates.
     """
 
-    def __init__(self, space: Any, example: Any, capacity: int, geometry: Any = None) -> None:
+    def __init__(self, space: Any, example: Any, capacity: int) -> None:
         self.space = space
         self.ops = space.ops
-        self.dom = SpaceCoreOps(space, geometry)
+        self.dom = SpaceCoreOps(space)
         self.capacity = capacity
         self.dense = type(space) in _VECTOR_SPACES
-        self.euclidean = self.dense and geometry is None and space.is_euclidean
+        self.euclidean = self.dense and space.is_euclidean
         self.tree = None
         if self.dense:
             self.shape = example.shape
@@ -168,13 +168,12 @@ def _lanczos_basis_and_tridiag(
     tol: float,
     real_dtype: Any,
     check_every: int,
-    geometry: Any = None,
 ) -> _LanczosBasisResult:
-    """Build a Lanczos basis and tridiagonal projection, orthonormal in ``geometry`` when given."""
+    """Build a Lanczos basis and tridiagonal projection."""
     ops = A.ops
     apply = resolve_apply(A)
-    dom = SpaceCoreOps(A.domain, geometry)
-    basis = _KrylovBasis(A.domain, initial_vector, max_iter + 1, geometry)
+    dom = SpaceCoreOps(A.domain)
+    basis = _KrylovBasis(A.domain, initial_vector, max_iter + 1)
     V = basis.allocate()
     alphas = ops.zeros((max_iter,), dtype=real_dtype)
     betas = ops.zeros((max_iter + 1,), dtype=real_dtype)
@@ -254,15 +253,12 @@ def lanczos_smallest(
     max_iter: int = 100,
     tol: float = 1e-6,
     check_every: int = DEFAULT_CONVERGENCE_CHECK_INTERVAL,
-    geometry: Any = None,
 ) -> LanczosResult:
     r"""
     Approximate the smallest eigenpair of a Hermitian operator by Lanczos.
 
     The eigenvalue returned is the Rayleigh quotient of the Ritz vector, reconstructed
-    in ``A.domain``. With ``geometry=G``, ``A`` must be self-adjoint in ``G`` instead,
-    and the basis, Ritz vector and Rayleigh quotient use ``G``: for ``A = M^{-1} K`` and
-    ``G`` the ``M`` metric this is the generalized problem ``K x = lambda M x``.
+    in ``A.domain``.
 
     Parameters
     ----------
@@ -323,8 +319,7 @@ def lanczos_smallest(
     # Validate once: square, not provably non-Hermitian, valid parameters.
     A = require_linop(A)
     require_square(A, "lanczos_smallest")
-    # is_hermitian refers to A.domain's metric, so it says nothing about G.
-    if geometry is None and A._checks_at_least("standard") and A.is_hermitian() is False:
+    if A._checks_at_least("standard") and A.is_hermitian() is False:
         raise ValueError("lanczos_smallest requires A to be Hermitian/self-adjoint.")
     max_iter = _check_lanczos_max_iter(max_iter)
     check_every = check_interval(check_every)
@@ -333,15 +328,14 @@ def lanczos_smallest(
     ctx = A.ctx
     real_dtype = ops.real_dtype(ctx.dtype)
     idx = ops.arange(max_iter)
-    dom = SpaceCoreOps(A.domain, geometry)
-    initial_norm = dom.norm(initial_vector)
+    initial_norm = A.domain.norm(initial_vector)
     try:
         zero_start = bool(initial_norm == 0)
     except TypeError:  # JAX traced predicate; report invalid input in the result below.
         zero_start = False
     if zero_start:
         raise ValueError("lanczos_smallest requires a nonzero initial_vector.")
-    basis = _lanczos_basis_and_tridiag(A, initial_vector, max_iter, tol, real_dtype, check_every, geometry)
+    basis = _lanczos_basis_and_tridiag(A, initial_vector, max_iter, tol, real_dtype, check_every)
 
     # Smallest eigenpair of T; residual estimate beta_m |y_{m-1}|.
     m = basis.krylov_dim
@@ -359,9 +353,9 @@ def lanczos_smallest(
     mask_y = ops.astype(mask_y, y_full.dtype)
     y_valid = y_full * mask_y
 
-    vectors = _KrylovBasis(A.domain, initial_vector, max_iter + 1, geometry)
+    vectors = _KrylovBasis(A.domain, initial_vector, max_iter + 1)
     x = vectors.lincomb(basis.V, y_valid, m)
-    x_norm = dom.norm(x)
+    x_norm = A.domain.norm(x)
     x = ops.cond(
         x_norm > 0,
         lambda _: A.domain.scale(safe_inverse_nonneg(ops, x_norm), x),
@@ -372,8 +366,8 @@ def lanczos_smallest(
     # Report the Rayleigh quotient in the original space.
     Ax = A.apply(x)
 
-    num = dom.real_inner(x, Ax)
-    den = dom.real_inner(x, x)
+    num = A.domain.real_inner(x, Ax)
+    den = A.domain.real_inner(x, x)
     lam = ops.where(den > 0, num * safe_inverse_nonneg(ops, den), ops.asarray(float("nan"), dtype=real_dtype))
 
     return LanczosResult(lam, x, residual_norm, m, converged)

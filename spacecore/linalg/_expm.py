@@ -48,7 +48,6 @@ def expm_multiply(
     *,
     max_iter: int = 30,
     tol: float = 1e-10,
-    geometry: Any = None,
 ) -> ExpmMultiplyResult:
     r"""
     Compute :math:`\exp(t A) v` by Lanczos projection, without forming ``A``.
@@ -57,8 +56,7 @@ def expm_multiply(
     ----------
     A : LinOp
         Square operator, Hermitian in the domain's inner product. Known non-Hermitian
-        operators are rejected; unknown ones are trusted. With ``geometry=G``, ``A``
-        must be self-adjoint in ``G`` instead, and the Lanczos basis is ``G``-orthonormal.
+        operators are rejected; unknown ones are trusted.
     v : array-like
         Element in ``A.domain``; zero returns zero without applying ``A``.
     t : float or complex, optional
@@ -104,7 +102,7 @@ def expm_multiply(
     # Validate once: square, not provably non-Hermitian, valid parameters.
     A = require_linop(A)
     require_square(A, "expm_multiply")
-    if geometry is None and A._checks_at_least("standard") and A.is_hermitian() is False:
+    if A._checks_at_least("standard") and A.is_hermitian() is False:
         raise ValueError("expm_multiply requires A to be Hermitian/self-adjoint.")
     max_iter = _check_lanczos_max_iter(max_iter)
     A.domain.check_member(v)
@@ -113,7 +111,7 @@ def expm_multiply(
     ctx = A.ctx
     real_dtype = ops.real_dtype(ctx.dtype)
     # Lanczos basis V and tridiagonal T = V* A V.
-    basis = _lanczos_basis_and_tridiag(A, v, max_iter, tol, real_dtype, check_every=1, geometry=geometry)
+    basis = _lanczos_basis_and_tridiag(A, v, max_iter, tol, real_dtype, check_every=1)
 
     # Zero the inactive block of T, so the fixed-size eigh sees only the m-dimensional part.
     m = basis.krylov_dim
@@ -129,7 +127,7 @@ def expm_multiply(
     expT_e1 = ops.where(active_mask, expT_e1, ops.zeros_like(expT_e1))
 
     # exp(t A) v is approximately ||v|| V exp(t T) e1.
-    vectors = _KrylovBasis(A.domain, v, max_iter + 1, geometry)
+    vectors = _KrylovBasis(A.domain, v, max_iter + 1)
     result = A.domain.scale(basis.initial_norm, vectors.lincomb(basis.V, expT_e1, m))
 
     # Residual estimate beta_m |phi_{m-1}|.

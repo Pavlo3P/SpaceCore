@@ -1,4 +1,4 @@
-"""S3: dual norms, dual geometries, cometrics and metric factors."""
+"""S3: dual norms, dual geometries and metric factors."""
 import numpy as np
 import pytest
 
@@ -67,20 +67,15 @@ def test_wrong_factor_is_caught_at_strict(ctx):
     sc.DenseCoordinateSpace((N,), ctx, geometry=G, check_level="standard")
 
 
-def test_cometric(ctx):
-    K = np.linalg.inv(_M())
-    cometric = sc.OperatorInnerProduct(M_inverse=_op(ctx, K))
-    ops = sc.NumpyOps()
+def test_dual_needs_the_inverse(ctx):
+    M = _M()
+    G = sc.OperatorInnerProduct(_op(ctx, M), _op(ctx, np.linalg.inv(M)))
     xi = np.array([1.0, -2.0, 0.5])
-    np.testing.assert_allclose(cometric.riesz_inverse(ops, xi), K @ xi)
-    assert cometric.dual_norm(ops, xi) == pytest.approx(np.sqrt(xi @ K @ xi))
-    with pytest.raises(sc.CapabilityError, match="cometric"):
-        cometric.inner(ops, xi, xi)
-    with pytest.raises(sc.CapabilityError, match="per call"):
-        sc.DenseCoordinateSpace((N,), ctx, geometry=cometric)
-    # Its dual is an ordinary metric on covectors.
-    covectors = sc.DenseCoordinateSpace((N,), ctx, geometry=cometric.dual())
-    assert covectors.norm(xi) == pytest.approx(np.sqrt(xi @ K @ xi))
+    # The dual geometry is an ordinary metric on covectors.
+    covectors = sc.DenseCoordinateSpace((N,), ctx, geometry=G.dual())
+    assert covectors.norm(xi) == pytest.approx(np.sqrt(xi @ np.linalg.solve(M, xi)))
+    with pytest.raises(sc.CapabilityError, match="M_inverse"):
+        sc.OperatorInnerProduct(_op(ctx, M)).dual()
     with pytest.raises(TypeError):
         sc.OperatorInnerProduct()
 

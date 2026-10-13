@@ -47,4 +47,4 @@ class IndicatorFunctional(Functional):
         return self.ops.where(member, self.codomain.ctx.asarray(0.0),
                               self.codomain.ctx.asarray(float("inf")))
 
-register("prox", IndicatorFunctional, object, lambda f, geometry, x, step: f.constraint.project(x, geometry=geometry))
+register("prox", IndicatorFunctional, object, lambda f, geometry, x, step: f.constraint.project(x))

@@ -53,7 +53,7 @@ def cg(
     atol: float = 0.0,
     maxiter: int | None = None,
     check_every: int = DEFAULT_CONVERGENCE_CHECK_INTERVAL,
-    geometry: Any = None,
+    preconditioner: LinOp | None = None,
 ) -> CGResult:
     r"""
     Solve :math:`A x = b` by conjugate gradients.
@@ -78,12 +78,10 @@ def cg(
         Iteration cap; ``prod(A.domain.shape)`` by default.
     check_every : int, optional
         Test convergence every this many iterations, and on the last one.
-    geometry : InnerProduct or None, optional
-        Preconditioning metric ``G``: each residual ``r`` is preconditioned to
-        ``G^{-1} R_X r``, which is preconditioned CG with preconditioner ``G^{-1}``.
-        A cometric ``OperatorInnerProduct(M_inverse=K)`` supplies a solve-only ``K``.
-        ``A`` must still be self-adjoint and positive definite in ``A.domain``; the
-        residual is measured in ``A.domain``'s norm either way.
+    preconditioner : LinOp or None, optional
+        Operator ``K`` on ``A.domain`` approximating the inverse of ``A``, self-adjoint
+        and positive definite in ``A.domain``; each residual ``r`` is preconditioned to
+        ``K r``. The residual is still measured in ``A.domain``'s norm.
 
     Returns
     -------
@@ -152,17 +150,16 @@ def cg(
     dom = SpaceCoreOps(A.domain)
     cod = SpaceCoreOps(A.codomain)
 
-    # Preconditioning z = G^{-1} R_X r; without a geometry z = r and this is plain CG.
-    if geometry is None:
+    # Preconditioning z = K r; without K, z = r and this is plain CG.
+    if preconditioner is None:
         def precond(r: Any) -> Any:
             return r
     else:
-        X = A.domain
+        if preconditioner.domain != A.domain or preconditioner.codomain != A.domain:
+            raise ValueError("cg: the preconditioner must map A.domain to itself.")
+        precond = resolve_apply(preconditioner)
 
-        def precond(r: Any) -> Any:
-            return geometry.riesz_inverse(X.ops, X.riesz(r))
-
-    # Initial residual r = b - A x; the first search direction is z = precond(r).
+    # Initial residual r = b - A x; the first search direction is z = K r.
     x = A.domain.zeros() if x0 is None else x0
     A.domain.check_member(x)
     r = cod.add(b, cod.scale(-1.0, apply(x)))
@@ -203,7 +200,7 @@ def cg(
         should_refresh_residual = should_check_iteration(k_next, maxiter, check_every) | (~active)
         residual_norm_next = A.ops.cond(
             should_refresh_residual,
-            (lambda _: A.ops.sqrt(rs_next)) if geometry is None else (lambda _: dom.norm(r_next)),
+            (lambda _: A.ops.sqrt(rs_next)) if preconditioner is None else (lambda _: dom.norm(r_next)),
             lambda _: _residual_norm,
             A.ops.asarray(0.0, dtype=A.dtype),
         )

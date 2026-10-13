@@ -235,31 +235,27 @@ class OperatorInnerProduct(InnerProduct):
     Euclidean coordinates: block, Kronecker, low-rank-plus-diagonal or any
     matrix-free metric. The Riesz map is ``M``; its inverse is ``M_inverse``, which
     may be any operator approximating it, such as one that runs ``sc.cg`` to a
-    tolerance. Without ``M_inverse``, ``riesz_inverse`` raises ``CapabilityError``.
+    tolerance. Without ``M_inverse``, ``riesz_inverse`` and ``dual`` raise
+    ``CapabilityError``.
 
     From ``standard`` checks upward, an ``M`` known to be non-self-adjoint, or with
     non-positive curvature on a fixed probe vector, is rejected; at ``strict``, its
     Lanczos estimate of the smallest eigenvalue must also be positive.
 
-    A metric known only through its inverse (a solve-only preconditioner) is given
-    as ``M=None``: such a *cometric* supplies ``riesz_inverse``, ``dual_norm`` and
-    ``dual()``, and is meant to be passed to a single call; a space cannot be built
-    on it. ``factor`` (with ``factor_inverse``) declares ``C`` with ``M = C^* C``.
+    ``factor`` (with ``factor_inverse``) declares ``C`` with ``M = C^* C``.
 
     Parameters
     ----------
-    M : LinOp or None
+    M : LinOp
         Self-adjoint positive-definite operator from the Euclidean coordinate space
-        of the target space to itself; ``None`` for a cometric.
+        of the target space to itself.
     M_inverse : LinOp or None, optional
         Operator applying (an approximation of) the inverse of ``M``.
     factor, factor_inverse : LinOp or None, optional
         A factor ``C`` with ``M = C^* C`` and its inverse.
     """
 
-    def __init__(self, M=None, M_inverse=None, *, factor=None, factor_inverse=None):
-        if M is None and M_inverse is None:
-            raise TypeError("OperatorInnerProduct needs M, M_inverse, or both.")
+    def __init__(self, M, M_inverse=None, *, factor=None, factor_inverse=None):
         self.M = M
         self.M_inverse = M_inverse
         self.factor_op = factor
@@ -271,8 +267,6 @@ class OperatorInnerProduct(InnerProduct):
                 and self.factor_inverse_op == other.factor_inverse_op)
 
     def __repr__(self) -> str:
-        if self.M is None:
-            return f"OperatorInnerProduct(M_inverse={self.M_inverse._short_repr()})"
         return f"OperatorInnerProduct(M={self.M._short_repr()})"
 
     @staticmethod
@@ -291,18 +285,14 @@ class OperatorInnerProduct(InnerProduct):
         return op._vapply_core(x.reshape((-1,) + core)).reshape(lead + core)
 
     def inner(self, ops, x, y):
-        if self.M is None:
-            raise self._missing("M to evaluate the inner product (a cometric has only its inverse)")
         return ops.vdot(x, self._act(self.M, y))
 
     def riesz(self, ops, x):
-        if self.M is None:
-            raise self._missing("M to apply its Riesz map (a cometric has only its inverse)")
         return self._act(self.M, x)
 
     @property
     def has_riesz_maps(self) -> bool:
-        return self.M is not None and self.M_inverse is not None
+        return self.M_inverse is not None
 
     def riesz_inverse(self, ops, x):
         if self.M_inverse is None:
@@ -310,6 +300,8 @@ class OperatorInnerProduct(InnerProduct):
         return self._act(self.M_inverse, x)
 
     def dual(self) -> OperatorInnerProduct:
+        if self.M_inverse is None:
+            raise self._missing("M_inverse to form its dual geometry")
         return OperatorInnerProduct(self.M_inverse, self.M)
 
     def factor(self, ops, x):
@@ -326,15 +318,13 @@ class OperatorInnerProduct(InnerProduct):
         def conv(op):
             return None if op is None else op.convert(ctx)
 
-        return OperatorInnerProduct(conv(self.M), conv(self.M_inverse), factor=conv(self.factor_op),
+        return OperatorInnerProduct(self.M.convert(ctx), conv(self.M_inverse), factor=conv(self.factor_op),
                                     factor_inverse=conv(self.factor_inverse_op))
 
     def validate_for(self, space: InnerProductSpace) -> None:
         """Check that ``M`` (and ``M_inverse``) act on the space's Euclidean coordinates."""
         if not isinstance(space, CoordinateSpace):
             raise TypeError("OperatorInnerProduct requires a CoordinateSpace.")
-        if self.M is None:
-            raise self._missing("M to serve as a space geometry; pass a cometric per call instead")
         for name, op in (("M", self.M), ("M_inverse", self.M_inverse), ("factor", self.factor_op),
                          ("factor_inverse", self.factor_inverse_op)):
             if op is None:

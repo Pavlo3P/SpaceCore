@@ -53,8 +53,6 @@ def lsqr(
     maxiter: int | None = None,
     check_every: int = DEFAULT_CONVERGENCE_CHECK_INTERVAL,
     residual_mode: str = "exact",
-    domain_geometry: Any = None,
-    codomain_geometry: Any = None,
 ) -> LSQRResult:
     r"""
     Solve :math:`\min_x \|A x - b\|` by LSQR.
@@ -81,10 +79,6 @@ def lsqr(
     residual_mode : {"exact", "recurrence"}, optional
         ``"exact"`` recomputes both residuals at each check, costing one extra forward
         and adjoint apply; ``"recurrence"`` uses LSQR's scalar estimates for free.
-    domain_geometry, codomain_geometry : InnerProduct or None, optional
-        Per-call geometries replacing those of ``A.domain`` and ``A.codomain``. The
-        codomain geometry sets the least-squares norm; the domain geometry sets the
-        iteration's metric and, for a rank-deficient ``A``, which minimizer is reached.
 
     Returns
     -------
@@ -138,17 +132,9 @@ def lsqr(
     # Resolve check-free cores once; the hot loop then skips per-iteration
     # validation while honoring any custom geometry the spaces define.
     apply = resolve_apply(A)
-    if domain_geometry is None and codomain_geometry is None:
-        radj = resolve_rapply(A)
-    else:
-        # The adjoint for the per-call geometries, as in LinOp.adjoint_in.
-        gx = A.domain.geometry if domain_geometry is None else domain_geometry
-        gy = A.codomain.geometry if codomain_geometry is None else codomain_geometry
-
-        def radj(y: Any) -> Any:
-            return gx.riesz_inverse(A.ops, A._tapply_core(gy.riesz(A.ops, y)))
-    dom = SpaceCoreOps(A.domain, domain_geometry)
-    cod = SpaceCoreOps(A.codomain, codomain_geometry)
+    radj = resolve_rapply(A)
+    dom = SpaceCoreOps(A.domain)
+    cod = SpaceCoreOps(A.codomain)
 
     # Golub-Kahan start: beta u = b - A x and alpha v = A.H u.
     x = A.domain.zeros() if x0 is None else x0
@@ -170,7 +156,7 @@ def lsqr(
     phi_bar = beta
     rho_bar = alpha
     residual_norm = beta
-    threshold_value = threshold(cod.norm(b), tol, atol)
+    threshold_value = threshold(A.codomain.norm(b), tol, atol)
 
     def cond_fun(carry: tuple[Any, ...]) -> Any:
         _x, _u, _v, _w, _alpha, _beta, _rho_bar, _phi_bar, _res_norm, norm_res, k = carry
