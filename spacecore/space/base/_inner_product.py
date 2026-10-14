@@ -48,10 +48,8 @@ class InnerProduct(ABC):
     def validate_for(self, space: InnerProductSpace) -> None:
         """Raise if this inner product is invalid for ``space``."""
 
-    @property
-    def is_euclidean(self) -> bool:
-        """Whether this geometry is the Euclidean coordinate inner product."""
-        return False
+    #: Whether this geometry is the Euclidean coordinate inner product.
+    is_euclidean = False
 
     @property
     def has_riesz_maps(self) -> bool:
@@ -62,6 +60,8 @@ class InnerProduct(ABC):
 
 class EuclideanInnerProduct(InnerProduct):
     """Standard coordinate inner product ``vdot(x, y)`` with identity Riesz maps."""
+
+    is_euclidean = True
 
     def __eq__(self, other):
         return type(other) is type(self)
@@ -79,10 +79,6 @@ class EuclideanInnerProduct(InnerProduct):
     def riesz_inverse(self, ops, x):
         """Return the Euclidean covector unchanged."""
         return x
-
-    @property
-    def is_euclidean(self) -> bool:
-        return True
 
 
 class WeightedInnerProduct(InnerProduct):

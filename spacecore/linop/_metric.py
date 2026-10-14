@@ -19,25 +19,17 @@ def space_has_riesz_maps(space) -> bool:
     if leaves is not None:
         return all(leaf.is_euclidean or space_has_riesz_maps(leaf) for leaf in leaves)
 
-    # Riesz maps exist if the geometry or the space overrides both base methods.
-    if not isinstance(space, InnerProductSpace):
-        return False
-    space_has_maps = (
-        type(space).riesz is not InnerProductSpace.riesz
-        and type(space).riesz_inverse is not InnerProductSpace.riesz_inverse
+    # Riesz maps exist if the space overrides them or its geometry has them.
+    return isinstance(space, InnerProductSpace) and (
+        type(space).riesz is not InnerProductSpace.riesz or space.geometry.has_riesz_maps
     )
-    if space_has_maps:
-        return True
-    return space.geometry.has_riesz_maps
 
 
 def _requires_euclidean_or_riesz(dom, cod, opname: str) -> None:
     """Reject non-Euclidean spaces that cannot define metric adjoints."""
     # Each endpoint must be Euclidean or provide Riesz maps.
     for space, role in ((dom, "domain"), (cod, "codomain")):
-        if isinstance(space, InnerProductSpace) and (
-            space.is_euclidean or space_has_riesz_maps(space)
-        ):
+        if space_has_riesz_maps(space):
             continue
         raise TypeError(
             f"{opname} on non-Euclidean {role} {type(space).__name__} "
