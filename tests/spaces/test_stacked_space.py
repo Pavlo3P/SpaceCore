@@ -366,3 +366,20 @@ def test_dispatching_new_round_trips_through_pickle(make):
     clone = pickle.loads(pickle.dumps(space))
     assert type(clone) is type(space)
     assert clone == space
+
+
+def test_capability_guard_checks_the_converted_base():
+    # A complex ElementwiseJordanSpace becomes Euclidean once converted to a real context.
+    real = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    complex_ctx = sc.Context(sc.NumpyOps(), dtype=np.complex128)
+    stacked = sc.StackedSpace(sc.ElementwiseJordanSpace((2,), complex_ctx), 3, real)
+    assert isinstance(stacked, sc.EuclideanJordanAlgebraSpace)
+    assert stacked.base == sc.ElementwiseJordanSpace((2,), real)
+
+
+def test_capability_guard_rejects_a_base_without_the_capability():
+    from spacecore.space.concrete._stacked import _StackedEuclideanJordanAlgebraSpace
+
+    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    with pytest.raises(TypeError, match="requires base to be a EuclideanJordanAlgebraSpace"):
+        _StackedEuclideanJordanAlgebraSpace(sc.DenseVectorSpace((2,), ctx=ctx), 3)

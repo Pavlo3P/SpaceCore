@@ -318,27 +318,24 @@ class _StackedInnerProductSpace(_StackedInnerProductMixin, StackedSpace, InnerPr
     """Stacked space whose base supports an inner product."""
 
     def __init__(self, base, count, ctx=None, check_level=None):
-        base = _validate_stacked_base(base, type(self).__name__)
-        _require_base(base, InnerProductSpace, type(self).__name__)
         super().__init__(base, count, ctx, check_level=check_level)
+        _require_base(self.base, InnerProductSpace, type(self).__name__)
 
 
 class _StackedStarSpace(_StackedStarMixin, StackedSpace, StarSpace):
     """Stacked space whose base supports a star operation."""
 
     def __init__(self, base, count, ctx=None, check_level=None):
-        base = _validate_stacked_base(base, type(self).__name__)
-        _require_base(base, StarSpace, type(self).__name__)
         super().__init__(base, count, ctx, check_level=check_level)
+        _require_base(self.base, StarSpace, type(self).__name__)
 
 
 class _StackedJordanAlgebraSpace(_StackedJordanMixin, StackedSpace, JordanAlgebraSpace):
     """Stacked space whose base supports Jordan algebra operations."""
 
     def __init__(self, base, count, ctx=None, check_level=None):
-        base = _validate_stacked_base(base, type(self).__name__)
-        _require_base(base, JordanAlgebraSpace, type(self).__name__)
         super().__init__(base, count, ctx, check_level=check_level)
+        _require_base(self.base, JordanAlgebraSpace, type(self).__name__)
 
 
 class _StackedEuclideanJordanAlgebraSpace(
@@ -350,8 +347,6 @@ class _StackedEuclideanJordanAlgebraSpace(
     """Stacked space whose base supports Euclidean Jordan algebra operations."""
 
     def __init__(self, base, count, ctx=None, check_level=None):
-        base = _validate_stacked_base(base, type(self).__name__)
-        _require_base(base, EuclideanJordanAlgebraSpace, type(self).__name__)
         super().__init__(base, count, ctx, check_level=check_level)
         _require_base(self.base, EuclideanJordanAlgebraSpace, type(self).__name__)
 
