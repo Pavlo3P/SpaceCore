@@ -231,15 +231,46 @@ def mark_checked(wrapper: Any, rewrap: Callable[[Any], Any], core: Any) -> None:
 def install_public_checks(cls: type) -> None:
     """Give each public method ``cls`` overrides the checks of the checked method it replaces.
 
-    Families implement ``_*_core`` methods; one that overrides a public checked method
-    instead (and does not decorate it) still gets the base's checks. Runs from
+    Families implement ``_*_core`` methods. A class that overrides a public checked
+    method instead, without decorating it, has that override installed as its core and
+    the public name restored to the base's checked method, so internal paths (which call
+    cores) and public calls both see it. An override that calls ``super().<same name>``
+    cannot be a core (the base method would call it back), so it is re-checked in place; so is one
+    whose class also defines the core, or whose base method has no core. Runs from
     ``ContextBound.__init_subclass__``, so it covers spaces, operators and functionals.
     """
     for name, method in list(vars(cls).items()):
-        if name.startswith("_") or not inspect.isfunction(method) or getattr(method, "_spacecore_checked", False):
+        if name.startswith("_") or not inspect.isfunction(method):
+            continue
+        if getattr(method, "_spacecore_checked", False):
+            _restore_core_of_assigned(cls, name, method)
             continue
         for base in cls.__mro__[1:]:
-            rewrap = getattr(vars(base).get(name), "_spacecore_rewrap", None)
-            if rewrap is not None:
+            checked = vars(base).get(name)
+            rewrap = getattr(checked, "_spacecore_rewrap", None)
+            if rewrap is None:
+                continue
+            core = checked._spacecore_core
+            # ``super().<name>(...)`` would reach the base method, which calls the core back.
+            calls_super = "__class__" in method.__code__.co_freevars and name in method.__code__.co_names
+            # Map onto a core only where the base method really delegates to one.
+            if core is None or core in vars(cls) or calls_super or not hasattr(cls, core):
                 setattr(cls, name, rewrap(method))
-                break
+            else:
+                setattr(cls, core, method)
+                setattr(cls, name, checked)
+            break
+
+
+def _restore_core_of_assigned(cls: type, name: str, checked: Any) -> None:
+    # ``name = Base.name`` restores Base's behaviour, so it also restores Base's core.
+    core = getattr(checked, "_spacecore_core", None)
+    if core is None or core in vars(cls):
+        return
+    # The defining class, not a subclass that merely re-installed the same wrapper.
+    owner_name = checked.__qualname__.rpartition(".")[0]
+    for base in cls.__mro__[1:]:
+        if base.__qualname__ == owner_name and vars(base).get(name) is checked:
+            if core in vars(base):
+                setattr(cls, core, vars(base)[core])
+            return

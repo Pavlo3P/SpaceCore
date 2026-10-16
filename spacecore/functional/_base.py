@@ -195,57 +195,43 @@ class Functional(Mapping, Generic[Domain]):
         """Gradient over a leading batch axis; implement ``_vgrad_core`` to support it."""
         return self._vgrad_core(xs)
 
-    # Default cores. Each falls back to a public evaluator a subclass overrode (that
-    # override is itself checked), so older subclasses that write public methods work.
+    # Default cores. An undecorated public override becomes the class's core (see
+    # install_public_checks), so these defaults only derive one core from another.
 
-    def _overrides(self, name: str) -> bool:
-        return getattr(type(self), name) is not getattr(Functional, name)
+    def _has_native_derivative(self) -> bool:
+        return type(self)._derivative_core is not Functional._derivative_core
 
     def _value_core(self, x: Any, *args: Any, **kwargs: Any) -> Any:
-        """Check-free value core; the base falls back to an overridden ``value``."""
-        if not self._overrides("value"):
-            raise NotImplementedError(f"{type(self).__name__} defines neither value nor _value_core.")
-        return self.value(x, *args, **kwargs)
+        """Check-free value core."""
+        raise NotImplementedError(f"{type(self).__name__} defines neither value nor _value_core.")
 
     def _grad_core(self, x: Any, *args: Any, **kwargs: Any) -> Any:
-        """Check-free gradient core: an overridden ``grad``, else a native derivative's representer."""
-        if self._overrides("grad"):
-            return self.grad(x, *args, **kwargs)
-        if self._overrides("_derivative_core") or self._overrides("derivative_at"):
+        """Check-free gradient core; the base reads a native derivative's representer."""
+        if self._has_native_derivative():
             return self._derivative_core(x, *args, **kwargs).representer
         raise NotImplementedError(f"{type(self).__name__} does not implement grad().")
 
     def _value_and_grad_core(self, x: Any, *args: Any, **kwargs: Any) -> tuple[Any, Any]:
         """Check-free ``(value, grad)``; the base evaluates the two cores separately."""
-        if self._overrides("value_and_grad"):
-            return self.value_and_grad(x, *args, **kwargs)
         return self._value_core(x, *args, **kwargs), self._grad_core(x, *args, **kwargs)
 
     def _derivative_core(self, x: Any, *args: Any, **kwargs: Any) -> "LinearFunctional":
         """Check-free derivative; the base wraps the gradient core."""
-        if self._overrides("derivative_at"):
-            return self.derivative_at(x, *args, **kwargs)
         return self._derivative_from_gradient(self._grad_core(x, *args, **kwargs))
 
     def _value_and_derivative_core(self, x: Any, *args: Any, **kwargs: Any) -> tuple[Any, "LinearFunctional"]:
         """Check-free ``(value, derivative)``, using a native derivative when one exists."""
-        if self._overrides("value_and_derivative"):
-            return self.value_and_derivative(x, *args, **kwargs)
-        if self._overrides("_derivative_core") or self._overrides("derivative_at"):
+        if self._has_native_derivative():
             return self._value_core(x, *args, **kwargs), self._derivative_core(x, *args, **kwargs)
         value, gradient = self._value_and_grad_core(x, *args, **kwargs)
         return value, self._derivative_from_gradient(gradient)
 
     def _differential_core(self, x: Any, *args: Any, **kwargs: Any) -> Any:
         """Check-free covector; the base applies the domain's Riesz map to the gradient core."""
-        if self._overrides("differential"):
-            return self.differential(x, *args, **kwargs)
         return self.domain._riesz_core(self._grad_core(x, *args, **kwargs))
 
     def _vvalue_core(self, xs: Any) -> Any:
-        """Check-free batched-value core; the base vmaps ``value`` unless ``vvalue`` is overridden."""
-        if self._overrides("vvalue"):
-            return self.vvalue(xs)
+        """Check-free batched-value core; the base vmaps ``value``."""
         return self._vmap_vvalue(xs)
 
     def _vmap_vvalue(self, xs: Any) -> Any:
@@ -254,9 +240,7 @@ class Functional(Mapping, Generic[Domain]):
         return self.ops.vmap(self.value, in_axes=0, out_axes=0)(xs)
 
     def _vgrad_core(self, xs: Any) -> Any:
-        """Check-free batched-gradient core; the base falls back to an overridden ``vgrad``."""
-        if self._overrides("vgrad"):
-            return self.vgrad(xs)
+        """Check-free batched-gradient core."""
         raise NotImplementedError(f"{type(self).__name__} does not implement vgrad().")
 
     def __call__(self, x: Any, *args: Any, **kwargs: Any) -> Any:

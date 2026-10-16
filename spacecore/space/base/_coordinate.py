@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from abc import abstractmethod
 from math import prod
 from typing import Any, Tuple
 
@@ -109,17 +110,13 @@ class CoordinateSpace(VectorSpace):
         self.check_scalar(a)
         return self._scale_batch_core(a, x)
 
-    # Default cores. A family that overrode a public operation (older style) keeps it.
+    # Cores: families implement flatten/unflatten; the batched and pairing ones derive from them.
 
-    def _flatten_core(self, x: Any) -> DenseArray:
-        if type(self).flatten is CoordinateSpace.flatten:
-            raise NotImplementedError(f"{type(self).__name__} defines neither flatten nor _flatten_core.")
-        return self.flatten(x)
+    @abstractmethod
+    def _flatten_core(self, x: Any) -> DenseArray: ...
 
-    def _unflatten_core(self, v: DenseArray) -> Any:
-        if type(self).unflatten is CoordinateSpace.unflatten:
-            raise NotImplementedError(f"{type(self).__name__} defines neither unflatten nor _unflatten_core.")
-        return self.unflatten(v)
+    @abstractmethod
+    def _unflatten_core(self, v: DenseArray) -> Any: ...
 
     def _flatten_batch_core(self, xs: Any) -> DenseArray:
         n = int(getattr(xs, "shape", (len(xs),))[0])

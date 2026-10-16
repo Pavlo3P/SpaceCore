@@ -123,29 +123,20 @@ class LinOp(Mapping, Generic[Domain, Codomain]):
         require(self.codomain, capability, name)
 
     # Subclasses implement the check-free cores, which the checked public methods
-    # call. A subclass that overrides a public method instead gets a core that
-    # calls it back.
+    # call (an undecorated public override becomes the core; see install_public_checks).
     def _apply_core(self, x: Any) -> Any:
-        if type(self).apply is LinOp.apply:
-            raise NotImplementedError(f"{type(self).__name__} defines neither apply nor _apply_core.")
-        return self.apply(x)
+        raise NotImplementedError(f"{type(self).__name__} defines neither apply nor _apply_core.")
 
     def _rapply_core(self, y: Any) -> Any:
-        if type(self).rapply is LinOp.rapply:
-            raise NotImplementedError(f"{type(self).__name__} defines neither rapply nor _rapply_core.")
-        return self.rapply(y)
+        raise NotImplementedError(f"{type(self).__name__} defines neither rapply nor _rapply_core.")
 
     def _vapply_core(self, xs: Any) -> Any:
-        if type(self).vapply is not LinOp.vapply:
-            return self.vapply(xs)
         # Generic batching: vmap the single-element apply over the leading axis.
         self._require(_CAP_BATCH, "LinOp.vapply")
         _warn_vmap_fallback_once(self, "vapply", _leading_batch_size(self.domain, xs))
         return self.ops.vmap(self.apply, in_axes=0, out_axes=0)(xs)
 
     def _rvapply_core(self, ys: Any) -> Any:
-        if type(self).rvapply is not LinOp.rvapply:
-            return self.rvapply(ys)
         self._require(_CAP_BATCH, "LinOp.rvapply")
         _warn_vmap_fallback_once(self, "rvapply", _leading_batch_size(self.codomain, ys))
         return self.ops.vmap(self.rapply, in_axes=0, out_axes=0)(ys)

@@ -21,7 +21,7 @@ def space_has_riesz_maps(space) -> bool:
 
     # Riesz maps exist if the space overrides them or its geometry has them.
     return isinstance(space, InnerProductSpace) and (
-        type(space).riesz is not InnerProductSpace.riesz or space.geometry.has_riesz_maps
+        type(space)._riesz_core is not InnerProductSpace._riesz_core or space.geometry.has_riesz_maps
     )
 
 

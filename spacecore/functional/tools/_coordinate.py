@@ -53,8 +53,6 @@ class _CoordinateFunctional(Functional[Domain]):
 
     def _vgrad_core(self, xs: Any) -> Any:
         """The gradient core evaluated independently over a leading batch axis."""
-        if self._overrides("vgrad"):
-            return self.vgrad(xs)
         _warn_vmap_fallback_once(self, "vgrad", _leading_batch_size(self.domain, xs))
         return self.ops.vmap(self._grad_core, in_axes=0, out_axes=0)(xs)
 

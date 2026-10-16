@@ -52,7 +52,5 @@ class VectorSpace(Space):
         return self._axpy_core(a, x, y)
 
     def _axpy_core(self, a: Any, x: Any, y: Any) -> Any:
-        """Return a*x + y without membership checks (or through an overridden ``axpy``)."""
-        if type(self).axpy is not VectorSpace.axpy:
-            return self.axpy(a, x, y)
+        """Return a*x + y without membership checks."""
         return self._add_core(self._scale_core(a, x), y)
