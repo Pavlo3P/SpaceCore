@@ -4,16 +4,16 @@ from typing import TYPE_CHECKING, Any, cast
 
 from ..base import (
     CoordinateSpace,
-    EuclideanJordanAlgebraSpace,
     InnerProductSpace,
     JordanAlgebraSpace,
     Space,
     StarSpace,
 )
+from ._dispatch import build_dispatch_classes, capability_abcs
 from ._tree_space import TreeSpace
 from .._capabilities import (
     _CAP_INNER, _CAP_STAR, _CAP_JORDAN,
-    _CAP_EUCLIDEAN_JORDAN, _space_capabilities, registry_key,
+    _space_capabilities, registry_key,
 )
 from ..._checks import checked_method
 from ..._checks import CheckLevel
@@ -290,111 +290,20 @@ class _StackedJordanMixin(_StackedHostMixin):
         return self.ops.broadcast_to(base.unit(), self.shape)
 
 
-class _StackedInnerProductSpace(_StackedInnerProductMixin, StackedSpace, InnerProductSpace):
-    """Stacked space whose base supports an inner product."""
-
-    def __init__(self, base, count, ctx=None, check_level=None):
-        super().__init__(base, count, ctx, check_level=check_level)
-        _require_base(self.base, InnerProductSpace, type(self).__name__)
-
-
-class _StackedStarSpace(_StackedStarMixin, StackedSpace, StarSpace):
-    """Stacked space whose base supports a star operation."""
-
-    def __init__(self, base, count, ctx=None, check_level=None):
-        super().__init__(base, count, ctx, check_level=check_level)
-        _require_base(self.base, StarSpace, type(self).__name__)
+def _guarded_init(self, base, count, ctx=None, check_level=None):
+    """Build the stack, then require the converted base to have this subclass's capabilities."""
+    StackedSpace.__init__(self, base, count, ctx, check_level=check_level)
+    for capability in capability_abcs(type(self)._dispatch_caps):
+        _require_base(self.base, capability, type(self).__name__)
 
 
-class _StackedJordanAlgebraSpace(_StackedJordanMixin, StackedSpace, JordanAlgebraSpace):
-    """Stacked space whose base supports Jordan algebra operations."""
-
-    def __init__(self, base, count, ctx=None, check_level=None):
-        super().__init__(base, count, ctx, check_level=check_level)
-        _require_base(self.base, JordanAlgebraSpace, type(self).__name__)
-
-
-class _StackedEuclideanJordanAlgebraSpace(
-    _StackedInnerProductMixin,
-    _StackedJordanMixin,
+_STACKED_REGISTRY.update(build_dispatch_classes(
     StackedSpace,
-    EuclideanJordanAlgebraSpace,
-):
-    """Stacked space whose base supports Euclidean Jordan algebra operations."""
-
-    def __init__(self, base, count, ctx=None, check_level=None):
-        super().__init__(base, count, ctx, check_level=check_level)
-        _require_base(self.base, EuclideanJordanAlgebraSpace, type(self).__name__)
-
-
-class _StackedInnerProductStarSpace(
-    _StackedInnerProductMixin,
-    _StackedStarMixin,
-    StackedSpace,
-    InnerProductSpace,
-    StarSpace,
-):
-    """Stacked implementation for inner-product plus star capability."""
-
-
-class _StackedInnerProductJordanSpace(
-    _StackedInnerProductMixin,
-    _StackedJordanMixin,
-    StackedSpace,
-    InnerProductSpace,
-    JordanAlgebraSpace,
-):
-    """Stacked implementation for inner-product plus Jordan capability."""
-
-
-class _StackedStarJordanSpace(
-    _StackedStarMixin,
-    _StackedJordanMixin,
-    StackedSpace,
-    StarSpace,
-    JordanAlgebraSpace,
-):
-    """Stacked implementation for star plus Jordan capability."""
-
-
-class _StackedInnerProductStarJordanSpace(
-    _StackedInnerProductMixin,
-    _StackedStarMixin,
-    _StackedJordanMixin,
-    StackedSpace,
-    InnerProductSpace,
-    StarSpace,
-    JordanAlgebraSpace,
-):
-    """Stacked implementation for inner-product, star, and Jordan capability."""
-
-
-class _StackedEuclideanJordanStarSpace(
-    _StackedStarMixin,
-    _StackedEuclideanJordanAlgebraSpace,
-    StarSpace,
-):
-    """Stacked implementation for Euclidean-Jordan plus star capability."""
-
-
-_STACKED_REGISTRY.update(
-    {registry_key(_caps): _cls for _caps, _cls in {
-        frozenset(): StackedSpace,
-        frozenset({_CAP_INNER}): _StackedInnerProductSpace,
-        frozenset({_CAP_STAR}): _StackedStarSpace,
-        frozenset({_CAP_JORDAN}): _StackedJordanAlgebraSpace,
-        frozenset({_CAP_INNER, _CAP_STAR}): _StackedInnerProductStarSpace,
-        frozenset({_CAP_INNER, _CAP_JORDAN}): _StackedInnerProductJordanSpace,
-        frozenset({_CAP_STAR, _CAP_JORDAN}): _StackedStarJordanSpace,
-        frozenset({_CAP_INNER, _CAP_STAR, _CAP_JORDAN}): _StackedInnerProductStarJordanSpace,
-        frozenset(
-            {_CAP_INNER, _CAP_JORDAN, _CAP_EUCLIDEAN_JORDAN}
-        ): _StackedEuclideanJordanAlgebraSpace,
-        frozenset(
-            {_CAP_INNER, _CAP_STAR, _CAP_JORDAN, _CAP_EUCLIDEAN_JORDAN}
-        ): _StackedEuclideanJordanStarSpace,
-    }.items()}
-)
+    {_CAP_INNER: _StackedInnerProductMixin, _CAP_STAR: _StackedStarMixin, _CAP_JORDAN: _StackedJordanMixin},
+    prefix="_Stacked",
+    module_globals=globals(),
+    namespace={"__init__": _guarded_init},
+))
 
 
 __all__ = [

@@ -14,17 +14,15 @@ from ...backend import BackendOps
 from ...backend import PyTreeNode
 from ..base import (
     CoordinateSpace,
-    EuclideanJordanAlgebraSpace,
     InnerProductSpace,
     JordanAlgebraSpace,
-    StarSpace,
 )
 
 from .._capabilities import (
-    _CAP_INNER, _CAP_STAR, _CAP_JORDAN, registry_key,
-    _CAP_EUCLIDEAN_JORDAN,
+    _CAP_INNER, _CAP_STAR, _CAP_JORDAN,
 )
 
+from ._dispatch import build_dispatch_classes
 from ._tree_space import _TREE_REGISTRY, TreeSpace
 
 
@@ -227,97 +225,11 @@ class _LeafwiseJordanMixin(_LeafwiseHostMixin):
         return self._from_components(tuple(space.unit() for space in leaf_spaces))
 
 
-class TreeInnerProductSpace(_LeafwiseInnerProductMixin, TreeSpace, InnerProductSpace):
-    """TreeSpace specialization whose leaves all have inner products."""
-
-
-class _TreeStarSpace(_LeafwiseStarMixin, TreeSpace, StarSpace):
-    """TreeSpace specialization whose leaves all have star operations."""
-
-
-class _TreeJordanAlgebraSpace(_LeafwiseJordanMixin, TreeSpace, JordanAlgebraSpace):
-    """TreeSpace specialization whose leaves all have Jordan operations."""
-
-
-class _TreeEuclideanJordanAlgebraSpace(
-    _LeafwiseInnerProductMixin,
-    _LeafwiseJordanMixin,
+_TREE_REGISTRY.update(build_dispatch_classes(
     TreeSpace,
-    EuclideanJordanAlgebraSpace,
-):
-    """TreeSpace specialization whose leaves are Euclidean Jordan algebras."""
-
-
-class _TreeInnerProductStarSpace(
-    _LeafwiseInnerProductMixin,
-    _LeafwiseStarMixin,
-    TreeSpace,
-    InnerProductSpace,
-    StarSpace,
-):
-    """TreeSpace specialization with inner-product and star capabilities."""
-
-
-class _TreeInnerProductJordanSpace(
-    _LeafwiseInnerProductMixin,
-    _LeafwiseJordanMixin,
-    TreeSpace,
-    InnerProductSpace,
-    JordanAlgebraSpace,
-):
-    """TreeSpace specialization with inner-product and Jordan capabilities."""
-
-
-class _TreeStarJordanSpace(
-    _LeafwiseStarMixin,
-    _LeafwiseJordanMixin,
-    TreeSpace,
-    StarSpace,
-    JordanAlgebraSpace,
-):
-    """TreeSpace specialization with star and Jordan capabilities."""
-
-
-class _TreeInnerProductStarJordanSpace(
-    _LeafwiseInnerProductMixin,
-    _LeafwiseStarMixin,
-    _LeafwiseJordanMixin,
-    TreeSpace,
-    InnerProductSpace,
-    StarSpace,
-    JordanAlgebraSpace,
-):
-    """TreeSpace specialization with inner-product, star, and Jordan capabilities."""
-
-
-class _TreeEuclideanJordanStarSpace(
-    _LeafwiseStarMixin,
-    _TreeEuclideanJordanAlgebraSpace,
-    StarSpace,
-):
-    """TreeSpace specialization with Euclidean-Jordan and star capabilities."""
-
-
-_TREE_REGISTRY.update(
-    {registry_key(_caps): _cls for _caps, _cls in {
-        frozenset(): TreeSpace,
-        frozenset({_CAP_INNER}): TreeInnerProductSpace,
-        frozenset({_CAP_STAR}): _TreeStarSpace,
-        frozenset({_CAP_JORDAN}): _TreeJordanAlgebraSpace,
-        frozenset({_CAP_INNER, _CAP_STAR}): _TreeInnerProductStarSpace,
-        frozenset({_CAP_INNER, _CAP_JORDAN}): _TreeInnerProductJordanSpace,
-        frozenset({_CAP_STAR, _CAP_JORDAN}): _TreeStarJordanSpace,
-        frozenset({_CAP_INNER, _CAP_STAR, _CAP_JORDAN}): _TreeInnerProductStarJordanSpace,
-        frozenset(
-            {_CAP_INNER, _CAP_JORDAN, _CAP_EUCLIDEAN_JORDAN}
-        ): _TreeEuclideanJordanAlgebraSpace,
-        frozenset(
-            {_CAP_INNER, _CAP_STAR, _CAP_JORDAN, _CAP_EUCLIDEAN_JORDAN}
-        ): _TreeEuclideanJordanStarSpace,
-    }.items()}
-)
-
-# The capability-dispatch subclasses above register themselves: each derives from
-# ``TreeSpace``, so ``PyTreeNode.__init_subclass__`` fires at class creation. The
-# explicit loop this replaces existed because a *decorator* cannot reach classes
-# built through a dispatch table — inheritance can.
+    {_CAP_INNER: _LeafwiseInnerProductMixin, _CAP_STAR: _LeafwiseStarMixin, _CAP_JORDAN: _LeafwiseJordanMixin},
+    prefix="_Tree",
+    module_globals=globals(),
+))
+# The capability subclasses register as pytrees through ``PyTreeNode.__init_subclass__``.
+TreeInnerProductSpace = _TreeInnerProductSpace  # noqa: F821 - bound by build_dispatch_classes; historical public name
