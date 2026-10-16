@@ -1,39 +1,12 @@
 from __future__ import annotations
 
-from typing import Any, NamedTuple
+from typing import Any
 
 from ..linop import LinOp
 from ._utils import DEFAULT_CONVERGENCE_CHECK_INTERVAL, SpaceCoreOps, check_interval
-from ._utils import result_repr_method
+from ._utils import LinalgResult
 from ._utils import check_maxiter, is_converged, require_linop, resolve_apply, resolve_rapply
 from ._utils import safe_inverse_nonneg, should_check_iteration, threshold
-
-
-class LSQRResult(NamedTuple):
-    """
-    Result of :func:`lsqr`.
-
-    Parameters
-    ----------
-    x : array-like
-        Least-squares solution in ``A.domain``.
-    converged : bool-like
-        Whether the tolerance was met.
-    num_iters : int-like
-        Iterations executed.
-    residual_norm : scalar
-        ``norm(A x - b)``, exact or LSQR's estimate per ``residual_mode``.
-    normal_residual_norm : scalar
-        ``norm(A.H (A x - b))``, exact or estimated likewise.
-    """
-
-    x: Any
-    converged: Any
-    num_iters: Any
-    residual_norm: Any
-    normal_residual_norm: Any
-
-    __repr__ = result_repr_method(("converged", "num_iters", "residual_norm", "normal_residual_norm", "x"))
 
 
 def lsqr(
@@ -46,7 +19,7 @@ def lsqr(
     maxiter: int | None = None,
     check_every: int = DEFAULT_CONVERGENCE_CHECK_INTERVAL,
     residual_mode: str = "exact",
-) -> LSQRResult:
+) -> LinalgResult:
     r"""
     Solve :math:`\min_x \|A x - b\|` by LSQR.
 
@@ -75,8 +48,8 @@ def lsqr(
 
     Returns
     -------
-    LSQRResult
-        ``(x, converged, num_iters, residual_norm, normal_residual_norm)``.
+    LinalgResult
+        With ``normal_residual_norm`` set.
 
     Raises
     ------
@@ -226,10 +199,10 @@ def lsqr(
         body_fun,
         (x, u, v, w, alpha, beta, rho_bar, phi_bar, residual_norm, normal_residual_norm, 0),
     )
-    return LSQRResult(
+    return LinalgResult(
         x,
         is_converged(normal_residual_norm, threshold_value),
         num_iters,
         residual_norm,
-        normal_residual_norm,
+        normal_residual_norm=normal_residual_norm,
     )

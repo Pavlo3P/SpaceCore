@@ -1,36 +1,11 @@
 from __future__ import annotations
 
-from typing import Any, NamedTuple
+from typing import Any
 
 from ..linop import LinOp
 from ._lanczos import _KrylovBasis, _lanczos_basis_and_tridiag
-from ._utils import check_interval, require_hermitian_square, result_repr_method
-
-
-class ExpmMultiplyResult(NamedTuple):
-    """
-    Store the result returned by :func:`expm_multiply`.
-
-    Parameters
-    ----------
-    result : array-like
-        Vector in the domain of the input operator approximating
-        ``exp(t * A) @ v``.
-    krylov_dim : int-like
-        Actual Krylov dimension reached before breakdown or ``max_iter``.
-    residual_estimate : scalar
-        Normalized projection indicator ``abs(beta[m] * phi[m - 1])``;
-        it omits ``norm(v)`` and is not a bound on the exponential-action error.
-    converged : bool-like
-        Boolean indicating whether ``residual_estimate < tol``.
-    """
-
-    result: Any
-    krylov_dim: Any
-    residual_estimate: Any
-    converged: Any
-
-    __repr__ = result_repr_method(("converged", "krylov_dim", "residual_estimate", "result"))
+from ._utils import check_interval, require_hermitian_square
+from ._utils import LinalgResult
 
 
 def expm_multiply(
@@ -40,7 +15,7 @@ def expm_multiply(
     *,
     max_iter: int = 30,
     tol: float = 1e-10,
-) -> ExpmMultiplyResult:
+) -> LinalgResult:
     r"""
     Compute :math:`\exp(t A) v` by Lanczos projection, without forming ``A``.
 
@@ -60,9 +35,10 @@ def expm_multiply(
 
     Returns
     -------
-    ExpmMultiplyResult
-        The result vector, Krylov dimension, normalized projection indicator
-        :math:`|\beta_m \phi_{m-1}|`, and convergence flag. The approximation is
+    LinalgResult
+        ``x`` is the result vector, ``num_iters`` the Krylov dimension reached, and
+        ``residual_norm`` the normalized projection indicator
+        :math:`|\beta_m \phi_{m-1}|`. The approximation is
         ``norm(v) V_m exp(t T_m) e_1`` in a metric-orthonormal basis.
         Higham, *Functions of Matrices*, Sec. 13.2.2, Eq. (13.7).
 
@@ -124,4 +100,4 @@ def expm_multiply(
     residual_estimate = basis.betas[m] * last_coeff
     converged = residual_estimate < basis.tol
 
-    return ExpmMultiplyResult(result, m, residual_estimate, converged)
+    return LinalgResult(result, converged, m, residual_estimate)

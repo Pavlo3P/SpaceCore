@@ -53,7 +53,7 @@ class TestDominantEigenpair:
         result = sc.power_iteration(A, x0=ctx.asarray([1.0, 1.0]), tol=1e-5, maxiter=60)
 
         np.testing.assert_allclose(to_numpy(result.eigenvalue), 5.0, rtol=1e-5, atol=1e-5)
-        np.testing.assert_allclose(np.abs(to_numpy(result.eigenvector)), [0.0, 1.0], rtol=1e-4, atol=1e-4)
+        np.testing.assert_allclose(np.abs(to_numpy(result.x)), [0.0, 1.0], rtol=1e-4, atol=1e-4)
         assert bool(to_numpy(result.converged))
 
     def test_converges_for_negative_dominant_eigenvalue(self):
@@ -64,7 +64,7 @@ class TestDominantEigenpair:
         result = sc.power_iteration(A, x0=ctx.asarray([1.0, 1.0]), tol=1e-8, maxiter=60)
 
         np.testing.assert_allclose(to_numpy(result.eigenvalue), -7.0, rtol=1e-8, atol=1e-8)
-        np.testing.assert_allclose(np.abs(to_numpy(result.eigenvector)), [1.0, 0.0], atol=1e-8)
+        np.testing.assert_allclose(np.abs(to_numpy(result.x)), [1.0, 0.0], atol=1e-8)
         assert bool(to_numpy(result.converged))
 
     def test_zero_operator_does_not_produce_nan(self):
@@ -74,7 +74,7 @@ class TestDominantEigenpair:
 
         result = sc.power_iteration(A, x0=ctx.asarray([1.0, 1.0]), tol=1e-8, maxiter=10)
 
-        assert np.all(np.isfinite(to_numpy(result.eigenvector)))
+        assert np.all(np.isfinite(to_numpy(result.x)))
         np.testing.assert_allclose(to_numpy(result.eigenvalue), 0.0, atol=1e-12)
         np.testing.assert_allclose(to_numpy(result.residual_norm), 0.0, atol=1e-12)
         assert bool(to_numpy(result.converged))
@@ -94,12 +94,12 @@ class TestDominantEigenpair:
         first = sc.power_iteration(operator, x0=x0, tol=1e-10, maxiter=100)
         second = sc.power_iteration(operator, x0=x0, tol=1e-10, maxiter=100)
         expected = np.linalg.eigvalsh(matrix)[-1]
-        residual = operator.apply(first.eigenvector) - first.eigenvalue * first.eigenvector
+        residual = operator.apply(first.x) - first.eigenvalue * first.x
 
         np.testing.assert_allclose(to_numpy(first.eigenvalue), expected, rtol=1e-9, atol=1e-9)
         np.testing.assert_allclose(to_numpy(space.norm(residual)), 0.0, atol=1e-9)
         np.testing.assert_allclose(to_numpy(first.eigenvalue), to_numpy(second.eigenvalue))
-        np.testing.assert_allclose(to_numpy(first.eigenvector), to_numpy(second.eigenvector))
+        np.testing.assert_allclose(to_numpy(first.x), to_numpy(second.x))
         assert int(to_numpy(first.num_iters)) == int(to_numpy(second.num_iters))
         assert bool(to_numpy(first.converged))
 
@@ -150,9 +150,9 @@ class TestWeightedGeometry:
         x0 = ctx.asarray([1.0, 0.25, -0.5])
 
         result = sc.power_iteration(A, x0=x0, tol=1e-10, maxiter=80)
-        Ax = A.apply(result.eigenvector)
-        rayleigh = space.inner(result.eigenvector, Ax) / space.inner(result.eigenvector, result.eigenvector)
-        residual = space.add(Ax, space.scale(-result.eigenvalue, result.eigenvector))
+        Ax = A.apply(result.x)
+        rayleigh = space.inner(result.x, Ax) / space.inner(result.x, result.x)
+        residual = space.add(Ax, space.scale(-result.eigenvalue, result.x))
         expected = max(np.linalg.eigvals(to_numpy(matrix)).real)
 
         np.testing.assert_allclose(to_numpy(result.eigenvalue), to_numpy(rayleigh), rtol=1e-10, atol=1e-10)
@@ -177,7 +177,7 @@ class TestQuadraticForm:
 
         np.testing.assert_allclose(to_numpy(q_result.eigenvalue), to_numpy(op_result.eigenvalue))
         np.testing.assert_allclose(
-            np.abs(to_numpy(q_result.eigenvector)), np.abs(to_numpy(op_result.eigenvector)), rtol=1e-6, atol=1e-6
+            np.abs(to_numpy(q_result.x)), np.abs(to_numpy(op_result.x)), rtol=1e-6, atol=1e-6
         )
 
     def test_uses_fast_scalar_diagnostics_when_available(self):
@@ -297,7 +297,7 @@ class TestDispatch:
         monkeypatch.setattr(power_mod, "_power_iteration_core", fake_core)
         result = power_mod.power_iteration(q, x0=x0, maxiter=1)
 
-        assert result.eigenvector is x0
+        assert result.x is x0
         action = captured["action"]
         assert isinstance(action, power_mod._SelfAdjointAction)
         assert action.domain == q.domain
@@ -309,7 +309,7 @@ class TestDispatch:
 
     def test_core_has_no_dispatch_logic(self):
         source = inspect.getsource(power_mod._power_iteration_core)
-        for token in ("isinstance", "hasattr", "getattr", "_SelfAdjointAction(", "PowerIterationResult("):
+        for token in ("isinstance", "hasattr", "getattr", "_SelfAdjointAction(", "LinalgResult("):
             assert token not in source
 
     def test_core_has_no_check_every_argument(self):

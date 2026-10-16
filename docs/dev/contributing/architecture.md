@@ -47,7 +47,6 @@ This map lists public concrete class-like exports a contributor is likely to enc
 - `BackendFamily` — backend-family identifier used by contexts and backend detection.
 - `BlockDiagonalLinOp` — product-space operator that applies component operators independently on each block.
 - `BlockMatrixLinOp` — rectangular block operator `y_i = sum_j A_ij x_j`; one column stacks a space into a tree, one row sums a tree into a space.
-- `CGResult` — result tuple returned by conjugate-gradient solves.
 - `ComposedFunctional` — functional representing lazy composition of a functional with a linear operator.
 - `ComposedLinOp` — lazy composition `A @ B` of compatible linear operators.
 - `Context` — execution context containing backend operations, default dtype, and check policy.
@@ -61,19 +60,16 @@ This map lists public concrete class-like exports a contributor is likely to enc
 - `ElementwiseJordanSpace` — dense elementwise Jordan algebra space.
 - `EuclideanElementwiseJordanSpace` — real Euclidean elementwise Jordan algebra space.
 - `EuclideanInnerProduct` — Euclidean inner-product geometry with identity Riesz maps.
-- `ExpmMultiplyResult` — result tuple returned by exponential-action routines.
 - `HermitianCheck` — membership check for Hermitian matrix structure.
 - `HermitianSpace` — dense Hermitian matrix space with spectral Jordan operations.
 - `IdentityLinOp` — identity linear operator on one space.
 - `InnerProductFunctional` — linear functional represented by an inner product against a representer.
 - `JaxOps` — optional JAX backend operations class, exported when JAX is installed.
-- `LanczosResult` — result tuple returned by Lanczos routines.
+- `LinalgResult` — result tuple returned by every linalg solver (`cg`, `lsqr`, `power_iteration`, `lanczos_smallest`, `expm_multiply`).
 - `LinOpQuadraticForm` — quadratic functional represented by a linear operator.
-- `LSQRResult` — result tuple returned by LSQR solves.
 - `MatrixFreeLinearFunctional` — linear functional defined by a user-supplied callable and representer behavior.
 - `MatrixFreeLinOp` — linear operator defined by user-supplied forward and metric-adjoint callables.
 - `NumpyOps` — NumPy/SciPy backend operations class and the baseline backend implementation.
-- `PowerIterationResult` — result tuple returned by power iteration.
 - `TreeElement` — optional explicit binding of ordered leaves to a tree space.
 - `TreeLinOp` — base class for operators with tree-structured domains or codomains.
 - `TreeSpace` — finite direct-product coordinate space represented by an optree.

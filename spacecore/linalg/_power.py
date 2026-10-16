@@ -8,36 +8,10 @@ from ..functional import QuadraticForm
 from ..linop import LinOp
 from ..space import Space
 from ._utils import SpaceCoreOps
-from ._utils import normalize, require_hermitian_square, result_repr_method
+from ._utils import LinalgResult
+from ._utils import normalize, require_hermitian_square
 from ._utils import check_maxiter, default_initial_vector, is_converged
 from ._utils import resolve_apply
-
-
-class PowerIterationResult(NamedTuple):
-    """
-    Store the result returned by :func:`power_iteration`.
-
-    Parameters
-    ----------
-    eigenvalue : scalar
-        Rayleigh-quotient estimate of the dominant eigenvalue.
-    eigenvector : array-like
-        Normalized eigenvector estimate in the operator domain.
-    converged : bool-like
-        Whether the residual norm satisfied ``tol``.
-    num_iters : int-like
-        Number of power iterations executed.
-    residual_norm : scalar
-        Norm of ``A x - eigenvalue * x``.
-    """
-
-    eigenvalue: Any
-    eigenvector: Any
-    converged: Any
-    num_iters: Any
-    residual_norm: Any
-
-    __repr__ = result_repr_method(("converged", "num_iters", "eigenvalue", "residual_norm", "eigenvector"))
 
 
 class _SelfAdjointAction(NamedTuple):
@@ -105,7 +79,7 @@ def power_iteration(
     x0: Any | None = None,
     tol: float = 1e-6,
     maxiter: int | None = None,
-) -> PowerIterationResult:
+) -> LinalgResult:
     r"""
     Estimate the dominant eigenpair (largest in absolute value) of a self-adjoint action.
 
@@ -124,8 +98,8 @@ def power_iteration(
 
     Returns
     -------
-    PowerIterationResult
-        ``(eigenvalue, eigenvector, converged, num_iters, residual_norm)``.
+    LinalgResult
+        ``x`` is the eigenvector estimate; ``eigenvalue`` its Rayleigh quotient.
 
     Raises
     ------
@@ -173,7 +147,8 @@ def power_iteration(
     # Start from normalized ones unless x0 is given.
     x = default_initial_vector(cast(Any, action)) if x0 is None else x0
     action.domain.check_member(x)
-    return PowerIterationResult(*_power_iteration_core(action, x, tol, maxiter))
+    eigenvalue, eigenvector, converged, num_iters, residual_norm = _power_iteration_core(action, x, tol, maxiter)
+    return LinalgResult(eigenvector, converged, num_iters, residual_norm, eigenvalue=eigenvalue)
 
 
 def _power_iteration_core(

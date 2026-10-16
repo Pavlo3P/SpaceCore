@@ -7,36 +7,10 @@ from ..linop import LinOp
 from ..linop._metric import _VECTOR_SPACES
 from ..types import DenseArray
 from ._utils import DEFAULT_CONVERGENCE_CHECK_INTERVAL, SpaceCoreOps, check_interval
-from ._utils import require_hermitian_square, result_repr_method
+from ._utils import LinalgResult
+from ._utils import require_hermitian_square
 from ._utils import resolve_apply, safe_inverse_nonneg
 from ._utils import should_check_iteration
-
-
-class LanczosResult(NamedTuple):
-    """
-    Store the result returned by :func:`lanczos_smallest`.
-
-    Parameters
-    ----------
-    eigenvalue : scalar
-        Ritz approximation to the smallest eigenvalue.
-    eigenvector : array-like
-        Ritz vector in ``A.domain``.
-    residual_norm : scalar
-        Standard Ritz residual estimate.
-    krylov_dim : int-like
-        Krylov dimension reached before breakdown or ``max_iter``.
-    converged : bool-like
-        Whether ``residual_norm < tol``.
-    """
-
-    eigenvalue: Any
-    eigenvector: Any
-    residual_norm: Any
-    krylov_dim: Any
-    converged: Any
-
-    __repr__ = result_repr_method()
 
 
 class _LanczosBasisResult(NamedTuple):
@@ -243,7 +217,7 @@ def lanczos_smallest(
     max_iter: int = 100,
     tol: float = 1e-6,
     check_every: int = DEFAULT_CONVERGENCE_CHECK_INTERVAL,
-) -> LanczosResult:
+) -> LinalgResult:
     r"""
     Approximate the smallest eigenpair of a Hermitian operator by Lanczos.
 
@@ -266,8 +240,9 @@ def lanczos_smallest(
 
     Returns
     -------
-    LanczosResult
-        ``(eigenvalue, eigenvector, residual_norm, krylov_dim, converged)``.
+    LinalgResult
+        ``x`` is the Ritz vector, ``eigenvalue`` the Ritz value, ``num_iters`` the
+        Krylov dimension reached.
 
     Raises
     ------
@@ -351,4 +326,4 @@ def lanczos_smallest(
     den = A.domain.real_inner(x, x)
     lam = ops.where(den > 0, num * safe_inverse_nonneg(ops, den), ops.asarray(float("nan"), dtype=real_dtype))
 
-    return LanczosResult(lam, x, residual_norm, m, converged)
+    return LinalgResult(x, converged, m, residual_norm, eigenvalue=lam)

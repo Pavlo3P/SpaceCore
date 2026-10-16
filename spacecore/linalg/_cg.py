@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from typing import Any, NamedTuple
+from typing import Any
 
 from ..linop import LinOp
 from ._utils import DEFAULT_CONVERGENCE_CHECK_INTERVAL, check_interval, check_maxiter
-from ._utils import require_hermitian_square, result_repr_method
+from ._utils import LinalgResult
+from ._utils import require_hermitian_square
 from ._utils import SpaceCoreOps, is_converged, resolve_apply
 from ._utils import (
     require_strict_cg_preconditions,
@@ -12,30 +13,6 @@ from ._utils import (
     should_check_iteration,
     threshold,
 )
-
-
-class CGResult(NamedTuple):
-    """
-    Store the result returned by :func:`cg`.
-
-    Parameters
-    ----------
-    x : array-like
-        Approximate solution in ``A.domain``.
-    converged : bool-like
-        Whether the final residual norm satisfied the requested tolerance.
-    num_iters : int-like
-        Number of conjugate-gradient iterations executed.
-    residual_norm : scalar
-        Norm of the final residual in ``A.codomain``.
-    """
-
-    x: Any
-    converged: Any
-    num_iters: Any
-    residual_norm: Any
-
-    __repr__ = result_repr_method(("converged", "num_iters", "residual_norm", "x"))
 
 
 def cg(
@@ -48,7 +25,7 @@ def cg(
     maxiter: int | None = None,
     check_every: int = DEFAULT_CONVERGENCE_CHECK_INTERVAL,
     preconditioner: LinOp | None = None,
-) -> CGResult:
+) -> LinalgResult:
     r"""
     Solve :math:`A x = b` by conjugate gradients.
 
@@ -79,7 +56,7 @@ def cg(
 
     Returns
     -------
-    CGResult
+    LinalgResult
         ``(x, converged, num_iters, residual_norm)``.
 
     Raises
@@ -205,4 +182,4 @@ def cg(
         body_fun,
         (x, r, p, rs, residual_norm, 0, A.ops.asarray(True)),
     )
-    return CGResult(x, is_converged(residual_norm, threshold_value), num_iters, residual_norm)
+    return LinalgResult(x, is_converged(residual_norm, threshold_value), num_iters, residual_norm)

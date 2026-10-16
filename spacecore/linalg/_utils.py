@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from math import prod
-from typing import Any
+from typing import Any, NamedTuple
 
 from ..linop import LinOp
 from .._repr import summarize_value
@@ -226,13 +226,43 @@ def result_repr(name: str, fields: dict[str, Any]) -> str:
     return f"{name}({body})"
 
 
+class LinalgResult(NamedTuple):
+    """
+    Result of every :mod:`spacecore.linalg` solver.
 
-def result_repr_method(keys: tuple[str, ...] | None = None):
-    """Return a ``__repr__`` for a result NamedTuple that summarizes ``keys`` (all fields by default)."""
+    Fields a solver does not produce are ``None``.
 
-    def __repr__(self: Any) -> str:
-        """Return a compact summary without printing full arrays."""
-        fields = self._asdict() if keys is None else {k: getattr(self, k) for k in keys}
+    Parameters
+    ----------
+    x : array-like
+        The computed element: the solution (:func:`cg`, :func:`lsqr`), the eigenvector
+        estimate (:func:`power_iteration`, :func:`lanczos_smallest`), or the action
+        ``exp(t * A) @ v`` (:func:`expm_multiply`).
+    converged : bool-like
+        Whether the solver's stopping test was met.
+    num_iters : int-like
+        Iterations executed; for the Krylov methods :func:`lanczos_smallest` and
+        :func:`expm_multiply`, the Krylov dimension reached.
+    residual_norm : scalar
+        The solver's residual measure: ``norm(b - A x)`` for :func:`cg` and :func:`lsqr`
+        (exact or estimated per ``residual_mode``), ``norm(A x - eigenvalue x)`` for
+        :func:`power_iteration`, the Ritz residual estimate for :func:`lanczos_smallest`,
+        and for :func:`expm_multiply` the projection indicator ``abs(beta[m] phi[m-1])``,
+        which omits ``norm(v)`` and does not bound the error.
+    eigenvalue : scalar or None
+        Eigenvalue estimate (:func:`power_iteration`, :func:`lanczos_smallest`).
+    normal_residual_norm : scalar or None
+        ``norm(A.H (A x - b))`` (:func:`lsqr`).
+    """
+
+    x: Any
+    converged: Any
+    num_iters: Any
+    residual_norm: Any
+    eigenvalue: Any = None
+    normal_residual_norm: Any = None
+
+    def __repr__(self) -> str:
+        """Summarize the fields this solver produced, without printing full arrays."""
+        fields = {k: v for k, v in self._asdict().items() if v is not None}
         return result_repr(type(self).__name__, fields)
-
-    return __repr__

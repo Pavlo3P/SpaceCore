@@ -58,11 +58,7 @@ from .functional import (
 from .mapping import Mapping
 from .sets import Set, NonnegativeOrthant
 from .linalg import (
-    CGResult,
-    ExpmMultiplyResult,
-    LanczosResult,
-    LSQRResult,
-    PowerIterationResult,
+    LinalgResult,
     cg,
     expm_multiply,
     lanczos_smallest,
@@ -180,11 +176,7 @@ __all__ = [
     "DenseElement",
     "Element",
     "LowRankElement",
-    "CGResult",
-    "ExpmMultiplyResult",
-    "LanczosResult",
-    "LSQRResult",
-    "PowerIterationResult",
+    "LinalgResult",
     "cg",
     "expm_multiply",
     "lanczos_smallest",

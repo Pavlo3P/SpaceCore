@@ -108,28 +108,28 @@ def test_native_elements_match_dense_truth_and_jit(backend_name, dtype, complex_
         runs.append(jax.jit(solve)(v))
     expected_eigenvalue = np.linalg.eigvalsh(symmetric / np.sqrt(weights[:, None] * weights[None, :]))[0]
     for eigen, exponential in runs:
-        assert isinstance(eigen.eigenvector, Pair)
-        assert isinstance(exponential.result, Pair)
-        x = as_numpy(eigen.eigenvector)
+        assert isinstance(eigen.x, Pair)
+        assert isinstance(exponential.x, Pair)
+        x = as_numpy(eigen.x)
         np.testing.assert_allclose(to_numpy(eigen.eigenvalue), expected_eigenvalue, atol=2e-5)
         np.testing.assert_allclose(matrix @ x, expected_eigenvalue * x, atol=2e-5)
         np.testing.assert_allclose(np.vdot(x, weights * x), 1, atol=2e-5)
-        np.testing.assert_allclose(as_numpy(exponential.result), scipy.linalg.expm(time * matrix) @ original, atol=2e-5)
+        np.testing.assert_allclose(as_numpy(exponential.x), scipy.linalg.expm(time * matrix) @ original, atol=2e-5)
         assert bool(to_numpy(eigen.converged))
-        assert int(to_numpy(eigen.krylov_dim)) == 3
+        assert int(to_numpy(eigen.num_iters)) == 3
     np.testing.assert_array_equal(as_numpy(v), original)
 
     # Zero handling must also work with an opaque element and under tracing.
     with pytest.raises(ValueError, match="nonzero"):
         sc.lanczos_smallest(A, X.zeros(), max_iter=4)
     zero = sc.expm_multiply(A, X.zeros(), max_iter=4)
-    np.testing.assert_array_equal(as_numpy(zero.result), np.zeros(3))
-    assert int(to_numpy(zero.krylov_dim)) == 0
+    np.testing.assert_array_equal(as_numpy(zero.x), np.zeros(3))
+    assert int(to_numpy(zero.num_iters)) == 0
     if backend_name == "jax":
         eigen, exponential = jax.jit(solve)(X.zeros())
         assert np.isnan(to_numpy(eigen.eigenvalue))
         assert not bool(to_numpy(eigen.converged))
-        np.testing.assert_array_equal(as_numpy(exponential.result), np.zeros(3))
+        np.testing.assert_array_equal(as_numpy(exponential.x), np.zeros(3))
 
 
 @pytest.mark.parametrize("backend_name,dtype", numpy_jax_params())
@@ -147,9 +147,9 @@ def test_dense_matrix_elements_keep_shape(backend_name, dtype):
         import jax
         solve = jax.jit(solve)
     eigen, exponential = solve(v)
-    assert eigen.eigenvector.shape == exponential.result.shape == (2, 2)
+    assert eigen.x.shape == exponential.x.shape == (2, 2)
     np.testing.assert_allclose(to_numpy(eigen.eigenvalue), 1., atol=2e-5)
-    np.testing.assert_allclose(to_numpy(exponential.result), np.exp(-.2 * to_numpy(diagonal)) * to_numpy(v), atol=2e-5)
+    np.testing.assert_allclose(to_numpy(exponential.x), np.exp(-.2 * to_numpy(diagonal)) * to_numpy(v), atol=2e-5)
 
 
 def test_zero_exponential_does_not_apply_operator():
@@ -161,7 +161,7 @@ def test_zero_exponential_does_not_apply_operator():
 
     A = sc.MatrixFreeLinOp(forbidden, forbidden, X, X, ctx, euclidean_adjoint=False)
     result = sc.expm_multiply(A, X.zeros())
-    np.testing.assert_array_equal(as_numpy(result.result), np.zeros(3))
-    assert result.krylov_dim == 0
-    assert result.residual_estimate == 0
+    np.testing.assert_array_equal(as_numpy(result.x), np.zeros(3))
+    assert result.num_iters == 0
+    assert result.residual_norm == 0
     assert result.converged

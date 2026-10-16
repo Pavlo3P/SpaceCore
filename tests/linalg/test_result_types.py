@@ -1,12 +1,9 @@
-"""Tests for the linalg result ``NamedTuple`` types.
+"""Tests for :class:`spacecore.LinalgResult`, the one result type of every linalg solver.
 
-Checklist section 8, Result types:
-
-* ``CGResult``, ``LSQRResult``, ``LanczosResult``, ``PowerIterationResult`` and
-  ``ExpmMultiplyResult`` expose their documented fields by name and position.
-* ``__repr__`` is compact: it names the type and its scalar fields but
-  summarizes array fields as ``<array shape=...>`` rather than dumping the full
-  vector / solution.
+* Fields are reachable by name and position; solver-specific fields default to ``None``.
+* ``__repr__`` is compact: it lists only the fields that are set and summarizes array
+  fields as ``<array shape=...>`` rather than dumping them.
+* Every solver returns it.
 """
 from __future__ import annotations
 
@@ -15,103 +12,40 @@ import numpy as np
 import spacecore as sc
 
 
-# ===========================================================================
-# CGResult
-# ===========================================================================
-class TestCGResult:
-    def test_fields_by_name_and_position(self):
-        x = np.array([1.0, 2.0, 3.0])
-        r = sc.CGResult(x, True, 4, 1e-7)
-        assert r.x is x
-        assert r.converged is True
-        assert r.num_iters == 4
-        assert r.residual_norm == 1e-7
-        assert tuple(r) == (x, True, 4, 1e-7)
-
-    def test_repr_is_compact(self):
-        r = sc.CGResult(np.zeros(100), True, 4, 1e-7)
-        text = repr(r)
-        assert text.startswith("CGResult(")
-        for field in ("converged", "num_iters", "residual_norm", "x"):
-            assert field in text
-        assert "x=<array shape=(100,)" in text
-        assert "0.0, 0.0" not in text  # full array not dumped
+def test_fields_by_name_and_position():
+    x = np.array([1.0, 2.0, 3.0])
+    r = sc.LinalgResult(x, True, 4, 1e-7)
+    assert r.x is x
+    assert (r.converged, r.num_iters, r.residual_norm) == (True, 4, 1e-7)
+    assert r.eigenvalue is None and r.normal_residual_norm is None
+    assert tuple(r) == (x, True, 4, 1e-7, None, None)
 
 
-# ===========================================================================
-# LSQRResult
-# ===========================================================================
-class TestLSQRResult:
-    def test_fields(self):
-        x = np.array([1.0, 2.0])
-        r = sc.LSQRResult(x, False, 9, 0.5, 0.25)
-        assert r.x is x
-        assert r.converged is False
-        assert r.num_iters == 9
-        assert r.residual_norm == 0.5
-        assert r.normal_residual_norm == 0.25
-
-    def test_repr_lists_both_residual_norms(self):
-        text = repr(sc.LSQRResult(np.zeros(50), True, 3, 0.5, 0.25))
-        assert text.startswith("LSQRResult(")
-        assert "residual_norm" in text and "normal_residual_norm" in text
-        assert "x=<array shape=(50,)" in text
+def test_repr_lists_only_set_fields_and_summarizes_arrays():
+    text = repr(sc.LinalgResult(np.zeros(100), True, 4, 1e-7, eigenvalue=2.0))
+    assert text.startswith("LinalgResult(")
+    for field in ("x", "converged", "num_iters", "residual_norm", "eigenvalue"):
+        assert field in text
+    assert "normal_residual_norm" not in text
+    assert "x=<array shape=(100,)" in text
+    assert "0.0, 0.0" not in text  # full array not dumped
 
 
-# ===========================================================================
-# LanczosResult
-# ===========================================================================
-class TestLanczosResult:
-    def test_fields(self):
-        vec = np.array([1.0, 0.0])
-        r = sc.LanczosResult(2.0, vec, 1e-9, 2, True)
-        assert r.eigenvalue == 2.0
-        assert r.eigenvector is vec
-        assert r.residual_norm == 1e-9
-        assert r.krylov_dim == 2
-        assert r.converged is True
-
-    def test_repr_summarizes_eigenvector(self):
-        text = repr(sc.LanczosResult(2.0, np.zeros(64), 1e-9, 2, True))
-        assert text.startswith("LanczosResult(")
-        assert "eigenvalue" in text and "krylov_dim" in text
-        assert "eigenvector=<array shape=(64,)" in text
-
-
-# ===========================================================================
-# PowerIterationResult
-# ===========================================================================
-class TestPowerIterationResult:
-    def test_fields(self):
-        vec = np.array([0.0, 1.0])
-        r = sc.PowerIterationResult(5.0, vec, True, 12, 1e-8)
-        assert r.eigenvalue == 5.0
-        assert r.eigenvector is vec
-        assert r.converged is True
-        assert r.num_iters == 12
-        assert r.residual_norm == 1e-8
-
-    def test_repr_summarizes_eigenvector(self):
-        text = repr(sc.PowerIterationResult(5.0, np.zeros(32), True, 12, 1e-8))
-        assert text.startswith("PowerIterationResult(")
-        assert "eigenvalue" in text and "num_iters" in text
-        assert "eigenvector=<array shape=(32,)" in text
-
-
-# ===========================================================================
-# ExpmMultiplyResult
-# ===========================================================================
-class TestExpmMultiplyResult:
-    def test_fields(self):
-        vec = np.array([1.0, 2.0])
-        r = sc.ExpmMultiplyResult(vec, 3, 1e-11, True)
-        assert r.result is vec
-        assert r.krylov_dim == 3
-        assert r.residual_estimate == 1e-11
-        assert r.converged is True
-
-    def test_repr_summarizes_result_vector(self):
-        text = repr(sc.ExpmMultiplyResult(np.zeros(16), 3, 1e-11, True))
-        assert text.startswith("ExpmMultiplyResult(")
-        assert "krylov_dim" in text and "residual_estimate" in text
-        assert "result=<array shape=(16,)" in text
+def test_every_solver_returns_linalg_result():
+    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    V = sc.DenseVectorSpace((3,), ctx=ctx)
+    A = sc.DenseLinOp(ctx.asarray(np.diag([1.0, 2.0, 3.0])), V, V, ctx)
+    b = ctx.asarray([1.0, 1.0, 1.0])
+    results = {
+        "cg": sc.cg(A, b),
+        "lsqr": sc.lsqr(A, b),
+        "power_iteration": sc.power_iteration(A),
+        "lanczos_smallest": sc.lanczos_smallest(A, b, max_iter=3),
+        "expm_multiply": sc.expm_multiply(A, b, max_iter=3),
+    }
+    for name, r in results.items():
+        assert type(r) is sc.LinalgResult, name
+    assert results["lsqr"].normal_residual_norm is not None
+    assert results["power_iteration"].eigenvalue is not None
+    assert results["lanczos_smallest"].eigenvalue is not None
+    assert results["cg"].eigenvalue is None and results["expm_multiply"].eigenvalue is None

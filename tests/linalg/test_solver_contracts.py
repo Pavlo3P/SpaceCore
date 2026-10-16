@@ -96,8 +96,8 @@ def test_solver_vector_and_scalar_workspace_dtypes_follow_stage_one_policy(dtype
     vector_results = (
         cg_result.x,
         lsqr_result.x,
-        power_result.eigenvector,
-        lanczos_result.eigenvector,
+        power_result.x,
+        lanczos_result.x,
     )
     scalar_results = (
         cg_result.residual_norm,

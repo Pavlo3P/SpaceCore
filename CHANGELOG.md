@@ -7,6 +7,14 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- Every linalg solver returns one `LinalgResult(x, converged, num_iters, residual_norm,
+  eigenvalue=None, normal_residual_norm=None)`, replacing `CGResult`, `LSQRResult`,
+  `PowerIterationResult`, `LanczosResult` and `ExpmMultiplyResult`. Renamed fields:
+  `eigenvector` and `result` are `x`, `krylov_dim` is `num_iters`, and
+  `residual_estimate` is `residual_norm`.
+
 ### Added
 
 - `set_traced_check_level` / `get_traced_check_level`: a process-wide cap on check
