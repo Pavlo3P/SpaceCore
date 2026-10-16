@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any, ClassVar
 
-from ..._checks import CheckLevel, check_level_at_least, effective_check_level, normalize_check_level
+from ..._checks import CheckLevel, effective_check_level, normalize_check_level
 
 
 class SpaceValidationError(ValueError, TypeError):
@@ -288,9 +288,8 @@ def _run_checks(space: Any, x: Any, *, allow_leading: bool) -> None:
     # Run every check this level includes, raising on the first failure.
     level = normalize_check_level(getattr(space, "check_level", "standard"))
     level = effective_check_level(level, getattr(space, "ops", None))
-    for check in space.member_checks():
-        if not check_level_at_least(level, check.minimum_level):
-            continue
+    # The per-level cached check list; raise on the first failure.
+    for check in space._checks_for_level(level):
         if not check.validate(space, x, allow_leading=allow_leading):
             raise SpaceValidationError(
                 check.validation_message(space, x, allow_leading=allow_leading)

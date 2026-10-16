@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from itertools import accumulate, pairwise
 from math import prod
-from typing import Any, Sequence
+from typing import Any, Callable, Sequence
 
 import optree
 
@@ -19,10 +19,6 @@ from ..base import (
     Space,
 )
 from ..checks import SpaceCheck, _run_checks
-from ._dense_vector import (
-    EuclideanElementwiseJordanSpace,
-    _validate_euclidean_elementwise_jordan,
-)
 
 from .._capabilities import (
     CapabilitySet, registry_key,
@@ -56,10 +52,7 @@ def _validate_leaf_spaces(
 
 def _tree_capabilities(spaces: Sequence[Space]) -> CapabilitySet:
     """Return capabilities shared by every tree leaf."""
-    # A capability is kept only if every leaf has it.
-    for space in spaces:
-        if isinstance(space, EuclideanElementwiseJordanSpace):
-            _validate_euclidean_elementwise_jordan(space, space.geometry)
+    # A capability is kept only if every leaf has it. Leaf validity was checked by each leaf's __init__.
     return frozenset.intersection(*map(_space_capabilities, spaces))
 
 
@@ -150,19 +143,19 @@ class _TreeStructureCheck(SpaceCheck):
     name = "tree_structure"
     minimum_level = "cheap"
 
-    def is_valid(self, space: "TreeSpace", x: Any) -> bool:
-        try:
-            space.flatten_tree(x)
-        except Exception:
-            return False
-        return True
-
-    def error_message(self, space: "TreeSpace", x: Any) -> str:
+    def _failure(self, space: "TreeSpace", x: Any) -> str | None:
         try:
             space.flatten_tree(x)
         except Exception as exc:
             return str(exc)
-        return "Invalid TreeSpace structure."
+        return None
+
+    def is_valid(self, space: "TreeSpace", x: Any) -> bool:
+        return self._failure(space, x) is None
+
+    def error_message(self, space: "TreeSpace", x: Any) -> str:
+        failure = self._failure(space, x)
+        return "Invalid TreeSpace structure." if failure is None else failure
 
 
 class _TreeLeafCheck(SpaceCheck):
@@ -174,26 +167,8 @@ class _TreeLeafCheck(SpaceCheck):
     def is_valid(self, space: "TreeSpace", x: Any) -> bool:
         return self.validate(space, x, allow_leading=False)
 
-    def validate(self, space: "TreeSpace", x: Any, *, allow_leading: bool) -> bool:
-        # Every leaf must pass its own leaf space's checks.
-        try:
-            leaves = space._components(x)
-        except Exception:
-            return False
-        for leaf_space, leaf in zip(space.leaf_spaces, leaves):
-            try:
-                _run_checks(leaf_space, leaf, allow_leading=allow_leading)
-            except Exception:
-                return False
-        return True
-
-    def error_message(self, space: "TreeSpace", x: Any) -> str:
-        return self.validation_message(space, x, allow_leading=False)
-
-    def validation_message(
-        self, space: "TreeSpace", x: Any, *, allow_leading: bool
-    ) -> str:
-        # Report the first failing leaf by its path.
+    def _failure(self, space: "TreeSpace", x: Any, allow_leading: bool) -> str | None:
+        # Every leaf must pass its own leaf space's checks; report the first failure by its path.
         try:
             leaves = space._components(x)
         except Exception as exc:
@@ -202,11 +177,18 @@ class _TreeLeafCheck(SpaceCheck):
             try:
                 _run_checks(leaf_space, leaf, allow_leading=allow_leading)
             except Exception as exc:
-                return (
-                    f"Invalid leaf at {_format_path(path)} for "
-                    f"{type(leaf_space).__name__}: {exc}"
-                )
-        return "Invalid TreeSpace leaf."
+                return f"Invalid leaf at {_format_path(path)} for {type(leaf_space).__name__}: {exc}"
+        return None
+
+    def validate(self, space: "TreeSpace", x: Any, *, allow_leading: bool) -> bool:
+        return self._failure(space, x, allow_leading) is None
+
+    def error_message(self, space: "TreeSpace", x: Any) -> str:
+        return self.validation_message(space, x, allow_leading=False)
+
+    def validation_message(self, space: "TreeSpace", x: Any, *, allow_leading: bool) -> str:
+        failure = self._failure(space, x, allow_leading)
+        return "Invalid TreeSpace leaf." if failure is None else failure
 
 
 class TreeSpace(PyTreeNode, CoordinateSpace):
@@ -377,8 +359,6 @@ class TreeSpace(PyTreeNode, CoordinateSpace):
             raise TypeError(
                 f"TreeSpace structure mismatch: expected {self.treedef}, got {treespec}."
             )
-        if len(leaves) != self.arity:
-            raise ValueError(f"TreeSpace expected {self.arity} leaves, got {len(leaves)}.")
         return tuple(leaves)
 
     def unflatten_tree(self, leaves: Sequence[Any]) -> Any:
@@ -415,46 +395,25 @@ class TreeSpace(PyTreeNode, CoordinateSpace):
             parts.append(ones() if callable(ones) else self.ops.ones(space.shape, dtype=self.dtype))
         return self._from_components(tuple(parts))
 
+    def _leafwise(self, fn: Callable[..., Any], *xs: Any) -> tuple[Any, ...]:
+        """Return ``fn(leaf_space, leaf_of_x, leaf_of_y, ...)`` for each leaf, in leaf order."""
+        return tuple(map(fn, self.leaf_spaces, *map(self._components, xs)))
+
     def _add_core(self, x: Any, y: Any) -> Any:
         """Return the componentwise sum."""
-        # Leafwise: each leaf space does its own operation.
-        return self._from_components(
-            tuple(
-                space._add_core(xi, yi)
-                for space, xi, yi in zip(
-                    self.leaf_spaces, self._components(x), self._components(y)
-                )
-            )
-        )
+        return self._from_components(self._leafwise(lambda s, xi, yi: s._add_core(xi, yi), x, y))
 
     def add_batch(self, x: Any, y: Any) -> Any:
         """Return the componentwise leading-axis batch sum."""
-        return self._from_components(
-            tuple(
-                space.add_batch(xi, yi)
-                for space, xi, yi in zip(
-                    self.leaf_spaces, self._components(x), self._components(y)
-                )
-            )
-        )
+        return self._from_components(self._leafwise(lambda s, xi, yi: s.add_batch(xi, yi), x, y))
 
     def _scale_core(self, a: Any, x: Any) -> Any:
         """Return the componentwise scalar product."""
-        return self._from_components(
-            tuple(
-                space._scale_core(a, leaf)
-                for space, leaf in zip(self.leaf_spaces, self._components(x))
-            )
-        )
+        return self._from_components(self._leafwise(lambda s, leaf: s._scale_core(a, leaf), x))
 
     def scale_batch(self, a: Any, x: Any) -> Any:
         """Return the componentwise batched scalar product."""
-        return self._from_components(
-            tuple(
-                space.scale_batch(a, leaf)
-                for space, leaf in zip(self.leaf_spaces, self._components(x))
-            )
-        )
+        return self._from_components(self._leafwise(lambda s, leaf: s.scale_batch(a, leaf), x))
 
     def stacked(self, count: int) -> "TreeSpace":
         """Return a tree whose leaves are stacked leaf spaces."""
@@ -483,11 +442,7 @@ class TreeSpace(PyTreeNode, CoordinateSpace):
         # Slice the flat vector back into leaves and rebuild the tree.
         if self._checks_at_least("cheap"):
             v = self.ctx.assert_dense(v)
-            v = (
-                v
-                if tuple(getattr(v, "shape", ())) == self.shape
-                else v.reshape((-1,))
-            )
+            v = v.reshape((-1,))  # self.shape is (size,), so a matching v is unchanged
         leaves = tuple(
             space.unflatten(v[leaf_slice])
             for space, leaf_slice in zip(self.leaf_spaces, self._slices)
@@ -496,10 +451,7 @@ class TreeSpace(PyTreeNode, CoordinateSpace):
 
     def flatten_batch(self, xs: Any) -> DenseArray:
         """Concatenate batched leaf coordinates into shape ``(N, size)``."""
-        parts = tuple(
-            space.flatten_batch(leaf)
-            for space, leaf in zip(self.leaf_spaces, self._components(xs))
-        )
+        parts = self._leafwise(lambda s, leaf: s.flatten_batch(leaf), xs)
         if len(parts) == 1:
             return parts[0]
         return self.ops.concatenate(parts, axis=1)

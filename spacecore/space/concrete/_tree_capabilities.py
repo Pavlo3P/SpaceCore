@@ -42,6 +42,7 @@ class _LeafwiseHostMixin:
         def arity(self) -> int: ...
         def _components(self, x: Any) -> tuple[Any, ...]: ...
         def _from_components(self, parts: tuple[Any, ...]) -> Any: ...
+        def _leafwise(self, fn: Callable[..., Any], *xs: Any) -> tuple[Any, ...]: ...
 
 
 class _LeafwiseInnerProductMixin(_LeafwiseHostMixin):
@@ -49,35 +50,16 @@ class _LeafwiseInnerProductMixin(_LeafwiseHostMixin):
 
     def _inner_core(self, x: Any, y: Any) -> Any:
         """Return the sum of leaf inner products."""
-        leaf_spaces = cast("Sequence[InnerProductSpace]", self.leaf_spaces)
         # Sum of the leaves' inner products.
-        return reduce(
-            operator.add,
-            (
-                space._inner_core(xi, yi)
-                for space, xi, yi in zip(leaf_spaces, self._components(x), self._components(y))
-            ),
-        )
+        return reduce(operator.add, self._leafwise(lambda s, xi, yi: s._inner_core(xi, yi), x, y))
 
     def riesz(self, x: Any) -> Any:
         """Apply each leaf space's Riesz map."""
-        leaf_spaces = cast("Sequence[InnerProductSpace]", self.leaf_spaces)
-        return self._from_components(
-            tuple(
-                space.riesz(leaf)
-                for space, leaf in zip(leaf_spaces, self._components(x))
-            )
-        )
+        return self._from_components(self._leafwise(lambda s, leaf: s.riesz(leaf), x))
 
     def riesz_inverse(self, x: Any) -> Any:
         """Apply each leaf space's inverse Riesz map."""
-        leaf_spaces = cast("Sequence[InnerProductSpace]", self.leaf_spaces)
-        return self._from_components(
-            tuple(
-                space.riesz_inverse(leaf)
-                for space, leaf in zip(leaf_spaces, self._components(x))
-            )
-        )
+        return self._from_components(self._leafwise(lambda s, leaf: s.riesz_inverse(leaf), x))
 
     @property
     def is_euclidean(self) -> bool:
@@ -91,13 +73,7 @@ class _LeafwiseStarMixin(_LeafwiseHostMixin):
 
     def star(self, x: Any) -> Any:
         """Return the leafwise star operation in the same tree structure."""
-        leaf_spaces = cast("Sequence[StarSpace]", self.leaf_spaces)
-        return self._from_components(
-            tuple(
-                space.star(leaf)
-                for space, leaf in zip(leaf_spaces, self._components(x))
-            )
-        )
+        return self._from_components(self._leafwise(lambda s, leaf: s.star(leaf), x))
 
 
 @dataclass(frozen=True)
@@ -164,15 +140,7 @@ class _LeafwiseJordanMixin(_LeafwiseHostMixin):
     @checked_method(in_space="self", arg_positions=(0, 1))
     def jordan(self, x: Any, y: Any) -> Any:
         """Return the leafwise Jordan product."""
-        leaf_spaces = cast("Sequence[JordanAlgebraSpace]", self.leaf_spaces)
-        return self._from_components(
-            tuple(
-                space.jordan(xi, yi)
-                for space, xi, yi in zip(
-                    leaf_spaces, self._components(x), self._components(y)
-                )
-            )
-        )
+        return self._from_components(self._leafwise(lambda s, xi, yi: s.jordan(xi, yi), x, y))
 
     def spectrum(self, x: Any, *, structured: bool = False) -> Any:
         """Return the leaf Jordan spectra.
@@ -186,11 +154,7 @@ class _LeafwiseJordanMixin(_LeafwiseHostMixin):
         eigenvalue-shaped, so it is **not** a member of the space.
         """
         # Per-leaf spectra: as a tree, or concatenated into one vector.
-        leaf_spaces = cast("Sequence[JordanAlgebraSpace]", self.leaf_spaces)
-        parts = tuple(
-            space.spectrum(leaf)
-            for space, leaf in zip(leaf_spaces, self._components(x))
-        )
+        parts = self._leafwise(lambda s, leaf: s.spectrum(leaf), x)
         if structured:
             return self._from_components(parts)
         if len(parts) == 1:
@@ -206,11 +170,7 @@ class _LeafwiseJordanMixin(_LeafwiseHostMixin):
         eigenvalues in the tree's own structure.
         """
         # Decompose each leaf and keep the tree structure for to_tree.
-        leaf_spaces = cast("Sequence[JordanAlgebraSpace]", self.leaf_spaces)
-        decompositions = tuple(
-            space.spectral_decompose(leaf)
-            for space, leaf in zip(leaf_spaces, self._components(x))
-        )
+        decompositions = self._leafwise(lambda s, leaf: s.spectral_decompose(leaf), x)
         return TreeSpectralDecomposition(
             eigvals=tuple(eigvals for eigvals, _frame in decompositions),
             frames=tuple(frame for _eigvals, frame in decompositions),
@@ -249,31 +209,17 @@ class _LeafwiseJordanMixin(_LeafwiseHostMixin):
     @checked_method(in_space="self", out_space="self")
     def spectral_apply(self, x: Any, f: Callable[[Any], Any]) -> Any:
         """Apply each leaf space's spectral calculus independently."""
-        leaf_spaces = cast("Sequence[JordanAlgebraSpace]", self.leaf_spaces)
-        return self._from_components(
-            tuple(
-                space.spectral_apply(leaf, f)
-                for space, leaf in zip(leaf_spaces, self._components(x))
-            )
-        )
+        return self._from_components(self._leafwise(lambda s, leaf: s.spectral_apply(leaf, f), x))
 
     def trace(self, x: Any) -> Any:
         """Return the direct-sum trace: the sum of the leaf traces."""
-        leaf_spaces = cast("Sequence[JordanAlgebraSpace]", self.leaf_spaces)
         # The trace of a direct product is the sum of the leaves' traces.
-        return reduce(
-            operator.add,
-            (space.trace(leaf) for space, leaf in zip(leaf_spaces, self._components(x))),
-        )
+        return reduce(operator.add, self._leafwise(lambda s, leaf: s.trace(leaf), x))
 
     def determinant(self, x: Any) -> Any:
         """Return the direct-sum determinant: the product of the leaf determinants."""
-        leaf_spaces = cast("Sequence[JordanAlgebraSpace]", self.leaf_spaces)
         # The determinant of a direct product is the product of the leaves' determinants.
-        return reduce(
-            operator.mul,
-            (space.determinant(leaf) for space, leaf in zip(leaf_spaces, self._components(x))),
-        )
+        return reduce(operator.mul, self._leafwise(lambda s, leaf: s.determinant(leaf), x))
 
     def unit(self) -> Any:
         """Return the leafwise Jordan identity assembled into a tree element."""

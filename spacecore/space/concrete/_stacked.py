@@ -11,7 +11,6 @@ from ..base import (
     StarSpace,
 )
 from ._tree_space import TreeSpace
-from ._dense_vector import EuclideanElementwiseJordanSpace, _validate_euclidean_elementwise_jordan
 from .._capabilities import (
     _CAP_INNER, _CAP_STAR, _CAP_JORDAN,
     _CAP_EUCLIDEAN_JORDAN, _space_capabilities, registry_key,
@@ -54,9 +53,7 @@ def _validate_count(count: int, owner: str = "StackedSpace") -> int:
 
 
 def _stacked_capabilities(base: Space) -> frozenset[type]:
-    """Return capabilities copied from the stacked base space."""
-    if isinstance(base, EuclideanElementwiseJordanSpace):
-        _validate_euclidean_elementwise_jordan(base, base.geometry)
+    """Return capabilities copied from the stacked base space (validated by its own __init__)."""
     return _space_capabilities(base)
 
 
@@ -201,6 +198,14 @@ class _StackedHostMixin:
         @property
         def ops(self) -> BackendOps: ...
 
+    def _per_copy(self, fn: Any, *args: Any) -> Any:
+        """Call ``fn`` on the whole stack; if the base cannot take it, vmap ``fn`` over the copies."""
+        try:
+            return fn(*args)
+        except _STACKED_FALLBACK_ERRORS:
+            in_axes = 0 if len(args) == 1 else (0,) * len(args)
+            return self.ops.vmap(fn, in_axes=in_axes, out_axes=0)(*args)
+
 
 class _StackedInnerProductMixin(_StackedHostMixin):
     """Inner-product operations for stacks whose base supports them."""
@@ -233,11 +238,7 @@ class _StackedStarMixin(_StackedHostMixin):
     def star(self, x: Any) -> Any:
         """Return the base-space star operation for each stacked copy."""
         base = cast(StarSpace, self.base)
-        # Try the base on the whole stack, else vmap over copies (as in every method below).
-        try:
-            return base.star(x)
-        except _STACKED_FALLBACK_ERRORS:
-            return self.ops.vmap(base.star, in_axes=0, out_axes=0)(x)
+        return self._per_copy(base.star, x)
 
 
 class _StackedJordanMixin(_StackedHostMixin):
@@ -247,64 +248,39 @@ class _StackedJordanMixin(_StackedHostMixin):
     def jordan(self, x: Any, y: Any) -> Any:
         """Return the base-space Jordan product for each stacked copy."""
         base = cast(JordanAlgebraSpace, self.base)
-        try:
-            return base.jordan(x, y)
-        except _STACKED_FALLBACK_ERRORS:
-            return self.ops.vmap(base.jordan, in_axes=(0, 0), out_axes=0)(x, y)
+        return self._per_copy(base.jordan, x, y)
 
     def spectrum(self, x: Any) -> Any:
         """Return spectra for each leading-axis copy of the base space."""
         base = cast(JordanAlgebraSpace, self.base)
-        try:
-            return base.spectrum(x)
-        except _STACKED_FALLBACK_ERRORS:
-            return self.ops.vmap(base.spectrum, in_axes=0, out_axes=0)(x)
+        return self._per_copy(base.spectrum, x)
 
     def spectral_decompose(self, x: Any) -> Any:
         """Return spectral decompositions for each leading-axis copy."""
         base = cast(JordanAlgebraSpace, self.base)
-        try:
-            return base.spectral_decompose(x)
-        except _STACKED_FALLBACK_ERRORS:
-            return self.ops.vmap(base.spectral_decompose, in_axes=0, out_axes=0)(x)
+        return self._per_copy(base.spectral_decompose, x)
 
     def from_spectrum(self, eigvals: Any, frame: Any) -> Any:
         """Reconstruct stacked elements from base spectral data."""
         base = cast(JordanAlgebraSpace, self.base)
-        try:
-            return base.from_spectrum(eigvals, frame)
-        except _STACKED_FALLBACK_ERRORS:
-            return self.ops.vmap(base.from_spectrum, in_axes=(0, 0), out_axes=0)(
-                eigvals, frame
-            )
+        return self._per_copy(base.from_spectrum, eigvals, frame)
 
     def spectral_apply(self, x: Any, f: Any) -> Any:
         """Apply the base-space spectral calculus to each stacked copy."""
         base = cast(JordanAlgebraSpace, self.base)
-        try:
-            return base.spectral_apply(x, f)
-        except _STACKED_FALLBACK_ERRORS:
-            return self.ops.vmap(lambda xi: base.spectral_apply(xi, f), in_axes=0, out_axes=0)(
-                x
-            )
+        return self._per_copy(lambda xi: base.spectral_apply(xi, f), x)
 
     def trace(self, x: Any) -> Any:
         """Return the direct-sum trace: the sum of the per-copy base traces."""
         base = cast(JordanAlgebraSpace, self.base)
-        try:
-            traces = base.trace(x)
-        except _STACKED_FALLBACK_ERRORS:
-            traces = self.ops.vmap(base.trace, in_axes=0, out_axes=0)(x)
+        traces = self._per_copy(base.trace, x)
         # Reduce only the copy axis; leading batch axes are preserved.
         return self.ops.sum(traces, axis=-1)
 
     def determinant(self, x: Any) -> Any:
         """Return the direct-sum determinant: the product of the per-copy base determinants."""
         base = cast(JordanAlgebraSpace, self.base)
-        try:
-            dets = base.determinant(x)
-        except _STACKED_FALLBACK_ERRORS:
-            dets = self.ops.vmap(base.determinant, in_axes=0, out_axes=0)(x)
+        dets = self._per_copy(base.determinant, x)
         # Reduce only the copy axis; leading batch axes are preserved.
         return self.ops.prod(dets, axis=-1)
 

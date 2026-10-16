@@ -115,11 +115,7 @@ class HermitianSpace(DenseCoordinateSpace, StarSpace, EuclideanJordanAlgebraSpac
 
     def is_hermitian(self, x: DenseArray) -> bool:
         """Return whether ``x`` satisfies this space's Hermitian check."""
-        return HermitianCheck(
-            atol=self.atol,
-            rtol=self.rtol,
-            enforce=self.enforce_herm,
-        ).is_valid(self, x)
+        return self._local_checks()[1].is_valid(self, x)
 
     def symmetrize(self, x: DenseArray) -> DenseArray:
         r"""Project ``x`` onto the Hermitian subspace as :math:`(X + X^*) / 2`."""

@@ -8,7 +8,7 @@ from typing import ClassVar
 from ..._checks import CheckLevel
 from ...contextual import Context
 from ..checks import SpaceCheck
-from ._inner_product import EuclideanInnerProduct, InnerProductSpace
+from ._inner_product import InnerProductSpace
 
 
 @dataclass(frozen=True)
@@ -65,7 +65,6 @@ class RealField(InnerProductSpace):
 
     declared_scalar_field = "real"
     checks = (RealScalarCheck(), ScalarShapeCheck())
-    geometry = EuclideanInnerProduct()
 
     def __init__(self, ctx=None, check_level=None):
         super().__init__(ctx, check_level=check_level)

@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from typing import Any, ClassVar, Literal
 
-from ..._checks import CheckLevel, check_level_at_least, effective_check_level, normalize_check_level
+from ..._checks import CheckLevel, check_level_at_least
 from ...mapping._lazy_algebra import is_recognizably_nonreal
 from ...contextual import ContextBound
 from ..._repr import field_symbol
 from ...contextual import Context
-from ..checks import SpaceCheck, SpaceValidationError
+from ..checks import SpaceCheck, SpaceValidationError, _run_checks
 
 
 class Space(ContextBound):
@@ -180,16 +180,7 @@ class Space(ContextBound):
 
     def _check_member(self, x: Any) -> None:
         """Raise if ``x`` is not a valid element of this space."""
-        # Hot path: use the per-level cached check list and run inline,
-        # avoiding the generic ``_run_checks`` MRO walk.
-        # Hot path: run the cached checks for this level, raise on the first failure.
-        level = normalize_check_level(getattr(self, "check_level", "standard"))
-        level = effective_check_level(level, getattr(self, "ops", None))
-        for check in self._checks_for_level(level):
-            if not check.validate(self, x, allow_leading=False):
-                raise SpaceValidationError(
-                    check.validation_message(self, x, allow_leading=False)
-                )
+        _run_checks(self, x, allow_leading=False)
 
     def check_member(self, x: Any) -> None:
         if self.check_level != "none":
