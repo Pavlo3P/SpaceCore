@@ -7,9 +7,8 @@ from functools import cached_property
 from math import prod
 from typing import Any, cast
 
-from ._base import Codomain, Domain, LinOp
+from ._base import Codomain, Domain, LinOp, _output_checked_rvapply
 from .._checks import CheckLevel
-from .._checks import checked_method
 from ._metric import (
     _VECTOR_SPACES, _metric_is_hermitian_by_basis, _requires_euclidean_or_riesz, metric_rapply,
     metric_rvapply,
@@ -107,15 +106,7 @@ class DenseLinOp(LinOp[Domain, Codomain]):
             return self._euclidean_rvapply_core(ys)
         if self._mode is _DenseMode.WEIGHTED_FUSED:
             return ys @ self._weighted_A2H.T
-        return metric_rvapply(
-            self.domain,
-            self.codomain,
-            self._euclidean_rapply_core,
-            self._euclidean_rvapply_core,
-            ys,
-            opname=type(self).__name__,
-            ops=self.ops,
-        )
+        return metric_rvapply(self.domain, self.codomain, self._euclidean_rvapply_core, ys)
 
     def _euclidean_rapply_core(self, y: Any) -> Any:
         # Plain conjugate transpose A^H, no metric.
@@ -242,10 +233,7 @@ class DenseLinOp(LinOp[Domain, Codomain]):
         """
         return self._A
 
-    @checked_method(in_space="codomain", out_space="domain", in_batched=True, out_batched=True)
-    def rvapply(self, ys: DenseArray) -> DenseArray:
-        """Apply the adjoint over a leading batch axis. Input must have shape ``(N,) + codomain.shape``; use ``moveaxis`` for other layouts."""
-        return self._rvapply_core(ys)
+    rvapply = _output_checked_rvapply
 
     def to_dense(self) -> DenseArray:
         """
@@ -278,10 +266,7 @@ class DenseLinOp(LinOp[Domain, Codomain]):
         # Hermitian needs dom == cod; Euclidean compares A with A^H, else test by basis.
         if self.dom != self.cod:
             return False
-        if not (
-            cast(Any, self.domain).is_euclidean
-            and cast(Any, self.codomain).is_euclidean
-        ):
+        if not cast(Any, self.domain).is_euclidean:  # dom == cod, so cod is too
             return _metric_is_hermitian_by_basis(self)
         try:
             return bool(self.ops.allclose(self._A2, self._A2H))

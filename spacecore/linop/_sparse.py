@@ -5,13 +5,12 @@ from functools import cached_property
 from math import prod
 from typing import Any, cast
 
-from ._base import LinOp
+from ._base import LinOp, _output_checked_rvapply
 from ._metric import (
     _VECTOR_SPACES, _metric_is_hermitian_by_basis, _requires_euclidean_or_riesz, metric_rapply,
     metric_rvapply,
 )
 from .._checks import CheckLevel
-from .._checks import checked_method
 from ..space import (
     CoordinateSpace,
     WeightedInnerProduct,
@@ -113,15 +112,7 @@ class SparseLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
             return self._euclidean_rvapply_core(ys)
         if self._mode is _SparseMode.WEIGHTED_FUSED:
             return (self._AH @ (ys * self._cod_weights).T).T / self._dom_weights
-        return metric_rvapply(
-            self.domain,
-            self.codomain,
-            self._euclidean_rapply_core,
-            self._euclidean_rvapply_core,
-            ys,
-            opname=type(self).__name__,
-            ops=self.ops,
-        )
+        return metric_rvapply(self.domain, self.codomain, self._euclidean_rvapply_core, ys)
 
     def _euclidean_rapply_core(self, y: Any) -> Any:
         # Plain conjugate transpose A^H, no metric.
@@ -240,9 +231,7 @@ class SparseLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
         """
         return self._A
 
-    @checked_method(in_space="codomain", out_space="domain", in_batched=True, out_batched=True)
-    def rvapply(self, ys: DenseArray) -> DenseArray:
-        return self._rvapply_core(ys)
+    rvapply = _output_checked_rvapply
 
     def to_sparse(self) -> SparseArray:
         """
@@ -292,10 +281,7 @@ class SparseLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
         # Hermitian needs dom == cod; Euclidean compares A with A^H, else test by basis.
         if self.dom != self.cod:
             return False
-        if not (
-            cast(Any, self.domain).is_euclidean
-            and cast(Any, self.codomain).is_euclidean
-        ):
+        if not cast(Any, self.domain).is_euclidean:  # dom == cod, so cod is too
             return _metric_is_hermitian_by_basis(self)
         try:
             return bool(self.ops.allclose_sparse(self.A, self._AH))

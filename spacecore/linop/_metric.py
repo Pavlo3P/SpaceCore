@@ -86,16 +86,7 @@ def metric_rapply(domain, codomain, euclidean_rapply, y):
     return domain.riesz_inverse(euclidean_rapply(codomain.riesz(y)))
 
 
-def metric_rvapply(
-    domain,
-    codomain,
-    euclidean_rapply,
-    euclidean_rvapply,
-    ys,
-    *,
-    opname: str,
-    ops,
-):
+def metric_rvapply(domain, codomain, euclidean_rvapply, ys):
     """Apply the metric adjoint over a leading batch axis; Riesz maps broadcast over it."""
     if domain.is_euclidean and codomain.is_euclidean:
         return euclidean_rvapply(ys)

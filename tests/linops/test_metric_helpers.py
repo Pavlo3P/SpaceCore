@@ -199,16 +199,10 @@ class TestMetricRvapply:
         X = sc.DenseCoordinateSpace((3,), numpy_ctx)
         ys = numpy_ctx.asarray([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
 
-        def euclid_rapply(y):  # noqa: ARG001
-            raise AssertionError("should not be called on Euclidean fast path")
-
         def euclid_rvapply(zs):
             return zs * 2.0
 
-        out = metric_rvapply(
-            X, X, euclid_rapply, euclid_rvapply, ys,
-            opname="test", ops=numpy_ctx.ops,
-        )
+        out = metric_rvapply(X, X, euclid_rvapply, ys)
         np.testing.assert_allclose(out, ys * 2.0)
 
     def test_weighted_fast_path_no_warning(self, numpy_ctx):
@@ -218,18 +212,12 @@ class TestMetricRvapply:
         )
         ys = numpy_ctx.asarray([[1.0, 2.0], [3.0, 4.0]])
 
-        def euclid_rapply(y):  # noqa: ARG001
-            raise AssertionError("should not be called on fast path")
-
         def euclid_rvapply(zs):
             return zs
 
         with warnings.catch_warnings(record=True) as recorded:
             warnings.simplefilter("always")
-            out = metric_rvapply(
-                X, X, euclid_rapply, euclid_rvapply, ys,
-                opname="test_op", ops=numpy_ctx.ops,
-            )
+            out = metric_rvapply(X, X, euclid_rvapply, ys)
         # No metric-batch-fallback warnings on the fast path.
         assert not any("could not use batched Riesz maps" in str(w.message)
                        for w in recorded)

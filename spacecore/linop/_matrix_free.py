@@ -11,7 +11,7 @@ from ._metric import _requires_euclidean_or_riesz, metric_rapply, metric_rvapply
 from .._checks import CheckLevel
 from .._checks import checked_method
 from ..space.base import CoordinateSpace, InnerProductSpace
-from ..space._capabilities import _CAP_BATCH, _CAP_COORDINATE, probe_element, require
+from ..space._capabilities import _CAP_BATCH, _CAP_COORDINATE, probe_element
 from ..contextual import Context
 
 
@@ -56,15 +56,13 @@ class IdentityLinOp(LinOp[Domain, Domain]):
     @checked_method(in_space="domain", in_batched=True)
     def vapply(self, xs: Any) -> Any:
         """Return ``xs`` after batched domain validation."""
-        require(self.domain, _CAP_BATCH, "IdentityLinOp.vapply")
-        require(self.codomain, _CAP_BATCH, "IdentityLinOp.vapply")
+        self._require(_CAP_BATCH, "IdentityLinOp.vapply")
         return xs
 
     @checked_method(in_space="codomain", in_batched=True)
     def rvapply(self, xs: Any) -> Any:
         """Return ``xs`` after batched codomain validation."""
-        require(self.domain, _CAP_BATCH, "IdentityLinOp.rvapply")
-        require(self.codomain, _CAP_BATCH, "IdentityLinOp.rvapply")
+        self._require(_CAP_BATCH, "IdentityLinOp.rvapply")
         return xs
 
     def to_dense(self) -> Any:
@@ -73,8 +71,7 @@ class IdentityLinOp(LinOp[Domain, Domain]):
 
         The returned array has shape ``self.codomain.shape + self.domain.shape``.
         """
-        require(self.domain, _CAP_COORDINATE, "IdentityLinOp.to_dense")
-        require(self.codomain, _CAP_COORDINATE, "IdentityLinOp.to_dense")
+        self._require(_CAP_COORDINATE, "IdentityLinOp.to_dense")
         # The identity matrix, reshaped to cod.shape + dom.shape.
         eye = self.ops.eye(math.prod(self.domain.shape), dtype=self.dtype)
         return self.ops.reshape(eye, tuple(self.codomain.shape) + tuple(self.domain.shape))
@@ -141,19 +138,16 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
     # Capability requirements hold at every check level: an adjoint needs inner
     # products, a batch needs batchable spaces.
     def _rapply_core(self, y: Any) -> Any:
-        require(self.domain, InnerProductSpace, "MatrixFreeLinOp.rapply")
-        require(self.codomain, InnerProductSpace, "MatrixFreeLinOp.rapply")
+        self._require(InnerProductSpace, "MatrixFreeLinOp.rapply")
         return self.rapply_fn(y)
 
     def _vapply_core(self, xs: Any) -> Any:
         # The supplied batched map, else the generic vmap fallback.
-        require(self.domain, _CAP_BATCH, "MatrixFreeLinOp.vapply")
-        require(self.codomain, _CAP_BATCH, "MatrixFreeLinOp.vapply")
+        self._require(_CAP_BATCH, "MatrixFreeLinOp.vapply")
         return super()._vapply_core(xs) if self.vapply_fn is None else self.vapply_fn(xs)
 
     def _rvapply_core(self, ys: Any) -> Any:
-        require(self.domain, _CAP_BATCH, "MatrixFreeLinOp.rvapply")
-        require(self.codomain, _CAP_BATCH, "MatrixFreeLinOp.rvapply")
+        self._require(_CAP_BATCH, "MatrixFreeLinOp.rvapply")
         return super()._rvapply_core(ys) if self.rvapply_fn is None else self.rvapply_fn(ys)
 
     def __init__(
@@ -239,7 +233,7 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
     ) -> tuple[Callable[[Any], Any], Callable[[Any], Any] | None]:
         """Return ``(rapply, rvapply)`` wrapping coordinate adjoints in Riesz maps."""
         # Wrap coordinate adjoints into metric ones: R_X^-1 A^T R_Y.
-        dom, cod, ops = self.domain, self.codomain, self.ctx.ops
+        dom, cod = self.domain, self.codomain
 
         def wrapped_rapply(y: Any) -> Any:
             return metric_rapply(dom, cod, coordinate_rapply, y)
@@ -248,10 +242,7 @@ class MatrixFreeLinOp(LinOp[Domain, Codomain]):
         if coordinate_rvapply is not None:
 
             def _wrapped_rvapply(ys: Any) -> Any:
-                return metric_rvapply(
-                    dom, cod, coordinate_rapply, coordinate_rvapply, ys,
-                    opname="MatrixFreeLinOp", ops=ops,
-                )
+                return metric_rvapply(dom, cod, coordinate_rvapply, ys)
 
             wrapped_rvapply = _wrapped_rvapply
         return wrapped_rapply, wrapped_rvapply
@@ -452,14 +443,12 @@ class _AdjointViewLinOp(LinOp[Codomain, Domain]):
 
     def vapply(self, ys: Any) -> Any:
         """Return ``op.rvapply(ys)`` over a batch."""
-        require(self.domain, _CAP_BATCH, "_AdjointViewLinOp.vapply")
-        require(self.codomain, _CAP_BATCH, "_AdjointViewLinOp.vapply")
+        self._require(_CAP_BATCH, "_AdjointViewLinOp.vapply")
         return self.op.rvapply(ys)
 
     def rvapply(self, xs: Any) -> Any:
         """Return ``op.vapply(xs)`` over a batch."""
-        require(self.domain, _CAP_BATCH, "_AdjointViewLinOp.rvapply")
-        require(self.codomain, _CAP_BATCH, "_AdjointViewLinOp.rvapply")
+        self._require(_CAP_BATCH, "_AdjointViewLinOp.rvapply")
         return self.op.vapply(xs)
 
     def fuse(self, *, materialize: bool = False) -> LinOp:

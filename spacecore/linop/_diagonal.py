@@ -5,13 +5,12 @@ from functools import cached_property
 from math import prod
 from typing import Any, cast
 
-from ._base import LinOp
+from ._base import LinOp, _output_checked_rvapply
 from ._metric import (
     _VECTOR_SPACES, _metric_is_hermitian_by_basis, _requires_euclidean_or_riesz, metric_rapply,
     metric_rvapply,
 )
 from .._checks import CheckLevel
-from .._checks import checked_method
 from ..contextual import Context
 from ..space import (
     CoordinateSpace,
@@ -66,7 +65,7 @@ class DiagonalLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
     def _apply_core(self, x: Any) -> Any:
         # Vector-shaped or fused: elementwise product. Else on flat coordinates.
         # EUCLIDEAN and WEIGHTED_FUSED imply a vector-space domain; check them first.
-        if self._mode is not _DiagonalMode.GENERAL_METRIC or type(self.domain) in _VECTOR_SPACES:
+        if self._elementwise:
             return self.diagonal * x
         x_flat = self.domain.flatten(x)
         y_flat = self._diag_flat * x_flat
@@ -84,7 +83,7 @@ class DiagonalLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
 
     def _vapply_core(self, xs: Any) -> Any:
         # Elementwise, broadcasting over the leading batch axis.
-        if self._mode is not _DiagonalMode.GENERAL_METRIC or type(self.domain) in _VECTOR_SPACES:
+        if self._elementwise:
             return self.diagonal * xs
         xs_flat = self.domain.flatten_batch(xs)
         ys_flat = xs_flat * self._diag_flat
@@ -96,19 +95,11 @@ class DiagonalLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
             return self._euclidean_rvapply_core(ys)
         if self._mode is _DiagonalMode.WEIGHTED_FUSED:
             return self._diag_adjoint * ys
-        return metric_rvapply(
-            self.domain,
-            self.codomain,
-            self._euclidean_rapply_core,
-            self._euclidean_rvapply_core,
-            ys,
-            opname=type(self).__name__,
-            ops=self.ops,
-        )
+        return metric_rvapply(self.domain, self.codomain, self._euclidean_rvapply_core, ys)
 
     def _euclidean_rapply_core(self, y: Any) -> Any:
         # The adjoint diagonal, elementwise or on flat coordinates.
-        if self._mode is not _DiagonalMode.GENERAL_METRIC or type(self.domain) in _VECTOR_SPACES:
+        if self._elementwise:
             return self._diag_adjoint * y
         y_flat = self.codomain.flatten(y)
         x_flat = self._diag_adjoint_flat * y_flat
@@ -116,7 +107,7 @@ class DiagonalLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
 
     def _euclidean_rvapply_core(self, ys: Any) -> Any:
         # Adjoint diagonal over the batch.
-        if self._mode is not _DiagonalMode.GENERAL_METRIC or type(self.domain) in _VECTOR_SPACES:
+        if self._elementwise:
             return self._diag_adjoint * ys
         ys_flat = self.codomain.flatten_batch(ys)
         xs_flat = ys_flat * self._diag_adjoint_flat
@@ -149,18 +140,15 @@ class DiagonalLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
             self.ops.conj(diagonal) if self.ops.is_complex_dtype(dtype) else diagonal
         )
         self._diag_adjoint_flat = self._diag_adjoint.reshape((prod(self.domain.shape),))
+        self._elementwise = type(self.domain) in _VECTOR_SPACES
         self._mode = self._select_mode()
 
     def _select_mode(self) -> _DiagonalMode:
         """Select the diagonal computation mode once for this operator."""
         # Euclidean: multiply by the diagonal; weighted: fused path; else general Riesz maps.
-        if (
-            type(self.domain) in _VECTOR_SPACES
-        ) and cast(Any, self.domain).is_euclidean:
+        if self._elementwise and cast(Any, self.domain).is_euclidean:
             return _DiagonalMode.EUCLIDEAN
-        if (
-            type(self.domain) in _VECTOR_SPACES
-        ) and type(cast(Any, self.domain).geometry) is WeightedInnerProduct:
+        if self._elementwise and type(cast(Any, self.domain).geometry) is WeightedInnerProduct:
             return _DiagonalMode.WEIGHTED_FUSED
         return _DiagonalMode.GENERAL_METRIC
 
@@ -169,10 +157,7 @@ class DiagonalLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
         """Dense tensor representation of this diagonal operator."""
         return self.to_dense()
 
-    @checked_method(in_space="codomain", out_space="domain", in_batched=True, out_batched=True)
-    def rvapply(self, ys: DenseArray) -> DenseArray:
-        """Apply the adjoint over a leading batch axis. Input must have shape ``(N,) + codomain.shape``; use ``moveaxis`` for other layouts."""
-        return self._rvapply_core(ys)
+    rvapply = _output_checked_rvapply
 
     def to_matrix(self) -> DenseArray:
         """Return the flattened dense diagonal matrix representation."""

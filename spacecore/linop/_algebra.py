@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from functools import reduce
 from typing import Any, Sequence
 
 from ._base import LinOp, Domain, Codomain, _require_linop
@@ -10,9 +11,8 @@ from ..mapping import (
 from ..space import DenseElement, Element
 from .._checks import CheckLevel, minimum_check_level
 from .._checks import checked_method
-from ..space._capabilities import _CAP_BATCH, _CAP_COORDINATE, require
+from ..space._capabilities import _CAP_BATCH, _CAP_COORDINATE
 from .._repr import summarize_value
-from ..contextual import Context
 from ..mapping._lazy_algebra import conjugate_scalar as _conjugate_scalar
 from ._matrix_free import IdentityLinOp
 
@@ -49,26 +49,6 @@ def _batched_zeros(space: Any, leading: tuple[int, ...]) -> Any:
     if parts is not None:
         return tuple(_batched_zeros(part, leading) for part in parts)
     return space.ops.zeros(leading + tuple(space.shape), dtype=space.dtype)
-
-
-
-def _require_same_context(ops: Sequence[LinOp]) -> Context:
-    """Return the common mathematical context for algebra operands or raise.
-
-    Operands must share a mathematical context (:meth:`Context.same_math`). The
-    surviving ``check_level`` is a property of the resulting bound object and is
-    combined (via the minimum) when the container binds its operands, not here.
-    """
-    # Every operand must share operand 0's math context.
-    ctx = ops[0].ctx
-    for i, op in enumerate(ops[1:], start=1):
-        if not ctx.same_math(op.ctx):
-            raise ValueError(
-                "All LinOp operands in an algebraic expression must have the same ctx; "
-                f"operand 0 has ctx {ctx!r}, operand {i} has ctx {op.ctx!r}."
-            )
-    return ctx
-
 
 
 
@@ -112,7 +92,11 @@ def _check_composable(left: LinOp, right: LinOp) -> tuple[LinOp, LinOp]:
     """Validate ``left @ right``: both LinOps, same context, matching middle space."""
     left = _require_linop(left, "left")
     right = _require_linop(right, "right")
-    _require_same_context((left, right))
+    if not left.ctx.same_math(right.ctx):
+        raise ValueError(
+            "All LinOp operands in an algebraic expression must have the same ctx; "
+            f"operand 0 has ctx {left.ctx!r}, operand 1 has ctx {right.ctx!r}."
+        )
     if not _same_space_for_algebra(right.codomain, left.domain):
         raise ValueError(
             "ComposedLinOp requires right.codomain == left.domain; "
@@ -144,9 +128,7 @@ def make_composed(left: LinOp, right: LinOp) -> LinOp:
         return left
     if isinstance(left, IdentityLinOp):
         return right
-    if isinstance(left, ZeroLinOp):
-        return ZeroLinOp(right.domain, left.codomain, left.ctx)
-    if isinstance(right, ZeroLinOp):
+    if isinstance(left, ZeroLinOp) or isinstance(right, ZeroLinOp):
         return ZeroLinOp(right.domain, left.codomain, left.ctx)
     return ComposedLinOp(left, right)
 
@@ -193,14 +175,12 @@ class ScaledLinOp(ScaledNode, LinOp[Domain, Codomain]):
     @checked_method(in_space="domain", out_space="codomain", in_batched=True, out_batched=True)
     def vapply(self, xs: Any) -> Any:
         """Return ``scalar * op.vapply(xs)``."""
-        require(self.domain, _CAP_BATCH, "ScaledLinOp.vapply")
-        require(self.codomain, _CAP_BATCH, "ScaledLinOp.vapply")
+        self._require(_CAP_BATCH, "ScaledLinOp.vapply")
         return self._vapply_core(xs)
 
     def rvapply(self, ys: Any) -> Any:
         """Return ``conj(scalar) * op.rvapply(ys)``."""
-        require(self.domain, _CAP_BATCH, "ScaledLinOp.rvapply")
-        require(self.codomain, _CAP_BATCH, "ScaledLinOp.rvapply")
+        self._require(_CAP_BATCH, "ScaledLinOp.rvapply")
         # Adjoint of s A is conj(s) A*.
         xs = self.op.rvapply(ys)
         return self.domain.scale_batch(_conjugate_scalar(self.scalar), xs)
@@ -260,30 +240,15 @@ class SumLinOp(SumNode, LinOp[Domain, Codomain]):
 
     def _apply_core(self, x: Any) -> Any:
         # A1 x + ... + Ak x, with the codomain's unchecked add when it has one.
-        parts = self.ops_tuple
-        add = self.codomain._add_core
-        acc = parts[0]._apply_core(x)
-        for part in parts[1:]:
-            acc = add(acc, part._apply_core(x))
-        return acc
+        return reduce(self.codomain._add_core, (part._apply_core(x) for part in self.ops_tuple))
 
     def _rapply_core(self, y: Any) -> Any:
         # A1* y + ... + Ak* y, added in the domain.
-        parts = self.ops_tuple
-        add = self.domain._add_core
-        acc = parts[0]._rapply_core(y)
-        for part in parts[1:]:
-            acc = add(acc, part._rapply_core(y))
-        return acc
+        return reduce(self.domain._add_core, (part._rapply_core(y) for part in self.ops_tuple))
 
     def _vapply_core(self, xs: Any) -> Any:
         # Row-wise sum of the batched applies.
-        parts = self.ops_tuple
-        add_batch = self.codomain.add_batch
-        acc = parts[0]._vapply_core(xs)
-        for part in parts[1:]:
-            acc = add_batch(acc, part._vapply_core(xs))
-        return acc
+        return reduce(self.codomain.add_batch, (part._vapply_core(xs) for part in self.ops_tuple))
 
     def __init__(self, ops: Sequence[LinOp[Domain, Codomain]], check_level: CheckLevel | None = None) -> None:
         super().__init__(ops, check_level)
@@ -296,21 +261,15 @@ class SumLinOp(SumNode, LinOp[Domain, Codomain]):
     @checked_method(in_space="domain", out_space="codomain", in_batched=True, out_batched=True)
     def vapply(self, xs: Any) -> Any:
         """Return ``sum_i ops[i].vapply(xs)``."""
-        require(self.domain, _CAP_BATCH, "SumLinOp.vapply")
-        require(self.codomain, _CAP_BATCH, "SumLinOp.vapply")
+        self._require(_CAP_BATCH, "SumLinOp.vapply")
         return self._vapply_core(xs)
 
     @checked_method(in_space="codomain", out_space="domain", in_batched=True, out_batched=True)
     def rvapply(self, ys: Any) -> Any:
         """Return ``sum_i ops[i].rvapply(ys)``."""
-        require(self.domain, _CAP_BATCH, "SumLinOp.rvapply")
-        require(self.codomain, _CAP_BATCH, "SumLinOp.rvapply")
+        self._require(_CAP_BATCH, "SumLinOp.rvapply")
         # Adjoint of a sum is the sum of adjoints.
-        add_batch = self.domain.add_batch
-        acc = self.ops_tuple[0].rvapply(ys)
-        for op in self.ops_tuple[1:]:
-            acc = add_batch(acc, op.rvapply(ys))
-        return acc
+        return reduce(self.domain.add_batch, (op.rvapply(ys) for op in self.ops_tuple))
 
     def fuse(self, *, materialize: bool = False) -> LinOp:
         r"""Fuse each term and combine the dense terms into one ``DenseLinOp`` (ADR-021).
@@ -419,14 +378,12 @@ class ComposedLinOp(LinOp[Domain, Codomain]):
     @checked_method(in_space="domain", out_space="codomain", in_batched=True, out_batched=True)
     def vapply(self, xs: Any) -> Any:
         """Return ``left.vapply(right.vapply(xs))``."""
-        require(self.domain, _CAP_BATCH, "ComposedLinOp.vapply")
-        require(self.codomain, _CAP_BATCH, "ComposedLinOp.vapply")
+        self._require(_CAP_BATCH, "ComposedLinOp.vapply")
         return self._vapply_core(xs)
 
     def rvapply(self, zs: Any) -> Any:
         """Return ``right.rvapply(left.rvapply(zs))``."""
-        require(self.domain, _CAP_BATCH, "ComposedLinOp.rvapply")
-        require(self.codomain, _CAP_BATCH, "ComposedLinOp.rvapply")
+        self._require(_CAP_BATCH, "ComposedLinOp.rvapply")
         return self.right.rvapply(self.left.rvapply(zs))
 
     def fuse(self, *, materialize: bool = False) -> LinOp:
@@ -505,15 +462,13 @@ class ZeroLinOp(ZeroNode, LinOp[Domain, Codomain]):
     @checked_method(in_space="domain", in_batched=True)
     def vapply(self, xs: Any) -> Any:
         """Return the batched zero element of the codomain."""
-        require(self.domain, _CAP_BATCH, "ZeroLinOp.vapply")
-        require(self.codomain, _CAP_BATCH, "ZeroLinOp.vapply")
+        self._require(_CAP_BATCH, "ZeroLinOp.vapply")
         return self._vapply_core(xs)
 
     @checked_method(in_space="codomain", in_batched=True)
     def rvapply(self, ys: Any) -> Any:
         """Return the batched zero element of the domain."""
-        require(self.domain, _CAP_BATCH, "ZeroLinOp.rvapply")
-        require(self.codomain, _CAP_BATCH, "ZeroLinOp.rvapply")
+        self._require(_CAP_BATCH, "ZeroLinOp.rvapply")
         return _batched_zeros(self.domain, _leading_shape(self.codomain, ys))
 
     def to_dense(self) -> Any:
@@ -522,8 +477,7 @@ class ZeroLinOp(ZeroNode, LinOp[Domain, Codomain]):
 
         The returned array has shape ``self.codomain.shape + self.domain.shape``.
         """
-        require(self.domain, _CAP_COORDINATE, "ZeroLinOp.to_dense")
-        require(self.codomain, _CAP_COORDINATE, "ZeroLinOp.to_dense")
+        self._require(_CAP_COORDINATE, "ZeroLinOp.to_dense")
         return self.ops.zeros(
             tuple(self.codomain.shape) + tuple(self.domain.shape), dtype=self.dtype
         )

@@ -117,6 +117,11 @@ class LinOp(Mapping, Generic[Domain, Codomain]):
         """
         return self._rapply_core(y)
 
+    def _require(self, capability: Any, name: str) -> None:
+        """Raise unless both endpoint spaces provide ``capability``."""
+        require(self.domain, capability, name)
+        require(self.codomain, capability, name)
+
     # Subclasses implement the check-free cores, which the checked public methods
     # call. A subclass that overrides a public method instead gets a core that
     # calls it back.
@@ -134,16 +139,14 @@ class LinOp(Mapping, Generic[Domain, Codomain]):
         if type(self).vapply is not LinOp.vapply:
             return self.vapply(xs)
         # Generic batching: vmap the single-element apply over the leading axis.
-        require(self.domain, _CAP_BATCH, "LinOp.vapply")
-        require(self.codomain, _CAP_BATCH, "LinOp.vapply")
+        self._require(_CAP_BATCH, "LinOp.vapply")
         _warn_vmap_fallback_once(self, "vapply", _leading_batch_size(self.domain, xs))
         return self.ops.vmap(self.apply, in_axes=0, out_axes=0)(xs)
 
     def _rvapply_core(self, ys: Any) -> Any:
         if type(self).rvapply is not LinOp.rvapply:
             return self.rvapply(ys)
-        require(self.domain, _CAP_BATCH, "LinOp.rvapply")
-        require(self.codomain, _CAP_BATCH, "LinOp.rvapply")
+        self._require(_CAP_BATCH, "LinOp.rvapply")
         _warn_vmap_fallback_once(self, "rvapply", _leading_batch_size(self.codomain, ys))
         return self.ops.vmap(self.rapply, in_axes=0, out_axes=0)(ys)
 
@@ -232,8 +235,7 @@ class LinOp(Mapping, Generic[Domain, Codomain]):
         that already store a dense or sparse matrix should override this method
         for efficiency.
         """
-        require(self.domain, _CAP_COORDINATE, "LinOp.to_dense")
-        require(self.codomain, _CAP_COORDINATE, "LinOp.to_dense")
+        self._require(_CAP_COORDINATE, "LinOp.to_dense")
         return self.ops.reshape(
             self.to_matrix(), tuple(self.codomain.shape) + tuple(self.domain.shape)
         )
@@ -253,8 +255,7 @@ class LinOp(Mapping, Generic[Domain, Codomain]):
         for small/testing use; concrete storage-backed subclasses should
         override it when they can expose a matrix directly.
         """
-        require(self.domain, _CAP_COORDINATE, "LinOp.to_matrix")
-        require(self.codomain, _CAP_COORDINATE, "LinOp.to_matrix")
+        self._require(_CAP_COORDINATE, "LinOp.to_matrix")
         # Apply the operator to every basis vector: its images are the matrix columns.
         domain_size = prod(self.domain.shape)
         codomain_size = prod(self.codomain.shape)
@@ -311,3 +312,13 @@ def _require_linop(op: Any, name: str) -> LinOp:
     if not isinstance(op, LinOp):
         raise TypeError(f"{name} must be a LinOp, got {type(op).__name__}.")
     return op
+
+
+@checked_method(in_space="codomain", out_space="domain", in_batched=True, out_batched=True)
+def _output_checked_rvapply(self: LinOp, ys: Any) -> Any:
+    """Apply the adjoint over a leading batch axis. Input must have shape ``(N,) + codomain.shape``; use ``moveaxis`` for other layouts."""
+    return self._rvapply_core(ys)
+
+
+# Assigned as ``rvapply`` by operators that also check the batched output.
+_output_checked_rvapply.__name__ = _output_checked_rvapply.__qualname__ = "rvapply"
