@@ -65,10 +65,7 @@ def available_ops() -> tuple[type[BackendOps], ...]:
     ops: list[type[BackendOps]] = [NumpyOps]
     for module, attr, dep in _OPTIONAL_OPS:
         mod = import_backend(module, dep)
-        if mod is None:
-            continue
-        cls = getattr(mod, attr, None)
-        if cls is not None:
-            ops.append(cls)
+        if mod is not None:
+            ops.append(getattr(mod, attr))
     return tuple(ops)
 

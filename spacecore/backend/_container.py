@@ -8,7 +8,6 @@ grows, and this module imports nothing, so it cannot form an import cycle.
 """
 from __future__ import annotations
 
-import threading
 import warnings
 from abc import ABC
 from typing import Any, Callable, Self
@@ -31,14 +30,10 @@ class PyTreeRegistry:
     """
 
     def __init__(self) -> None:
-        self._classes: list[type] = []
-        self._seen: set[type] = set()
+        # Registration happens while modules import, which the import lock serializes.
+        self._classes: dict[type, None] = {}  # ordered set
         self._backends: dict[str, TreeRegistrar] = {}
         self._done: set[tuple[str, type]] = set()
-        # Registration normally happens during imports (already serialized), but
-        # a backend may install its protocol lazily at runtime; an RLock keeps
-        # the check-then-wire in _wire atomic without costing anything at import.
-        self._lock = threading.RLock()
 
     def register_class(self, cls: type) -> None:
         """Record a container class and wire it into every backend known so far.
@@ -49,12 +44,9 @@ class PyTreeRegistry:
             Concrete container class providing ``tree_flatten``/``tree_unflatten``.
         """
         # Remember the class once, then wire it into every backend seen so far.
-        with self._lock:
-            if cls not in self._seen:
-                self._seen.add(cls)
-                self._classes.append(cls)
-            for name, registrar in self._backends.items():
-                self._wire(name, registrar, cls)
+        self._classes.setdefault(cls)
+        for name, registrar in self._backends.items():
+            self._wire(name, registrar, cls)
 
     def register_backend(self, name: str, registrar: TreeRegistrar) -> None:
         """Record a backend's tree protocol and back-fill every class known so far.
@@ -67,25 +59,21 @@ class PyTreeRegistry:
             Registers a single class with that backend's pytree system.
         """
         # Wire the new backend into every class seen so far.
-        with self._lock:
-            self._backends[name] = registrar
-            for cls in self._classes:
-                self._wire(name, registrar, cls)
+        self._backends[name] = registrar
+        for cls in self._classes:
+            self._wire(name, registrar, cls)
 
     def registered_classes(self) -> tuple[type, ...]:
         """Return the container classes recorded so far, in registration order."""
-        with self._lock:
-            return tuple(self._classes)
+        return tuple(self._classes)
 
     def backends(self) -> tuple[str, ...]:
         """Return the names of the backends whose tree protocol is installed."""
-        with self._lock:
-            return tuple(self._backends)
+        return tuple(self._backends)
 
     def is_wired(self, name: str, cls: type) -> bool:
         """Return whether ``cls`` has been wired into backend ``name``."""
-        with self._lock:
-            return (name, cls) in self._done
+        return (name, cls) in self._done
 
     def _wire(self, name: str, registrar: TreeRegistrar, cls: type) -> None:
         """Register ``cls`` with backend ``name`` at most once.

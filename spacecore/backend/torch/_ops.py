@@ -6,7 +6,7 @@ import numpy as np
 
 from .._eager import EagerControlFlowMixin
 from .._family import BackendFamily
-from .._ops import BackendOps, LazyNamespace
+from .._ops import BackendOps
 from ...types import ArrayLike, DenseArray, DType, Index, SparseArray
 
 
@@ -27,13 +27,12 @@ class TorchOps(EagerControlFlowMixin, BackendOps[NativeArray]):
     """
 
     import torch as _torch
+    import array_api_compat.torch as xp
 
     # Concrete library handle exposed as ``Any`` so the portable protocols
     # (DenseArray/SparseArray) can be passed to typed PyTorch calls without a
     # cast at every boundary; mirrors the base ``xp: ClassVar[Any]`` design.
     torch: Any = _torch
-
-    xp = LazyNamespace("array_api_compat.torch")
 
     _family = BackendFamily.torch.value
     _allow_sparse = True
@@ -160,21 +159,10 @@ class TorchOps(EagerControlFlowMixin, BackendOps[NativeArray]):
         except Exception as e:
             raise TypeError(f"Invalid dtype specifier for PyTorch: {dtype!r}.") from e
 
-        mapping = {
-            np.dtype("bool"): self.torch.bool,
-            np.dtype("uint8"): self.torch.uint8,
-            np.dtype("int8"): self.torch.int8,
-            np.dtype("int16"): self.torch.int16,
-            np.dtype("int32"): self.torch.int32,
-            np.dtype("int64"): self.torch.int64,
-            np.dtype("float16"): self.torch.float16,
-            np.dtype("float32"): self.torch.float32,
-            np.dtype("float64"): self.torch.float64,
-            np.dtype("complex64"): self.torch.complex64,
-            np.dtype("complex128"): self.torch.complex128,
-        }
-        if np_dtype in mapping:
-            return mapping[np_dtype]
+        # NumPy and torch share the names of the dtypes they both support.
+        torch_dtype = getattr(self.torch, np_dtype.name, None)
+        if isinstance(torch_dtype, self.torch.dtype):
+            return torch_dtype
         raise TypeError(f"Dtype {np_dtype!r} is not supported by PyTorch.")
 
     def assparse(
@@ -411,14 +399,8 @@ class TorchOps(EagerControlFlowMixin, BackendOps[NativeArray]):
         in_axes: int | Sequence[int | None] | None = 0,
         out_axes: int | Sequence[int | None] | None = 0,
     ) -> Callable:
-        """Vectorize a function using PyTorch's native vmap when available."""
-        # torch.vmap, else torch.func.vmap, else the Python-loop fallback.
-        vmap = getattr(self.torch, "vmap", None)
-        if vmap is None and hasattr(self.torch, "func"):
-            vmap = getattr(self.torch.func, "vmap", None)
-        if vmap is None:
-            return super().vmap(fn, in_axes=in_axes, out_axes=out_axes)
-        return vmap(fn, in_dims=in_axes, out_dims=out_axes)
+        """Vectorize a function using ``torch.vmap``."""
+        return self.torch.vmap(fn, in_dims=in_axes, out_dims=out_axes)
 
     @property
     def has_native_vmap(self) -> bool:

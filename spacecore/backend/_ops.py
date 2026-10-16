@@ -1,34 +1,12 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-import importlib
 import math
 from typing import Any, Sequence, Tuple, Callable, Optional, Type, ClassVar, Generic, cast
 
 from ..types._array import DenseT
 
 from ..types import DenseArray, SparseArray, DType, ArrayLike, Index, T, X, Y, R, Carry
-
-
-class LazyNamespace:
-    def __init__(self, module_name: str) -> None:
-        # Set eagerly, so ABC checks and introspection do not trigger the import.
-        self.__name__ = module_name
-        self.__isabstractmethod__ = False
-        self._module_name = module_name
-        self._module: Any | None = None
-
-    def _load(self) -> Any:
-        if self._module is None:
-            self._module = importlib.import_module(self._module_name)
-        return self._module
-
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self._load(), name)
-
-    @property
-    def is_loaded(self) -> bool:
-        return self._module is not None
 
 
 class BackendOps(ABC, Generic[DenseT]):
@@ -321,32 +299,6 @@ class BackendOps(ABC, Generic[DenseT]):
         """
         return self.xp.take_along_axis(x, indices, axis=axis)
 
-    def _permute_dims(self, x: DenseArray, axes: Sequence[int]) -> DenseT:
-        axes = tuple(axes)
-        # Array API name, then torch's, then NumPy's.
-        if hasattr(self.xp, "permute_dims"):
-            return self.xp.permute_dims(x, axes)
-        if hasattr(self.xp, "permute"):
-            return self.xp.permute(x, axes)
-        return self.xp.transpose(x, axes=axes)
-
-    def _move_axis_order(
-        self,
-        ndim: int,
-        source: int | Sequence[int],
-        destination: int | Sequence[int],
-    ) -> tuple[int, ...]:
-        # Normalize both axis lists to non-negative tuples.
-        src = (source,) if isinstance(source, int) else tuple(source)
-        dst = (destination,) if isinstance(destination, int) else tuple(destination)
-        src = tuple(axis + ndim if axis < 0 else axis for axis in src)
-        dst = tuple(axis + ndim if axis < 0 else axis for axis in dst)
-        # Untouched axes keep their order; each moved axis is inserted at its destination.
-        order = [axis for axis in range(ndim) if axis not in src]
-        for dest, axis in sorted(zip(dst, src, strict=True)):
-            order.insert(dest, axis)
-        return tuple(order)
-
     @property
     def inf(self) -> DenseT:
         """Positive infinity as a cached backend scalar."""
@@ -460,21 +412,14 @@ class BackendOps(ABC, Generic[DenseT]):
         # Densify sparse input, then Array API asarray or torch's as_tensor.
         if self.is_sparse(x) and hasattr(x, "to_dense"):
             x = x.to_dense()
-        dtype = self._dtype_arg(dtype)
-        if hasattr(self.xp, "asarray"):
-            return self.xp.asarray(x, dtype=dtype, **backend_kwargs)
-        return self.xp.as_tensor(x, dtype=dtype, **backend_kwargs)
+        return self.xp.asarray(x, dtype=self._dtype_arg(dtype), **backend_kwargs)
 
     def astype(self, x: DenseArray, dtype: DType | None, **backend_kwargs: Any) -> DenseT:
         """Cast x to dtype, returning x unchanged when dtype is None."""
         if dtype is None:
             return cast(DenseT, x)
         self._reject_complex_to_real(x, dtype, operation="astype")
-        dtype = self.sanitize_dtype(dtype)
-        # NumPy-style astype, else torch's .to.
-        if hasattr(x, "astype"):
-            return cast(Any, x).astype(dtype, **backend_kwargs)
-        return cast(Any, x).to(dtype=dtype, **backend_kwargs)
+        return cast(Any, x).astype(self.sanitize_dtype(dtype), **backend_kwargs)
 
     def empty(self, shape: Tuple[int, ...], dtype: DType | None = None) -> DenseT:
         """Create an uninitialized array (delegates to xp.empty)."""
@@ -544,9 +489,7 @@ class BackendOps(ABC, Generic[DenseT]):
 
     def ravel(self, x: DenseArray) -> DenseT:
         """Flatten x to one dimension in C order (last axis varies fastest)."""
-        if hasattr(self.xp, "ravel"):
-            return self.xp.ravel(x)
-        return self.reshape(x, (-1,))
+        return self.xp.ravel(x)
 
     def reshape(self, x: DenseArray, shape: Tuple[int, ...] | int) -> DenseT:
         """Reshape x in C order (delegates to xp.reshape; see the note above)."""
@@ -557,23 +500,16 @@ class BackendOps(ABC, Generic[DenseT]):
         """Permute dimensions of x."""
         if axes is None:
             axes = tuple(reversed(range(self.ndim(x))))
-        return self._permute_dims(x, axes)
+        return self.xp.permute_dims(x, tuple(axes))
 
     def swapaxes(self, x: DenseArray, axis1: int, axis2: int) -> DenseT:
         """Swap two axes of x."""
-        if hasattr(self.xp, "swapaxes"):
-            return self.xp.swapaxes(x, axis1, axis2)
-        # No native swapaxes: permute with the two axes exchanged.
-        axes = list(range(self.ndim(x)))
-        axes[axis1], axes[axis2] = axes[axis2], axes[axis1]
-        return self._permute_dims(x, axes)
+        return self.xp.swapaxes(x, axis1, axis2)
 
     def expand_dims(self, x: DenseArray, axis: int | Sequence[int]) -> DenseT:
         """Insert singleton dimensions into x."""
         if isinstance(axis, int):
-            if hasattr(self.xp, "expand_dims"):
-                return self.xp.expand_dims(x, axis=axis)
-            return self.xp.unsqueeze(x, axis)
+            return self.xp.expand_dims(x, axis=axis)
         # Several axes: insert one at a time, in increasing final position.
         out = cast(DenseT, x)
         ndim = self.ndim(x) + len(axis)
@@ -598,9 +534,7 @@ class BackendOps(ABC, Generic[DenseT]):
         destination: int | Sequence[int],
     ) -> DenseT:
         """Move axes of x to new positions."""
-        if hasattr(self.xp, "moveaxis"):
-            return self.xp.moveaxis(x, source, destination)
-        return self._permute_dims(x, self._move_axis_order(self.ndim(x), source, destination))
+        return self.xp.moveaxis(x, source, destination)
 
     def stack(self, arrays: Sequence[DenseArray], axis: int = 0) -> DenseT:
         """Stack arrays along a new axis (delegates to xp.stack)."""
@@ -754,9 +688,9 @@ class BackendOps(ABC, Generic[DenseT]):
             positions = [i for i in range(len(args)) if i not in excluded_set]
             if not positions:
                 return self.asarray(pyfunc(*args))
-            mapped = {i: self.asarray(args[i]) for i in positions}
-            out_shape = self._broadcast_shapes(*(self.shape(mapped[i]) for i in positions))
-            flat = {i: self.ravel(self.broadcast_to(mapped[i], out_shape)) for i in positions}
+            broadcast = self.xp.broadcast_arrays(*(self.asarray(args[i]) for i in positions))
+            out_shape = self.shape(broadcast[0])
+            flat = {i: self.ravel(b) for i, b in zip(positions, broadcast)}
             count = math.prod(map(int, out_shape))
             outputs = []
             for k in range(count):
@@ -768,24 +702,6 @@ class BackendOps(ABC, Generic[DenseT]):
             return self.reshape(stacked, out_shape)
 
         return vectorized
-
-    @staticmethod
-    def _broadcast_shapes(*shapes: Tuple[int, ...]) -> Tuple[int, ...]:
-        """Return the NumPy broadcast of several shapes (pure-Python)."""
-        # NumPy rules: align from the right; size 1 stretches, any other mismatch fails.
-        ndim = max((len(shape) for shape in shapes), default=0)
-        result = [1] * ndim
-        for shape in shapes:
-            offset = ndim - len(shape)
-            for axis, dim in enumerate(shape):
-                pos = offset + axis
-                if dim == 1 or dim == result[pos]:
-                    continue
-                if result[pos] == 1:
-                    result[pos] = dim
-                else:
-                    raise ValueError(f"shapes {shapes} are not broadcast-compatible")
-        return tuple(result)
 
     def sum(
         self,
@@ -881,12 +797,7 @@ class BackendOps(ABC, Generic[DenseT]):
         Matches NumPy, JAX, and Torch ``vdot`` semantics. ``DenseLinOp.rapply``
         relies on this convention for complex inputs. Returns a 0-d array.
         """
-        # Flattened conj(x) . y; vecdot is the Array API spelling of vdot.
-        x_flat = self.ravel(x)
-        y_flat = self.ravel(y)
-        if hasattr(self.xp, "vdot"):
-            return self._as_array(self.xp.vdot(x_flat, y_flat))
-        return self._as_array(self.xp.vecdot(x_flat, y_flat))
+        return self._as_array(self.xp.vdot(self.ravel(x), self.ravel(y)))
 
     def matmul(
         self,
@@ -1076,11 +987,7 @@ class BackendOps(ABC, Generic[DenseT]):
         dtype: DType | None = None,
     ) -> DenseT:
         """Concatenate arrays along an existing axis (delegates to xp.concat)."""
-        # Array API concat, else NumPy's concatenate.
-        if hasattr(self.xp, "concat"):
-            result = self.xp.concat(tuple(arrays), axis=axis)
-        else:
-            result = self.xp.concatenate(tuple(arrays), axis=axis)
+        result = self.xp.concat(tuple(arrays), axis=axis)
         return self.astype(result, dtype) if dtype is not None else result
 
     def take(
@@ -1113,12 +1020,7 @@ class BackendOps(ABC, Generic[DenseT]):
         return bool(self.xp.allclose(a, b, rtol=rtol, atol=atol, equal_nan=equal_nan))
 
     def __repr__(self) -> str:
-        xp = type(self).xp
-        # Report whether the lazy namespace has been imported yet.
-        xp_state = ""
-        if isinstance(xp, LazyNamespace):
-            xp_state = f", xp_loaded={xp.is_loaded!r}"
-        return f"{type(self).__name__}(family={self.family!r}{xp_state})"
+        return f"{type(self).__name__}(family={self.family!r})"
 
     def conj(self, x: DenseArray, **kwargs: Any) -> DenseT:
         """Return ``xp.conj(...)`` as a backend array."""

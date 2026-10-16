@@ -93,42 +93,28 @@ class NumpyOps(EagerControlFlowMixin, BackendOps[NativeArray]):
         self, x: Any, *, format: Literal["csr", "csc", "coo"] = "csr", dtype: DType | None = None
     ) -> SparseArray:
         """Convert to a 2-D SciPy sparse matrix in the requested format."""
-        sparse = self.sp.sparse
         self._reject_complex_to_real(x, dtype, operation="assparse")
+        if format not in ("csr", "csc", "coo"):
+            raise ValueError(f"Unknown sparse format: {format!r}")
 
         # Already sparse: cast if needed, then convert the format.
         if self.is_sparse(x):
             if dtype is not None and self.get_dtype(x) != self.sanitize_dtype(dtype):
                 x = x.astype(self.sanitize_dtype(dtype))
-            if format == "csr":
-                return x.tocsr()
-            if format == "csc":
-                return x.tocsc()
-            if format == "coo":
-                return x.tocoo()
-            raise ValueError(f"Unknown sparse format: {format!r}")
+            return getattr(x, "to" + format)()
 
-        # Dense input: only 2-D arrays have a SciPy sparse form.
+        # Dense input: only 2-D arrays have a sparse-matrix form.
         x_arr = self.asarray(x, dtype=dtype)
-
         if x_arr.ndim != 2:
-            raise ValueError("NumPy/SciPy sparse conversion currently expects a 2D array.")
-
-        if format == "csr":
-            return sparse.csr_matrix(x_arr)
-        if format == "csc":
-            return sparse.csc_matrix(x_arr)
-        if format == "coo":
-            return sparse.coo_matrix(x_arr)
-
-        raise ValueError(f"Unknown sparse format: {format!r}")
+            raise ValueError(f"{self.family} sparse conversion currently expects a 2D array.")
+        return getattr(self.sp.sparse, format + "_matrix")(x_arr)
 
     def sparse_matmul(self, a: SparseArray, b: DenseArray) -> NativeArray:
-        """Multiply a SciPy sparse matrix by a dense array."""
+        """Multiply a sparse matrix by a dense array."""
         if not self.is_sparse(a):
-            raise TypeError("sparse_matmul expects `a` to be a SciPy sparse matrix/array.")
+            raise TypeError(f"sparse_matmul expects `a` to be a {self.family} sparse matrix/array.")
         if not self.is_dense(b):
-            raise TypeError("sparse_matmul expects `b` to be a Numpy dense object.")
+            raise TypeError(f"sparse_matmul expects `b` to be a {self.family} dense array.")
         return a @ b
 
     def logsumexp(

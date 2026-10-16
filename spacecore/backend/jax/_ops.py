@@ -141,52 +141,16 @@ class JaxOps(BackendOps[NativeArray]):
                 return x.astype(self.sanitize_dtype(dtype))
             return x
 
-        # SciPy sparse input converts directly, without densifying.
-        if sps.issparse(x):
-            if format == "bcoo":
-                kwargs = {}
-                if index_dtype is not None:
-                    kwargs["index_dtype"] = index_dtype
-                if nse is not None:
-                    kwargs["nse"] = nse
-                out = self.jsparse.BCOO.from_scipy_sparse(x, **kwargs)
-                return out.astype(self.sanitize_dtype(dtype)) if dtype is not None else out
-
-            if format == "bcsr":
-                if self.jsparse.BCSR is None:
-                    raise TypeError("BCSR is not available in this JAX version.")
-                kwargs = {}
-                if index_dtype is not None:
-                    kwargs["index_dtype"] = index_dtype
-                if nse is not None:
-                    kwargs["nse"] = nse
-                out = self.jsparse.BCSR.from_scipy_sparse(x, **kwargs)
-                return out.astype(self.sanitize_dtype(dtype)) if dtype is not None else out
-
+        classes = {"bcoo": self.jsparse.BCOO, "bcsr": self.jsparse.BCSR}
+        if format not in classes:
             raise ValueError(f"Unknown sparse format: {format!r}")
+        kwargs = {k: v for k, v in (("index_dtype", index_dtype), ("nse", nse)) if v is not None}
 
-        # Dense input goes through fromdense.
-        x_arr = self.asarray(x, dtype=dtype)
-
-        if format == "bcoo":
-            kwargs = {}
-            if index_dtype is not None:
-                kwargs["index_dtype"] = index_dtype
-            if nse is not None:
-                kwargs["nse"] = nse
-            return self.jsparse.BCOO.fromdense(x_arr, **kwargs)
-
-        if format == "bcsr":
-            if self.jsparse.BCSR is None:
-                raise TypeError("BCSR is not available in this JAX version.")
-            kwargs = {}
-            if index_dtype is not None:
-                kwargs["index_dtype"] = index_dtype
-            if nse is not None:
-                kwargs["nse"] = nse
-            return self.jsparse.BCSR.fromdense(x_arr, **kwargs)
-
-        raise ValueError(f"Unknown sparse format: {format!r}")
+        # SciPy sparse input converts directly, without densifying; dense input goes through fromdense.
+        if sps.issparse(x):
+            out = classes[format].from_scipy_sparse(x, **kwargs)
+            return out.astype(self.sanitize_dtype(dtype)) if dtype is not None else out
+        return classes[format].fromdense(self.asarray(x, dtype=dtype), **kwargs)
 
     def sparse_matmul(self, a: SparseArray, b: DenseArray) -> NativeArray:
         """Multiply a JAX sparse array by a dense one, returning a dense ``jax.Array``."""

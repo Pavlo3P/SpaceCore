@@ -7,7 +7,6 @@ Unlike the pytree registry, a duplicate registration raises and removal is allow
 """
 from __future__ import annotations
 
-import threading
 from types import MappingProxyType
 from typing import Any, Mapping
 
@@ -60,7 +59,6 @@ class OpsRegistry:
 
     def __init__(self, seed: Any = ()) -> None:
         self._ops: dict[str, type[BackendOps]] = {}
-        self._lock = threading.RLock()
         for cls in seed:
             self.register(cls)
 
@@ -75,10 +73,9 @@ class OpsRegistry:
             raise TypeError(f"Expected type[BackendOps], got {type(ops)!r}")
         family = backend_key(ops)
         # One class per family; registering a family twice is a conflict.
-        with self._lock:
-            if family in self._ops:
-                raise ContextConflictError(f"BackendOps {family} is already registered.")
-            self._ops[family] = ops
+        if family in self._ops:
+            raise ContextConflictError(f"BackendOps {family} is already registered.")
+        self._ops[family] = ops
         return ops
 
     def unregister(self, key: BackendKeyLike) -> type[BackendOps] | None:
@@ -89,8 +86,7 @@ class OpsRegistry:
         requires monotonicity). Intended for tests and dynamically scoped
         backends, not for routine use.
         """
-        with self._lock:
-            return self._ops.pop(backend_key(key), None)
+        return self._ops.pop(backend_key(key), None)
 
     def get_class(self, key: BackendKeyLike) -> type[BackendOps]:
         """Return the registered class for ``key``.
@@ -101,14 +97,13 @@ class OpsRegistry:
             If no backend is registered under that family.
         """
         family = backend_key(key)
-        with self._lock:
-            cls = self._ops.get(family)
-            if cls is None:
-                allowed = ", ".join(self._ops)
-                raise UnknownBackendError(
-                    f"Unknown backend: {family!r}. Expected one of: {allowed}"
-                )
-            return cls
+        cls = self._ops.get(family)
+        if cls is None:
+            allowed = ", ".join(self._ops)
+            raise UnknownBackendError(
+                f"Unknown backend: {family!r}. Expected one of: {allowed}"
+            )
+        return cls
 
     def get(self, key: BackendKeyLike) -> BackendOps:
         """Return a fresh instance of the backend registered under ``key``."""
@@ -116,13 +111,11 @@ class OpsRegistry:
 
     def classes(self) -> Mapping[str, type[BackendOps]]:
         """Return a read-only view of family name to registered class."""
-        with self._lock:
-            return MappingProxyType(dict(self._ops))
+        return MappingProxyType(dict(self._ops))
 
     def families(self) -> tuple[str, ...]:
         """Return the registered family names, in registration order."""
-        with self._lock:
-            return tuple(self._ops)
+        return tuple(self._ops)
 
     def __contains__(self, key: BackendKeyLike) -> bool:
         # Unrecognized key types count as absent.
