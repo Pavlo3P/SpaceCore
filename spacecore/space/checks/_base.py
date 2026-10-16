@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any, ClassVar
 
-from ..._checks import CheckLevel, check_level_at_least, normalize_check_level
+from ..._checks import CheckLevel, check_level_at_least, effective_check_level, normalize_check_level
 
 
 class SpaceValidationError(ValueError, TypeError):
@@ -287,6 +287,7 @@ def _run_checks(space: Any, x: Any, *, allow_leading: bool) -> None:
     """Run all membership checks with a shared member/batched shape policy."""
     # Run every check this level includes, raising on the first failure.
     level = normalize_check_level(getattr(space, "check_level", "standard"))
+    level = effective_check_level(level, getattr(space, "ops", None))
     for check in space.member_checks():
         if not check_level_at_least(level, check.minimum_level):
             continue

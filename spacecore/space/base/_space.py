@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, ClassVar, Literal
 
-from ..._checks import CheckLevel, check_level_at_least, normalize_check_level
+from ..._checks import CheckLevel, check_level_at_least, effective_check_level, normalize_check_level
 from ...mapping._lazy_algebra import is_recognizably_nonreal
 from ...contextual import ContextBound
 from ..._repr import field_symbol
@@ -181,6 +181,7 @@ class Space(ContextBound):
         # avoiding the generic ``_run_checks`` MRO walk.
         # Hot path: run the cached checks for this level, raise on the first failure.
         level = normalize_check_level(getattr(self, "check_level", "standard"))
+        level = effective_check_level(level, getattr(self, "ops", None))
         for check in self._checks_for_level(level):
             if not check.validate(self, x, allow_leading=False):
                 raise SpaceValidationError(

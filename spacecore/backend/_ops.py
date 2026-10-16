@@ -41,6 +41,10 @@ class BackendOps(ABC, Generic[DenseT]):
         """Whether ``vmap`` is implemented by the backend rather than a Python loop."""
         return False
 
+    def is_tracing(self) -> bool:
+        """Whether code is running under this backend's tracer (``jit``, ``vmap``, ``compile``)."""
+        return False
+
     @classmethod
     def install_pytree_protocol(cls) -> None:
         """

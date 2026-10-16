@@ -368,6 +368,10 @@ class TorchOps(EagerControlFlowMixin, BackendOps[NativeArray]):
             kwargs["out"] = out
         return self.torch.matmul(a, b, **kwargs)
 
+    def is_tracing(self) -> bool:
+        """Whether ``torch.compile`` is tracing; Dynamo folds this to a constant in the graph."""
+        return self.torch.compiler.is_compiling()
+
     def sparse_matmul(
         self,
         a: SparseArray,

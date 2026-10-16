@@ -106,7 +106,7 @@ from .space import (
 )
 from .types import DenseArray, SparseArray, ArrayLike
 
-from ._checks import checked_method
+from ._checks import checked_method, get_traced_check_level, set_traced_check_level
 from .contextual import (
     ContextBound,
     set_context,
@@ -230,6 +230,8 @@ __all__ = [
     "set_check_level",
     "get_check_level",
     "use_check_level",
+    "set_traced_check_level",
+    "get_traced_check_level",
     "use_context",
     "resolve_context_priority",
     "register_ops",

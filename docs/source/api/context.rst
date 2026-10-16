@@ -35,6 +35,8 @@ Context helpers
    spacecore.get_check_level
    spacecore.set_check_level
    spacecore.use_check_level
+   spacecore.get_traced_check_level
+   spacecore.set_traced_check_level
    spacecore.normalize_context
    spacecore.normalize_ops
    spacecore.resolve_context_priority
@@ -45,6 +47,9 @@ Context helpers
   async task.
 * ``get_check_level`` / ``set_check_level`` / ``use_check_level`` do the same for
   the ambient validation level applied to newly constructed bound objects.
+* ``get_traced_check_level`` / ``set_traced_check_level`` cap every object's level
+  while a backend traces (``jax.jit``, ``jax.vmap``, ``torch.compile``); the default
+  ``"none"`` turns checks off in traced code.
 * ``normalize_context`` turns backend names, families, concrete contexts, or ``None`` into a context.
 * ``resolve_context_priority`` chooses a common context for constructors.
 * ``register_ops`` adds a custom backend implementation.
@@ -55,6 +60,8 @@ Context helpers
 .. autofunction:: spacecore.get_check_level
 .. autofunction:: spacecore.set_check_level
 .. autofunction:: spacecore.use_check_level
+.. autofunction:: spacecore.get_traced_check_level
+.. autofunction:: spacecore.set_traced_check_level
 .. autofunction:: spacecore.normalize_context
 .. autofunction:: spacecore.normalize_ops
 .. autofunction:: spacecore.resolve_context_priority

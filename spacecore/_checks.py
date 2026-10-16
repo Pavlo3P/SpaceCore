@@ -61,6 +61,41 @@ def minimum_check_level(levels: tuple[CheckLevel, ...]) -> CheckLevel:
     return min(levels, key=_CHECK_LEVEL_ORDER.__getitem__, default="none")
 
 
+# Cap on every object's check level while a backend traces (jit, vmap, compile).
+# Value checks cannot run on a tracer, so the default turns checks off under tracing.
+_traced_check_level: CheckLevel = "none"
+
+
+def set_traced_check_level(level: CheckLevel | None) -> None:
+    """
+    Set the process-wide cap on check levels while a backend is tracing.
+
+    Inside ``jax.jit``, ``jax.vmap`` or ``torch.compile`` an object checks at the lower of
+    its own level and this cap. ``"cheap"`` keeps shape and dtype checks, which run once at
+    trace time and cost nothing in the compiled program; ``"standard"`` and above compare
+    values, which a tracer cannot do.
+
+    Parameters
+    ----------
+    level : {"none", "cheap", "standard", "strict"} or None
+        New cap. ``None`` restores the default, ``"none"``.
+    """
+    global _traced_check_level
+    _traced_check_level = normalize_check_level(level, default="none")
+
+
+def get_traced_check_level() -> CheckLevel:
+    """Return the process-wide cap on check levels while a backend is tracing."""
+    return _traced_check_level
+
+
+def effective_check_level(level: CheckLevel, ops: Any) -> CheckLevel:
+    """Return ``level``, capped by :func:`get_traced_check_level` when ``ops`` is tracing."""
+    if level == "none" or ops is None or not ops.is_tracing():
+        return level
+    return minimum_check_level((level, _traced_check_level))
+
+
 _Method = TypeVar("_Method", bound=Callable[..., Any])
 
 
@@ -118,6 +153,9 @@ def checked_method(
         def wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
             # Fast path: ``check_level == "none"`` means no validation on either side.
             level: CheckLevel = getattr(self, "check_level", "standard")
+            if level == "none":
+                return method(self, *args, **kwargs)
+            level = effective_check_level(level, getattr(self, "ops", None))
             if level == "none":
                 return method(self, *args, **kwargs)
 

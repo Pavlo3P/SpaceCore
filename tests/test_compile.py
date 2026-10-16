@@ -1,12 +1,15 @@
-"""Everything compiles at ``check_level="none"``: ``jax.jit`` and ``torch.compile(fullgraph=True)``.
+"""Everything compiles under ``jax.jit`` and ``torch.compile(fullgraph=True)``, at any check level.
 
-Checks are not a compilation target; compiled code runs with them off. Each case is
-compiled and compared with its eager result, so a graph break or a wrong trace fails.
+Checks are not a compilation target: while a backend traces, each object checks at the
+lower of its own level and ``get_traced_check_level()``, which defaults to ``"none"``.
+Each case is compiled and compared with its eager result, so a graph break or a wrong
+trace fails.
 """
 import numpy as np
 import pytest
 
 import spacecore as sc
+from spacecore._checks import CHECK_LEVELS
 
 
 def _backend(name):
@@ -18,11 +21,18 @@ def _backend(name):
     return sc.Context(sc.TorchOps(), dtype=torch.float32), lambda f: torch.compile(f, fullgraph=True)
 
 
-def _objects(ctx):
-    with sc.use_check_level("none"):
+def _objects(ctx, level="none"):
+    with sc.use_check_level(level):
         H = sc.HermitianSpace(3, ctx=ctx)
         A = sc.DenseLinOp(ctx.asarray(np.arange(81.0).reshape(3, 3, 3, 3) / 81.0), H, H, ctx)
         return H, A, sc.SquaredL2NormFunctional(H)
+
+
+@pytest.fixture
+def traced_level():
+    """Restore the process-wide traced cap after a test changes it."""
+    yield sc.set_traced_check_level
+    sc.set_traced_check_level(None)
 
 
 CASES = {
@@ -40,6 +50,7 @@ TORCH_MATMUL = pytest.mark.xfail(
 )
 
 
+@pytest.mark.parametrize("level", CHECK_LEVELS)
 @pytest.mark.parametrize(
     "backend, case",
     [
@@ -48,10 +59,46 @@ TORCH_MATMUL = pytest.mark.xfail(
         for c in CASES
     ],
 )
-def test_compiles_and_matches_eager(backend, case):
+def test_compiles_and_matches_eager(backend, case, level):
     ctx, compile_ = _backend(backend)
-    run = CASES[case](*_objects(ctx))
+    run = CASES[case](*_objects(ctx, level))
     a = ctx.asarray(np.eye(3))
     got, want = compile_(run)(a), run(a)
     for g, w in zip(got if isinstance(got, tuple) else (got,), want if isinstance(want, tuple) else (want,)):
         np.testing.assert_allclose(np.asarray(g), np.asarray(w), rtol=1e-5)
+
+
+def test_traced_level_defaults_to_none_and_resets(traced_level):
+    assert sc.get_traced_check_level() == "none"
+    traced_level("cheap")
+    assert sc.get_traced_check_level() == "cheap"
+    traced_level(None)
+    assert sc.get_traced_check_level() == "none"
+    with pytest.raises(ValueError, match="Unknown check_level"):
+        traced_level("loud")
+
+
+def test_eager_checks_ignore_the_traced_level(traced_level):
+    ctx, _ = _backend("jax")
+    H, _, _ = _objects(ctx, "standard")
+    traced_level("none")
+    with pytest.raises(sc.SpaceValidationError):
+        H.add(ctx.asarray(np.triu(np.ones((3, 3)))), ctx.asarray(np.eye(3)))
+
+
+def test_traced_cheap_keeps_shape_checks_and_skips_value_checks(traced_level):
+    ctx, jit = _backend("jax")
+    H, _, _ = _objects(ctx, "standard")
+    traced_level("cheap")
+    add = jit(lambda a, b: H.add(a, b))
+    # Value check skipped under the trace: a non-Hermitian input passes.
+    add(ctx.asarray(np.triu(np.ones((3, 3)))), ctx.asarray(np.eye(3)))
+    # Shape check kept, raised once at trace time.
+    with pytest.raises(sc.SpaceValidationError):
+        add(ctx.asarray(np.ones((2, 2))), ctx.asarray(np.eye(2)))
+
+
+def test_traced_none_skips_shape_checks_too(traced_level):
+    ctx, jit = _backend("jax")
+    H, _, _ = _objects(ctx, "standard")
+    jit(lambda a, b: H.add(a, b))(ctx.asarray(np.ones((2, 2))), ctx.asarray(np.eye(2)))

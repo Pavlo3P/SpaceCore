@@ -9,6 +9,11 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- `set_traced_check_level` / `get_traced_check_level`: a process-wide cap on check
+  levels while a backend traces (`jax.jit`, `jax.vmap`, `torch.compile`), default
+  `"none"`, so objects built at any level compile. `"cheap"` keeps shape and dtype
+  checks, which run once at trace time. Backends report tracing through the new
+  `BackendOps.is_tracing()`.
 - `cg(..., preconditioner=K)`: preconditioned CG with an operator `K` on `A.domain`.
 - `InnerProductSpace.dual_norm(xi)`, the norm of a covector.
 - The metric-free pairing layer: `CoordinateSpace.pair(xi, x)` and `vpair(xi, xs)`

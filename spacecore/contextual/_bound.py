@@ -8,6 +8,7 @@ from ..backend._container import field_values, rebuild_class
 from .._checks import (
     CheckLevel,
     check_level_at_least,
+    effective_check_level,
     minimum_check_level,
     normalize_check_level,
 )
@@ -134,7 +135,7 @@ class ContextBound(ABC):
 
     def _checks_at_least(self, level: CheckLevel) -> bool:
         """Return whether this object runs checks assigned to ``level``."""
-        return check_level_at_least(self.check_level, level)
+        return check_level_at_least(effective_check_level(self.check_level, self.ops), level)
 
     def _coerce_dense(self, x: Any) -> Any:
         """Return ``x`` asserted as a dense array when cheap checks are enabled.

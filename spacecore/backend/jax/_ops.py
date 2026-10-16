@@ -8,6 +8,11 @@ from .._ops import BackendOps
 from ..numpy import NumpyOps
 from ...types import DenseArray, ArrayLike, SparseArray, DType, Index, X, T, Y, R, Carry
 
+try:  # private; see JaxOps.is_tracing
+    from jax._src import core as _jax_core
+except ImportError:
+    _jax_core = None
+
 
 if TYPE_CHECKING:
     from jax import Array
@@ -164,6 +169,15 @@ class JaxOps(BackendOps[NativeArray]):
     ) -> Callable:
         """Vectorize a function using ``jax.vmap``."""
         return self.jax.vmap(fn, in_axes=in_axes, out_axes=out_axes)
+
+    def is_tracing(self) -> bool:
+        """Whether a JAX transform (``jit``, ``vmap``, ``grad``, ...) is tracing.
+
+        JAX has no public query; ``trace_state_clean`` is private, so a JAX that drops it
+        reads as not tracing and checks run as in eager code.
+        """
+        clean = getattr(_jax_core, "trace_state_clean", None)
+        return clean is not None and not clean()
 
     @property
     def has_native_vmap(self) -> bool:
