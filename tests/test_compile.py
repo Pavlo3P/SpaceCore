@@ -86,15 +86,41 @@ def test_eager_checks_ignore_the_traced_level(traced_level):
         H.add(ctx.asarray(np.triu(np.ones((3, 3)))), ctx.asarray(np.eye(3)))
 
 
-def test_traced_cheap_keeps_shape_checks_and_skips_value_checks(traced_level):
-    ctx, jit = _backend("jax")
+@pytest.mark.parametrize(
+    "backend, case",
+    [
+        pytest.param(b, c, marks=TORCH_MATMUL if (b, c) == ("torch", "operator applied to an element") else ())
+        for b in ("jax", "torch")
+        for c in CASES
+    ],
+)
+def test_traced_cheap_compiles_and_matches_eager(backend, case, traced_level):
+    ctx, compile_ = _backend(backend)
+    run = CASES[case](*_objects(ctx, "standard"))
+    traced_level("cheap")
+    a = ctx.asarray(np.eye(3))
+    got, want = compile_(run)(a), run(a)
+    for g, w in zip(got if isinstance(got, tuple) else (got,), want if isinstance(want, tuple) else (want,)):
+        np.testing.assert_allclose(np.asarray(g), np.asarray(w), rtol=1e-5)
+
+
+@pytest.mark.parametrize("backend", ["jax", "torch"])
+def test_traced_cheap_keeps_shape_checks_and_skips_value_checks(backend, traced_level):
+    ctx, compile_ = _backend(backend)
     H, _, _ = _objects(ctx, "standard")
     traced_level("cheap")
-    add = jit(lambda a, b: H.add(a, b))
+    add = compile_(lambda a, b: H.add(a, b))
     # Value check skipped under the trace: a non-Hermitian input passes.
     add(ctx.asarray(np.triu(np.ones((3, 3)))), ctx.asarray(np.eye(3)))
-    # Shape check kept, raised once at trace time.
-    with pytest.raises(sc.SpaceValidationError):
+    # Shape check kept, raised once at trace time. Under fullgraph=True, Dynamo cannot keep a
+    # `raise` in the graph, so it reports the SpaceValidationError as Unsupported.
+    if backend == "torch":
+        import torch._dynamo.exc
+
+        expected = pytest.raises(torch._dynamo.exc.Unsupported, match="SpaceValidationError")
+    else:
+        expected = pytest.raises(sc.SpaceValidationError)
+    with expected:
         add(ctx.asarray(np.ones((2, 2))), ctx.asarray(np.eye(2)))
 
 

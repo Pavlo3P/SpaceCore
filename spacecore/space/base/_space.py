@@ -154,7 +154,9 @@ class Space(ContextBound):
             if local_checks is not None:
                 checks.extend(local_checks(self))
         result = tuple(checks)
-        self._cached_member_checks = result
+        # No write under a tracer: torch.compile breaks the graph on a dict mutated mid-trace.
+        if not self.ops.is_tracing():
+            self._cached_member_checks = result
         return result
 
     def _checks_for_level(self, level: CheckLevel) -> tuple[SpaceCheck, ...]:
@@ -172,7 +174,8 @@ class Space(ContextBound):
             check for check in self.member_checks()
             if check_level_at_least(level, check.minimum_level)
         )
-        self._cached_checks_by_level[level] = result
+        if not self.ops.is_tracing():  # see member_checks
+            self._cached_checks_by_level[level] = result
         return result
 
     def _check_member(self, x: Any) -> None:
