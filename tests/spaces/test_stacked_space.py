@@ -79,7 +79,7 @@ class _InnerPair(_PairCoordinateSpace, sc.InnerProductSpace):
 
 
 class _StarPair(_PairCoordinateSpace, sc.StarSpace):
-    def star(self, x):
+    def _star_core(self, x):
         return self.ops.conj(x)
 
 
@@ -196,7 +196,7 @@ class TestCapabilityDispatch:
 
     def test_inner_star_combination_lifts(self, numpy_ctx):
         class _InnerStarPair(_InnerPair, sc.StarSpace):
-            def star(self, x):
+            def _star_core(self, x):
                 return self.ops.conj(x)
 
         stacked = _InnerStarPair(numpy_ctx).stacked(2)

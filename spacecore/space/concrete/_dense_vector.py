@@ -94,9 +94,8 @@ class DenseVectorSpace(DenseCoordinateSpace, StarSpace):
             raise ValueError(f"DenseVectorSpace requires one-dimensional shape, got {shape}.")
         super().__init__(shape, ctx, geometry=geometry, check_level=check_level)
 
-    @checked_method(in_space="self")
-    def star(self, x: DenseArray) -> DenseArray:
-        """Return elementwise conjugation."""
+    def _star_core(self, x: DenseArray) -> DenseArray:
+        """Elementwise conjugation."""
         return self.ops.conj(x)
 
 class ElementwiseJordanSpace(PyTreeNode, JordanAlgebraSpace, DenseCoordinateSpace, StarSpace):
@@ -146,9 +145,8 @@ class ElementwiseJordanSpace(PyTreeNode, JordanAlgebraSpace, DenseCoordinateSpac
         geometry = _resolve_elementwise_geometry(geometry, inner_product)
         DenseCoordinateSpace.__init__(self, shape, ctx, geometry=geometry, check_level=check_level)
 
-    @checked_method(in_space="self")
-    def star(self, x: DenseArray) -> DenseArray:
-        """Return elementwise conjugation."""
+    def _star_core(self, x: DenseArray) -> DenseArray:
+        """Elementwise conjugation."""
         return self.ops.conj(x)
 
     @checked_method(in_space="self", arg_positions=(0, 1))

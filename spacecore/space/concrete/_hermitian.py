@@ -98,9 +98,8 @@ class HermitianSpace(DenseCoordinateSpace, StarSpace, EuclideanJordanAlgebraSpac
         x_adj = self.ops.conj(self.ops.swapaxes(x, -1, -2))
         return (x + x_adj) * 0.5
 
-    @checked_method(in_space="self")
-    def star(self, x: DenseArray) -> DenseArray:
-        """Return the canonical star operation for Hermitian elements: identity."""
+    def _star_core(self, x: DenseArray) -> DenseArray:
+        """The canonical star operation for Hermitian elements: identity."""
         return x
 
     @checked_method(in_space="self", arg_positions=(0, 1))

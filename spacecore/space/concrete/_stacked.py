@@ -234,10 +234,10 @@ class _StackedInnerProductMixin(_StackedHostMixin):
 class _StackedStarMixin(_StackedHostMixin):
     """Star operation for stacks whose base supports it."""
 
-    def star(self, x: Any) -> Any:
-        """Return the base-space star operation for each stacked copy."""
+    def _star_core(self, x: Any) -> Any:
+        """The base-space star operation for each stacked copy."""
         base = cast(StarSpace, self.base)
-        return self._per_copy(base.star, x)
+        return self._per_copy(base._star_core, x)
 
 
 class _StackedJordanMixin(_StackedHostMixin):

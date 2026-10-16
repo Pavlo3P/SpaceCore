@@ -69,9 +69,9 @@ class _LeafwiseInnerProductMixin(_LeafwiseHostMixin):
 class _LeafwiseStarMixin(_LeafwiseHostMixin):
     """Star operation for trees whose leaves all support it."""
 
-    def star(self, x: Any) -> Any:
-        """Return the leafwise star operation in the same tree structure."""
-        return self._from_components(self._leafwise(lambda s, leaf: s.star(leaf), x))
+    def _star_core(self, x: Any) -> Any:
+        """The leafwise star operation in the same tree structure."""
+        return self._from_components(self._leafwise(lambda s, leaf: s._star_core(leaf), x))
 
 
 @dataclass(frozen=True)
