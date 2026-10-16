@@ -51,13 +51,13 @@ class _LeafwiseInnerProductMixin(_LeafwiseHostMixin):
         # Sum of the leaves' inner products.
         return reduce(operator.add, self._leafwise(lambda s, xi, yi: s._inner_core(xi, yi), x, y))
 
-    def riesz(self, x: Any) -> Any:
+    def _riesz_core(self, x: Any) -> Any:
         """Apply each leaf space's Riesz map."""
-        return self._from_components(self._leafwise(lambda s, leaf: s.riesz(leaf), x))
+        return self._from_components(self._leafwise(lambda s, leaf: s._riesz_core(leaf), x))
 
-    def riesz_inverse(self, x: Any) -> Any:
+    def _riesz_inverse_core(self, x: Any) -> Any:
         """Apply each leaf space's inverse Riesz map."""
-        return self._from_components(self._leafwise(lambda s, leaf: s.riesz_inverse(leaf), x))
+        return self._from_components(self._leafwise(lambda s, leaf: s._riesz_inverse_core(leaf), x))
 
     @property
     def is_euclidean(self) -> bool:

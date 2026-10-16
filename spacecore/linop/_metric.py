@@ -83,11 +83,11 @@ def metric_rapply(domain, codomain, euclidean_rapply, y):
     # Euclidean fast path; otherwise A# y = R_X^-1 A^T R_Y y.
     if domain.is_euclidean and codomain.is_euclidean:
         return euclidean_rapply(y)
-    return domain.riesz_inverse(euclidean_rapply(codomain.riesz(y)))
+    return domain._riesz_inverse_core(euclidean_rapply(codomain._riesz_core(y)))
 
 
 def metric_rvapply(domain, codomain, euclidean_rvapply, ys):
     """Apply the metric adjoint over a leading batch axis; Riesz maps broadcast over it."""
     if domain.is_euclidean and codomain.is_euclidean:
         return euclidean_rvapply(ys)
-    return domain.riesz_inverse(euclidean_rvapply(codomain.riesz(ys)))
+    return domain._riesz_inverse_core(euclidean_rvapply(codomain._riesz_core(ys)))

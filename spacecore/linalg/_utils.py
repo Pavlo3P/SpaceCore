@@ -141,13 +141,16 @@ class SpaceCoreOps:
     ``add``/``scale``/``inner`` to match the space's definitions.
     """
 
-    __slots__ = ("ops", "_inner", "_add", "_scale")
+    __slots__ = ("ops", "_inner", "_add", "_scale", "_axpy", "_norm")
 
     def __init__(self, space: Any) -> None:
         self.ops = space.ops
         self._inner = space._inner_core
         self._add = space._add_core
         self._scale = space._scale_core
+        self._axpy = space._axpy_core
+        # A native space may define only inner/add/scale; derive its norm then.
+        self._norm = getattr(space, "_norm_core", None)
 
     def inner(self, x: Any, y: Any) -> Any:
         return self._inner(x, y)
@@ -163,10 +166,10 @@ class SpaceCoreOps:
         return self._scale(a, x)
 
     def axpy(self, a: Any, x: Any, y: Any) -> Any:
-        return self._add(self._scale(a, x), y)
+        return self._axpy(a, x, y)
 
     def norm(self, x: Any) -> Any:
-        return self.ops.sqrt(self.real_inner(x, x))
+        return self._norm(x) if self._norm is not None else self.ops.sqrt(self.real_inner(x, x))
 
 
 def resolve_apply(A: Any) -> Any:

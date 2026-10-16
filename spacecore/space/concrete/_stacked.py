@@ -214,17 +214,17 @@ class _StackedInnerProductMixin(_StackedHostMixin):
         """Return ``sum_i base.inner(x[i], y[i])`` as a scalar."""
         base = cast(InnerProductSpace, self.base)
         # One vdot over all copies, against the base's batched Riesz map of y.
-        return self.ops.vdot(x, y if base.is_euclidean else base.riesz(y))
+        return self.ops.vdot(x, y if base.is_euclidean else base._riesz_core(y))
 
-    def riesz(self, x: Any) -> Any:
-        """Apply the base Riesz map to every stacked copy."""
+    def _riesz_core(self, x: Any) -> Any:
+        """Apply the base Riesz map to every stacked copy (the geometry broadcasts)."""
         base = cast(InnerProductSpace, self.base)
-        return x if base.is_euclidean else base.riesz(x)
+        return x if base.is_euclidean else base._riesz_core(x)
 
-    def riesz_inverse(self, x: Any) -> Any:
+    def _riesz_inverse_core(self, x: Any) -> Any:
         """Apply the base inverse Riesz map to every stacked copy."""
         base = cast(InnerProductSpace, self.base)
-        return x if base.is_euclidean else base.riesz_inverse(x)
+        return x if base.is_euclidean else base._riesz_inverse_core(x)
 
     @property
     def is_euclidean(self) -> bool:

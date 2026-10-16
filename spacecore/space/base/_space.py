@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, ClassVar, Literal
 
-from ..._checks import CheckLevel, check_level_at_least
+from ..._checks import CheckLevel, check_level_at_least, wrap_public_overrides
 from ...mapping._lazy_algebra import is_recognizably_nonreal
 from ...contextual import ContextBound
 from ..._repr import field_symbol
@@ -23,6 +23,11 @@ class Space(ContextBound):
     """
 
     checks: ClassVar[tuple[SpaceCheck, ...]] = ()
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        # Families implement ``_*_core``; a public operation they override keeps the base checks.
+        wrap_public_overrides(cls)
 
     def __init__(
         self,

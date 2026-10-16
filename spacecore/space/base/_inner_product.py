@@ -309,18 +309,46 @@ class InnerProductSpace(VectorSpace):
         """Return :meth:`real_inner` without membership checks."""
         return self.ops.real(self._inner_core(x, y))
 
+    @checked_method(in_space="self", in_batched=True)
     def riesz(self, x: Any) -> Any:
+        """Return the covector ``R x`` of an element, or of each element of a leading-axis batch."""
+        return self._riesz_core(x)
+
+    def _riesz_core(self, x: Any) -> Any:
+        # A family that overrode the public map (older style) keeps it on internal paths too.
+        if type(self).riesz is not InnerProductSpace.riesz:
+            return self.riesz(x)
         return self.geometry.riesz(self.ops, x)
 
-    def riesz_inverse(self, x: Any) -> Any:
-        return self.geometry.riesz_inverse(self.ops, x)
+    @checked_method(in_space="self", out_space="self", in_batched=True, out_batched=True)
+    def riesz_inverse(self, xi: Any) -> Any:
+        """Return the element ``R^{-1} xi`` of a covector, or of each covector in a batch.
 
+        A covector has the element's coordinate shape, so the input check is that shape check.
+        """
+        return self._riesz_inverse_core(xi)
+
+    def _riesz_inverse_core(self, xi: Any) -> Any:
+        if type(self).riesz_inverse is not InnerProductSpace.riesz_inverse:
+            return self.riesz_inverse(xi)
+        return self.geometry.riesz_inverse(self.ops, xi)
+
+    @checked_method(in_space="self")
     def norm(self, x: Any) -> Any:
-        return self.ops.sqrt(self.real_inner(x, x))
+        r"""Return :math:`\|x\|_X = \sqrt{\operatorname{Re}\langle x, x\rangle_X}`."""
+        return self._norm_core(x)
+
+    def _norm_core(self, x: Any) -> Any:
+        if type(self).norm is not InnerProductSpace.norm:
+            return self.norm(x)
+        return self.ops.sqrt(self._real_inner_core(x, x))
 
     def dual_norm(self, xi: Any) -> Any:
-        r"""Return the dual norm of a covector, :math:`\|\xi\|_* = \|R^{-1}\xi\|`."""
-        return self.norm(self.riesz_inverse(xi))
+        r"""Return the dual norm of a covector, :math:`\|\xi\|_* = \|R^{-1}\xi\|`.
+
+        A covector is not an element, so there is no membership check to run.
+        """
+        return self._norm_core(self._riesz_inverse_core(xi))
 
     @property
     def is_euclidean(self) -> bool:

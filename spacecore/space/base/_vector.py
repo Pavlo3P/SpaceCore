@@ -41,9 +41,18 @@ class VectorSpace(Space):
 
     @checked_method(in_space="self", arg_positions=(1,))
     def scale(self, a: Any, x: Any) -> Any:
-        """Return a * x."""
+        """Return a * x; a multiplier that provably leaves the space is rejected."""
+        self.check_scalar(a)
         return self._scale_core(a, x)
 
+    @checked_method(in_space="self", arg_positions=(1, 2))
     def axpy(self, a: Any, x: Any, y: Any) -> Any:
         """Return a*x + y."""
-        return self.add(self.scale(a, x), y)
+        self.check_scalar(a)
+        return self._axpy_core(a, x, y)
+
+    def _axpy_core(self, a: Any, x: Any, y: Any) -> Any:
+        """Return a*x + y without membership checks (or through an overridden ``axpy``)."""
+        if type(self).axpy is not VectorSpace.axpy:
+            return self.axpy(a, x, y)
+        return self._add_core(self._scale_core(a, x), y)

@@ -50,7 +50,7 @@ class SquaredL2NormFunctional(_CoordinateFunctional[Domain]):
 
     def _coordinate_grad(self, x: Any) -> Any:
         """Euclidean coordinate gradient ``G x`` of ``1/2 <x, x>_X``."""
-        return cast(Any, self.domain).riesz(x)
+        return cast(Any, self.domain)._riesz_core(x)
 
 class LpNormFunctional(_CoordinateFunctional[Domain]):
     r"""

@@ -209,6 +209,25 @@ def checked_method(
             return y
 
         wrapper._spacecore_checked = True  # type: ignore[attr-defined]
+        wrapper._spacecore_check_spec = spec  # type: ignore[attr-defined]
         return cast(_Method, wrapper)
 
+    spec = dict(in_space=in_space, out_space=out_space, arg_positions=arg_positions,
+                in_batched=in_batched, out_batched=out_batched, out_batched_scalar=out_batched_scalar)
     return decorate
+
+
+def wrap_public_overrides(cls: type) -> None:
+    """Give each public method ``cls`` overrides the checks of the checked method it replaces.
+
+    Subclasses are meant to implement ``_*_core`` methods; one that overrides a public
+    checked method instead (and does not decorate it) still gets the base's checks.
+    """
+    for name, method in list(vars(cls).items()):
+        if name.startswith("_") or not inspect.isfunction(method) or getattr(method, "_spacecore_checked", False):
+            continue
+        for base in cls.__mro__[1:]:
+            spec = getattr(vars(base).get(name), "_spacecore_check_spec", None)
+            if spec is not None:
+                setattr(cls, name, checked_method(**spec)(method))
+                break

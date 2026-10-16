@@ -49,7 +49,7 @@ class _CoordinateFunctional(Functional[Domain]):
 
     def _grad_core(self, x: Any) -> Any:
         """The Riesz gradient under the domain geometry."""
-        return cast(Any, self.domain).riesz_inverse(self._coordinate_grad(x))
+        return cast(Any, self.domain)._riesz_inverse_core(self._coordinate_grad(x))
 
     def _vgrad_core(self, xs: Any) -> Any:
         """The gradient core evaluated independently over a leading batch axis."""

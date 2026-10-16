@@ -261,7 +261,7 @@ class Functional(Mapping, Generic[Domain]):
         """Check-free covector; the base applies the domain's Riesz map to the gradient core."""
         if self._overrides("differential"):
             return self.differential(x, *args, **kwargs)
-        return self.domain.riesz(self._grad_core(x, *args, **kwargs))
+        return self.domain._riesz_core(self._grad_core(x, *args, **kwargs))
 
     def _vvalue_core(self, xs: Any) -> Any:
         """Check-free batched-value core; the base vmaps ``value`` unless ``vvalue`` is overridden."""
