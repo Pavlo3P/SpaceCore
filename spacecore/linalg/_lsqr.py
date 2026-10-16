@@ -3,9 +3,9 @@ from __future__ import annotations
 from typing import Any
 
 from ..linop import LinOp
-from ._utils import DEFAULT_CONVERGENCE_CHECK_INTERVAL, SpaceCoreOps, check_interval
+from ._utils import DEFAULT_CONVERGENCE_CHECK_INTERVAL, check_interval
 from ._utils import LinalgResult
-from ._utils import check_maxiter, is_converged, require_linop, resolve_apply, resolve_rapply
+from ._utils import check_maxiter, is_converged, require_linop
 from ._utils import safe_inverse_nonneg, should_check_iteration, threshold
 
 
@@ -97,25 +97,25 @@ def lsqr(
 
     # Resolve check-free cores once; the hot loop then skips per-iteration
     # validation while honoring any custom geometry the spaces define.
-    apply = resolve_apply(A)
-    radj = resolve_rapply(A)
-    dom = SpaceCoreOps(A.domain)
-    cod = SpaceCoreOps(A.codomain)
+    apply = A._apply_core
+    radj = A._rapply_core
+    dom = A.domain
+    cod = A.codomain
 
     # Golub-Kahan start: beta u = b - A x and alpha v = A.H u.
     x = A.domain.zeros() if x0 is None else x0
     A.domain.check_member(x)
-    residual = cod.add(b, cod.scale(-1.0, apply(x)))
-    beta = cod.norm(residual)
-    u = cod.scale(safe_inverse_nonneg(A.ops, beta), residual)
+    residual = cod._add_core(b, cod._scale_core(-1.0, apply(x)))
+    beta = cod._norm_core(residual)
+    u = cod._scale_core(safe_inverse_nonneg(A.ops, beta), residual)
     v = radj(u)
-    alpha = dom.norm(v)
+    alpha = dom._norm_core(v)
     # Initial normal-equation residual ||A.H r||, exact or from the recurrence.
     if residual_mode == "exact":
-        normal_residual_norm = dom.norm(radj(residual))
+        normal_residual_norm = dom._norm_core(radj(residual))
     else:
         normal_residual_norm = beta * alpha
-    v = dom.scale(safe_inverse_nonneg(A.ops, alpha), v)
+    v = dom._scale_core(safe_inverse_nonneg(A.ops, alpha), v)
     # LSQR state: search direction w and the scalar recurrences phi_bar, rho_bar.
     w = v
     phi_bar = beta
@@ -130,13 +130,13 @@ def lsqr(
     def body_fun(carry: tuple[Any, ...]) -> tuple[Any, ...]:
         x, u, v, w, alpha, _beta, rho_bar, phi_bar, _residual_norm, _normal_residual, k = carry
         # Bidiagonalization step: next unit vectors u and v.
-        u_next = cod.axpy(-alpha, u, apply(v))
-        beta_next = cod.norm(u_next)
-        u_next = cod.scale(safe_inverse_nonneg(A.ops, beta_next), u_next)
+        u_next = cod._axpy_core(-alpha, u, apply(v))
+        beta_next = cod._norm_core(u_next)
+        u_next = cod._scale_core(safe_inverse_nonneg(A.ops, beta_next), u_next)
 
-        v_next = dom.axpy(-beta_next, v, radj(u_next))
-        alpha_next = dom.norm(v_next)
-        v_next = dom.scale(safe_inverse_nonneg(A.ops, alpha_next), v_next)
+        v_next = dom._axpy_core(-beta_next, v, radj(u_next))
+        alpha_next = dom._norm_core(v_next)
+        v_next = dom._scale_core(safe_inverse_nonneg(A.ops, alpha_next), v_next)
 
         # Givens rotation (c, s) that eliminates the new subdiagonal entry.
         rho = A.ops.sqrt(rho_bar * rho_bar + beta_next * beta_next)
@@ -152,8 +152,8 @@ def lsqr(
         recurrence_normal_residual_norm = alpha_next * A.ops.abs(s * phi)
 
         # Update the solution and the search direction.
-        x_next = dom.axpy(phi * inv_rho, w, x)
-        w_next = dom.axpy(-(theta * inv_rho), w, v_next)
+        x_next = dom._axpy_core(phi * inv_rho, w, x)
+        w_next = dom._axpy_core(-(theta * inv_rho), w, v_next)
         k_next = k + 1
 
         # Exact mode recomputes the residuals (one forward and one adjoint apply).
@@ -161,8 +161,8 @@ def lsqr(
 
             def refresh_residuals(payload: tuple[Any, Any, Any]) -> tuple[Any, Any]:
                 x_candidate, _old_residual_norm, _old_normal_residual = payload
-                residual_next = cod.add(apply(x_candidate), cod.scale(-1.0, b))
-                return cod.norm(residual_next), dom.norm(radj(residual_next))
+                residual_next = cod._add_core(apply(x_candidate), cod._scale_core(-1.0, b))
+                return cod._norm_core(residual_next), dom._norm_core(radj(residual_next))
         else:
 
             def refresh_residuals(payload: tuple[Any, Any, Any]) -> tuple[Any, Any]:

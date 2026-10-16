@@ -7,11 +7,9 @@ from ..contextual import Context
 from ..functional import QuadraticForm
 from ..linop import LinOp
 from ..space import Space
-from ._utils import SpaceCoreOps
 from ._utils import LinalgResult
 from ._utils import normalize, require_hermitian_square
 from ._utils import check_maxiter, default_initial_vector, is_converged
-from ._utils import resolve_apply
 
 
 class _SelfAdjointAction(NamedTuple):
@@ -38,20 +36,20 @@ def _action_from_linop(A: LinOp) -> _SelfAdjointAction:
     """Normalize a square linear operator into a self-adjoint action."""
     # Wrap a square LinOp as a self-adjoint action with generic diagnostics.
     A = require_hermitian_square(A, "power_iteration")
-    apply = resolve_apply(A)
-    sops = SpaceCoreOps(A.domain)
+    apply = A._apply_core
+    sops = A.domain
     return _SelfAdjointAction(
         apply,
         A.domain,
         A.ctx,
-        sops.real_inner,
-        lambda x, y, eigenvalue: sops.norm(sops.axpy(-eigenvalue, x, y)),
+        sops._real_inner_core,
+        lambda x, y, eigenvalue: sops._norm_core(sops._axpy_core(-eigenvalue, x, y)),
     )
 
 
 def _action_from_quadratic_form(q: QuadraticForm) -> _SelfAdjointAction:
     """Normalize a quadratic form into its Hessian action."""
-    sops = SpaceCoreOps(q.domain)
+    sops = q.domain
     # Use the form's own Rayleigh quotient and residual when it provides them.
     hess_quad = getattr(q, "hess_quad", None)
     if callable(hess_quad):
@@ -60,7 +58,7 @@ def _action_from_quadratic_form(q: QuadraticForm) -> _SelfAdjointAction:
             return q.ops.real(cast(Any, hess_quad)(x, Hx=y))
     else:
 
-        rayleigh = sops.real_inner
+        rayleigh = sops._real_inner_core
 
     hess_residual_norm = getattr(q, "hess_residual_norm", None)
     if callable(hess_residual_norm):
@@ -68,7 +66,7 @@ def _action_from_quadratic_form(q: QuadraticForm) -> _SelfAdjointAction:
     else:
 
         def residual_norm(x, y, eigenvalue):
-            return sops.norm(sops.axpy(-eigenvalue, x, y))
+            return sops._norm_core(sops._axpy_core(-eigenvalue, x, y))
 
     return _SelfAdjointAction(q.hess_apply, q.domain, q.ctx, rayleigh, residual_norm)
 
@@ -158,12 +156,12 @@ def _power_iteration_core(
     maxiter: int,
 ) -> tuple[Any, Any, Any, Any, Any]:
     """Run the backend-loop implementation of power iteration."""
-    sops = SpaceCoreOps(action.domain)
+    sops = action.domain
     # Normalize x0 and precompute y = A x.
     x, _ = normalize(sops, x)
     y = action.apply(x)
     zero = action.ops.asarray(0.0, dtype=action.dtype)
-    residual_norm = sops.norm(x) + float("inf")
+    residual_norm = sops._norm_core(x) + float("inf")
 
     # Carry: current eigenvalue estimate, normalized vector x, product y=A x,
     # residual norm, and iteration counter.

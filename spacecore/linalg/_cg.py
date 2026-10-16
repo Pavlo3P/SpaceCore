@@ -6,7 +6,7 @@ from ..linop import LinOp
 from ._utils import DEFAULT_CONVERGENCE_CHECK_INTERVAL, check_interval, check_maxiter
 from ._utils import LinalgResult
 from ._utils import require_hermitian_square
-from ._utils import SpaceCoreOps, is_converged, resolve_apply
+from ._utils import is_converged
 from ._utils import (
     require_strict_cg_preconditions,
     safe_inverse_nonneg,
@@ -116,9 +116,9 @@ def cg(
 
     # Resolve check-free cores once; the hot loop then skips per-iteration
     # validation while honoring any custom geometry the spaces define.
-    apply = resolve_apply(A)
-    dom = SpaceCoreOps(A.domain)
-    cod = SpaceCoreOps(A.codomain)
+    apply = A._apply_core
+    dom = A.domain
+    cod = A.codomain
 
     # Preconditioning z = K r; without K, z = r and this is plain CG.
     if preconditioner is None:
@@ -127,17 +127,17 @@ def cg(
     else:
         if preconditioner.domain != A.domain or preconditioner.codomain != A.domain:
             raise ValueError("cg: the preconditioner must map A.domain to itself.")
-        precond = resolve_apply(preconditioner)
+        precond = preconditioner._apply_core
 
     # Initial residual r = b - A x; the first search direction is z = K r.
     x = A.domain.zeros() if x0 is None else x0
     A.domain.check_member(x)
-    r = cod.add(b, cod.scale(-1.0, apply(x)))
+    r = cod._add_core(b, cod._scale_core(-1.0, apply(x)))
     p = precond(r)
-    rs = dom.real_inner(r, p)
-    residual_norm = dom.norm(r)
+    rs = dom._real_inner_core(r, p)
+    residual_norm = dom._norm_core(r)
     # Stop when ||r|| <= atol + tol ||b||; eps guards the divisions below.
-    threshold_value = threshold(cod.norm(b), tol, atol)
+    threshold_value = threshold(cod._norm_core(b), tol, atol)
     eps = A.ops.asarray(A.ops.eps(A.dtype), dtype=A.dtype)
     eps2 = eps * eps
 
@@ -152,25 +152,25 @@ def cg(
         x, r, p, rs, _residual_norm, k, _active = carry
         # Step length alpha = <r, z> / <p, A p>; freeze once curvature or residual vanishes.
         Ap = apply(p)
-        pAp = dom.real_inner(p, Ap)
+        pAp = dom._real_inner_core(p, Ap)
         active = (rs > eps2) & (pAp > eps * rs)
         alpha = A.ops.where(active, rs * safe_inverse_nonneg(A.ops, pAp), A.ops.zeros_like(rs))
         # Move x along p and update the residual without another apply.
-        x_next = dom.axpy(alpha, p, x)
-        r_next = cod.axpy(-alpha, Ap, r)
+        x_next = dom._axpy_core(alpha, p, x)
+        r_next = cod._axpy_core(-alpha, Ap, r)
         z_next = precond(r_next)
-        rs_next = dom.real_inner(r_next, z_next)
+        rs_next = dom._real_inner_core(r_next, z_next)
         # New direction p = z + beta p, with beta = <r_new, z_new> / <r, z>.
         beta = A.ops.where(
             active, rs_next * safe_inverse_nonneg(A.ops, rs), A.ops.zeros_like(rs_next)
         )
-        p_next = dom.axpy(beta, p, z_next)
+        p_next = dom._axpy_core(beta, p, z_next)
         k_next = k + 1
         # Refresh the reported residual norm only on check iterations.
         should_refresh_residual = should_check_iteration(k_next, maxiter, check_every) | (~active)
         residual_norm_next = A.ops.cond(
             should_refresh_residual,
-            (lambda _: A.ops.sqrt(rs_next)) if preconditioner is None else (lambda _: dom.norm(r_next)),
+            (lambda _: A.ops.sqrt(rs_next)) if preconditioner is None else (lambda _: dom._norm_core(r_next)),
             lambda _: _residual_norm,
             A.ops.asarray(0.0, dtype=A.dtype),
         )

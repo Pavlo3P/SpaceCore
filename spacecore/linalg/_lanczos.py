@@ -6,10 +6,10 @@ from typing import Any, NamedTuple
 from ..linop import LinOp
 from ..linop._metric import _VECTOR_SPACES
 from ..types import DenseArray
-from ._utils import DEFAULT_CONVERGENCE_CHECK_INTERVAL, SpaceCoreOps, check_interval
+from ._utils import DEFAULT_CONVERGENCE_CHECK_INTERVAL, check_interval
 from ._utils import LinalgResult
 from ._utils import require_hermitian_square
-from ._utils import resolve_apply, safe_inverse_nonneg
+from ._utils import safe_inverse_nonneg
 from ._utils import should_check_iteration
 
 
@@ -36,7 +36,7 @@ class _KrylovBasis:
     def __init__(self, space: Any, example: Any, capacity: int) -> None:
         self.space = space
         self.ops = space.ops
-        self.dom = SpaceCoreOps(space)
+        self.dom = space
         self.capacity = capacity
         self.dense = type(space) in _VECTOR_SPACES
         self.euclidean = self.dense and space.is_euclidean
@@ -84,7 +84,7 @@ class _KrylovBasis:
         coeffs = self.ops.zeros((self.capacity,), dtype=self.space.dtype)
 
         def body(j: Any, values: Any) -> Any:
-            return self.ops.index_set(values, j, self.dom.inner(self.get(storage, j), x), copy=True)
+            return self.ops.index_set(values, j, self.dom._inner_core(self.get(storage, j), x), copy=True)
 
         return self.ops.fori_loop(0, count, body, coeffs)
 
@@ -94,7 +94,7 @@ class _KrylovBasis:
             return self.ops.reshape(self.ops.einsum("j,jn->n", coeffs, vectors), self.shape)
 
         def body(j: Any, x: Any) -> Any:
-            return self.dom.axpy(coeffs[j], self.get(storage, j), x)
+            return self.dom._axpy_core(coeffs[j], self.get(storage, j), x)
 
         return self.ops.fori_loop(0, count, body, self.space.zeros())
 
@@ -136,16 +136,16 @@ def _lanczos_basis_and_tridiag(
 ) -> _LanczosBasisResult:
     """Build a Lanczos basis and tridiagonal projection."""
     ops = A.ops
-    apply = resolve_apply(A)
-    dom = SpaceCoreOps(A.domain)
+    apply = A._apply_core
+    dom = A.domain
     basis = _KrylovBasis(A.domain, initial_vector, max_iter + 1)
     V = basis.allocate()
     alphas = ops.zeros((max_iter,), dtype=real_dtype)
     betas = ops.zeros((max_iter + 1,), dtype=real_dtype)
     tol_s = ops.asarray(tol, dtype=real_dtype)
 
-    v0_norm = dom.norm(initial_vector)
-    v0_unit = dom.scale(safe_inverse_nonneg(ops, v0_norm), initial_vector)
+    v0_norm = dom._norm_core(initial_vector)
+    v0_unit = dom._scale_core(safe_inverse_nonneg(ops, v0_norm), initial_vector)
     V = basis.set(V, 0, v0_unit)
 
     i0 = 0
@@ -164,29 +164,29 @@ def _lanczos_basis_and_tridiag(
         # Three-term recurrence: w = A v_i - alpha_i v_i - beta_i v_{i-1}.
         v_i = basis.get(V_, i)
         w = apply(v_i)
-        alpha = dom.real_inner(v_i, w)
+        alpha = dom._real_inner_core(v_i, w)
         alphas_ = ops.index_set(alphas_, i, alpha, copy=True)
-        w = dom.axpy(-alpha, v_i, w)
+        w = dom._axpy_core(-alpha, v_i, w)
         w = ops.cond(
             i == 0,
             lambda w_in: w_in,
-            lambda w_in: dom.axpy(-betas_[i], basis.get(V_, i - 1), w_in),
+            lambda w_in: dom._axpy_core(-betas_[i], basis.get(V_, i - 1), w_in),
             w,
         )
 
         # Full reorthogonalization using the declared inner product.
         coeffs = basis.inner(V_, w, i + 1)
-        w_member = dom.axpy(-1, basis.lincomb(V_, coeffs, i + 1), w)
+        w_member = dom._axpy_core(-1, basis.lincomb(V_, coeffs, i + 1), w)
 
         # beta_{i+1} = ||w||; below tol the Krylov space is exhausted.
-        beta_new = dom.norm(w_member)
+        beta_new = dom._norm_core(w_member)
         betas_ = ops.index_set(betas_, (i + 1,), beta_new, copy=True)
         breakdown = beta_new < tol_s
         m_true_next = ops.where(breakdown & (m_true == max_iter), i + 1, m_true)
 
         # Store the next unit vector unless breakdown happened.
         def set_next(V_in: Any) -> Any:
-            w_unit = dom.scale(safe_inverse_nonneg(ops, beta_new), w_member)
+            w_unit = dom._scale_core(safe_inverse_nonneg(ops, beta_new), w_member)
             return basis.set(V_in, i + 1, w_unit)
 
         V_ = ops.cond(beta_new >= tol_s, set_next, lambda V_in: V_in, V_)

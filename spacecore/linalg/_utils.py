@@ -104,87 +104,6 @@ def threshold(norm_b: Any, tol: float, atol: float) -> Any:
 # override wins and the checked public method is used. Resolution is done once,
 # at solver entry, so the hot loop pays neither the check nor the lookup.
 # ---------------------------------------------------------------------------
-def _defining_class(cls: type, name: str) -> type | None:
-    """Return the first class in ``cls``'s MRO whose ``__dict__`` defines ``name``."""
-    for base in cls.__mro__:
-        if name in base.__dict__:
-            return base
-    return None
-
-
-def resolve_core(obj: Any, public_name: str, core_name: str) -> Any:
-    """Return ``obj``'s bound check-free core when it is safe to use.
-
-    The core is safe when ``public_name`` is not overridden in a subclass below
-    the class that defines ``core_name`` (so the core cannot silently bypass a
-    subclass's custom semantics). Otherwise the bound public method is returned.
-    """
-    # Use the check-free _core method unless a subclass overrides the public
-    # method below it, in which case the public method is the real behavior.
-    cls = type(obj)
-    core_owner = _defining_class(cls, core_name)
-    if core_owner is None:
-        return getattr(obj, public_name)
-    pub_owner = _defining_class(cls, public_name)
-    if pub_owner is None or issubclass(core_owner, pub_owner):
-        return getattr(obj, core_name)
-    return getattr(obj, public_name)
-
-
-class SpaceCoreOps:
-    """Resolved check-free linear-space ops for a solver's hot loop.
-
-    Each op is resolved once (via :func:`resolve_core`) to the space's check-free
-    core when consistent, or the checked public method otherwise — so the hot
-    loop skips per-iteration validation while still honoring any custom geometry
-    a user space defines. ``axpy`` and ``norm`` are derived from the resolved
-    ``add``/``scale``/``inner`` to match the space's definitions.
-    """
-
-    __slots__ = ("ops", "_inner", "_add", "_scale", "_axpy", "_norm")
-
-    def __init__(self, space: Any) -> None:
-        self.ops = space.ops
-        self._inner = space._inner_core
-        self._add = space._add_core
-        self._scale = space._scale_core
-        self._axpy = space._axpy_core
-        # A native space may define only inner/add/scale; derive its norm then.
-        self._norm = getattr(space, "_norm_core", None)
-
-    def inner(self, x: Any, y: Any) -> Any:
-        return self._inner(x, y)
-
-    def real_inner(self, x: Any, y: Any) -> Any:
-        # Derived from the safely resolved inner, as the space derives its own.
-        return self.ops.real(self._inner(x, y))
-
-    def add(self, x: Any, y: Any) -> Any:
-        return self._add(x, y)
-
-    def scale(self, a: Any, x: Any) -> Any:
-        return self._scale(a, x)
-
-    def axpy(self, a: Any, x: Any, y: Any) -> Any:
-        return self._axpy(a, x, y)
-
-    def norm(self, x: Any) -> Any:
-        return self._norm(x) if self._norm is not None else self.ops.sqrt(self.real_inner(x, x))
-
-
-def resolve_apply(A: Any) -> Any:
-    """Return ``A``'s bound check-free forward core (or checked ``apply``)."""
-    return resolve_core(A, "apply", "_apply_core")
-
-
-def resolve_rapply(A: Any) -> Any:
-    """Return ``A``'s bound check-free adjoint core (or checked ``rapply``)."""
-    return resolve_core(A, "rapply", "_rapply_core")
-
-
-
-
-
 def is_converged(residual_norm: Any, threshold_value: Any) -> Any:
     """Return backend-compatible convergence predicate."""
     return residual_norm <= threshold_value
@@ -205,8 +124,8 @@ def safe_inverse_nonneg(ops: Any, value: Any) -> Any:
 
 def normalize(space: Any, x: Any) -> tuple[Any, Any]:
     """Normalize a space member and return ``(unit, norm)``."""
-    norm = space.norm(x)
-    return space.scale(safe_inverse_nonneg(space.ops, norm), x), norm
+    norm = space._norm_core(x)
+    return space._scale_core(safe_inverse_nonneg(space.ops, norm), x), norm
 
 
 def default_initial_vector(A: LinOp) -> Any:
