@@ -6,6 +6,7 @@ from typing import Any, Self
 from ..backend import BackendFamily, BackendOps
 from ..backend._container import field_values, rebuild_class
 from .._checks import (
+    install_public_checks,
     CheckLevel,
     check_level_at_least,
     effective_check_level,
@@ -33,6 +34,12 @@ class ContextBound(ABC):
     check_level : {"none", "cheap", "standard", "strict"}, optional
         Validation level; the ambient default when omitted.
     """
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        # Families implement ``_*_core``; a public operation they override keeps the base checks.
+        install_public_checks(cls)
+
 
     def __init__(
         self,

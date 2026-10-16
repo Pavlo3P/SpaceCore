@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any, Callable, Generic, TypeVar
 
 from .._batching import _leading_batch_size, _warn_vmap_fallback_once
 
-from .._checks import checked_method
+from .._checks import checked_method, mark_checked
 from ..mapping import Mapping
 from ..contextual import Context, resolve_context_priority
 from .._checks import CheckLevel
@@ -39,22 +39,9 @@ def _checked_pair(method: _Method) -> _Method:
                 self.domain._check_member(second)
         return value, second
 
-    return checked_method(in_space="domain")(outputs_checked)
-
-
-#: How each public evaluator is checked; overrides in subclasses get the same wrapper.
-_PUBLIC_CHECKS: dict[str, Callable[[Any], Any]] = {
-    "value": checked_method(in_space="domain", out_space="codomain"),
-    "grad": checked_method(in_space="domain", out_space="domain"),
-    "vvalue": checked_method(in_space="domain", out_space="codomain", in_batched=True,
-                             out_batched=True, out_batched_scalar=True),
-    "vgrad": checked_method(in_space="domain", out_space="domain", in_batched=True, out_batched=True),
-    "value_and_grad": _checked_pair,
-    "value_and_derivative": _checked_pair,
-    "derivative_at": checked_method(in_space="domain"),
-    "differential": checked_method(in_space="domain"),
-    "prox": checked_method(in_space="domain", out_space="domain"),
-}
+    checked = checked_method(in_space="domain")(outputs_checked)
+    mark_checked(checked, _checked_pair, f"_{method.__name__}_core")
+    return checked
 
 
 class Functional(Mapping, Generic[Domain]):
@@ -73,14 +60,6 @@ class Functional(Mapping, Generic[Domain]):
     check_level : {"none", "cheap", "standard", "strict"}, optional
         Validation level; the ambient default when omitted.
     """
-
-    def __init_subclass__(cls, **kwargs: Any) -> None:
-        super().__init_subclass__(**kwargs)
-        # Subclasses implement cores; a public evaluator they override still gets the base checks.
-        for name, check in _PUBLIC_CHECKS.items():
-            method = cls.__dict__.get(name)
-            if callable(method) and not getattr(method, "_spacecore_checked", False):
-                setattr(cls, name, check(method))
 
     def __init__(
         self,
@@ -142,7 +121,7 @@ class Functional(Mapping, Generic[Domain]):
         """
         return self._value_and_grad_core(x, *args, **kwargs)
 
-    @checked_method(in_space="domain", out_space="domain")
+    @checked_method(in_space="domain", out_space="domain", core=None)
     def prox(self, x: Any, step: Any) -> Any:
         r"""Minimize ``f(y) + ||y-x||_X^2 / (2 step)`` for positive ``step``.
 
@@ -185,7 +164,7 @@ class Functional(Mapping, Generic[Domain]):
         """
         return self._differential_core(x, *args, **kwargs)
 
-    @checked_method(in_space="domain")
+    @checked_method(in_space="domain", core="_derivative_core")
     def derivative_at(self, x: Any, *args: Any, **kwargs: Any) -> "LinearFunctional":
         """Return the differential at ``x``, acting on domain directions.
 

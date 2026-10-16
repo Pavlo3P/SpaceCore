@@ -99,6 +99,9 @@ def effective_check_level(level: CheckLevel, ops: Any) -> CheckLevel:
 
 _Method = TypeVar("_Method", bound=Callable[..., Any])
 
+# Sentinel: the core of a checked method defaults to ``_<name>_core``.
+_DEFAULT_CORE = object()
+
 
 def checked_method(
     *,
@@ -108,6 +111,7 @@ def checked_method(
     in_batched: bool = False,
     out_batched: bool = False,
     out_batched_scalar: bool = False,
+    core: str | None | object = _DEFAULT_CORE,
 ) -> Callable[[_Method], _Method]:
     """
     Build a decorator that checks a method's inputs and outputs against spaces.
@@ -128,6 +132,9 @@ def checked_method(
         Check outputs as leading-axis batches.
     out_batched_scalar : bool, optional
         Check the output has shape ``(N,)`` for an input batch of size ``N``; needs ``in_space``.
+    core : str or None, optional
+        The check-free core this public method calls, ``_<name>_core`` by default; ``None``
+        when it has none. Recorded for :func:`install_public_checks`.
 
     Returns
     -------
@@ -208,26 +215,31 @@ def checked_method(
 
             return y
 
-        wrapper._spacecore_checked = True  # type: ignore[attr-defined]
-        wrapper._spacecore_check_spec = spec  # type: ignore[attr-defined]
+        mark_checked(wrapper, decorate, f"_{method.__name__}_core" if core is _DEFAULT_CORE else core)
         return cast(_Method, wrapper)
 
-    spec = dict(in_space=in_space, out_space=out_space, arg_positions=arg_positions,
-                in_batched=in_batched, out_batched=out_batched, out_batched_scalar=out_batched_scalar)
     return decorate
 
 
-def wrap_public_overrides(cls: type) -> None:
+def mark_checked(wrapper: Any, rewrap: Callable[[Any], Any], core: Any) -> None:
+    """Record on a checked public method how to re-check an override and which core it calls."""
+    wrapper._spacecore_checked = True
+    wrapper._spacecore_rewrap = rewrap
+    wrapper._spacecore_core = core
+
+
+def install_public_checks(cls: type) -> None:
     """Give each public method ``cls`` overrides the checks of the checked method it replaces.
 
-    Subclasses are meant to implement ``_*_core`` methods; one that overrides a public
-    checked method instead (and does not decorate it) still gets the base's checks.
+    Families implement ``_*_core`` methods; one that overrides a public checked method
+    instead (and does not decorate it) still gets the base's checks. Runs from
+    ``ContextBound.__init_subclass__``, so it covers spaces, operators and functionals.
     """
     for name, method in list(vars(cls).items()):
         if name.startswith("_") or not inspect.isfunction(method) or getattr(method, "_spacecore_checked", False):
             continue
         for base in cls.__mro__[1:]:
-            spec = getattr(vars(base).get(name), "_spacecore_check_spec", None)
-            if spec is not None:
-                setattr(cls, name, checked_method(**spec)(method))
+            rewrap = getattr(vars(base).get(name), "_spacecore_rewrap", None)
+            if rewrap is not None:
+                setattr(cls, name, rewrap(method))
                 break
