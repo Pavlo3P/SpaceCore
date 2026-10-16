@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from functools import wraps
 from typing import Any, Callable, Literal, TypeVar, cast
 
@@ -147,8 +148,12 @@ def checked_method(
     single_pos = positions[0] if len(positions) == 1 else None
     # The batch size for out_batched_scalar comes from the first checked input.
     batch_pos = positions[0]
+    last_pos = max(positions)
 
     def decorate(method: _Method) -> _Method:
+        # Parameter names after ``self``, to find a checked argument passed by keyword.
+        names = tuple(inspect.signature(method).parameters)[1:]
+
         @wraps(method)
         def wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
             # Fast path: ``check_level == "none"`` means no validation on either side.
@@ -158,6 +163,10 @@ def checked_method(
             level = effective_check_level(level, getattr(self, "ops", None))
             if level == "none":
                 return method(self, *args, **kwargs)
+            if len(args) <= last_pos:
+                # A checked argument came by keyword: pass the leading ones positionally.
+                lead = [name for name in names[len(args):last_pos + 1] if name in kwargs]
+                args = args + tuple(kwargs.pop(name) for name in lead)
 
             # Check the selected inputs: element membership, or batch membership.
             if in_space is not None:
@@ -199,6 +208,7 @@ def checked_method(
 
             return y
 
+        wrapper._spacecore_checked = True  # type: ignore[attr-defined]
         return cast(_Method, wrapper)
 
     return decorate

@@ -5,7 +5,6 @@ from typing import Any, cast
 from ._base import Functional
 from ._linear import InnerProductFunctional, LinearFunctional
 from ._quadratic import LinOpQuadraticForm
-from .._checks import checked_method
 from .._checks import CheckLevel, minimum_check_level
 from ..linop import LinOp
 from ..mapping import register
@@ -79,9 +78,14 @@ class ComposedFunctional(Functional):
         return self.F._value_core(self.A._apply_core(x))
 
     def _grad_core(self, x: Any) -> Any:
-        # Chain rule in Riesz form: grad(F o A)(x) = A^#(grad F(A x)).
-        # ``rapply`` IS the metric adjoint A^# (ADR-009), so no extra Riesz map is
-        # applied here; inserting one would count the geometry twice.
+        r"""Chain rule in Riesz form: :math:`\nabla (F \circ A)(x) = A^{\#} \nabla F(A x)`.
+
+        ``A.rapply`` IS the metric adjoint ``A^#`` (ADR-009), so no extra Riesz map is
+        applied; inserting one would count the geometry twice. Indeed
+        ``D(F o A)[h] = DF[Ah] = <grad F, Ah> = <A^# grad F, h>``; take real parts for
+        real-valued objectives on complex spaces. Beck, *First-Order Methods in
+        Optimization*, Thm 3.29 (gradient pairing).
+        """
         return self.A._rapply_core(self.F._grad_core(self.A._apply_core(x)))
 
     def _vgrad_core(self, xs: Any) -> Any:
@@ -101,52 +105,22 @@ class ComposedFunctional(Functional):
         self.F = F.convert(A.ctx)
         self.A = A
 
-    @checked_method(in_space="domain", out_space="domain")
-    def grad(self, x: Any) -> Any:
-        r"""
-        Return :math:`\nabla (F \circ A)(x) = A^{\#} \nabla F(A x)`.
+    def _value_and_grad_core(self, x: Any, *args: Any, **kwargs: Any) -> tuple[Any, Any]:
+        """``(F(Ax), A^#(grad F(Ax)))`` from a single application of ``A``.
 
-        ``A.rapply`` is already the metric adjoint, so no Riesz map is added. Raises
-        :class:`NotImplementedError` when ``F`` has no gradient. Indeed,
-        ``D(F o A)[h] = DF[Ah] = <grad F, Ah> = <A^# grad F, h>``; take real parts
-        for real-valued objectives on complex spaces. Beck, *First-Order Methods in
-        Optimization*, Thm 3.29 (gradient pairing).
-
-        Parameters
-        ----------
-        x : Any
-            Element of ``A.domain``.
-
-        Returns
-        -------
-        Any
-            The gradient, in ``A.domain``.
+        Evaluating the value and gradient cores separately would apply ``A`` twice;
+        here the image ``A x`` is computed once and shared.
         """
-        return self._grad_core(x)
+        y = self.A._apply_core(x)
+        value, gradient = self.F._value_and_grad_core(y, *args, **kwargs)
+        return value, self.A._rapply_core(gradient)
 
-    def value_and_grad(self, x: Any, *args: Any, **kwargs: Any) -> tuple[Any, Any]:
-        """Return ``(F(Ax), A^#(grad F(Ax)))`` from a single application of ``A``.
+    def _derivative_core(self, x: Any, *args: Any, **kwargs: Any) -> LinearFunctional:
+        return self.F._derivative_core(self.A._apply_core(x), *args, **kwargs).compose(self.A)
 
-        The default base implementation would call ``value`` and ``grad``
-        separately and therefore apply ``A`` twice; here the image ``A x`` is
-        computed once and shared, which is the point of the fused path for a
-        composition.
-        """
-        y = self.A.apply(x)
-        value, gradient = self.F.value_and_grad(y, *args, **kwargs)
-        return value, self.A.rapply(gradient)
-
-    def derivative_at(self, x: Any, *args: Any, **kwargs: Any) -> LinearFunctional:
-        return self.F.derivative_at(self.A.apply(x), *args, **kwargs).compose(self.A)
-
-    def value_and_derivative(self, x: Any, *args: Any, **kwargs: Any) -> tuple[Any, LinearFunctional]:
-        value, derivative = self.F.value_and_derivative(self.A.apply(x), *args, **kwargs)
+    def _value_and_derivative_core(self, x: Any, *args: Any, **kwargs: Any) -> tuple[Any, LinearFunctional]:
+        value, derivative = self.F._value_and_derivative_core(self.A._apply_core(x), *args, **kwargs)
         return value, derivative.compose(self.A)
-
-    @checked_method(in_space="domain", out_space="domain", in_batched=True, out_batched=True)
-    def vgrad(self, xs: Any) -> Any:
-        """Evaluate the chain-rule gradient over a leading batch axis."""
-        return self._vgrad_core(xs)
 
     def _repr_body(self) -> str:
         return f"{self.F._short_repr()} ∘ {self.A._short_repr()}"
@@ -154,7 +128,8 @@ class ComposedFunctional(Functional):
 class _ComposedLinearFunctional(ComposedFunctional, LinearFunctional):
     """Pullback that needs only forward application for directional evaluation."""
 
-    derivative_at = LinearFunctional.derivative_at
+    _derivative_core = LinearFunctional._derivative_core
+    _value_and_derivative_core = Functional._value_and_derivative_core
 
 
     @property

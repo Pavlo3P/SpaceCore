@@ -70,21 +70,20 @@ class ScaledFunctional(ScaledNode, Functional):
         """Check-free scaled value."""
         return self.scalar * self.functional._value_core(x, *args, **kwargs)
 
-    def grad(self, x: Any, *args: Any, **kwargs: Any) -> Any:
-        """Return the real scalar times the child's Riesz gradient."""
-        return self.domain.scale(self.scalar, self.functional.grad(x, *args, **kwargs))
+    def _grad_core(self, x: Any, *args: Any, **kwargs: Any) -> Any:
+        """The real scalar times the child's Riesz gradient."""
+        return self.domain._scale_core(self.scalar, self.functional._grad_core(x, *args, **kwargs))
 
-    def value_and_grad(self, x: Any, *args: Any, **kwargs: Any) -> tuple[Any, Any]:
-        """Return ``(scalar * value, scalar * grad)`` from one fused child evaluation."""
-        value, grad = self.functional.value_and_grad(x, *args, **kwargs)
-        return self.scalar * value, self.domain.scale(self.scalar, grad)
+    def _value_and_grad_core(self, x: Any, *args: Any, **kwargs: Any) -> tuple[Any, Any]:
+        """``(scalar * value, scalar * grad)`` from one fused child evaluation."""
+        value, grad = self.functional._value_and_grad_core(x, *args, **kwargs)
+        return self.scalar * value, self.domain._scale_core(self.scalar, grad)
 
+    def _derivative_core(self, x: Any, *args: Any, **kwargs: Any) -> LinearFunctional:
+        return self.scalar * self.functional._derivative_core(x, *args, **kwargs)
 
-    def derivative_at(self, x: Any, *args: Any, **kwargs: Any) -> LinearFunctional:
-        return self.scalar * self.functional.derivative_at(x, *args, **kwargs)
-
-    def value_and_derivative(self, x: Any, *args: Any, **kwargs: Any) -> tuple[Any, LinearFunctional]:
-        value, derivative = self.functional.value_and_derivative(x, *args, **kwargs)
+    def _value_and_derivative_core(self, x: Any, *args: Any, **kwargs: Any) -> tuple[Any, LinearFunctional]:
+        value, derivative = self.functional._value_and_derivative_core(x, *args, **kwargs)
         return self.scalar * value, self.scalar * derivative
 
 
@@ -136,14 +135,14 @@ class SumFunctional(SumNode, Functional):
         # Sum of the terms' values (plain scalars); _checked_parts guarantees a term.
         return reduce(operator.add, (term._value_core(x, *args, **kwargs) for term in self.terms))
 
-    def grad(self, x: Any, *args: Any, **kwargs: Any) -> Any:
-        """Return the domain-sum of the term gradients (combined via ``X.add``)."""
+    def _grad_core(self, x: Any, *args: Any, **kwargs: Any) -> Any:
+        """The domain-sum of the term gradients (combined via the domain's add)."""
         # Constant terms have zero gradient and are skipped, so ``F + c`` costs no extra add.
-        grads = [term.grad(x, *args, **kwargs) for term in self.terms if not isinstance(term, ConstantFunctional)]
-        return reduce(self.domain.add, grads) if grads else self.domain.zeros()
+        grads = [term._grad_core(x, *args, **kwargs) for term in self.terms if not isinstance(term, ConstantFunctional)]
+        return reduce(self.domain._add_core, grads) if grads else self.domain.zeros()
 
-    def value_and_grad(self, x: Any, *args: Any, **kwargs: Any) -> tuple[Any, Any]:
-        """Return ``(sum values, domain-sum grads)`` from one fused pass per term."""
+    def _value_and_grad_core(self, x: Any, *args: Any, **kwargs: Any) -> tuple[Any, Any]:
+        """``(sum values, domain-sum grads)`` from one fused pass per term."""
         # One fused evaluation per term; values add as scalars, gradients in the domain.
         domain = self.domain
         value_total = None
@@ -152,17 +151,17 @@ class SumFunctional(SumNode, Functional):
             if isinstance(term, ConstantFunctional):
                 value_total = term._value_core(x) if value_total is None else value_total + term._value_core(x)
                 continue
-            value, grad = term.value_and_grad(x, *args, **kwargs)
+            value, grad = term._value_and_grad_core(x, *args, **kwargs)
             value_total = value if value_total is None else value_total + value
-            grad_total = grad if grad_total is None else domain.add(grad_total, grad)
+            grad_total = grad if grad_total is None else domain._add_core(grad_total, grad)
         return value_total, domain.zeros() if grad_total is None else grad_total
 
 
-    def derivative_at(self, x: Any, *args: Any, **kwargs: Any) -> LinearFunctional:
-        return make_functional_sum(tuple(t.derivative_at(x, *args, **kwargs) for t in self.terms))
+    def _derivative_core(self, x: Any, *args: Any, **kwargs: Any) -> LinearFunctional:
+        return make_functional_sum(tuple(t._derivative_core(x, *args, **kwargs) for t in self.terms))
 
-    def value_and_derivative(self, x: Any, *args: Any, **kwargs: Any) -> tuple[Any, LinearFunctional]:
-        pairs = [t.value_and_derivative(x, *args, **kwargs) for t in self.terms]
+    def _value_and_derivative_core(self, x: Any, *args: Any, **kwargs: Any) -> tuple[Any, LinearFunctional]:
+        pairs = [t._value_and_derivative_core(x, *args, **kwargs) for t in self.terms]
         return sum(v for v, _ in pairs), make_functional_sum(tuple(d for _, d in pairs))
 
 
@@ -207,12 +206,12 @@ class ZeroFunctional(ZeroNode, Functional):
         """Check-free scalar zero in the codomain dtype."""
         return self.codomain.ctx.asarray(0.0)
 
-    def grad(self, x: Any, *args: Any, **kwargs: Any) -> Any:
-        """Return the domain's zero element."""
+    def _grad_core(self, x: Any, *args: Any, **kwargs: Any) -> Any:
+        """The domain's zero element."""
         return self.domain.zeros()
 
-    def value_and_grad(self, x: Any, *args: Any, **kwargs: Any) -> tuple[Any, Any]:
-        """Return ``(0, X.zeros())``."""
+    def _value_and_grad_core(self, x: Any, *args: Any, **kwargs: Any) -> tuple[Any, Any]:
+        """``(0, X.zeros())``."""
         return self._value_core(x, *args, **kwargs), self.domain.zeros()
 
 
@@ -259,12 +258,12 @@ class ConstantFunctional(Functional):
         """Check-free constant in the codomain dtype (mirrors ``ZeroFunctional``)."""
         return self.codomain.ctx.asarray(self.constant)
 
-    def grad(self, x: Any, *args: Any, **kwargs: Any) -> Any:
-        """Return the domain's zero element (a constant has zero derivative)."""
+    def _grad_core(self, x: Any, *args: Any, **kwargs: Any) -> Any:
+        """The domain's zero element (a constant has zero derivative)."""
         return self.domain.zeros()
 
-    def value_and_grad(self, x: Any, *args: Any, **kwargs: Any) -> tuple[Any, Any]:
-        """Return ``(constant, X.zeros())``."""
+    def _value_and_grad_core(self, x: Any, *args: Any, **kwargs: Any) -> tuple[Any, Any]:
+        """``(constant, X.zeros())``."""
         return self._value_core(x, *args, **kwargs), self.domain.zeros()
 
 def make_constant_functional(
@@ -374,29 +373,29 @@ class ProductFunctional(Functional):
     def _product_grad(self, lv: Any, lg: Any, rv: Any, rg: Any) -> Any:
         """Combine factor values/gradients by the product rule, in domain ops."""
         domain = self.domain
-        return domain.add(domain.scale(rv, lg), domain.scale(lv, rg))
+        return domain._add_core(domain._scale_core(rv, lg), domain._scale_core(lv, rg))
 
-    def grad(self, x: Any, *args: Any, **kwargs: Any) -> Any:
-        """Return the product-rule Riesz gradient at ``x``.
+    def _grad_core(self, x: Any, *args: Any, **kwargs: Any) -> Any:
+        """The product-rule Riesz gradient at ``x``.
 
         Both factors are evaluated through ``value_and_grad`` because the rule
         needs each factor's *value* as well as its gradient; asking for the
         gradients alone would evaluate the values a second time.
         """
-        return self.value_and_grad(x, *args, **kwargs)[1]
+        return self._value_and_grad_core(x, *args, **kwargs)[1]
 
-    def value_and_grad(self, x: Any, *args: Any, **kwargs: Any) -> tuple[Any, Any]:
-        """Return ``(value, grad)`` from one fused evaluation per factor."""
-        lv, lg = self.left.value_and_grad(x, *args, **kwargs)
-        rv, rg = self.right.value_and_grad(x, *args, **kwargs)
+    def _value_and_grad_core(self, x: Any, *args: Any, **kwargs: Any) -> tuple[Any, Any]:
+        """``(value, grad)`` from one fused evaluation per factor."""
+        lv, lg = self.left._value_and_grad_core(x, *args, **kwargs)
+        rv, rg = self.right._value_and_grad_core(x, *args, **kwargs)
         return lv * rv, self._product_grad(lv, lg, rv, rg)
 
-    def derivative_at(self, x: Any, *args: Any, **kwargs: Any) -> LinearFunctional:
-        return self.value_and_derivative(x, *args, **kwargs)[1]
+    def _derivative_core(self, x: Any, *args: Any, **kwargs: Any) -> LinearFunctional:
+        return self._value_and_derivative_core(x, *args, **kwargs)[1]
 
-    def value_and_derivative(self, x: Any, *args: Any, **kwargs: Any) -> tuple[Any, LinearFunctional]:
-        lv, ld = self.left.value_and_derivative(x, *args, **kwargs)
-        rv, rd = self.right.value_and_derivative(x, *args, **kwargs)
+    def _value_and_derivative_core(self, x: Any, *args: Any, **kwargs: Any) -> tuple[Any, LinearFunctional]:
+        lv, ld = self.left._value_and_derivative_core(x, *args, **kwargs)
+        rv, rd = self.right._value_and_derivative_core(x, *args, **kwargs)
         return lv * rv, rv * ld + lv * rd
 
 def make_functional_product(left: Functional, right: Functional) -> Functional:
@@ -432,11 +431,11 @@ def make_functional_product(left: Functional, right: Functional) -> Functional:
 class _ScaledLinearFunctional(ScaledFunctional, LinearFunctional):
     """Linear algebra preserves the linear-functional contract."""
 
-    derivative_at = LinearFunctional.derivative_at
-    grad = LinearFunctional.grad
-    vgrad = LinearFunctional.vgrad
-    value_and_grad = Functional.value_and_grad
-
+    _derivative_core = LinearFunctional._derivative_core
+    _grad_core = LinearFunctional._grad_core
+    _vgrad_core = LinearFunctional._vgrad_core
+    _value_and_grad_core = Functional._value_and_grad_core
+    _value_and_derivative_core = Functional._value_and_derivative_core
 
     @property
     def representer(self) -> Any:
@@ -446,11 +445,11 @@ class _ScaledLinearFunctional(ScaledFunctional, LinearFunctional):
 class _SumLinearFunctional(SumFunctional, LinearFunctional):
     """Sum evaluated lazily, with a representer only when all terms have one."""
 
-    derivative_at = LinearFunctional.derivative_at
-    grad = LinearFunctional.grad
-    vgrad = LinearFunctional.vgrad
-    value_and_grad = Functional.value_and_grad
-
+    _derivative_core = LinearFunctional._derivative_core
+    _grad_core = LinearFunctional._grad_core
+    _vgrad_core = LinearFunctional._vgrad_core
+    _value_and_grad_core = Functional._value_and_grad_core
+    _value_and_derivative_core = Functional._value_and_derivative_core
 
     @property
     def representer(self) -> Any:

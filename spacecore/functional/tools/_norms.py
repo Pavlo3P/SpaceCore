@@ -7,7 +7,6 @@ from typing import Any, cast
 from .._base import Domain
 from ...contextual import Context
 from ..._checks import CheckLevel
-from ..._checks import checked_method
 from ._coordinate import _CoordinateFunctional, lp_coordinate_grad, lp_value
 
 
@@ -41,14 +40,12 @@ class SquaredL2NormFunctional(_CoordinateFunctional[Domain]):
 
     _fields = ("dom", "ctx")
 
-    @checked_method(in_space="domain", out_space="codomain")
-    def value(self, x: Any) -> Any:
-        """Return ``1/2 <x, x>_X`` as a real scalar."""
+    def _value_core(self, x: Any) -> Any:
+        """``1/2 <x, x>_X`` as a real scalar."""
         return 0.5 * self.domain._real_inner_core(x, x)
 
-    @checked_method(in_space="domain", out_space="domain")
-    def grad(self, x: Any) -> Any:
-        """Return the Riesz gradient ``x``."""
+    def _grad_core(self, x: Any) -> Any:
+        """The Riesz gradient ``x``."""
         return x
 
     def _coordinate_grad(self, x: Any) -> Any:
@@ -102,9 +99,8 @@ class LpNormFunctional(_CoordinateFunctional[Domain]):
             raise ValueError(f"LpNormFunctional requires a finite p >= 1, got {p}.")
         self.p = p
 
-    @checked_method(in_space="domain", out_space="codomain")
-    def value(self, x: Any) -> Any:
-        """Return ``(sum_i |x_i|^p)^{1/p}``."""
+    def _value_core(self, x: Any) -> Any:
+        """``(sum_i |x_i|^p)^{1/p}``."""
         return lp_value(self.ops, x, self.p)
 
     def _coordinate_grad(self, x: Any) -> Any:

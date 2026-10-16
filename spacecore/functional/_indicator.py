@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from .._checks import checked_method
 from .._errors import CapabilityError
 from ..mapping import register
 from ..sets import Set
@@ -38,9 +37,8 @@ class IndicatorFunctional(Functional):
         super().__init__(constraint.ambient, check_level=level)
         self.constraint = constraint._with_check_level(self.check_level)
 
-    @checked_method(in_space="domain")
-    def value(self, x: Any) -> Any:
-        """Return zero on the set and infinity outside; membership must exist."""
+    def _value_core(self, x: Any) -> Any:
+        """Zero on the set and infinity outside; membership must exist."""
         member = self.constraint.contains(x)
         if member is None:
             raise CapabilityError("Indicator value requires set membership (contains).")

@@ -13,7 +13,6 @@ from typing import Any, cast
 
 from .._base import Domain, Functional
 from ..._batching import _leading_batch_size, _warn_vmap_fallback_once
-from ..._checks import checked_method
 
 
 def lp_value(ops: Any, vec: Any, p: float) -> Any:
@@ -48,19 +47,19 @@ class _CoordinateFunctional(Functional[Domain]):
     weights on a diagonal metric, ``G^{-1}`` in general).
     """
 
-    @checked_method(in_space="domain", out_space="domain")
-    def grad(self, x: Any) -> Any:
-        """Return the Riesz gradient under the domain geometry."""
+    def _grad_core(self, x: Any) -> Any:
+        """The Riesz gradient under the domain geometry."""
         return cast(Any, self.domain).riesz_inverse(self._coordinate_grad(x))
 
-    @checked_method(in_space="domain", out_space="domain", in_batched=True, out_batched=True)
-    def vgrad(self, xs: Any) -> Any:
-        """Evaluate :meth:`grad` independently over a leading batch axis."""
+    def _vgrad_core(self, xs: Any) -> Any:
+        """The gradient core evaluated independently over a leading batch axis."""
+        if self._overrides("vgrad"):
+            return self.vgrad(xs)
         _warn_vmap_fallback_once(self, "vgrad", _leading_batch_size(self.domain, xs))
-        return self.ops.vmap(self.grad, in_axes=0, out_axes=0)(xs)
+        return self.ops.vmap(self._grad_core, in_axes=0, out_axes=0)(xs)
 
-    def differential(self, x: Any) -> Any:
-        """Return the coordinate partials directly; they are the differential covector."""
+    def _differential_core(self, x: Any) -> Any:
+        """The coordinate partials directly; they are the differential covector."""
         return self._coordinate_grad(x)
 
     def _coordinate_grad(self, x: Any) -> Any:

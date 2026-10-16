@@ -31,19 +31,20 @@ class QuadraticForm(Functional[Domain]):
         Validation level; the ambient default when omitted.
     """
 
+    @checked_method(in_space="domain", out_space="domain")
     def hess_apply(self, x: Any) -> Any:
-        """Apply the Hessian action at ``x`` when available."""
+        """Apply the Hessian action at ``x``; implement ``_hess_apply_core`` to support it."""
+        return self._hess_apply_core(x)
+
+    def _hess_apply_core(self, x: Any) -> Any:
         raise NotImplementedError(f"{type(self).__name__} does not define hess_apply.")
 
-    def grad(self, x: Any) -> Any:
-        """Return the gradient with respect to ``domain.inner`` when available."""
-        raise NotImplementedError(f"{type(self).__name__} does not define grad.")
-
-    @checked_method(in_space="domain", out_space="domain", in_batched=True, out_batched=True)
-    def vgrad(self, xs: Any) -> Any:
-        """Evaluate ``grad`` independently over leading batch axes."""
+    def _vgrad_core(self, xs: Any) -> Any:
+        """Evaluate the gradient core independently over leading batch axes."""
+        if self._overrides("vgrad"):
+            return self.vgrad(xs)
         _warn_vmap_fallback_once(self, "vgrad", _leading_batch_size(self.domain, xs))
-        return self.ops.vmap(self.grad, in_axes=0, out_axes=0)(xs)
+        return self.ops.vmap(self._grad_core, in_axes=0, out_axes=0)(xs)
 
 
 class LinOpQuadraticForm(QuadraticForm[Domain]):
@@ -82,6 +83,7 @@ class LinOpQuadraticForm(QuadraticForm[Domain]):
         return value + self.a
 
     def _grad_core(self, x: Any) -> Any:
+        """Riesz gradient ``Q x + grad l``: ``Q`` is Hermitian, so no extra geometry enters."""
         # grad f(x) = Q x + the representer of l.
         grad = self.Q._apply_core(x)
         if self.linear is not None:
@@ -143,33 +145,13 @@ class LinOpQuadraticForm(QuadraticForm[Domain]):
         a = self.codomain.convert(new_ctx).ctx.asarray(self.a)
         return type(self)(self.Q.convert(new_ctx), linear, a, new_ctx, self.check_level)
 
-    @checked_method(in_space="domain", out_space="domain")
-    def grad(self, x: Any) -> Any:
-        """
-        Return the gradient with respect to ``domain.inner``.
-
-        This is the Riesz gradient: for Euclidean geometry it is the ordinary
-        coordinate gradient, while for non-Euclidean geometry it is corrected
-        by the domain inner product.
-
-        ``LinOpQuadraticForm`` assumes ``Q`` is Hermitian/self-adjoint, so the
-        quadratic contribution is exactly ``Q.apply(x)``.
-        """
-        return self._grad_core(x)
-
-    def derivative_at(self, x: Any, *args: Any, **kwargs: Any) -> LinearFunctional:
+    def _derivative_core(self, x: Any, *args: Any, **kwargs: Any) -> LinearFunctional:
         """Differentiate the Hermitian quadratic with the real pairing."""
         quadratic = InnerProductFunctional(
-            self.Q.apply(x), self.domain, self.ctx, check_level=self.check_level,
+            self.Q._apply_core(x), self.domain, self.ctx, check_level=self.check_level,
         )
         return quadratic if self.linear is None else quadratic + self.linear
 
-    @checked_method(in_space="domain", out_space="domain")
-    def hess_apply(self, x: Any) -> Any:
-        """Return the Hessian action ``Q x`` under the Hermitian assumption."""
-        return self.Q.apply(x)
-
-    @checked_method(in_space="domain", out_space="domain", in_batched=True, out_batched=True)
-    def vgrad(self, xs: Any) -> Any:
-        """Evaluate the Riesz gradient over a leading batch axis."""
-        return self._vgrad_core(xs)
+    def _hess_apply_core(self, x: Any) -> Any:
+        """The Hessian action ``Q x`` under the Hermitian assumption."""
+        return self.Q._apply_core(x)

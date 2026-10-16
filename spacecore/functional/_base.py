@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from functools import wraps
-from typing import TYPE_CHECKING, Any, Callable, Generic, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Callable, Generic, TypeVar
 
-from .._batching import _check_batched, _leading_batch_size, _warn_vmap_fallback_once
+from .._batching import _leading_batch_size, _warn_vmap_fallback_once
 
 from .._checks import checked_method
 from ..mapping import Mapping
@@ -22,22 +22,39 @@ Domain = TypeVar("Domain", bound=Space)
 _Method = TypeVar("_Method", bound=Callable[..., Any])
 
 
-def _real_output(method: _Method, name: str) -> _Method:
-    """Check an overriding evaluator's output against the real codomain."""
-    paired = name in ("value_and_grad", "value_and_derivative")
-    batched = name == "vvalue"
+def _checked_pair(method: _Method) -> _Method:
+    """Check a ``(value, second)`` evaluator: input in the domain, value in the codomain.
+
+    ``second`` is checked against the domain only for ``value_and_grad``; a derivative is
+    a functional, not an element.
+    """
+    pair_with_grad = method.__name__ == "value_and_grad"
 
     @wraps(method)
-    def wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
-        result = method(self, *args, **kwargs)
-        if self._check_level != "none":
-            value = result[0] if paired else result
-            if batched:
-                _check_batched(self.codomain, value)
-            else:
-                self.codomain._check_member(value)
-        return result
-    return cast(_Method, wrapper)
+    def outputs_checked(self: Any, *args: Any, **kwargs: Any) -> Any:
+        value, second = method(self, *args, **kwargs)
+        if self.check_level != "none":
+            self.codomain._check_member(value)
+            if pair_with_grad:
+                self.domain._check_member(second)
+        return value, second
+
+    return checked_method(in_space="domain")(outputs_checked)
+
+
+#: How each public evaluator is checked; overrides in subclasses get the same wrapper.
+_PUBLIC_CHECKS: dict[str, Callable[[Any], Any]] = {
+    "value": checked_method(in_space="domain", out_space="codomain"),
+    "grad": checked_method(in_space="domain", out_space="domain"),
+    "vvalue": checked_method(in_space="domain", out_space="codomain", in_batched=True,
+                             out_batched=True, out_batched_scalar=True),
+    "vgrad": checked_method(in_space="domain", out_space="domain", in_batched=True, out_batched=True),
+    "value_and_grad": _checked_pair,
+    "value_and_derivative": _checked_pair,
+    "derivative_at": checked_method(in_space="domain"),
+    "differential": checked_method(in_space="domain"),
+    "prox": checked_method(in_space="domain", out_space="domain"),
+}
 
 
 class Functional(Mapping, Generic[Domain]):
@@ -59,10 +76,11 @@ class Functional(Mapping, Generic[Domain]):
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
-        # Overridden public evaluators get the same output check as the base ones.
-        for name in ("value", "vvalue", "value_and_grad", "value_and_derivative"):
-            if name in cls.__dict__:
-                setattr(cls, name, _real_output(cls.__dict__[name], name))
+        # Subclasses implement cores; a public evaluator they override still gets the base checks.
+        for name, check in _PUBLIC_CHECKS.items():
+            method = cls.__dict__.get(name)
+            if callable(method) and not getattr(method, "_spacecore_checked", False):
+                setattr(cls, name, check(method))
 
     def __init__(
         self,
@@ -91,6 +109,9 @@ class Functional(Mapping, Generic[Domain]):
         """Domain space of this scalar-valued map."""
         return self.dom
 
+    # Public evaluators: check, then call the core. Subclasses implement the cores
+    # (``_value_core``, ``_grad_core``, ...); composites call their children's cores.
+
     @checked_method(in_space="domain", out_space="codomain")
     def value(self, x: Any, *args: Any, **kwargs: Any) -> Any:
         """Evaluate this functional at an element of ``self.domain``.
@@ -101,27 +122,27 @@ class Functional(Mapping, Generic[Domain]):
         """
         return self._value_core(x, *args, **kwargs)
 
+    @checked_method(in_space="domain", out_space="domain")
     def grad(self, x: Any, *args: Any, **kwargs: Any) -> Any:
-        """Gradient at an element of ``self.domain``.
+        """Riesz gradient at an element of ``self.domain``.
 
-        Override directly, or implement ``derivative_at`` with an available
-        Riesz representer. Otherwise raises ``NotImplementedError``. Any auxiliary ``*args``/``**kwargs`` mirror
-        those accepted by :meth:`value`.
+        Implement ``_grad_core``, or ``_derivative_core`` with an available Riesz
+        representer; otherwise raises ``NotImplementedError``. Any auxiliary
+        ``*args``/``**kwargs`` mirror those accepted by :meth:`value`.
         """
-        if type(self).derivative_at is not Functional.derivative_at:
-            return self.derivative_at(x, *args, **kwargs).representer
-        raise NotImplementedError(f"{type(self).__name__} does not implement grad().")
+        return self._grad_core(x, *args, **kwargs)
 
+    @_checked_pair
     def value_and_grad(self, x: Any, *args: Any, **kwargs: Any) -> tuple[Any, Any]:
         """Return ``(value, gradient)`` at ``x``.
 
-        The base default evaluates :meth:`value` and :meth:`grad` separately.
-        Subclasses may override with a single-pass evaluator (e.g.
-        ``jax.value_and_grad``); an override must return the same pair as the
-        default, with the gradient in the same geometry as :meth:`grad`.
+        Implement ``_value_and_grad_core`` for a single-pass evaluator (e.g.
+        ``jax.value_and_grad``); it must return the same pair as the separate cores,
+        with the gradient in the same geometry as :meth:`grad`.
         """
-        return self.value(x, *args, **kwargs), self.grad(x, *args, **kwargs)
+        return self._value_and_grad_core(x, *args, **kwargs)
 
+    @checked_method(in_space="domain", out_space="domain")
     def prox(self, x: Any, step: Any) -> Any:
         r"""Minimize ``f(y) + ||y-x||_X^2 / (2 step)`` for positive ``step``.
 
@@ -154,23 +175,25 @@ class Functional(Mapping, Generic[Domain]):
         X = self.domain
         return X.axpy(-step, self.prox(X.scale(1 / step, x), 1 / step), x)
 
+    @checked_method(in_space="domain")
     def differential(self, x: Any, *args: Any, **kwargs: Any) -> Any:
         r"""Return the covector :math:`df(x)` with :math:`Df(x)[h] = \langle df(x), h\rangle`.
 
         The covector is a coordinate array paired with ``domain.pair`` and involves no
         metric. The default reads it off the Riesz gradient, ``domain.riesz(grad(x))``;
-        functionals that compute coordinate partials directly return them.
+        functionals that compute coordinate partials implement ``_differential_core``.
         """
-        return self.domain.riesz(self.grad(x, *args, **kwargs))
+        return self._differential_core(x, *args, **kwargs)
 
+    @checked_method(in_space="domain")
     def derivative_at(self, x: Any, *args: Any, **kwargs: Any) -> "LinearFunctional":
         """Return the differential at ``x``, acting on domain directions.
 
-        The compatibility adapter uses the existing Riesz gradient. Functionals use
-        ``Re <grad, h>``. Override this method for a native directional evaluator.
-        At nonsmooth points a supplied subgradient is not a Frechet derivative.
+        The default wraps the Riesz gradient, ``Re <grad, h>``. Implement
+        ``_derivative_core`` for a native directional evaluator. At nonsmooth points
+        a supplied subgradient is not a Frechet derivative.
         """
-        return self._derivative_from_gradient(self.grad(x, *args, **kwargs))
+        return self._derivative_core(x, *args, **kwargs)
 
     def _derivative_from_gradient(self, gradient: Any) -> "LinearFunctional":
         from ._linear import InnerProductFunctional
@@ -179,38 +202,70 @@ class Functional(Mapping, Generic[Domain]):
             gradient, self.domain, self.ctx, check_level=self.check_level,
         )
 
+    @_checked_pair
     def value_and_derivative(self, x: Any, *args: Any, **kwargs: Any) -> tuple[Any, "LinearFunctional"]:
         """Return value and differential, preserving fused gradient evaluators.
 
-        Derivative-first subclasses may override this method to share work.
-        No representer is reconstructed from a callable differential.
+        Derivative-first subclasses may implement ``_value_and_derivative_core`` to
+        share work. No representer is reconstructed from a callable differential.
         """
-        if type(self).derivative_at is not Functional.derivative_at:
-            return self.value(x, *args, **kwargs), self.derivative_at(x, *args, **kwargs)
-        value, gradient = self.value_and_grad(x, *args, **kwargs)
-        return value, self._derivative_from_gradient(gradient)
+        return self._value_and_derivative_core(x, *args, **kwargs)
 
+    @checked_method(in_space="domain", out_space="domain", in_batched=True, out_batched=True)
     def vgrad(self, xs: Any) -> Any:
-        """Gradient over a leading batch axis.
+        """Gradient over a leading batch axis; implement ``_vgrad_core`` to support it."""
+        return self._vgrad_core(xs)
 
-        Override in subclasses that support differentiation; the base raises
-        :class:`NotImplementedError`.
-        """
-        raise NotImplementedError(f"{type(self).__name__} does not implement vgrad().")
+    # Default cores. Each falls back to a public evaluator a subclass overrode (that
+    # override is itself checked), so older subclasses that write public methods work.
+
+    def _overrides(self, name: str) -> bool:
+        return getattr(type(self), name) is not getattr(Functional, name)
 
     def _value_core(self, x: Any, *args: Any, **kwargs: Any) -> Any:
         """Check-free value core; the base falls back to an overridden ``value``."""
-        if type(self).value is Functional.value:
+        if not self._overrides("value"):
             raise NotImplementedError(f"{type(self).__name__} defines neither value nor _value_core.")
         return self.value(x, *args, **kwargs)
 
     def _grad_core(self, x: Any, *args: Any, **kwargs: Any) -> Any:
-        """Check-free gradient core; the base falls back to the checked ``grad``."""
-        return self.grad(x, *args, **kwargs)
+        """Check-free gradient core: an overridden ``grad``, else a native derivative's representer."""
+        if self._overrides("grad"):
+            return self.grad(x, *args, **kwargs)
+        if self._overrides("_derivative_core") or self._overrides("derivative_at"):
+            return self._derivative_core(x, *args, **kwargs).representer
+        raise NotImplementedError(f"{type(self).__name__} does not implement grad().")
+
+    def _value_and_grad_core(self, x: Any, *args: Any, **kwargs: Any) -> tuple[Any, Any]:
+        """Check-free ``(value, grad)``; the base evaluates the two cores separately."""
+        if self._overrides("value_and_grad"):
+            return self.value_and_grad(x, *args, **kwargs)
+        return self._value_core(x, *args, **kwargs), self._grad_core(x, *args, **kwargs)
+
+    def _derivative_core(self, x: Any, *args: Any, **kwargs: Any) -> "LinearFunctional":
+        """Check-free derivative; the base wraps the gradient core."""
+        if self._overrides("derivative_at"):
+            return self.derivative_at(x, *args, **kwargs)
+        return self._derivative_from_gradient(self._grad_core(x, *args, **kwargs))
+
+    def _value_and_derivative_core(self, x: Any, *args: Any, **kwargs: Any) -> tuple[Any, "LinearFunctional"]:
+        """Check-free ``(value, derivative)``, using a native derivative when one exists."""
+        if self._overrides("value_and_derivative"):
+            return self.value_and_derivative(x, *args, **kwargs)
+        if self._overrides("_derivative_core") or self._overrides("derivative_at"):
+            return self._value_core(x, *args, **kwargs), self._derivative_core(x, *args, **kwargs)
+        value, gradient = self._value_and_grad_core(x, *args, **kwargs)
+        return value, self._derivative_from_gradient(gradient)
+
+    def _differential_core(self, x: Any, *args: Any, **kwargs: Any) -> Any:
+        """Check-free covector; the base applies the domain's Riesz map to the gradient core."""
+        if self._overrides("differential"):
+            return self.differential(x, *args, **kwargs)
+        return self.domain.riesz(self._grad_core(x, *args, **kwargs))
 
     def _vvalue_core(self, xs: Any) -> Any:
         """Check-free batched-value core; the base vmaps ``value`` unless ``vvalue`` is overridden."""
-        if type(self).vvalue is not Functional.vvalue:
+        if self._overrides("vvalue"):
             return self.vvalue(xs)
         return self._vmap_vvalue(xs)
 
@@ -220,8 +275,10 @@ class Functional(Mapping, Generic[Domain]):
         return self.ops.vmap(self.value, in_axes=0, out_axes=0)(xs)
 
     def _vgrad_core(self, xs: Any) -> Any:
-        """Check-free batched-gradient core; the base falls back to ``vgrad``."""
-        return self.vgrad(xs)
+        """Check-free batched-gradient core; the base falls back to an overridden ``vgrad``."""
+        if self._overrides("vgrad"):
+            return self.vgrad(xs)
+        raise NotImplementedError(f"{type(self).__name__} does not implement vgrad().")
 
     def __call__(self, x: Any, *args: Any, **kwargs: Any) -> Any:
         """Evaluate this functional at ``x``."""

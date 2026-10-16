@@ -4,7 +4,7 @@ from abc import abstractmethod
 from typing import Any, Callable
 
 from ._base import Domain, Functional
-from .._batching import _batched_real_pairing, _check_scalar_shape
+from .._batching import _batched_real_pairing, _check_batched, _check_scalar_shape
 from .._checks import checked_method
 from .._checks import CheckLevel
 from ..contextual import Context
@@ -73,9 +73,8 @@ class LinearFunctional(Functional[Domain]):
         return _broadcast_space_element(dom, self.representer, n)
 
 
-    def derivative_at(self, x: Any, *args: Any, **kwargs: Any) -> "LinearFunctional":
-        """Return this linear functional itself, even without a representer."""
-        self.domain.check_member(x)
+    def _derivative_core(self, x: Any, *args: Any, **kwargs: Any) -> "LinearFunctional":
+        """This linear functional itself, even without a representer."""
         return self
 
     @property
@@ -88,21 +87,6 @@ class LinearFunctional(Functional[Domain]):
         raise ``NotImplementedError``.
         """
 
-    @checked_method(in_space="domain", out_space="domain")
-    def grad(self, x: Any) -> Any:
-        """
-        Return the constant Riesz gradient of this linear functional.
-
-        For ``ell(x) = Re<c, x>_X``, the gradient is the space element ``c``.
-        Matrix-free functionals without a stored representer inherit the
-        ``NotImplementedError`` raised by :attr:`representer`.
-        """
-        return self._grad_core(x)
-
-    @checked_method(in_space="domain", out_space="domain", in_batched=True, out_batched=True)
-    def vgrad(self, xs: Any) -> Any:
-        """Return the constant Riesz gradient over a leading batch axis."""
-        return self._vgrad_core(xs)
 
 
 class InnerProductFunctional(LinearFunctional[Domain]):
@@ -253,6 +237,8 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
         if self.vvalue_fn is None:
             return super().vvalue(xs)
         values = self.vvalue_fn(xs)
+        if self.check_level != "none":
+            _check_batched(self.codomain, values)  # real values, as the base vvalue checks
         if self._checks_at_least("standard"):
             shape = tuple(getattr(xs, "shape", ()))
             base = tuple(self.domain.shape)
