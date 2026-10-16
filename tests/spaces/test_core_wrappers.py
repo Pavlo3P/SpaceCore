@@ -57,3 +57,16 @@ def test_internal_paths_call_cores_not_public_operations(monkeypatch):
     for name in ("flatten", "unflatten"):
         monkeypatch.setattr(type(X), name, lambda *a, **k: pytest.fail("public op called internally"))
     np.testing.assert_allclose(A.apply(X.ctx.asarray([1.0, 2.0])), [1.0, 2.0])
+
+
+def test_jordan_operations_check_and_stacks_use_the_base_core():
+    ctx = _ctx()
+    H = sc.HermitianSpace(2, ctx=ctx)
+    with pytest.raises(sc.SpaceValidationError):
+        H.jordan(np.eye(2), np.ones((2, 3)))
+    with pytest.raises(sc.SpaceValidationError):
+        H.trace(np.array([[1.0, 2.0], [0.0, 1.0]]))  # not Hermitian
+    S = sc.StackedSpace(H, 3, ctx=ctx)
+    x = ctx.asarray(np.stack([np.diag([1.0, 2.0]), np.diag([3.0, 4.0]), np.eye(2)]))
+    np.testing.assert_allclose(S.spectrum(x), [[1.0, 2.0], [3.0, 4.0], [1.0, 1.0]])
+    np.testing.assert_allclose(S.trace(x), 3.0 + 7.0 + 2.0)

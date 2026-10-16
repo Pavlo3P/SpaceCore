@@ -15,7 +15,6 @@ from .._capabilities import (
     _CAP_INNER, _CAP_STAR, _CAP_JORDAN,
     _space_capabilities, registry_key,
 )
-from ..._checks import checked_method
 from ..._checks import CheckLevel
 from ...contextual import resolve_context_priority
 from ...contextual import Context
@@ -243,43 +242,42 @@ class _StackedStarMixin(_StackedHostMixin):
 class _StackedJordanMixin(_StackedHostMixin):
     """Jordan operations for stacks whose base supports them."""
 
-    @checked_method(in_space="self", arg_positions=(0, 1))
-    def jordan(self, x: Any, y: Any) -> Any:
+    def _jordan_core(self, x: Any, y: Any) -> Any:
         """Return the base-space Jordan product for each stacked copy."""
         base = cast(JordanAlgebraSpace, self.base)
-        return self._per_copy(base.jordan, x, y)
+        return self._per_copy(base._jordan_core, x, y)
 
-    def spectrum(self, x: Any) -> Any:
+    def _spectrum_core(self, x: Any) -> Any:
         """Return spectra for each leading-axis copy of the base space."""
         base = cast(JordanAlgebraSpace, self.base)
-        return self._per_copy(base.spectrum, x)
+        return self._per_copy(base._spectrum_core, x)
 
-    def spectral_decompose(self, x: Any) -> Any:
+    def _spectral_decompose_core(self, x: Any) -> Any:
         """Return spectral decompositions for each leading-axis copy."""
         base = cast(JordanAlgebraSpace, self.base)
-        return self._per_copy(base.spectral_decompose, x)
+        return self._per_copy(base._spectral_decompose_core, x)
 
-    def from_spectrum(self, eigvals: Any, frame: Any) -> Any:
+    def _from_spectrum_core(self, eigvals: Any, frame: Any) -> Any:
         """Reconstruct stacked elements from base spectral data."""
         base = cast(JordanAlgebraSpace, self.base)
-        return self._per_copy(base.from_spectrum, eigvals, frame)
+        return self._per_copy(base._from_spectrum_core, eigvals, frame)
 
-    def spectral_apply(self, x: Any, f: Any) -> Any:
+    def _spectral_apply_core(self, x: Any, f: Any) -> Any:
         """Apply the base-space spectral calculus to each stacked copy."""
         base = cast(JordanAlgebraSpace, self.base)
-        return self._per_copy(lambda xi: base.spectral_apply(xi, f), x)
+        return self._per_copy(lambda xi: base._spectral_apply_core(xi, f), x)
 
-    def trace(self, x: Any) -> Any:
+    def _trace_core(self, x: Any) -> Any:
         """Return the direct-sum trace: the sum of the per-copy base traces."""
         base = cast(JordanAlgebraSpace, self.base)
-        traces = self._per_copy(base.trace, x)
+        traces = self._per_copy(base._trace_core, x)
         # Reduce only the copy axis; leading batch axes are preserved.
         return self.ops.sum(traces, axis=-1)
 
-    def determinant(self, x: Any) -> Any:
+    def _determinant_core(self, x: Any) -> Any:
         """Return the direct-sum determinant: the product of the per-copy base determinants."""
         base = cast(JordanAlgebraSpace, self.base)
-        dets = self._per_copy(base.determinant, x)
+        dets = self._per_copy(base._determinant_core, x)
         # Reduce only the copy axis; leading batch axes are preserved.
         return self.ops.prod(dets, axis=-1)
 

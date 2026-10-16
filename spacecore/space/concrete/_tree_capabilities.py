@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING, Any, Callable, Sequence, cast
 
 import optree
 
-from ..._checks import checked_method
 from ...backend import BackendOps
 from ...backend import PyTreeNode
 from ..base import (
@@ -135,12 +134,11 @@ class TreeSpectralDecomposition(PyTreeNode):
 class _LeafwiseJordanMixin(_LeafwiseHostMixin):
     """Jordan operations for trees whose leaves all support them."""
 
-    @checked_method(in_space="self", arg_positions=(0, 1))
-    def jordan(self, x: Any, y: Any) -> Any:
+    def _jordan_core(self, x: Any, y: Any) -> Any:
         """Return the leafwise Jordan product."""
-        return self._from_components(self._leafwise(lambda s, xi, yi: s.jordan(xi, yi), x, y))
+        return self._from_components(self._leafwise(lambda s, xi, yi: s._jordan_core(xi, yi), x, y))
 
-    def spectrum(self, x: Any, *, structured: bool = False) -> Any:
+    def _spectrum_core(self, x: Any, *, structured: bool = False) -> Any:
         """Return the leaf Jordan spectra.
 
         By default (``structured=False``) the leaf spectra are concatenated in
@@ -152,14 +150,14 @@ class _LeafwiseJordanMixin(_LeafwiseHostMixin):
         eigenvalue-shaped, so it is **not** a member of the space.
         """
         # Per-leaf spectra: as a tree, or concatenated into one vector.
-        parts = self._leafwise(lambda s, leaf: s.spectrum(leaf), x)
+        parts = self._leafwise(lambda s, leaf: s._spectrum_core(leaf), x)
         if structured:
             return self._from_components(parts)
         if len(parts) == 1:
             return parts[0]
         return self.ops.concatenate(parts, axis=-1)
 
-    def spectral_decompose(self, x: Any) -> TreeSpectralDecomposition:
+    def _spectral_decompose_core(self, x: Any) -> TreeSpectralDecomposition:
         """Return leafwise spectral data tagged with the space ``treedef``.
 
         Eigenvalues and frames are stored as flat leaf-order tuples (so
@@ -168,14 +166,14 @@ class _LeafwiseJordanMixin(_LeafwiseHostMixin):
         eigenvalues in the tree's own structure.
         """
         # Decompose each leaf and keep the tree structure for to_tree.
-        decompositions = self._leafwise(lambda s, leaf: s.spectral_decompose(leaf), x)
+        decompositions = self._leafwise(lambda s, leaf: s._spectral_decompose_core(leaf), x)
         return TreeSpectralDecomposition(
             eigvals=tuple(eigvals for eigvals, _frame in decompositions),
             frames=tuple(frame for _eigvals, frame in decompositions),
             treedef=self.treedef,
         )
 
-    def from_spectrum(
+    def _from_spectrum_core(
         self,
         eigvals: TreeSpectralDecomposition,
         frame: Any = None,
@@ -195,7 +193,7 @@ class _LeafwiseJordanMixin(_LeafwiseHostMixin):
         leaf_spaces = cast("Sequence[JordanAlgebraSpace]", self.leaf_spaces)
         return self._from_components(
             tuple(
-                space.from_spectrum(eigvals, spectral_frame)
+                space._from_spectrum_core(eigvals, spectral_frame)
                 for space, eigvals, spectral_frame in zip(
                     leaf_spaces,
                     decomposition.eigvals,
@@ -204,20 +202,19 @@ class _LeafwiseJordanMixin(_LeafwiseHostMixin):
             )
         )
 
-    @checked_method(in_space="self", out_space="self")
-    def spectral_apply(self, x: Any, f: Callable[[Any], Any]) -> Any:
+    def _spectral_apply_core(self, x: Any, f: Callable[[Any], Any]) -> Any:
         """Apply each leaf space's spectral calculus independently."""
-        return self._from_components(self._leafwise(lambda s, leaf: s.spectral_apply(leaf, f), x))
+        return self._from_components(self._leafwise(lambda s, leaf: s._spectral_apply_core(leaf, f), x))
 
-    def trace(self, x: Any) -> Any:
+    def _trace_core(self, x: Any) -> Any:
         """Return the direct-sum trace: the sum of the leaf traces."""
         # The trace of a direct product is the sum of the leaves' traces.
-        return reduce(operator.add, self._leafwise(lambda s, leaf: s.trace(leaf), x))
+        return reduce(operator.add, self._leafwise(lambda s, leaf: s._trace_core(leaf), x))
 
-    def determinant(self, x: Any) -> Any:
+    def _determinant_core(self, x: Any) -> Any:
         """Return the direct-sum determinant: the product of the leaf determinants."""
         # The determinant of a direct product is the product of the leaves' determinants.
-        return reduce(operator.mul, self._leafwise(lambda s, leaf: s.determinant(leaf), x))
+        return reduce(operator.mul, self._leafwise(lambda s, leaf: s._determinant_core(leaf), x))
 
     def unit(self) -> Any:
         """Return the leafwise Jordan identity assembled into a tree element."""

@@ -10,7 +10,6 @@ from ..base import (
     StarSpace,
 )
 from ..._checks import CheckLevel, require_mutually_exclusive
-from ..._checks import checked_method
 from ...contextual import normalize_context
 from ...contextual import Context
 from ...backend import PyTreeNode
@@ -149,22 +148,21 @@ class ElementwiseJordanSpace(PyTreeNode, JordanAlgebraSpace, DenseCoordinateSpac
         """Elementwise conjugation."""
         return self.ops.conj(x)
 
-    @checked_method(in_space="self", arg_positions=(0, 1))
-    def jordan(self, x: DenseArray, y: DenseArray) -> DenseArray:
+    def _jordan_core(self, x: DenseArray, y: DenseArray) -> DenseArray:
         """Return the elementwise Jordan product."""
         return x * y
 
-    def spectrum(self, x: DenseArray) -> DenseArray:
+    def _spectrum_core(self, x: DenseArray) -> DenseArray:
         """Return ``x`` as its Jordan spectrum under elementwise product."""
         self._check_unbatched_member(x)
         return x
 
-    def spectral_decompose(self, x: DenseArray) -> tuple[DenseArray, None]:
+    def _spectral_decompose_core(self, x: DenseArray) -> tuple[DenseArray, None]:
         """Return the trivial spectral decomposition ``(x, None)``."""
         self._check_unbatched_member(x)
         return x, None
 
-    def from_spectrum(self, eigvals: DenseArray, frame: Any = None) -> DenseArray:
+    def _from_spectrum_core(self, eigvals: DenseArray, frame: Any = None) -> DenseArray:
         """Reconstruct an elementwise Jordan element from its spectrum."""
         # Elementwise: the spectrum is the element itself, so there is no frame.
         if frame is not None:
@@ -172,12 +170,12 @@ class ElementwiseJordanSpace(PyTreeNode, JordanAlgebraSpace, DenseCoordinateSpac
         self._check_unbatched_member(eigvals)
         return eigvals
 
-    def trace(self, x: DenseArray) -> DenseArray:
+    def _trace_core(self, x: DenseArray) -> DenseArray:
         """Return the Jordan trace as the sum over the element's own coordinates."""
         self._check_unbatched_member(x)
         return self.ops.sum(x, axis=tuple(range(-len(self.shape), 0)))
 
-    def determinant(self, x: DenseArray) -> DenseArray:
+    def _determinant_core(self, x: DenseArray) -> DenseArray:
         """Return the Jordan determinant as the product over the coordinates."""
         self._check_unbatched_member(x)
         return self.ops.prod(x, axis=tuple(range(-len(self.shape), 0)))
@@ -186,8 +184,7 @@ class ElementwiseJordanSpace(PyTreeNode, JordanAlgebraSpace, DenseCoordinateSpac
         """Return the Jordan identity: the all-ones element in the space dtype."""
         return self.ops.ones(self.shape, dtype=self.dtype)
 
-    @checked_method(in_space="self", out_space="self")
-    def spectral_apply(self, x: DenseArray, f: Callable[[DenseArray], DenseArray]) -> DenseArray:
+    def _spectral_apply_core(self, x: DenseArray, f: Callable[[DenseArray], DenseArray]) -> DenseArray:
         """Apply a scalar function coordinatewise."""
         return self._apply_entrywise(x, f)
 

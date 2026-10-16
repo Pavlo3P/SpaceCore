@@ -84,16 +84,16 @@ class _StarPair(_PairCoordinateSpace, sc.StarSpace):
 
 
 class _JordanPair(_PairCoordinateSpace, sc.JordanAlgebraSpace):
-    def jordan(self, x, y):
+    def _jordan_core(self, x, y):
         return x * y
 
-    def spectrum(self, x):
+    def _spectrum_core(self, x):
         return x
 
-    def spectral_decompose(self, x):
+    def _spectral_decompose_core(self, x):
         return x, None
 
-    def from_spectrum(self, eigvals, frame):
+    def _from_spectrum_core(self, eigvals, frame):
         if frame is not None:
             raise ValueError("frame must be None")
         return eigvals
@@ -204,16 +204,16 @@ class TestCapabilityDispatch:
 
     def test_inner_jordan_combination_lifts(self, numpy_ctx):
         class _InnerJordanPair(_InnerPair, sc.JordanAlgebraSpace):
-            def jordan(self, x, y):
+            def _jordan_core(self, x, y):
                 return x * y
 
-            def spectrum(self, x):
+            def _spectrum_core(self, x):
                 return x
 
-            def spectral_decompose(self, x):
+            def _spectral_decompose_core(self, x):
                 return x, None
 
-            def from_spectrum(self, eigvals, frame):
+            def _from_spectrum_core(self, eigvals, frame):
                 if frame is not None:
                     raise ValueError("frame must be None")
                 return eigvals
@@ -226,16 +226,16 @@ class TestCapabilityDispatch:
 
     def test_star_jordan_combination_lifts(self, numpy_ctx):
         class _StarJordanPair(_StarPair, sc.JordanAlgebraSpace):
-            def jordan(self, x, y):
+            def _jordan_core(self, x, y):
                 return x * y
 
-            def spectrum(self, x):
+            def _spectrum_core(self, x):
                 return x
 
-            def spectral_decompose(self, x):
+            def _spectral_decompose_core(self, x):
                 return x, None
 
-            def from_spectrum(self, eigvals, frame):
+            def _from_spectrum_core(self, eigvals, frame):
                 if frame is not None:
                     raise ValueError("frame must be None")
                 return eigvals

@@ -102,28 +102,27 @@ class HermitianSpace(DenseCoordinateSpace, StarSpace, EuclideanJordanAlgebraSpac
         """The canonical star operation for Hermitian elements: identity."""
         return x
 
-    @checked_method(in_space="self", arg_positions=(0, 1))
-    def jordan(self, x: DenseArray, y: DenseArray) -> DenseArray:
+    def _jordan_core(self, x: DenseArray, y: DenseArray) -> DenseArray:
         """Return the Hermitian Jordan product ``(xy + yx) / 2``."""
         xy = self.ops.matmul(x, y)
         yx = self.ops.matmul(y, x)
         return self.symmetrize((xy + yx) * 0.5)
 
-    def spectrum(self, x: DenseArray) -> DenseArray:
+    def _spectrum_core(self, x: DenseArray) -> DenseArray:
         """Return the Hermitian eigenvalue spectrum of ``x``."""
         self._check_unbatched_member(x)
         return self.ops.eigh(x)[0]
 
-    def spectral_decompose(self, x: DenseArray) -> Tuple[DenseArray, DenseArray]:
+    def _spectral_decompose_core(self, x: DenseArray) -> Tuple[DenseArray, DenseArray]:
         """Return the Hermitian eigendecomposition ``(evals, evecs)``."""
         self._check_unbatched_member(x)
         return self.ops.eigh(x)
 
-    def from_spectrum(self, eigvals: DenseArray, frame: DenseArray) -> DenseArray:
+    def _from_spectrum_core(self, eigvals: DenseArray, frame: DenseArray) -> DenseArray:
         """Reconstruct a Hermitian element from eigenvalues and eigenvectors."""
         return self.eig_to_dense(eigvals, frame)
 
-    def trace(self, x: DenseArray) -> DenseArray:
+    def _trace_core(self, x: DenseArray) -> DenseArray:
         """Return the (real) trace as the diagonal sum, avoiding an eigendecomposition.
 
         ``'...ii->...'`` sums the trailing-two-axes diagonal and preserves leading
@@ -151,7 +150,7 @@ class HermitianSpace(DenseCoordinateSpace, StarSpace, EuclideanJordanAlgebraSpac
         in an eigenbasis, off-diagonal entries add squared error and the optimal
         nonnegative diagonal entries are ``max(lambda_i, 0)``.
         """
-        evals, evecs = self.spectral_decompose(x)
+        evals, evecs = self._spectral_decompose_core(x)
         evals = self.ops.maximum(evals, cast(Any, 0.0))
         return self.eig_to_dense(evals, evecs)
 
@@ -172,8 +171,7 @@ class HermitianSpace(DenseCoordinateSpace, StarSpace, EuclideanJordanAlgebraSpac
         self._check_unbatched_member(X)
         return X
 
-    @checked_method(in_space="self")
-    def spectral_apply(self, x: DenseArray, f: Callable[[DenseArray], DenseArray]) -> DenseArray:
+    def _spectral_apply_core(self, x: DenseArray, f: Callable[[DenseArray], DenseArray]) -> DenseArray:
         r"""
         Return :math:`f(X) = U \operatorname{diag}(f(\lambda)) U^*`, with ``f`` applied to the eigenvalues.
 
@@ -193,7 +191,7 @@ class HermitianSpace(DenseCoordinateSpace, StarSpace, EuclideanJordanAlgebraSpac
             The Hermitian matrix :math:`f(X)`.
         """
         # Transform the eigenvalues, keep the eigenvectors.
-        evals, evecs = self.spectral_decompose(x)
+        evals, evecs = self._spectral_decompose_core(x)
         fevals = self._apply_entrywise(evals, f)
 
         return self.eig_to_dense(fevals, evecs)
