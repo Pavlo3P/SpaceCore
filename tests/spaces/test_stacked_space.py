@@ -343,3 +343,26 @@ class TestJaxPytree:
         leaves, treedef = jax.tree_util.tree_flatten(space)
         rebuilt = jax.tree_util.tree_unflatten(treedef, leaves)
         assert rebuilt == space
+
+
+@pytest.mark.parametrize(
+    "make",
+    [
+        lambda V, H, ctx: sc.TreeSpace((0, 0), (V, V)),
+        lambda V, H, ctx: sc.TreeSpace((0, 0), (H, H)),
+        lambda V, H, ctx: sc.StackedSpace(V, 3, ctx=ctx),
+        lambda V, H, ctx: sc.ElementwiseJordanSpace((2,), ctx),
+    ],
+    ids=["tree", "tree-hermitian", "stacked", "elementwise-jordan"],
+)
+def test_dispatching_new_round_trips_through_pickle(make):
+    # A __new__ that picks a capability subclass from its arguments must still unpickle.
+    import pickle
+
+    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    V = sc.DenseVectorSpace((2,), ctx=ctx)
+    H = sc.HermitianSpace(2, ctx=ctx)
+    space = make(V, H, ctx)
+    clone = pickle.loads(pickle.dumps(space))
+    assert type(clone) is type(space)
+    assert clone == space

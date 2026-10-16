@@ -190,6 +190,11 @@ class PyTreeNode(ABC):
             )
         return super().__new__(cls)
 
+    def __getnewargs_ex__(self) -> tuple[tuple[Any, ...], dict[str, Any]]:
+        # Unpickling calls ``cls.__new__`` with these; a ``__new__`` that dispatches on its
+        # arguments needs them, and the instance state is restored afterwards as usual.
+        return (), field_values(self) if getattr(type(self), "_fields", ()) else {}
+
     def __init_subclass__(cls, **kwargs: Any) -> None:
         """
         Register each subclass that implements ``tree_flatten``, even if abstract otherwise.
