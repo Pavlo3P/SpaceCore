@@ -4,11 +4,10 @@ from typing import Any, NamedTuple
 
 from ..linop import LinOp
 from ._utils import DEFAULT_CONVERGENCE_CHECK_INTERVAL, check_interval, check_maxiter
+from ._utils import require_hermitian_square, result_repr_method
 from ._utils import SpaceCoreOps, is_converged, resolve_apply
-from ._utils import require_linop, require_square
 from ._utils import (
     require_strict_cg_preconditions,
-    result_repr,
     safe_inverse_nonneg,
     should_check_iteration,
     threshold,
@@ -36,12 +35,7 @@ class CGResult(NamedTuple):
     num_iters: Any
     residual_norm: Any
 
-    def __repr__(self) -> str:
-        """Return a compact summary without printing the full solution array."""
-        return result_repr(
-            "CGResult",
-            {k: getattr(self, k) for k in ("converged", "num_iters", "residual_norm", "x")},
-        )
+    __repr__ = result_repr_method(("converged", "num_iters", "residual_norm", "x"))
 
 
 def cg(
@@ -125,20 +119,19 @@ def cg(
     True
     """
     # Validate once, up front: square, not provably non-Hermitian, valid b and parameters.
-    A = require_linop(A)
-    require_square(A, "cg")
-    if A._checks_at_least("standard") and A.is_hermitian() is False:
-        raise ValueError(
-            "cg requires A to be Hermitian/self-adjoint with respect to "
-            "A.domain.inner, but A was determined to be provably "
-            "non-self-adjoint in this geometry. For example, a symmetric "
-            "matrix wrapped as a DenseLinOp on a weighted (non-Euclidean) "
-            "inner-product space is not self-adjoint under the weighted inner "
-            "product. Build a valid operator instead, e.g. a normal operator "
-            "A.H @ A + lam * Identity (which is self-adjoint in any geometry), "
-            "or use a Euclidean space where the symmetric matrix is "
-            "self-adjoint."
-        )
+    A = require_hermitian_square(
+        A,
+        "cg",
+        "cg requires A to be Hermitian/self-adjoint with respect to "
+        "A.domain.inner, but A was determined to be provably "
+        "non-self-adjoint in this geometry. For example, a symmetric "
+        "matrix wrapped as a DenseLinOp on a weighted (non-Euclidean) "
+        "inner-product space is not self-adjoint under the weighted inner "
+        "product. Build a valid operator instead, e.g. a normal operator "
+        "A.H @ A + lam * Identity (which is self-adjoint in any geometry), "
+        "or use a Euclidean space where the symmetric matrix is "
+        "self-adjoint."
+    )
     require_strict_cg_preconditions(A)
     A.codomain.check_member(b)
     maxiter = check_maxiter(maxiter, A)

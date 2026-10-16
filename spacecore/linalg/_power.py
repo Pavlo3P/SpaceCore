@@ -8,8 +8,9 @@ from ..functional import QuadraticForm
 from ..linop import LinOp
 from ..space import Space
 from ._utils import SpaceCoreOps
-from ._utils import check_maxiter, core_normalize, default_initial_vector, is_converged
-from ._utils import require_linop, require_square, resolve_apply, result_repr
+from ._utils import normalize, require_hermitian_square, result_repr_method
+from ._utils import check_maxiter, default_initial_vector, is_converged
+from ._utils import resolve_apply
 
 
 class PowerIterationResult(NamedTuple):
@@ -36,15 +37,7 @@ class PowerIterationResult(NamedTuple):
     num_iters: Any
     residual_norm: Any
 
-    def __repr__(self) -> str:
-        """Return a compact summary without printing the full eigenvector."""
-        return result_repr(
-            "PowerIterationResult",
-            {
-                k: getattr(self, k)
-                for k in ("converged", "num_iters", "eigenvalue", "residual_norm", "eigenvector")
-            },
-        )
+    __repr__ = result_repr_method(("converged", "num_iters", "eigenvalue", "residual_norm", "eigenvector"))
 
 
 class _SelfAdjointAction(NamedTuple):
@@ -70,10 +63,7 @@ class _SelfAdjointAction(NamedTuple):
 def _action_from_linop(A: LinOp) -> _SelfAdjointAction:
     """Normalize a square linear operator into a self-adjoint action."""
     # Wrap a square LinOp as a self-adjoint action with generic diagnostics.
-    A = require_linop(A)
-    require_square(A, "power_iteration")
-    if A._checks_at_least("standard") and A.is_hermitian() is False:
-        raise ValueError("power_iteration requires A to be Hermitian/self-adjoint.")
+    A = require_hermitian_square(A, "power_iteration")
     apply = resolve_apply(A)
     sops = SpaceCoreOps(A.domain)
     return _SelfAdjointAction(
@@ -195,7 +185,7 @@ def _power_iteration_core(
     """Run the backend-loop implementation of power iteration."""
     sops = SpaceCoreOps(action.domain)
     # Normalize x0 and precompute y = A x.
-    x, _ = core_normalize(sops, x)
+    x, _ = normalize(sops, x)
     y = action.apply(x)
     zero = action.ops.asarray(0.0, dtype=action.dtype)
     residual_norm = sops.norm(x) + float("inf")
@@ -209,7 +199,7 @@ def _power_iteration_core(
     def body_fun(carry: tuple[Any, Any, Any, Any, int]) -> tuple[Any, Any, Any, Any, int]:
         _eigenvalue, _x, y, _residual_norm, k = carry
         # x <- A x / ||A x||; eigenvalue by the Rayleigh quotient; residual ||A x - lambda x||.
-        x_next, _norm_y = core_normalize(sops, y)
+        x_next, _norm_y = normalize(sops, y)
         y_next = action.apply(x_next)
         eigenvalue_next = action.rayleigh(x_next, y_next)
         k_next = k + 1

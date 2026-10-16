@@ -60,12 +60,21 @@ def check_maxiter(maxiter: int | None, A: LinOp) -> int:
     return maxiter
 
 
-def check_interval(interval: int) -> int:
-    """Validate a convergence-check interval."""
+def check_interval(interval: int, name: str = "check_every") -> int:
+    """Validate a positive integer parameter, such as a convergence-check interval."""
     interval = int(interval)
     if interval < 1:
-        raise ValueError("check_every must be positive.")
+        raise ValueError(f"{name} must be positive.")
     return interval
+
+
+def require_hermitian_square(A: Any, name: str, message: str | None = None) -> Any:
+    """Return ``A`` as a square LinOp, raising if it is provably not self-adjoint."""
+    A = require_linop(A)
+    require_square(A, name)
+    if A._checks_at_least("standard") and A.is_hermitian() is False:
+        raise ValueError(message or f"{name} requires A to be Hermitian/self-adjoint.")
+    return A
 
 
 def should_check_iteration(k: Any, maxiter: int, interval: int) -> Any:
@@ -197,12 +206,6 @@ def normalize(space: Any, x: Any) -> tuple[Any, Any]:
     return space.scale(safe_inverse_nonneg(space.ops, norm), x), norm
 
 
-def core_normalize(sops: SpaceCoreOps, x: Any) -> tuple[Any, Any]:
-    """Normalize ``x`` through resolved check-free space ops; return ``(unit, norm)``."""
-    norm = sops.norm(x)
-    return sops.scale(safe_inverse_nonneg(sops.ops, norm), x), norm
-
-
 def default_initial_vector(A: LinOp) -> Any:
     """Return a deterministic unit vector in ``A.domain`` using its geometry."""
     from ..space._capabilities import probe_element
@@ -214,11 +217,22 @@ def default_initial_vector(A: LinOp) -> Any:
             "Default initialization requires space.ones() or CoordinateSpace; "
             "supply an explicit initial element (x0)."
         )
-    norm = A.domain.norm(v)
-    return A.domain.scale(safe_inverse_nonneg(A.ops, norm), v)
+    return normalize(A.domain, v)[0]
 
 
 def result_repr(name: str, fields: dict[str, Any]) -> str:
     """Return a compact result-object representation."""
     body = ", ".join(f"{key}={summarize_value(value)}" for key, value in fields.items())
     return f"{name}({body})"
+
+
+
+def result_repr_method(keys: tuple[str, ...] | None = None):
+    """Return a ``__repr__`` for a result NamedTuple that summarizes ``keys`` (all fields by default)."""
+
+    def __repr__(self: Any) -> str:
+        """Return a compact summary without printing full arrays."""
+        fields = self._asdict() if keys is None else {k: getattr(self, k) for k in keys}
+        return result_repr(type(self).__name__, fields)
+
+    return __repr__

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from contextvars import ContextVar
-from typing import Any, Iterable, Iterator, Tuple
+from typing import Any, ContextManager, Iterable, Iterator, Tuple, TypeVar
 from warnings import warn
 
 from .._checks import CheckLevel, normalize_check_level
@@ -29,6 +29,19 @@ _ctx_override: ContextVar[Context | None] = ContextVar("spacecore_ctx", default=
 _check_override: ContextVar[CheckLevel | None] = ContextVar(
     "spacecore_check_level", default=None
 )
+
+
+_V = TypeVar("_V")
+
+
+@contextmanager
+def _override(var: ContextVar[Any], value: _V) -> Iterator[_V]:
+    """Set ``var`` to ``value`` for the block; the Token unwinds exactly this override."""
+    token = var.set(value)
+    try:
+        yield value
+    finally:
+        var.reset(token)
 
 
 class Contextual:
@@ -78,21 +91,14 @@ class Contextual:
         """
         self._baseline_check_level = normalize_check_level(level)
 
-    @contextmanager
-    def scoped_check_level(self, level: CheckLevel | None) -> Iterator[CheckLevel]:
+    def scoped_check_level(self, level: CheckLevel | None) -> ContextManager[CheckLevel]:
         """Override the ambient validation level for the duration of the block.
 
         The override is visible only to the current thread / async task. The
         :class:`~contextvars.Token` returned by ``set`` unwinds exactly this
         override, so nesting and concurrent scopes cannot clobber one another.
         """
-        # Set the ContextVar for the block and always restore it.
-        resolved = normalize_check_level(level)
-        token = _check_override.set(resolved)
-        try:
-            yield resolved
-        finally:
-            _check_override.reset(token)
+        return _override(_check_override, normalize_check_level(level))
 
     def normalize_context(
         self,
@@ -137,24 +143,17 @@ class Contextual:
         """Set the process-wide *baseline* context; scoped overrides still win."""
         self._baseline_ctx = self.normalize_context(ctx)
 
-    @contextmanager
     def scoped_ctx(
         self,
         ctx: Context | BackendFamily | str | None = None,
         dtype: Any = None,
-    ) -> Iterator[Context]:
+    ) -> ContextManager[Context]:
         """Override the default context for the duration of the block.
 
         The override is visible only to the current thread / async task; see
         :meth:`scoped_check_level` for the Token-unwind rationale.
         """
-        # Set the ContextVar for the block and always restore it.
-        resolved = self.normalize_context(ctx, dtype=dtype)
-        token = _ctx_override.set(resolved)
-        try:
-            yield resolved
-        finally:
-            _ctx_override.reset(token)
+        return _override(_ctx_override, self.normalize_context(ctx, dtype=dtype))
 
     def infer_context(self, x: Any) -> Context | None:
         """Infer context from `.ctx` first, then registered backend arrays.

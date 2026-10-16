@@ -150,5 +150,3 @@ class Context(Generic[DenseT]):
         """Return whether ``other`` is a ``Context`` with equal ops and dtype."""
         return isinstance(other, Context) and self.ops == other.ops and self.dtype == other.dtype
 
-    def __repr__(self) -> str:
-        return f"Context(ops={self.ops!r}, dtype={self.dtype!r})"

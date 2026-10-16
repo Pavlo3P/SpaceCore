@@ -8,38 +8,32 @@ domain's ``add``/``scale``, because elements may be pytrees.
 """
 from __future__ import annotations
 
+import operator
+from functools import reduce
 from typing import Any
 
 from ._base import Functional
 from ._linear import LinearFunctional
 from ..mapping import Scalar, ScaledNode, SumNode, ZeroNode, make_scaled_of, make_sum_of, register
-from .._checks import checked_method
 from .._checks import CheckLevel, minimum_check_level
 from ..contextual import Context
 from ..mapping._lazy_algebra import is_scalar_like, scalar_eq
 
 
-def _require_same_domain(terms: Any, node: str = "SumFunctional") -> None:
-    """Raise unless every functional in ``terms`` shares the first term's domain.
+def _require_factors(left: Any, right: Any) -> None:
+    """Raise unless both product factors are functionals on one domain.
 
     Domain equality folds in the backend/dtype context, so this also rejects a
     same-shape space on a different backend or dtype.
-
-    Parameters
-    ----------
-    terms : sequence of Functional
-        Operands to compare.
-    node : str, optional
-        Node name used in the error message; sums and products share this check.
     """
-    # Domain equality includes backend and dtype.
-    domain = terms[0].domain
-    for i, term in enumerate(terms[1:], start=1):
-        if term.domain != domain:
-            raise ValueError(
-                f"All {node} operands must have the same domain; operand 0 has "
-                f"domain {domain!r}, operand {i} has domain {term.domain!r}."
-            )
+    for name, factor in (("left", left), ("right", right)):
+        if not isinstance(factor, Functional):
+            raise TypeError(f"{name} must be a Functional, got {type(factor).__name__}.")
+    if right.domain != left.domain:
+        raise ValueError(
+            "All ProductFunctional operands must have the same domain; operand 0 has "
+            f"domain {left.domain!r}, operand 1 has domain {right.domain!r}."
+        )
 
 
 class ScaledFunctional(ScaledNode, Functional):
@@ -139,23 +133,14 @@ class SumFunctional(SumNode, Functional):
 
     def _value_core(self, x: Any, *args: Any, **kwargs: Any) -> Any:
         """Check-free sum of term values."""
-        # Sum of the terms' values (plain scalars).
-        total = None
-        for term in self.terms:
-            value = term._value_core(x, *args, **kwargs)
-            total = value if total is None else total + value
-        return total
+        # Sum of the terms' values (plain scalars); _checked_parts guarantees a term.
+        return reduce(operator.add, (term._value_core(x, *args, **kwargs) for term in self.terms))
 
     def grad(self, x: Any, *args: Any, **kwargs: Any) -> Any:
         """Return the domain-sum of the term gradients (combined via ``X.add``)."""
         # Constant terms have zero gradient and are skipped, so ``F + c`` costs no extra add.
-        domain = self.domain
-        total = None
-        for term in self.terms:
-            if not isinstance(term, ConstantFunctional):
-                grad = term.grad(x, *args, **kwargs)
-                total = grad if total is None else domain.add(total, grad)
-        return domain.zeros() if total is None else total
+        grads = [term.grad(x, *args, **kwargs) for term in self.terms if not isinstance(term, ConstantFunctional)]
+        return reduce(self.domain.add, grads) if grads else self.domain.zeros()
 
     def value_and_grad(self, x: Any, *args: Any, **kwargs: Any) -> tuple[Any, Any]:
         """Return ``(sum values, domain-sum grads)`` from one fused pass per term."""
@@ -363,13 +348,7 @@ class ProductFunctional(Functional):
         right: Functional,
         check_level: CheckLevel | None = None,
     ) -> None:
-        # Both factors must be functionals on one domain.
-        for name, factor in (("left", left), ("right", right)):
-            if not isinstance(factor, Functional):
-                raise TypeError(
-                    f"{name} must be a Functional, got {type(factor).__name__}."
-                )
-        _require_same_domain((left, right), node="ProductFunctional")
+        _require_factors(left, right)
         # Default the policy from the OPERANDS, not from their domain space, so
         # the result inherits the least-strict operand independently of order
         # (mirrors SumFunctional).
@@ -384,13 +363,8 @@ class ProductFunctional(Functional):
         """Return the two factors in order."""
         return (self.left, self.right)
 
-    @checked_method(in_space="domain", out_space="codomain")
-    def value(self, x: Any, *args: Any, **kwargs: Any) -> Any:
-        """Return ``left.value(x) * right.value(x)``."""
-        return self._value_core(x, *args, **kwargs)
-
     def _value_core(self, x: Any, *args: Any, **kwargs: Any) -> Any:
-        """Check-free pointwise product of the factor values."""
+        """Check-free pointwise product ``left.value(x) * right.value(x)``."""
         # Pointwise product of the two values.
         return (
             self.left._value_core(x, *args, **kwargs)
@@ -409,9 +383,7 @@ class ProductFunctional(Functional):
         needs each factor's *value* as well as its gradient; asking for the
         gradients alone would evaluate the values a second time.
         """
-        lv, lg = self.left.value_and_grad(x, *args, **kwargs)
-        rv, rg = self.right.value_and_grad(x, *args, **kwargs)
-        return self._product_grad(lv, lg, rv, rg)
+        return self.value_and_grad(x, *args, **kwargs)[1]
 
     def value_and_grad(self, x: Any, *args: Any, **kwargs: Any) -> tuple[Any, Any]:
         """Return ``(value, grad)`` from one fused evaluation per factor."""
@@ -444,13 +416,8 @@ def make_functional_product(left: Functional, right: Functional) -> Functional:
     Functional
         The product.
     """
-    # Check types and the shared domain before any shortcut can hide a mismatch.
-    for name, factor in (("left", left), ("right", right)):
-        if not isinstance(factor, Functional):
-            raise TypeError(f"{name} must be a Functional, got {type(factor).__name__}.")
-    # Validate domains BEFORE any collapse, so a mismatch is never swallowed by
-    # the zero/constant shortcuts.
-    _require_same_domain((left, right), node="ProductFunctional")
+    # Validate BEFORE any collapse, so a mismatch is never swallowed by the shortcuts.
+    _require_factors(left, right)
 
     # Structural shortcuts: a zero factor gives zero, a constant factor gives scaling.
     if isinstance(left, ZeroFunctional) or isinstance(right, ZeroFunctional):
@@ -487,10 +454,7 @@ class _SumLinearFunctional(SumFunctional, LinearFunctional):
 
     @property
     def representer(self) -> Any:
-        result = self.terms[0].representer
-        for term in self.terms[1:]:
-            result = self.domain.add(result, term.representer)
-        return result
+        return reduce(self.domain.add, (term.representer for term in self.terms))
 
 
 class _ZeroLinearFunctional(ZeroFunctional, LinearFunctional):

@@ -7,8 +7,9 @@ from ..linop import LinOp
 from ..linop._metric import _VECTOR_SPACES
 from ..types import DenseArray
 from ._utils import DEFAULT_CONVERGENCE_CHECK_INTERVAL, SpaceCoreOps, check_interval
-from ._utils import require_linop, require_square, resolve_apply, safe_inverse_nonneg
-from ._utils import result_repr, should_check_iteration
+from ._utils import require_hermitian_square, result_repr_method
+from ._utils import resolve_apply, safe_inverse_nonneg
+from ._utils import should_check_iteration
 
 
 class LanczosResult(NamedTuple):
@@ -35,9 +36,7 @@ class LanczosResult(NamedTuple):
     krylov_dim: Any
     converged: Any
 
-    def __repr__(self) -> str:
-        """Return a compact summary without printing the full eigenvector."""
-        return result_repr("LanczosResult", self._asdict())
+    __repr__ = result_repr_method()
 
 
 class _LanczosBasisResult(NamedTuple):
@@ -126,14 +125,6 @@ class _KrylovBasis:
         return self.ops.fori_loop(0, count, body, self.space.zeros())
 
 
-def _check_lanczos_max_iter(max_iter: int) -> int:
-    """Validate and normalize the maximum Lanczos iteration count."""
-    max_iter = int(max_iter)
-    if max_iter < 1:
-        raise ValueError("max_iter must be positive.")
-    return max_iter
-
-
 def _build_tridiagonal(
     ops: Any,
     alphas: DenseArray,
@@ -183,19 +174,18 @@ def _lanczos_basis_and_tridiag(
     v0_unit = dom.scale(safe_inverse_nonneg(ops, v0_norm), initial_vector)
     V = basis.set(V, 0, v0_unit)
 
-    beta0 = ops.asarray(1.0, dtype=real_dtype)
     i0 = 0
     m_true0 = ops.asarray(max_iter)
     keep_going0 = v0_norm > 0
 
-    def cond_fun(state: tuple[Any, Any, Any, Any, Any, Any, Any]) -> Any:
-        i, _V, _alphas, _betas, _beta, m_true, keep_going = state
+    def cond_fun(state: tuple[Any, Any, Any, Any, Any, Any]) -> Any:
+        i, _V, _alphas, _betas, m_true, keep_going = state
         return (i < max_iter) & keep_going
 
     def body_fun(
-        state: tuple[Any, Any, Any, Any, Any, Any, Any],
-    ) -> tuple[Any, Any, Any, Any, Any, Any, Any]:
-        i, V_, alphas_, betas_, beta, m_true, keep_going = state
+        state: tuple[Any, Any, Any, Any, Any, Any],
+    ) -> tuple[Any, Any, Any, Any, Any, Any]:
+        i, V_, alphas_, betas_, m_true, keep_going = state
 
         # Three-term recurrence: w = A v_i - alpha_i v_i - beta_i v_{i-1}.
         v_i = basis.get(V_, i)
@@ -235,10 +225,10 @@ def _lanczos_basis_and_tridiag(
             ops.asarray(0.0, dtype=real_dtype),
         )
 
-        return i_next, V_, alphas_, betas_, beta_new, m_true_next, keep_going_next
+        return i_next, V_, alphas_, betas_, m_true_next, keep_going_next
 
-    i_final, V, alphas, betas, _beta_final, m_true, _keep_going = ops.while_loop(
-        cond_fun, body_fun, (i0, V, alphas, betas, beta0, m_true0, keep_going0)
+    i_final, V, alphas, betas, m_true, _keep_going = ops.while_loop(
+        cond_fun, body_fun, (i0, V, alphas, betas, m_true0, keep_going0)
     )
     # Krylov dimension actually reached, and the projected tridiagonal T.
     m = ops.minimum(m_true, ops.asarray(i_final))
@@ -317,11 +307,8 @@ def lanczos_smallest(
     True
     """
     # Validate once: square, not provably non-Hermitian, valid parameters.
-    A = require_linop(A)
-    require_square(A, "lanczos_smallest")
-    if A._checks_at_least("standard") and A.is_hermitian() is False:
-        raise ValueError("lanczos_smallest requires A to be Hermitian/self-adjoint.")
-    max_iter = _check_lanczos_max_iter(max_iter)
+    A = require_hermitian_square(A, "lanczos_smallest")
+    max_iter = check_interval(max_iter, "max_iter")
     check_every = check_interval(check_every)
     A.domain.check_member(initial_vector)
     ops = A.ops
@@ -345,13 +332,7 @@ def lanczos_smallest(
     converged = (residual_norm < basis.tol) & (basis.initial_norm > 0)
 
     # Ritz vector x = V y, using only the m active basis vectors.
-    mask_y = ops.where(
-        idx < m,
-        ops.asarray(1.0, dtype=real_dtype),
-        ops.asarray(0.0, dtype=real_dtype),
-    )
-    mask_y = ops.astype(mask_y, y_full.dtype)
-    y_valid = y_full * mask_y
+    y_valid = ops.where(idx < m, y_full, ops.zeros_like(y_full))
 
     vectors = _KrylovBasis(A.domain, initial_vector, max_iter + 1)
     x = vectors.lincomb(basis.V, y_valid, m)

@@ -4,8 +4,9 @@ from typing import Any, NamedTuple
 
 from ..linop import LinOp
 from ._utils import DEFAULT_CONVERGENCE_CHECK_INTERVAL, SpaceCoreOps, check_interval
+from ._utils import result_repr_method
 from ._utils import check_maxiter, is_converged, require_linop, resolve_apply, resolve_rapply
-from ._utils import safe_inverse_nonneg, should_check_iteration, result_repr, threshold
+from ._utils import safe_inverse_nonneg, should_check_iteration, threshold
 
 
 class LSQRResult(NamedTuple):
@@ -32,15 +33,7 @@ class LSQRResult(NamedTuple):
     residual_norm: Any
     normal_residual_norm: Any
 
-    def __repr__(self) -> str:
-        """Return a compact summary without printing the full solution array."""
-        return result_repr(
-            "LSQRResult",
-            {
-                k: getattr(self, k)
-                for k in ("converged", "num_iters", "residual_norm", "normal_residual_norm", "x")
-            },
-        )
+    __repr__ = result_repr_method(("converged", "num_iters", "residual_norm", "normal_residual_norm", "x"))
 
 
 def lsqr(
@@ -141,8 +134,7 @@ def lsqr(
     A.domain.check_member(x)
     residual = cod.add(b, cod.scale(-1.0, apply(x)))
     beta = cod.norm(residual)
-    u = residual
-    u = cod.scale(safe_inverse_nonneg(A.ops, beta), u)
+    u = cod.scale(safe_inverse_nonneg(A.ops, beta), residual)
     v = radj(u)
     alpha = dom.norm(v)
     # Initial normal-equation residual ||A.H r||, exact or from the recurrence.

@@ -41,14 +41,6 @@ class SquaredL2NormFunctional(_CoordinateFunctional[Domain]):
 
     _fields = ("dom", "ctx")
 
-    def __init__(
-        self,
-        dom: Domain,
-        ctx: Context | str | None = None,
-        check_level: CheckLevel | None = None,
-    ) -> None:
-        super().__init__(dom, ctx, check_level=check_level)
-
     @checked_method(in_space="domain", out_space="codomain")
     def value(self, x: Any) -> Any:
         """Return ``1/2 <x, x>_X`` as a real scalar."""

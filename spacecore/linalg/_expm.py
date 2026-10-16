@@ -3,8 +3,8 @@ from __future__ import annotations
 from typing import Any, NamedTuple
 
 from ..linop import LinOp
-from ._lanczos import _KrylovBasis, _check_lanczos_max_iter, _lanczos_basis_and_tridiag
-from ._utils import require_linop, require_square, result_repr
+from ._lanczos import _KrylovBasis, _lanczos_basis_and_tridiag
+from ._utils import check_interval, require_hermitian_square, result_repr_method
 
 
 class ExpmMultiplyResult(NamedTuple):
@@ -30,15 +30,7 @@ class ExpmMultiplyResult(NamedTuple):
     residual_estimate: Any
     converged: Any
 
-    def __repr__(self) -> str:
-        """Return a compact summary without printing the full vector."""
-        return result_repr(
-            "ExpmMultiplyResult",
-            {
-                k: getattr(self, k)
-                for k in ("converged", "krylov_dim", "residual_estimate", "result")
-            },
-        )
+    __repr__ = result_repr_method(("converged", "krylov_dim", "residual_estimate", "result"))
 
 
 def expm_multiply(
@@ -100,11 +92,8 @@ def expm_multiply(
     True
     """
     # Validate once: square, not provably non-Hermitian, valid parameters.
-    A = require_linop(A)
-    require_square(A, "expm_multiply")
-    if A._checks_at_least("standard") and A.is_hermitian() is False:
-        raise ValueError("expm_multiply requires A to be Hermitian/self-adjoint.")
-    max_iter = _check_lanczos_max_iter(max_iter)
+    A = require_hermitian_square(A, "expm_multiply")
+    max_iter = check_interval(max_iter, "max_iter")
     A.domain.check_member(v)
 
     ops = A.ops
