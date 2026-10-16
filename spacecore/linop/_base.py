@@ -263,9 +263,9 @@ class LinOp(Mapping, Generic[Domain, Codomain]):
 
         # Fast path: one batched apply over the whole identity.
         try:
-            xs = self.domain.unflatten_batch(eye)
+            xs = self.domain._unflatten_batch_core(eye)
             ys = self.vapply(xs)
-            ys_flat = self.codomain.flatten_batch(ys)
+            ys_flat = self.codomain._flatten_batch_core(ys)
             matrix = self.ops.transpose(ys_flat, (1, 0))
             return self.ops.reshape(matrix, (codomain_size, domain_size))
         except (AttributeError, NotImplementedError, TypeError) as exc:
@@ -284,9 +284,9 @@ class LinOp(Mapping, Generic[Domain, Codomain]):
         columns = []
         for i in range(domain_size):
             basis_vector = eye[:, i]
-            x = self.domain.unflatten(basis_vector)
+            x = self.domain._unflatten_core(basis_vector)
             y = self.apply(x)
-            columns.append(self.codomain.flatten(y))
+            columns.append(self.codomain._flatten_core(y))
         return self.ops.stack(tuple(columns), axis=1)
 
     def assert_domain(self, x: Any) -> None:

@@ -101,7 +101,7 @@ class LinOpQuadraticForm(QuadraticForm[Domain]):
         # Q x_i + grad l, row-wise.
         grads = self.Q._vapply_core(xs)
         if self.linear is not None:
-            grads = self.domain.add_batch(grads, self.linear._vgrad_core(xs))
+            grads = self.domain._add_batch_core(grads, self.linear._vgrad_core(xs))
         return grads
 
     def __init__(

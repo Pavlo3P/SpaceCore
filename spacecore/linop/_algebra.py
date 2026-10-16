@@ -162,7 +162,7 @@ class ScaledLinOp(ScaledNode, LinOp[Domain, Codomain]):
 
     def _vapply_core(self, xs: Any) -> Any:
         ys = self.op._vapply_core(xs)
-        return self.codomain.scale_batch(self.scalar, ys)
+        return self.codomain._scale_batch_core(self.scalar, ys)
 
     def __init__(self, scalar: Any, op: LinOp[Domain, Codomain], check_level: CheckLevel | None = None) -> None:
         super().__init__(scalar, op, check_level)
@@ -183,7 +183,7 @@ class ScaledLinOp(ScaledNode, LinOp[Domain, Codomain]):
         self._require(_CAP_BATCH, "ScaledLinOp.rvapply")
         # Adjoint of s A is conj(s) A*.
         xs = self.op.rvapply(ys)
-        return self.domain.scale_batch(_conjugate_scalar(self.scalar), xs)
+        return self.domain._scale_batch_core(_conjugate_scalar(self.scalar), xs)
 
     def fuse(self, *, materialize: bool = False) -> LinOp:
         r"""Fuse the operand and fold the scalar into a dense matrix (ADR-021).
@@ -248,7 +248,7 @@ class SumLinOp(SumNode, LinOp[Domain, Codomain]):
 
     def _vapply_core(self, xs: Any) -> Any:
         # Row-wise sum of the batched applies.
-        return reduce(self.codomain.add_batch, (part._vapply_core(xs) for part in self.ops_tuple))
+        return reduce(self.codomain._add_batch_core, (part._vapply_core(xs) for part in self.ops_tuple))
 
     def __init__(self, ops: Sequence[LinOp[Domain, Codomain]], check_level: CheckLevel | None = None) -> None:
         super().__init__(ops, check_level)
@@ -269,7 +269,7 @@ class SumLinOp(SumNode, LinOp[Domain, Codomain]):
         """Return ``sum_i ops[i].rvapply(ys)``."""
         self._require(_CAP_BATCH, "SumLinOp.rvapply")
         # Adjoint of a sum is the sum of adjoints.
-        return reduce(self.domain.add_batch, (op.rvapply(ys) for op in self.ops_tuple))
+        return reduce(self.domain._add_batch_core, (op.rvapply(ys) for op in self.ops_tuple))
 
     def fuse(self, *, materialize: bool = False) -> LinOp:
         r"""Fuse each term and combine the dense terms into one ``DenseLinOp`` (ADR-021).

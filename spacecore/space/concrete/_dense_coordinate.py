@@ -6,7 +6,6 @@ from typing import Any, Callable, Tuple
 from ..base import CoordinateSpace, EuclideanInnerProduct, InnerProduct, InnerProductSpace
 from ..checks import BackendCheck, DTypeCheck, FieldCheck, ShapeCheck, SpaceCheck
 from ..._checks import CheckLevel
-from ..._checks import checked_method
 from ...contextual import Context
 from ...types import DenseArray
 
@@ -78,7 +77,7 @@ class DenseCoordinateSpace(CoordinateSpace, InnerProductSpace):
         result = x + y
         return self.ctx.asarray(result) if self.shape == () else result
 
-    def add_batch(self, x: Any, y: Any) -> DenseArray:
+    def _add_batch_core(self, x: Any, y: Any) -> DenseArray:
         """Return the leading-axis batch sum ``x + y``."""
         return x + y
 
@@ -87,26 +86,25 @@ class DenseCoordinateSpace(CoordinateSpace, InnerProductSpace):
         result = a * x
         return self.ctx.asarray(result) if self.shape == () else result
 
-    def scale_batch(self, a: Any, x: Any) -> DenseArray:
+    def _scale_batch_core(self, a: Any, x: Any) -> DenseArray:
         """Return the leading-axis batch scalar product ``a * x``."""
         return a * x
 
-    @checked_method(in_space="self")
-    def flatten(self, X: DenseArray) -> DenseArray:
+    def _flatten_core(self, X: DenseArray) -> DenseArray:
         """Return ``X`` as a dense one-dimensional coordinate vector."""
         return X if self._is_flat_shape else X.reshape((-1,))
 
-    def unflatten(self, v: DenseArray) -> DenseArray:
+    def _unflatten_core(self, v: DenseArray) -> DenseArray:
         """Reshape a flat coordinate vector into this space's canonical shape."""
         V = self._coerce_dense(v)
         return V if self._is_flat_shape else V.reshape(self.shape)
 
-    def flatten_batch(self, xs: DenseArray) -> DenseArray:
+    def _flatten_batch_core(self, xs: DenseArray) -> DenseArray:
         """Flatten a leading-axis batch of dense elements to ``(N, size)``."""
         xs = self._coerce_dense(xs)
         return xs if self._is_flat_shape else xs.reshape((xs.shape[0], -1))
 
-    def unflatten_batch(self, vs: DenseArray) -> DenseArray:
+    def _unflatten_batch_core(self, vs: DenseArray) -> DenseArray:
         """Unflatten rows of shape ``(N, size)`` into dense space elements."""
         vs = self._coerce_dense(vs)
         return vs if self._is_flat_shape else vs.reshape((vs.shape[0],) + self.shape)

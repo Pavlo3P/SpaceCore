@@ -116,9 +116,9 @@ class TestBatched:
                 self.counter = counter
                 super().__init__(shape, ctx)
 
-            def add_batch(self, x, y):
+            def _add_batch_core(self, x, y):
                 self.counter["calls"] += 1
-                return super().add_batch(x, y)
+                return super()._add_batch_core(x, y)
 
             def _convert(self, new_ctx):
                 return CountingVectorSpace(self.shape, new_ctx, self.counter)

@@ -79,9 +79,9 @@ class SparseLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
             return self._A @ x
         if self._mode is _SparseMode.EUCLIDEAN_TENSOR:
             return (self._A @ x.reshape((self._dom_size,))).reshape(self.cod.shape)
-        x1 = self.dom.flatten(x)
+        x1 = self.dom._flatten_core(x)
         y1 = self._A @ x1
-        return self.cod.unflatten(y1)
+        return self.cod._unflatten_core(y1)
 
     def _rapply_core(self, y: Any) -> Any:
         # Euclidean: A^H. Diagonal weights: W_X^{-1} A^H W_Y y. Else wrap A^H with the metrics.
@@ -102,9 +102,9 @@ class SparseLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
             xs2 = xs.reshape((-1, self._dom_size))
             ys2 = (self._A @ xs2.T).T
             return ys2.reshape(lead + tuple(self.cod.shape))
-        xs_flat = self.domain.flatten_batch(xs)
+        xs_flat = self.domain._flatten_batch_core(xs)
         ys_flat = (self._A @ xs_flat.T).T
-        return self.codomain.unflatten_batch(ys_flat)
+        return self.codomain._unflatten_batch_core(ys_flat)
 
     def _rvapply_core(self, ys: Any) -> Any:
         # Batched form of _rapply_core.
@@ -120,9 +120,9 @@ class SparseLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
             return self._AH @ y
         if self._mode is _SparseMode.EUCLIDEAN_TENSOR:
             return (self._AH @ y.reshape((self._cod_size,))).reshape(self.dom.shape)
-        y1 = self.cod.flatten(y)
+        y1 = self.cod._flatten_core(y)
         x1 = self._AH @ y1
-        return self.dom.unflatten(x1)
+        return self.dom._unflatten_core(x1)
 
     def _euclidean_rvapply_core(self, ys: Any) -> Any:
         # (A^H Y^T)^T for a batch of rows.
@@ -133,9 +133,9 @@ class SparseLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
             ys2 = ys.reshape((-1, self._cod_size))
             xs2 = (self._AH @ ys2.T).T
             return xs2.reshape(lead + tuple(self.dom.shape))
-        ys_flat = self.codomain.flatten_batch(ys)
+        ys_flat = self.codomain._flatten_batch_core(ys)
         xs_flat = (self._AH @ ys_flat.T).T
-        return self.domain.unflatten_batch(xs_flat)
+        return self.domain._unflatten_batch_core(xs_flat)
 
     def __init__(
         self,

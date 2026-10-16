@@ -786,9 +786,9 @@ class TestScaledBatchedDispatch:
                 self.counter["scale_core"] += 1
                 return super()._scale_core(a, x)
 
-            def scale_batch(self, a, x):
+            def _scale_batch_core(self, a, x):
                 self.counter["scale_batch"] += 1
-                return super().scale_batch(a, x)
+                return super()._scale_batch_core(a, x)
 
             def _convert(self, new_ctx):
                 return CountingVectorSpace(self.shape, new_ctx, self.counter)
@@ -825,9 +825,9 @@ class TestSumBatchedDispatch:
                 self.counter = counter
                 super().__init__(shape, ctx)
 
-            def add_batch(self, x, y):
+            def _add_batch_core(self, x, y):
                 self.counter["calls"] += 1
-                return super().add_batch(x, y)
+                return super()._add_batch_core(x, y)
 
             def _convert(self, new_ctx):
                 return CountingVectorSpace(self.shape, new_ctx, self.counter)

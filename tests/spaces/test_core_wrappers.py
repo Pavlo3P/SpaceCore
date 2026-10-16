@@ -36,3 +36,24 @@ def test_riesz_maps_accept_an_element_or_a_batch_and_check_its_shape():
         X.riesz(np.ones(3))
     with pytest.raises(sc.SpaceValidationError):
         X.norm(np.ones(3))
+
+
+def test_coordinate_operations_check_elements_and_batches():
+    X = sc.DenseCoordinateSpace((2,), _ctx())
+    with pytest.raises(sc.SpaceValidationError):
+        X.flatten(np.ones(3))
+    with pytest.raises(sc.SpaceValidationError):
+        X.flatten_batch(np.ones((4, 3)))
+    with pytest.raises(sc.SpaceValidationError):
+        X.add_batch(np.ones((4, 2)), np.ones((4, 3)))
+    with pytest.raises(sc.SpaceValidationError, match="non-real scalar"):
+        X.scale_batch(1j, np.ones((4, 2)))
+    np.testing.assert_allclose(X.vpair(np.ones(2), np.ones((3, 2))), [2.0, 2.0, 2.0])
+
+
+def test_internal_paths_call_cores_not_public_operations(monkeypatch):
+    X = sc.DenseCoordinateSpace((2,), _ctx())
+    A = sc.DenseLinOp(X.ctx.asarray(np.eye(2)), X, X, X.ctx)
+    for name in ("flatten", "unflatten"):
+        monkeypatch.setattr(type(X), name, lambda *a, **k: pytest.fail("public op called internally"))
+    np.testing.assert_allclose(A.apply(X.ctx.asarray([1.0, 2.0])), [1.0, 2.0])

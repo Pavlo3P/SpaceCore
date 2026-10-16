@@ -54,9 +54,9 @@ def _metric_is_hermitian_by_basis(op) -> bool | None:
         apply_cols = []
         adjoint_cols = []
         for i in range(size):
-            e_i = op.domain.unflatten(eye[:, i])
-            apply_cols.append(op.domain.flatten(op.apply(e_i)))
-            adjoint_cols.append(op.domain.flatten(op.rapply(e_i)))
+            e_i = op.domain._unflatten_core(eye[:, i])
+            apply_cols.append(op.domain._flatten_core(op.apply(e_i)))
+            adjoint_cols.append(op.domain._flatten_core(op.rapply(e_i)))
         A = op.ops.stack(tuple(apply_cols), axis=1)
         A_sharp = op.ops.stack(tuple(adjoint_cols), axis=1)
         return bool(op.ops.allclose(A, A_sharp))

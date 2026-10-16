@@ -8,7 +8,6 @@ from typing import Any, Callable, Sequence
 import optree
 
 from ..._checks import minimum_check_level, normalize_check_level
-from ..._checks import checked_method
 from ...contextual import resolve_context_priority
 from ...contextual import Context
 from ...backend import CheckLevel
@@ -403,17 +402,17 @@ class TreeSpace(PyTreeNode, CoordinateSpace):
         """Return the componentwise sum."""
         return self._from_components(self._leafwise(lambda s, xi, yi: s._add_core(xi, yi), x, y))
 
-    def add_batch(self, x: Any, y: Any) -> Any:
+    def _add_batch_core(self, x: Any, y: Any) -> Any:
         """Return the componentwise leading-axis batch sum."""
-        return self._from_components(self._leafwise(lambda s, xi, yi: s.add_batch(xi, yi), x, y))
+        return self._from_components(self._leafwise(lambda s, xi, yi: s._add_batch_core(xi, yi), x, y))
 
     def _scale_core(self, a: Any, x: Any) -> Any:
         """Return the componentwise scalar product."""
         return self._from_components(self._leafwise(lambda s, leaf: s._scale_core(a, leaf), x))
 
-    def scale_batch(self, a: Any, x: Any) -> Any:
+    def _scale_batch_core(self, a: Any, x: Any) -> Any:
         """Return the componentwise batched scalar product."""
-        return self._from_components(self._leafwise(lambda s, leaf: s.scale_batch(a, leaf), x))
+        return self._from_components(self._leafwise(lambda s, leaf: s._scale_batch_core(a, leaf), x))
 
     def stacked(self, count: int) -> "TreeSpace":
         """Return a tree whose leaves are stacked leaf spaces."""
@@ -423,13 +422,12 @@ class TreeSpace(PyTreeNode, CoordinateSpace):
             ctx=self.ctx,
         )
 
-    @checked_method(in_space="self")
-    def flatten(self, x: Any) -> DenseArray:
+    def _flatten_core(self, x: Any) -> DenseArray:
         """Concatenate leaf coordinate vectors into one dense vector."""
         # Concatenate the leaves' flat coordinates in leaf order.
         parts = []
         for space, leaf in zip(self.leaf_spaces, self._components(x)):
-            coordinates = space.flatten(leaf)
+            coordinates = space._flatten_core(leaf)
             if self._checks_at_least("cheap"):
                 coordinates = self.ctx.assert_dense(coordinates)
             parts.append(coordinates)
@@ -437,32 +435,32 @@ class TreeSpace(PyTreeNode, CoordinateSpace):
             return parts[0]
         return self.ops.concatenate(parts, axis=0)
 
-    def unflatten(self, v: DenseArray) -> Any:
+    def _unflatten_core(self, v: DenseArray) -> Any:
         """Split dense coordinates into a tree element."""
         # Slice the flat vector back into leaves and rebuild the tree.
         if self._checks_at_least("cheap"):
             v = self.ctx.assert_dense(v)
             v = v.reshape((-1,))  # self.shape is (size,), so a matching v is unchanged
         leaves = tuple(
-            space.unflatten(v[leaf_slice])
+            space._unflatten_core(v[leaf_slice])
             for space, leaf_slice in zip(self.leaf_spaces, self._slices)
         )
         return self._from_components(leaves)
 
-    def flatten_batch(self, xs: Any) -> DenseArray:
+    def _flatten_batch_core(self, xs: Any) -> DenseArray:
         """Concatenate batched leaf coordinates into shape ``(N, size)``."""
-        parts = self._leafwise(lambda s, leaf: s.flatten_batch(leaf), xs)
+        parts = self._leafwise(lambda s, leaf: s._flatten_batch_core(leaf), xs)
         if len(parts) == 1:
             return parts[0]
         return self.ops.concatenate(parts, axis=1)
 
-    def unflatten_batch(self, vs: DenseArray) -> Any:
+    def _unflatten_batch_core(self, vs: DenseArray) -> Any:
         """Split batched dense coordinates into batched leaves."""
         if self._checks_at_least("cheap"):
             vs = self.ctx.assert_dense(vs)
         return self._from_components(
             tuple(
-                space.unflatten_batch(vs[:, leaf_slice])
+                space._unflatten_batch_core(vs[:, leaf_slice])
                 for space, leaf_slice in zip(self.leaf_spaces, self._slices)
             )
         )
@@ -481,8 +479,8 @@ class TreeSpace(PyTreeNode, CoordinateSpace):
         for source_space, target_space, leaf in zip(
             self.leaf_spaces, target.leaf_spaces, self._components(x)
         ):
-            coordinates = source_space.flatten(leaf)
-            converted.append(target_space.unflatten(target.ctx.asarray(coordinates)))
+            coordinates = source_space._flatten_core(leaf)
+            converted.append(target_space._unflatten_core(target.ctx.asarray(coordinates)))
         return target._from_components(tuple(converted))
 
 

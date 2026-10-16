@@ -151,7 +151,7 @@ class StackedSpace(PyTreeNode, CoordinateSpace):
         """Return the stacked sum ``x + y``."""
         return x + y
 
-    def add_batch(self, x: Any, y: Any) -> DenseArray:
+    def _add_batch_core(self, x: Any, y: Any) -> DenseArray:
         """Return the leading-axis batch sum of stacked elements."""
         return x + y
 
@@ -159,26 +159,25 @@ class StackedSpace(PyTreeNode, CoordinateSpace):
         """Return the stacked scalar product ``a * x``."""
         return a * x
 
-    def scale_batch(self, a: Any, x: Any) -> DenseArray:
+    def _scale_batch_core(self, a: Any, x: Any) -> DenseArray:
         """Return the leading-axis batch scalar product of stacked elements."""
         return a * x
 
-    @checked_method(in_space="self")
-    def flatten(self, x: Any) -> DenseArray:
+    def _flatten_core(self, x: Any) -> DenseArray:
         """Flatten the whole stacked element to one coordinate vector."""
         return x.reshape((-1,))
 
-    def unflatten(self, v: DenseArray) -> DenseArray:
+    def _unflatten_core(self, v: DenseArray) -> DenseArray:
         """Unflatten one coordinate vector to the stacked element shape."""
         v = self._coerce_dense(v)
         return v.reshape(self.shape)
 
-    def flatten_batch(self, xs: DenseArray) -> DenseArray:
+    def _flatten_batch_core(self, xs: DenseArray) -> DenseArray:
         """Flatten a batch of stacked elements to ``(N, count * base.size)``."""
         xs = self._coerce_dense(xs)
         return xs.reshape((xs.shape[0], -1))
 
-    def unflatten_batch(self, vs: DenseArray) -> DenseArray:
+    def _unflatten_batch_core(self, vs: DenseArray) -> DenseArray:
         """Unflatten rows to a batch of stacked elements."""
         vs = self._coerce_dense(vs)
         return vs.reshape((vs.shape[0],) + self.shape)

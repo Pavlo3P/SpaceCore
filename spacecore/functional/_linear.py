@@ -33,7 +33,7 @@ def _convert_space_element(space: Space, value: Any) -> Any:
             source_spaces = value.space.leaf_spaces
             leaves = value.leaves
             converted = tuple(
-                target.unflatten(space.ctx.asarray(source.flatten(leaf)))
+                target._unflatten_core(space.ctx.asarray(source._flatten_core(leaf)))
                 for source, target, leaf in zip(source_spaces, space.leaf_spaces, leaves)
             )
         else:
@@ -143,8 +143,8 @@ class InnerProductFunctional(LinearFunctional[Domain]):
         if self.domain != other.domain or self.codomain != other.codomain:                         # Tier 2: domain before allclose
             return False
         return bool(self.ops.allclose(                          # Tier 3: representer
-            self.domain.flatten(self._c),
-            other.domain.flatten(other._c),
+            self.domain._flatten_core(self._c),
+            other.domain._flatten_core(other._c),
             equal_nan=True,
         ))
 

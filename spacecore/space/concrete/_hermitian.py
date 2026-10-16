@@ -89,11 +89,6 @@ class HermitianSpace(DenseCoordinateSpace, StarSpace, EuclideanJordanAlgebraSpac
             ),
         )
 
-    def scale_batch(self, a: Any, x: DenseArray) -> DenseArray:
-        """Return the leading-axis batch scalar product, with the same guard as :meth:`scale`."""
-        self.check_scalar(a)
-        return super().scale_batch(a, x)
-
     def is_hermitian(self, x: DenseArray) -> bool:
         """Return whether ``x`` satisfies this space's Hermitian check."""
         return self._local_checks()[1].is_valid(self, x)
@@ -143,7 +138,7 @@ class HermitianSpace(DenseCoordinateSpace, StarSpace, EuclideanJordanAlgebraSpac
         """Return the Jordan identity: the ``n x n`` identity in the space dtype."""
         return self.ops.eye(self.n, dtype=self.dtype)
 
-    def unflatten(self, v: DenseArray) -> DenseArray:
+    def _unflatten_core(self, v: DenseArray) -> DenseArray:
         """Reshape dense coordinates and symmetrize the result."""
         vv = self._coerce_dense(v)
         X = vv.reshape(self.shape)

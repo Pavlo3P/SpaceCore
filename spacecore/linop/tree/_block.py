@@ -61,7 +61,7 @@ def _validate_blocks(blocks: Sequence[Any], owner: str) -> tuple[LinOp, ...]:
 def _sum_values(space: Any, values: Sequence[Any], *, batched: bool) -> Any:
     """Sum a nonempty sequence through the owning space's vector operation."""
     # Left fold with the space's (batched) addition.
-    return reduce(space.add_batch if batched else space.add, values)
+    return reduce(space._add_batch_core if batched else space._add_core, values)
 
 
 class BlockDiagonalLinOp(TreeLinOp[TreeSpace, TreeSpace]):

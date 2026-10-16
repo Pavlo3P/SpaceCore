@@ -67,9 +67,9 @@ class DiagonalLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
         # EUCLIDEAN and WEIGHTED_FUSED imply a vector-space domain; check them first.
         if self._elementwise:
             return self.diagonal * x
-        x_flat = self.domain.flatten(x)
+        x_flat = self.domain._flatten_core(x)
         y_flat = self._diag_flat * x_flat
-        return self.codomain.unflatten(y_flat)
+        return self.codomain._unflatten_core(y_flat)
 
     def _rapply_core(self, y: Any) -> Any:
         # Euclidean: conj diagonal. Fused: precomputed. Else wrap it with the metrics.
@@ -85,9 +85,9 @@ class DiagonalLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
         # Elementwise, broadcasting over the leading batch axis.
         if self._elementwise:
             return self.diagonal * xs
-        xs_flat = self.domain.flatten_batch(xs)
+        xs_flat = self.domain._flatten_batch_core(xs)
         ys_flat = xs_flat * self._diag_flat
-        return self.codomain.unflatten_batch(ys_flat)
+        return self.codomain._unflatten_batch_core(ys_flat)
 
     def _rvapply_core(self, ys: Any) -> Any:
         # Batched form of _rapply_core.
@@ -101,17 +101,17 @@ class DiagonalLinOp(LinOp[CoordinateSpace, CoordinateSpace]):
         # The adjoint diagonal, elementwise or on flat coordinates.
         if self._elementwise:
             return self._diag_adjoint * y
-        y_flat = self.codomain.flatten(y)
+        y_flat = self.codomain._flatten_core(y)
         x_flat = self._diag_adjoint_flat * y_flat
-        return self.domain.unflatten(x_flat)
+        return self.domain._unflatten_core(x_flat)
 
     def _euclidean_rvapply_core(self, ys: Any) -> Any:
         # Adjoint diagonal over the batch.
         if self._elementwise:
             return self._diag_adjoint * ys
-        ys_flat = self.codomain.flatten_batch(ys)
+        ys_flat = self.codomain._flatten_batch_core(ys)
         xs_flat = ys_flat * self._diag_adjoint_flat
-        return self.domain.unflatten_batch(xs_flat)
+        return self.domain._unflatten_batch_core(xs_flat)
 
     def __init__(
         self,
