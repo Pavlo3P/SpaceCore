@@ -3,8 +3,6 @@
 from ._base import LinOp
 from ._algebra import (
     ComposedLinOp,
-    IdentityLinOp,
-    MatrixFreeLinOp,
     ScaledLinOp,
     SumLinOp,
     ZeroLinOp,
@@ -13,6 +11,7 @@ from ._algebra import (
     make_sum,
 )
 from ._dense import DenseLinOp
+from ._matrix_free import IdentityLinOp, MatrixFreeLinOp
 from ._diagonal import DiagonalLinOp
 from ._sparse import SparseLinOp
 from .tree import BlockDiagonalLinOp, BlockMatrixLinOp, TreeLinOp

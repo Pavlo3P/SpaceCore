@@ -190,7 +190,7 @@ class LinOp(Mapping, Generic[Domain, Codomain]):
             Adjoint view satisfying
             :math:`\langle A x, y\rangle_Y = \langle x, A^* y\rangle_X`.
         """
-        from ._algebra import _AdjointViewLinOp
+        from ._matrix_free import _AdjointViewLinOp
 
         # Build the adjoint view once and cache it, so A.H is A.H.
         view = getattr(self, "_adjoint_view", None)
@@ -304,3 +304,10 @@ class LinOp(Mapping, Generic[Domain, Codomain]):
 
 
 LinOp._family = LinOp
+
+
+def _require_linop(op: Any, name: str) -> LinOp:
+    """Return ``op`` as a linear operator or raise a typed error."""
+    if not isinstance(op, LinOp):
+        raise TypeError(f"{name} must be a LinOp, got {type(op).__name__}.")
+    return op
