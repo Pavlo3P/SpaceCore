@@ -10,43 +10,9 @@ Each ADR should cover one implemented concept or one design decision. If an ADR 
 
 ## ADR format
 
-SpaceCore ADRs use this required section structure:
-
-```markdown
-# ADR-NNN: Title
-
-## Status
-
-Accepted / Proposed / Superseded / Deferred
-
-## Context
-
-What problem, concept, or architectural area this ADR records.
-
-## Current design
-
-What SpaceCore currently does, if the ADR records implemented architecture.
-
-## Decision
-
-The design commitment or rule.
-
-## Rationale
-
-Why this design exists.
-
-## Alternatives considered
-
-Other plausible designs and why they were not chosen.
-
-## Consequences
-
-What this means for future extensions.
-
-## Contributor invariants
-
-Rules contributors must preserve when touching this area.
-```
+New ADRs follow [template.md](template.md). An ADR whose subject was removed or moved out is
+kept as a short stub: status, the decision as it was, what still holds, and the git ref of
+the full original text.
 
 ## Index
 
@@ -70,7 +36,7 @@ Rules contributors must preserve when touching this area.
 | [ADR-016](016_kernel_layers.md) | `016_kernel_layers` | Superseded | Kernel dispatch layer removed in 0.5.0a; check-free cores became `_<op>_core` methods. |
 | [ADR-017](017_tensor_product_spaces.md) | `017_tensor_product_spaces` | Deferred | Direct-product vs tensor-product boundary settled; tensor-product implementation demand-gated. |
 | [ADR-018](018_external_optimizer_adapters.md) | `018_external_optimizer_adapters` | Moved out | SciPy/optax adapters; now in the `spacecore-optimize` package. |
-| [ADR-019](019_everyday_toolbox.md) | `019_everyday_toolbox` | Moved out | Functional catalogue and shrinkage proxes; now in the `spacecore-optimize` package. |
+| [ADR-019](019_everyday_toolbox.md) | `019_everyday_toolbox` | Partly moved out | Coordinate norms stay; the rest of the catalogue is in `spacecore-optimize`. |
 | [ADR-020](020_sets_and_projection.md) | `020_sets_and_projection` | Accepted | `Set` with an ambient space and metric projection; `IndicatorFunctional`. |
 | [ADR-021](021_lazy_operator_algebra_and_simplification.md) | `021_lazy_operator_algebra_and_simplification` | Accepted | Tier-2 explicit `LinOp.fuse(*, materialize=False)` simplification; collapses maximal dense subtrees into one `DenseLinOp` (composition→matrix product, scalar/sum/adjoint/block/tree), adjoint-consistent on any geometry, matrix-free never densified unless `materialize=True`; implemented in `spacecore.linop`. |
 | [ADR-022](022_caching.md) | `022_caching` | Withdrawn | Stacked-block cache for the removed dispatch layer. |
