@@ -86,7 +86,14 @@ def set_traced_check_level(level: CheckLevel | None) -> None:
 
 
 def get_traced_check_level() -> CheckLevel:
-    """Return the process-wide cap on check levels while a backend is tracing."""
+    """
+    Return the process-wide cap on check levels while a backend is tracing.
+
+    Returns
+    -------
+    CheckLevel
+        The cap set by :func:`set_traced_check_level`; ``"none"`` by default.
+    """
     return _traced_check_level
 
 

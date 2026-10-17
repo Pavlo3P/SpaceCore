@@ -45,7 +45,7 @@ class SquaredL2NormFunctional(_CoordinateFunctional[Domain]):
         return 0.5 * self.domain._real_inner_core(x, x)
 
     def _grad_core(self, x: Any) -> Any:
-        """The Riesz gradient ``x``."""
+        """Return the Riesz gradient ``x``."""
         return x
 
     def _coordinate_grad(self, x: Any) -> Any:

@@ -66,8 +66,10 @@ class Element(Algebraic, PyTreeNode, ContextBound):
         return obj
 
     def densify(self) -> Any:
-        """Return the space's own member this element denotes: a dense array on
-        coordinate spaces, the native object on a native space. Optional."""
+        """Return the space's own member this element denotes.
+
+        A dense array on coordinate spaces, the native object on a native space. Optional.
+        """
         raise CapabilityError(
             f"{type(self).__name__} has no plain member form; register a rule for this operation."
         )

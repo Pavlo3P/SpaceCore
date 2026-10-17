@@ -48,16 +48,16 @@ class _CoordinateFunctional(Functional[Domain]):
     """
 
     def _grad_core(self, x: Any) -> Any:
-        """The Riesz gradient under the domain geometry."""
+        """Return the Riesz gradient under the domain geometry."""
         return cast(Any, self.domain)._riesz_inverse_core(self._coordinate_grad(x))
 
     def _vgrad_core(self, xs: Any) -> Any:
-        """The gradient core evaluated independently over a leading batch axis."""
+        """Return the gradient core evaluated independently over a leading batch axis."""
         _warn_vmap_fallback_once(self, "vgrad", _leading_batch_size(self.domain, xs))
         return self.ops.vmap(self._grad_core, in_axes=0, out_axes=0)(xs)
 
     def _differential_core(self, x: Any) -> Any:
-        """The coordinate partials directly; they are the differential covector."""
+        """Return the coordinate partials directly; they are the differential covector."""
         return self._coordinate_grad(x)
 
     def _coordinate_grad(self, x: Any) -> Any:

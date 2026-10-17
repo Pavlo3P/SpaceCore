@@ -71,7 +71,7 @@ class ScaledFunctional(ScaledNode, Functional):
         return self.scalar * self.functional._value_core(x, *args, **kwargs)
 
     def _grad_core(self, x: Any, *args: Any, **kwargs: Any) -> Any:
-        """The real scalar times the child's Riesz gradient."""
+        """Return the real scalar times the child's Riesz gradient."""
         return self.domain._scale_core(self.scalar, self.functional._grad_core(x, *args, **kwargs))
 
     def _value_and_grad_core(self, x: Any, *args: Any, **kwargs: Any) -> tuple[Any, Any]:
@@ -136,7 +136,7 @@ class SumFunctional(SumNode, Functional):
         return reduce(operator.add, (term._value_core(x, *args, **kwargs) for term in self.terms))
 
     def _grad_core(self, x: Any, *args: Any, **kwargs: Any) -> Any:
-        """The domain-sum of the term gradients (combined via the domain's add)."""
+        """Return the domain-sum of the term gradients (combined via the domain's add)."""
         # Constant terms have zero gradient and are skipped, so ``F + c`` costs no extra add.
         grads = [term._grad_core(x, *args, **kwargs) for term in self.terms if not isinstance(term, ConstantFunctional)]
         return reduce(self.domain._add_core, grads) if grads else self.domain.zeros()
@@ -207,7 +207,7 @@ class ZeroFunctional(ZeroNode, Functional):
         return self.codomain.ctx.asarray(0.0)
 
     def _grad_core(self, x: Any, *args: Any, **kwargs: Any) -> Any:
-        """The domain's zero element."""
+        """Return the domain's zero element."""
         return self.domain.zeros()
 
     def _value_and_grad_core(self, x: Any, *args: Any, **kwargs: Any) -> tuple[Any, Any]:
@@ -259,7 +259,7 @@ class ConstantFunctional(Functional):
         return self.codomain.ctx.asarray(self.constant)
 
     def _grad_core(self, x: Any, *args: Any, **kwargs: Any) -> Any:
-        """The domain's zero element (a constant has zero derivative)."""
+        """Return the domain's zero element (a constant has zero derivative)."""
         return self.domain.zeros()
 
     def _value_and_grad_core(self, x: Any, *args: Any, **kwargs: Any) -> tuple[Any, Any]:
@@ -376,7 +376,7 @@ class ProductFunctional(Functional):
         return domain._add_core(domain._scale_core(rv, lg), domain._scale_core(lv, rg))
 
     def _grad_core(self, x: Any, *args: Any, **kwargs: Any) -> Any:
-        """The product-rule Riesz gradient at ``x``.
+        """Return the product-rule Riesz gradient at ``x``.
 
         Both factors are evaluated through ``value_and_grad`` because the rule
         needs each factor's *value* as well as its gradient; asking for the

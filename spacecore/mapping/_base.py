@@ -137,10 +137,10 @@ class Mapping(Algebraic, PyTreeNode, ContextBound):
 
     Parameters
     ----------
-    ctx : Context, str, or None, optional
-        Backend context specification.
-    check_level : {"none", "cheap", "standard", "strict"}, optional
-        Validation level; the ambient default when omitted.
+    *args, **kwargs
+        Forwarded to the concrete family's constructor; :class:`~spacecore.LinOp` and
+        :class:`~spacecore.Functional` take the endpoint spaces, a ``ctx`` and a
+        ``check_level``.
     """
 
     @property

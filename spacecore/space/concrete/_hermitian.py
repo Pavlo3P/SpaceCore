@@ -99,7 +99,7 @@ class HermitianSpace(DenseCoordinateSpace, StarSpace, EuclideanJordanAlgebraSpac
         return (x + x_adj) * 0.5
 
     def _star_core(self, x: DenseArray) -> DenseArray:
-        """The canonical star operation for Hermitian elements: identity."""
+        """Return the canonical star operation for Hermitian elements: identity."""
         return x
 
     def _jordan_core(self, x: DenseArray, y: DenseArray) -> DenseArray:

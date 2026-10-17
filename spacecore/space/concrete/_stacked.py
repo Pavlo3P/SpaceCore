@@ -234,7 +234,7 @@ class _StackedStarMixin(_StackedHostMixin):
     """Star operation for stacks whose base supports it."""
 
     def _star_core(self, x: Any) -> Any:
-        """The base-space star operation for each stacked copy."""
+        """Return the base-space star operation for each stacked copy."""
         base = cast(StarSpace, self.base)
         return self._per_copy(base._star_core, x)
 

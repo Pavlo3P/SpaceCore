@@ -151,5 +151,5 @@ class LinOpQuadraticForm(QuadraticForm[Domain]):
         return quadratic if self.linear is None else quadratic + self.linear
 
     def _hess_apply_core(self, x: Any) -> Any:
-        """The Hessian action ``Q x`` under the Hermitian assumption."""
+        """Return the Hessian action ``Q x`` under the Hermitian assumption."""
         return self.Q._apply_core(x)

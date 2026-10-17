@@ -74,7 +74,7 @@ class LinearFunctional(Functional[Domain]):
 
 
     def _derivative_core(self, x: Any, *args: Any, **kwargs: Any) -> "LinearFunctional":
-        """This linear functional itself, even without a representer."""
+        """Return this linear functional itself, even without a representer."""
         return self
 
     @property
