@@ -1,43 +1,91 @@
 Geometry and Riesz Maps
 =======================
 
-An ``InnerProductSpace`` has an ``InnerProduct`` geometry. The geometry defines the
-inner product and the Riesz maps used to convert between coordinate elements
-and dual coordinates. Matrix-backed adjoints use those maps:
+A space's ``geometry`` (an ``InnerProduct``) defines its inner product and its
+Riesz maps, and algorithms reach it only through the space.
+
+* No solver, operator or functional takes a geometry argument. A different
+  metric is a different space; build operators and functionals on it.
+* A preconditioner is an operator, not a metric: ``cg(A, b, preconditioner=K)``
+  takes ``K`` mapping ``A.domain`` to itself, approximating the inverse of ``A``,
+  self-adjoint and positive definite in ``A.domain``.
+* The generalized eigenproblem ``K x = lambda M x`` is ``lanczos_smallest`` on
+  ``M^{-1} K`` built on the space with metric ``M``, where it is self-adjoint.
+* ``cg``, ``lsqr``, ``power_iteration`` and ``lanczos_smallest`` use
+  ``domain.inner``/``domain.norm`` (``codomain.norm`` for codomain residuals);
+  their Hermitian and positive-definite assumptions refer to those inner
+  products, not to the coordinate matrix.
+
+Elements, covectors and gradients
+---------------------------------
+
+An element and a covector are both coordinate arrays of the space's shape;
+``X.riesz`` maps an element to its covector ``R x`` and ``X.riesz_inverse`` maps
+back.
+
+==========================  ===================================================
+call                        returns
+==========================  ===================================================
+``X.inner(x, y)``           :math:`\langle x, y\rangle_X = \langle R x, y\rangle`
+``X.riesz(x)``              the covector :math:`R x`
+``X.riesz_inverse(xi)``     the element :math:`R^{-1}\xi`
+``X.pair(xi, x)``           :math:`\operatorname{Re}\,\mathrm{vdot}(\xi, x)`, metric-free
+``X.vpair(xi, xs)``         ``pair(xi, x)`` for each ``x`` in a batch
+``X.dual_norm(xi)``         :math:`\|\xi\|_* = \sup_{\|x\|_X\le 1}\langle\xi,x\rangle = \|R^{-1}\xi\|_X`
+``F.grad(x)``               the Riesz gradient, an element of ``F.domain``
+``F.differential(x)``       the covector :math:`df(x)`, by default ``X.riesz(F.grad(x))``
+==========================  ===================================================
+
+``X.real_inner(x, y)`` equals ``X.pair(X.riesz(x), y)``. The gradient and the
+differential satisfy
 
 .. math::
 
-   A^\sharp y = R_X^{-1} A^\dagger R_Y y.
+   \operatorname{Re}\langle \nabla f(x), v\rangle_X = Df(x)[v]
+   = \langle df(x), v\rangle.
 
-Here ``A^\dagger`` is the Euclidean coordinate adjoint, while ``A^\sharp`` is
-the true adjoint for the declared domain and codomain geometries. Expanding the
-inner-product identity gives ``A^dagger R_Y = R_X A^sharp``. Trefethen & Bau,
-*Numerical Linear Algebra*, Lecture 2, pp. 11-12 (orthonormal coordinates).
+Beck, *First-Order Methods in Optimization*, Remark 3.32, gives the
+real-coordinate formula; expanding ``Re(g^H R v)`` gives the complex case.
 
-Matrix-Free Adjoints
---------------------
+Metric-free methods (Frank-Wolfe steps, mirror maps, quasi-Newton curvature
+pairs, Sinkhorn) need only ``pair`` and ``differential``.
 
-``MatrixFreeLinOp`` does not own a coordinate matrix, so it does not derive or
-correct adjoints with Riesz maps. Its ``rapply`` callable is the user-supplied
-implementation of the metric adjoint :math:`A^\sharp`. The adjoint view
-``A.H`` delegates directly to those callables: ``A.H.apply(y)`` calls
-``A.rapply(y)``, and ``A.H.rapply(x)`` calls ``A.apply(x)``.
+Adjoints
+--------
 
-If a matrix-free reverse callable is only a Euclidean coordinate transpose, it
-can still pass construction and shape validation. It will fail the mathematical
-adjoint dot-test on non-Euclidean spaces:
+``A.H`` and ``A.rapply`` are the metric adjoint :math:`A^\sharp`,
+:math:`\langle A x, y\rangle_Y = \langle x, A^\sharp y\rangle_X`; ``A.H.apply``
+calls ``A.rapply`` and ``A.H.rapply`` calls ``A.apply``.
 
-.. math::
+* Matrix-backed operators (``DenseLinOp``, ``SparseLinOp``, ``DiagonalLinOp``)
+  compute :math:`A^\sharp = R_X^{-1} A^\dagger R_Y` from the coordinate adjoint
+  :math:`A^\dagger` (Trefethen & Bau, *Numerical Linear Algebra*, Lecture 2).
+  On a non-Euclidean space without Riesz maps their constructor raises
+  ``TypeError``.
+* ``MatrixFreeLinOp(apply, rapply, dom, cod)`` stores ``rapply`` as
+  :math:`A^\sharp`. If ``rapply`` is the coordinate adjoint, pass
+  ``euclidean_adjoint=True`` (or use ``MatrixFreeLinOp.from_coordinate_adjoint``)
+  and it is wrapped in the Riesz maps once. Omitting the flag on a
+  non-Euclidean space warns; ``euclidean_adjoint=False`` asserts ``rapply`` is
+  already the metric adjoint. At ``strict`` the adjoint identity is dot-tested
+  at construction.
 
-   \langle A x, y\rangle_Y = \langle x, A^\sharp y\rangle_X.
+Built-in geometries
+-------------------
 
-Automatic application of :math:`R_X^{-1} A^\dagger R_Y` is reserved for
-matrix-backed operators where SpaceCore owns the coordinate matrix.
-
-Weighted Geometry
------------------
-
-The common diagonal-metric case is built in:
+* ``EuclideanInnerProduct()``: the default, :math:`R = I`.
+* ``WeightedInnerProduct(weights)``: :math:`R = \operatorname{diag}(w)`, with
+  real, finite, positive ``weights`` broadcasting to the space shape.
+* ``OperatorInnerProduct(M, M_inverse=None)``: :math:`R = M` for a self-adjoint
+  positive-definite ``LinOp`` ``M`` on the Euclidean coordinate space of the same
+  shape, backend and dtype. ``M_inverse`` applies :math:`R^{-1}` and may be
+  inexact (for example a ``MatrixFreeLinOp`` running ``cg`` on ``M``); without it
+  ``riesz_inverse`` raises ``CapabilityError``. From ``standard`` checks a known
+  non-self-adjoint ``M`` or non-positive curvature on a probe vector is rejected;
+  ``strict`` also requires a positive Lanczos estimate of the smallest eigenvalue
+  and that ``M_inverse`` inverts ``M`` on a probe. ``cg`` on such a space is
+  preconditioned CG: for ``A = M^{-1} B`` with ``B`` symmetric positive definite,
+  ``cg(A, M^{-1} b)`` solves ``B x = b``.
 
 .. code-block:: python
 
@@ -45,131 +93,53 @@ The common diagonal-metric case is built in:
    import spacecore as sc
 
    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
-   weights = ctx.asarray([2.0, 5.0, 11.0])
-   X = sc.DenseCoordinateSpace((3,), ctx, geometry=sc.WeightedInnerProduct(weights))
-
    x = ctx.asarray([1.0, 2.0, 3.0])
    y = ctx.asarray([4.0, 5.0, 6.0])
-   value = X.inner(x, y)        # vdot(x, weights * y)
-   dual = X.riesz(x)            # weights * x
-   primal = X.riesz_inverse(dual)
 
-Pairing and Covectors
----------------------
+   W = sc.DenseCoordinateSpace((3,), ctx, geometry=sc.WeightedInnerProduct(ctx.asarray([2.0, 5.0, 11.0])))
+   print(W.inner(x, y), W.riesz(x))                   # vdot(x, w * y), w * x
 
-A covector is a coordinate array of the space's shape. ``X.pair(xi, x)`` pairs it
-with an element and uses no metric, so it is the same under every geometry;
-``X.vpair(xi, xs)`` pairs one covector with a batch. The inner product is the
-pairing of a Riesz image, ``real_inner(x, y) = pair(riesz(x), y)``.
-
-.. math::
-
-   \langle \xi, x\rangle = \operatorname{Re}\,\mathrm{vdot}(\xi, x),
-   \qquad Df(x)[h] = \langle df(x), h\rangle.
-
-``F.differential(x)`` is the covector ``df(x)``, and the gradient is
-``X.riesz_inverse(F.differential(x))``. Metric-free methods (Frank-Wolfe steps,
-mirror maps, quasi-Newton curvature pairs, Sinkhorn) need only these.
-
-Dual Norm
----------
-
-``X.dual_norm(xi)`` is the norm of a covector:
-
-.. math::
-
-   \|\xi\|_* = \sup_{\|x\|_G \le 1} \langle \xi, x\rangle
-   = \sqrt{\langle \xi, R_G^{-1}\xi\rangle}.
-
-
-Operator Metrics
-----------------
-
-``OperatorInnerProduct(M, M_inverse)`` takes the metric from a self-adjoint
-positive-definite operator ``M`` on the Euclidean coordinates, so block,
-Kronecker or matrix-free metrics need no new geometry class:
-
-.. math::
-
-   \langle x, y\rangle_X = \langle x, M y\rangle_E, \qquad R_X = M.
-
-``M_inverse`` applies the inverse Riesz map and may be inexact, for example a
-``MatrixFreeLinOp`` that runs ``cg`` on ``M``. Without it, operations that need
-the inverse raise ``CapabilityError``. ``M`` must be self-adjoint and positive definite.
-From ``standard`` checks upward a known non-self-adjoint ``M``, or one with
-non-positive curvature on a probe vector, is rejected; ``strict`` also requires a
-positive Lanczos estimate of its smallest eigenvalue. CG on a space with this geometry is
-preconditioned CG: for ``A = M^{-1} B`` with ``B`` symmetric positive definite,
-``cg(A, M^{-1} b)`` solves ``B x = b``.
-
-.. code-block:: python
-
-   E = sc.DenseCoordinateSpace((n,), ctx)
+   E = sc.DenseCoordinateSpace((3,), ctx)
+   M_matrix = ctx.asarray([[4.0, 1.0, 0.0], [1.0, 3.0, 0.0], [0.0, 0.0, 2.0]])
    M = sc.DenseLinOp(M_matrix, E, E, ctx)
-   X = sc.DenseCoordinateSpace((n,), ctx,
-                               geometry=sc.OperatorInnerProduct(M, M_inverse))
+   M_inverse = sc.DenseLinOp(np.linalg.inv(M_matrix), E, E, ctx)
+   X = sc.DenseCoordinateSpace((3,), ctx, geometry=sc.OperatorInnerProduct(M, M_inverse))
+   print(np.allclose(X.riesz_inverse(X.riesz(x)), x))
 
-A Metric Lives in a Space
--------------------------
-
-A geometry is reachable only through the space that holds it: no solver,
-operator or functional takes a geometry argument. A different metric is a
-different space, and operators and functionals are built on it. A generalized
-eigenproblem ``K x = lambda M x`` is ``lanczos_smallest`` on the operator
-``M^{-1} K`` built on the space with metric ``M``, in which it is self-adjoint.
-Preconditioning is not a metric change: ``cg(A, b, preconditioner=K)`` takes an
-operator ``K`` on ``A.domain`` approximating the inverse of ``A``, self-adjoint
-and positive definite in ``A.domain``.
-
-Custom Geometry
+Custom geometry
 ---------------
 
-To define a custom geometry, subclass ``InnerProduct`` and implement
-``inner``. For non-Euclidean geometries, also implement ``riesz`` and
-``riesz_inverse`` and return ``False`` from ``is_euclidean``:
+Subclass ``InnerProduct`` and implement ``inner(ops, x, y)``, ``riesz(ops, x)``
+and ``riesz_inverse(ops, x)`` directly. A geometry is not a checked object; the
+space's public ``inner``/``riesz``/``riesz_inverse`` are the checked wrappers.
+
+* The Riesz maps must broadcast over leading batch axes: for ``x`` of shape
+  ``(N,) + space.shape``, ``riesz(ops, x)`` returns ``N`` covectors.
+* ``is_euclidean`` defaults to ``False``; set it ``True`` only for the coordinate
+  inner product.
+* ``convert(ctx)`` returns ``self`` by default; override it when the geometry
+  stores arrays. ``validate_for(space)`` is an optional hook that raises when the
+  geometry does not fit ``space``.
+* Without ``riesz``/``riesz_inverse``, matrix-backed operators refuse the space;
+  use ``MatrixFreeLinOp`` with an explicit metric adjoint instead.
 
 .. code-block:: python
 
-   class MyGeometry(sc.InnerProduct):
+   class Scaled(sc.InnerProduct):
+       """<x, y> = c * vdot(x, y)."""
+
+       def __init__(self, c):
+           self.c = c
+
        def inner(self, ops, x, y):
-           ...
+           return self.c * ops.vdot(x, y)
 
        def riesz(self, ops, x):
-           ...
+           return self.c * x
 
        def riesz_inverse(self, ops, x):
-           ...
+           return x / self.c
 
-       @property
-       def is_euclidean(self):
-           return False
-
-       def convert(self, ctx):
-           # Convert any stored arrays into ctx.
-           return self
-
-The Riesz maps must broadcast over leading batch axes: if ``x`` has shape
-``(N,) + space.shape``, ``riesz(ops, x)`` returns the batch of dual coordinates.
-Batched adjoints and stacked spaces rely on it.
-
-Matrix-backed operators refuse non-Euclidean spaces that do not provide usable
-Riesz maps. This avoids silently using a Euclidean coordinate adjoint as if it
-were a metric adjoint. If a geometry cannot expose Riesz maps, use
-``MatrixFreeLinOp`` and provide an explicit metric adjoint instead.
-
-Solvers and Functionals
------------------------
-
-Solvers such as ``cg``, ``lsqr``, ``power_iteration``, and
-``lanczos_smallest`` use ``domain.inner`` and ``domain.norm`` (or
-``codomain.norm`` for residuals that live in the codomain). Gradients returned
-by real-valued functionals are space elements: they satisfy
-
-.. math::
-
-   \operatorname{Re}\langle \nabla f(x), v \rangle_X = Df(x)[v].
-
-This contract is correct on non-Euclidean geometries when spaces supply Riesz
-maps and operators use metric-aware adjoints. Beck, *First-Order Methods in
-Optimization*, Remark 3.32, gives the real-coordinate formula; expanding
-``Re(g^H R v)`` gives the complex real-valued case.
+   S = sc.DenseCoordinateSpace((3,), ctx, geometry=Scaled(4.0))
+   A = sc.DenseLinOp(ctx.asarray(np.arange(9.0).reshape(3, 3)), S, S, ctx)
+   print(np.isclose(S.inner(A.apply(x), y), S.inner(x, A.H.apply(y))))

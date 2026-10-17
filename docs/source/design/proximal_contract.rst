@@ -1,43 +1,42 @@
 Metric proximal operations
 ==========================
 
-``Functional.prox(x, step)`` is an optional closed-form operation:
+``f.prox(x, step)`` returns the closed-form prox in the domain's own metric, or
+raises ``CapabilityError``; SpaceCore never densifies or iterates to get one.
 
 .. math::
 
    \operatorname{prox}^{X}_{t f}(x)
    = \arg\min_z f(z) + \frac{\|z-x\|_X^2}{2t}, \qquad t>0.
 
-The domain owns the metric and the returned element's representation. A missing
-rule raises ``CapabilityError``. SpaceCore does not construct a dense problem or
-run an optimization algorithm to obtain a prox.
-
 Built-in rules
 --------------
 
-* ``SquaredL2NormFunctional(X)``: ``X.scale(1 / (1 + step), x)`` for the
-  squared **space** norm, including custom elements and full metrics.
-* ``L1NormFunctional(X)`` (equivalently ``LpNormFunctional(X, 1)``): coordinate
-  threshold ``step / weights`` for Euclidean or diagonal weighted geometry.
-  Complex coordinates use radial shrinkage with real positive metric weights.
-* Positive real scaling multiplies the proximal step. Finite real constant
-  shifts preserve the prox. General sums, products, and linear pullbacks do
-  not inherit a proximal rule.
-* ``IndicatorFunctional(C)``: projection onto a declared closed convex set.
+=======================================  ============================================================
+Functional                               Prox
+=======================================  ============================================================
+``SquaredL2NormFunctional(X)``           ``X.scale(1 / (1 + step), x)``; any geometry, any element
+``L1NormFunctional(X)``                  soft threshold at ``step / weights``; Euclidean or
+(= ``LpNormFunctional(X, 1)``)           ``WeightedInnerProduct`` only; complex entries shrink radially
+``c * f`` with real ``c > 0``            ``f.prox(x, c * step)``
+``f + const`` (finite real constant)     ``f.prox(x, step)``
+``IndicatorFunctional(C)``               ``C.project(x)``
+=======================================  ============================================================
 
-Steps must be finite real scalars strictly greater than zero. Eager checks
-validate their values. At ``check_level="none"``, dynamic backend scalars are
-accepted without host conversion; the caller must guarantee their values are
-valid. Concrete invalid Python scalars still raise. This also applies to
-positive scaling coefficients and finite real constant shifts in compiled
-functional algebra. The ``prox_l1`` / ``prox_l2sq`` helpers (now in
-``spacecore-optimize``) retain their nonnegative-step convention, including
-the documented zero-step behavior.
+Any other sum, product or composition ``f @ A`` has no prox.
 
-Conjugates use Hilbert dual variables
--------------------------------------
+Steps must be finite real scalars ``> 0``. Python scalars are always checked; at
+``check_level="none"`` a backend scalar is accepted unchecked and its value is the
+caller's responsibility. Scaling coefficients follow the same rule.
 
-``f.conjugate_prox(p, step)`` uses Moreau decomposition in the same space:
+A registered prox asserts a proper lower-semicontinuous convex real objective; on a
+complex space the pairing is the real inner product.
+
+Conjugate prox
+--------------
+
+``f.conjugate_prox(p, step)`` is the Moreau decomposition in the same space; ``p`` is
+a Riesz representer, not a coordinate covector.
 
 .. math::
 
@@ -45,31 +44,29 @@ Conjugates use Hilbert dual variables
    \operatorname{prox}^{X}_{t f_X^*}(p)
      &= p-t\operatorname{prox}^{X}_{f/t}(p/t).
 
-Here ``p`` is a Riesz representer, not a coordinate covector. For diagonal
-metric ``W`` and coordinate ``f(x)=lambda*||x||_1``, the conjugate is the
-indicator of ``|W p| <= lambda``. Its prox clips to those weighted bounds.
-This convention matches ``LinOp.rapply`` in a PDHG dual update. A registered
-prox asserts a proper lower-semicontinuous convex real objective; a complex
-space uses its real inner-product pairing. Arbitrary complex-valued functions
-and nonconvex extensions do not acquire this guarantee.
+This matches ``LinOp.rapply`` in a PDHG dual update. Example: with diagonal metric
+``W`` and ``f(x) = lam * ||x||_1``, the conjugate is the indicator of
+``|W p| <= lam`` and its prox clips to those bounds.
 
 Sets and indicators
 -------------------
 
-``Set`` owns ``ambient`` and offers ``project(x)`` and ``contains(x)``.
-Membership may return ``None`` when unavailable; the indicator's value then
-raises ``CapabilityError``, while projection may still work.
-``IndicatorFunctional`` requires ``is_convex = True`` and returns zero on the
-set and positive infinity outside it. For every positive step its prox is the
-set's metric projection.
+A ``Set`` has an ``ambient`` space, ``contains(x)`` and ``project(x)``.
 
-``NonnegativeOrthant(X)`` supports real dense coordinates with Euclidean or
-diagonal geometry. Its projection is coordinatewise maximum with zero. Other
-geometries and representations need their own mathematically valid set
-implementation. A custom ``Set`` declares its constructor ``_fields``, which gives it
-conversion and the pytree hooks (:doc:`extending`); ambient geometry is static
-metadata. Sets do not imply
-manifold operations or an intersection-projection solver.
+* ``sc.Set`` has **no cores**: a custom set overrides ``contains`` and ``project``
+  directly. ``contains`` may return ``None`` (membership unavailable); ``project``
+  defaults to raising ``CapabilityError``.
+* Set ``is_convex = True`` to allow ``IndicatorFunctional(C)``; otherwise its
+  constructor raises ``CapabilityError``.
+* ``IndicatorFunctional(C)`` is ``0`` on ``C`` and ``inf`` outside. Its value raises
+  ``CapabilityError`` when ``contains`` returns ``None``; its prox (any step) is
+  ``C.project(x)``.
+* Declare ``_fields``: a set without it cannot be constructed; it also gives
+  conversion and pytree support (:doc:`extending`).
+* ``NonnegativeOrthant(X)``: real ``DenseCoordinateSpace`` with Euclidean or
+  diagonal geometry only; projection is ``max(x, 0)``.
+
+There is no intersection-projection solver and no manifold structure.
 
 .. code-block:: python
 
@@ -79,30 +76,63 @@ manifold operations or an intersection-projection solver.
    ctx = sc.Context(sc.NumpyOps(), np.float64)
    X = sc.DenseCoordinateSpace((2,), ctx,
        geometry=sc.WeightedInnerProduct(ctx.asarray([2., 5.])))
-   f = 0.3 * sc.L1NormFunctional(X)
    x = ctx.asarray([-1., 2.])
-   y = f.prox(x, 0.5)  # [-0.925, 1.97]
-   constraint = sc.NonnegativeOrthant(X)
-   feasible = sc.IndicatorFunctional(constraint).prox(x, 0.5)  # [0., 2.]
 
-Extending the rule table
-------------------------
+   f = 0.3 * sc.L1NormFunctional(X)
+   f.prox(x, 0.5)                                                  # [-0.925, 1.97]
+   sc.IndicatorFunctional(sc.NonnegativeOrthant(X)).prox(x, 0.5)   # [0., 2.]
 
-Use the existing ``spacecore.mapping.register`` table:
+
+   class UnitBall(sc.Set):
+       """Closed unit ball of the ambient norm; radial projection is metric in any geometry."""
+
+       _fields = ("ambient", "check_level")
+       is_convex = True
+
+       def contains(self, x):
+           return self.ambient.norm(x) <= 1
+
+       def project(self, x):
+           return self.ambient.scale(1 / max(float(self.ambient.norm(x)), 1.0), x)
+
+
+   sc.IndicatorFunctional(UnitBall(X)).prox(x, 0.5)
+
+Adding a prox rule
+------------------
+
+Register ``rule(functional, geometry, x, step)`` with ``spacecore.mapping.register``;
+the rule returns a native domain element.
 
 .. code-block:: python
 
+   import numpy as np
+   import spacecore as sc
    from spacecore.mapping import register
 
-   def my_prox(functional, geometry, x, step):
-       # Compute the exact metric prox using the representation's native operations.
-       return functional.domain.native_prox(x, step)
+   class HalfSquaredNorm(sc.Functional):
+       _fields = ("dom", "ctx")
 
-   register("prox", MyFunctional, MyGeometry, my_prox)
+       def __init__(self, dom, ctx=None, check_level=None):
+           super().__init__(dom, ctx, check_level=check_level)
 
-Lookup follows the functional MRO, then the geometry MRO. ``object`` as the
-geometry key is appropriate only for rules valid across the geometries that
-the functional supports, including a native space with no separate geometry
-object. Changing a subclass's objective also requires reviewing its inherited
-prox rule. Register extensions during setup, before tracing; changing the table
-does not invalidate an already compiled function.
+       def _value_core(self, x):
+           return 0.5 * self.domain.inner(x, x)
+
+       def _grad_core(self, x):
+           return x
+
+   # The prox of ||x||_X^2 / 2 is x / (1 + step) in every geometry, so key on object.
+   register("prox", HalfSquaredNorm, object,
+            lambda f, geometry, x, step: f.domain.scale(1 / (1 + step), x))
+
+   ctx = sc.Context(sc.NumpyOps(), np.float64)
+   X = sc.DenseCoordinateSpace((2,), ctx)
+   HalfSquaredNorm(X).prox(ctx.asarray([2., 4.]), 1.0)     # [1., 2.]
+
+* Lookup walks the functional MRO, then the geometry MRO; the first match wins.
+* Key on ``object`` only for a rule valid in every geometry the functional supports,
+  including native spaces with no geometry object.
+* A subclass that changes the objective inherits its parent's rule: re-register it.
+* Register at setup, before tracing; registering later does not change already
+  compiled functions.

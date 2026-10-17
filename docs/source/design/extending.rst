@@ -1,36 +1,58 @@
 Extending SpaceCore
 ===================
 
-A new operator, functional, space or set needs three things: its check-free
-cores, a declaration of its constructor fields, and nothing else unless it holds
-state its fields cannot rebuild.
+A new operator, functional or space needs its check-free cores and a ``_fields``
+declaration; it needs hand-written hooks only for state its fields cannot rebuild.
+A custom ``Set`` has no cores: it overrides ``contains``/``project`` directly
+(:doc:`proximal_contract`).
 
 Cores, not public methods
 -------------------------
 
-``LinOp`` owns the checked public methods ``apply``, ``rapply``, ``vapply`` and
-``rvapply``. Each validates its input at the object's ``check_level`` and calls a
-check-free core: ``_apply_core``, ``_rapply_core``, ``_vapply_core`` and
-``_rvapply_core``. ``Functional`` does the same for ``value`` and ``vvalue``
-through ``_value_core`` and ``_vvalue_core``. Spaces follow the same split:
-``VectorSpace`` owns the checked ``add`` and ``scale`` over the abstract
-``_add_core`` and ``_scale_core``, and ``InnerProductSpace`` owns the checked
-``inner`` and ``real_inner`` over ``_inner_core``, which defaults to the space's
-geometry.
+**You implement the cores; SpaceCore owns the public methods.** Each public method
+validates at the object's ``check_level``, then calls its check-free core.
 
-A subclass writes the cores. Composite operators, the tree operators and the
-``linalg`` solvers call the cores of their parts directly, so validation runs once
-at the outer boundary; a core must therefore not validate. The batched cores
-default to ``vmap`` of the single-element core, with a one-time warning, so a
-subclass writes them only when it has a genuinely batched implementation.
+==========================  ==============================================  ===========================================
+Base class                  Public (checked, inherited)                     Core (you write)
+==========================  ==============================================  ===========================================
+``LinOp``                   ``apply``, ``rapply``                           ``_apply_core``, ``_rapply_core``
+                            ``vapply``, ``rvapply``                         ``_vapply_core``, ``_rvapply_core``
+``Functional``              ``value``, ``grad``                             ``_value_core``, ``_grad_core``
+                            ``value_and_grad``                              ``_value_and_grad_core``
+                            ``differential``, ``derivative_at``             ``_differential_core``, ``_derivative_core``
+                            ``value_and_derivative``                        ``_value_and_derivative_core``
+                            ``vvalue``, ``vgrad``                           ``_vvalue_core``, ``_vgrad_core``
+``VectorSpace``             ``add``, ``scale``, ``axpy``                    ``_add_core``, ``_scale_core``, ``_axpy_core``
+``InnerProductSpace``       ``inner``, ``real_inner``, ``norm``             ``_inner_core``, ``_real_inner_core``, ``_norm_core``
+                            ``riesz``, ``riesz_inverse``                    ``_riesz_core``, ``_riesz_inverse_core``
+==========================  ==============================================  ===========================================
 
-A subclass may still override a public method instead; its core then calls that
-method back. A class that defines neither raises ``NotImplementedError`` on use.
+Write only the cores your object needs; the rest have defaults. A functional
+needs ``_value_core`` and, if it is differentiable, ``_grad_core``;
+``_value_and_grad_core`` defaults to calling both, and the differential and
+derivative cores are built from ``_grad_core``. A ``LinOp`` needs ``_apply_core``
+and, for an adjoint, ``_rapply_core``. The batched cores default to ``vmap`` of
+the single-element core, with a one-time warning; write them only for a genuinely
+batched implementation. ``InnerProductSpace`` cores default to
+the space's geometry.
 
-Requirements that hold at every check level, such as "an adjoint needs inner
-products", are capability requirements, not validation: raise them in the core
-with ``require(...)`` (``MatrixFreeLinOp`` does this), or they disappear at
-``check_level="none"``.
+``_grad_core`` returns the **Riesz gradient** in the domain's own geometry, not
+the coordinate derivative. When you compute the coordinate derivative, finish
+with ``self.domain.riesz_inverse(...)``; on a Euclidean space that is the
+identity.
+
+A core receives valid inputs and must not validate them. Composites, tree
+operators and ``linalg`` solvers call their parts' cores directly, so validation
+runs once, at the outer boundary.
+
+Do not override a public method. An undecorated override is treated as that
+class's core and wrapped in the base's checks; an override that calls
+``super().<name>`` is left alone. A class that
+defines neither the core nor a default raises ``NotImplementedError`` on use.
+
+Capability requirements (e.g. "an adjoint needs inner products") must hold at every
+check level, so raise them in the core, not as validation: on a ``LinOp`` call
+``self._require(capability, name)``, as ``MatrixFreeLinOp._rapply_core`` does.
 
 Fields
 ------
@@ -42,7 +64,7 @@ A class lists the constructor keywords that rebuild it:
    _fields = ("A", "dom", "cod", "ctx")   # "param:attr" when the attribute is named differently
    _dynamic = ("A",)                       # the pytree children; the rest is static aux
 
-From that declaration the bases derive three things:
+From it the bases derive:
 
 * **pytree** — ``tree_flatten`` returns the ``_dynamic`` fields as children and the
   rest as ``(field, value)`` pairs; ``tree_unflatten`` calls the constructor with
@@ -58,9 +80,8 @@ From that declaration the bases derive three things:
   ``allclose`` (NaN matching NaN), user callables by identity, everything else by
   ``scalar_eq``. ``ctx`` and ``check_level`` are ignored.
 
-A ``PyTreeNode`` that declares no fields and does not implement ``tree_flatten``
-refuses construction; that is what keeps ``Functional`` and ``QuadraticForm``
-abstract.
+A ``PyTreeNode`` with no ``_fields`` and no ``tree_flatten`` refuses construction
+(this keeps ``Functional`` and ``QuadraticForm`` abstract).
 
 When to write the hooks yourself
 --------------------------------
@@ -69,13 +90,10 @@ Override ``tree_flatten``/``tree_unflatten``, ``_convert`` or ``__eq__`` only wh
 the fields cannot express the object:
 
 * **derived or cached state** — precomputed matrices, factorizations, a chosen
-  computation mode. Keep it out of ``_fields`` and rebuild it in ``__init__``;
-  flattening it would let a traced rebuild resurrect a stale cache.
+  computation mode. Keep it out of ``_fields`` and rebuild it in ``__init__``, so a
+  traced rebuild cannot resurrect a stale cache.
 * **arrays that need more than** ``asarray`` — ``SparseLinOp`` converts its matrix
   with ``assparse`` and a dtype cast.
-* **a context that is not the target** — ``RealifiedFunctional`` (in
-  ``spacecore-optimize``) converts its base functional to the complex partner of
-  the target dtype.
 * **a structure that is not a constructor argument** — ``BlockMatrixLinOp`` and
   ``BlockDiagonalLinOp`` flatten their blocks and keep the tree definitions as aux.
 
@@ -114,8 +132,8 @@ Example
        def _value_core(self, x):
            return 0.5 * self.domain.inner(x, x)
 
-       def grad(self, x):
-           return x
+       def _grad_core(self, x):
+           return x                    # Riesz gradient of <x, x>/2 in any geometry
 
 
    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
@@ -125,7 +143,8 @@ Example
    x = ctx.asarray([1.0, -2.0, 0.5])
 
    A(x), A.H(x)            # checked public methods, inherited
-   (f @ A)(x)              # composition calls the cores
+   f.grad(x)               # checked public grad, calls _grad_core
+   (f @ A)(x), (f @ A).grad(x)   # composition calls the cores
    A == ScalarLinOp(2.0, X)                    # True: equal fields
    A.convert(sc.Context(sc.JaxOps(), dtype=np.float32))   # rebuilt from the fields
 
