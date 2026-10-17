@@ -53,7 +53,7 @@ SKIP_FILES = {
 TEXT_SUFFIXES = {".md", ".rst", ".txt"}
 PYTHON_SUFFIXES = {".py"}
 NOTEBOOK_SUFFIXES = {".ipynb"}
-MIGRATION_DOCS = {"CHANGELOG.md", "release_notes.rst"}
+MIGRATION_DOCS = {"CHANGELOG.md", "release_notes.rst", "changelog-archive.md"}
 
 
 @dataclass(frozen=True)
@@ -84,13 +84,21 @@ def _call_name(node: ast.AST) -> str | None:
     return None
 
 
+# Array libraries and backend ops keep ``eigh``; only ``space.eigh`` was removed.
+ARRAY_RECEIVERS = {"xp", "np", "numpy", "jnp", "jax", "torch", "cp", "cupy", "scipy", "linalg", "la", "_la"}
+
+
+def _is_array_receiver(name: str) -> bool:
+    return name in ARRAY_RECEIVERS or name.endswith("ops")
+
+
 def _is_backend_eigh_call(node: ast.Attribute) -> bool:
     value: ast.AST = node.value
     while isinstance(value, ast.Attribute):
-        if value.attr in {"ops", "xp", "linalg", "torch"}:
+        if _is_array_receiver(value.attr):
             return True
         value = value.value
-    return isinstance(value, ast.Name) and value.id in {"ops", "xp", "torch"}
+    return isinstance(value, ast.Name) and _is_array_receiver(value.id)
 
 
 def _scan_python(path: Path) -> list[Finding]:
@@ -130,12 +138,15 @@ def _scan_text(path: Path) -> list[Finding]:
     if path.name in MIGRATION_DOCS:
         return []
     patterns = [(name, re.compile(rf"\b{name}\s*\(")) for name in sorted(REMOVED_CALLS)]
-    patterns.extend((f".{name}", re.compile(rf"\.{name}\s*\(")) for name in REMOVED_METHODS)
+    method_patterns = [(f".{name}", re.compile(rf"(\w+)\.{name}\s*\(")) for name in REMOVED_METHODS]
 
     findings: list[Finding] = []
     for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
         for label, pattern in patterns:
             if pattern.search(line):
+                findings.append(Finding(path, f"line {lineno}", label, line.strip()))
+        for label, pattern in method_patterns:
+            if any(not _is_array_receiver(m.group(1)) for m in pattern.finditer(line)):
                 findings.append(Finding(path, f"line {lineno}", label, line.strip()))
     return findings
 
