@@ -43,10 +43,21 @@ CASES = {
     "operator applied to an element": lambda H, A, F: lambda a: (A @ sc.DenseElement(H, a)).array,
 }
 
+def _torch_version() -> tuple[int, int]:
+    from importlib.metadata import PackageNotFoundError, version
+
+    try:
+        return tuple(int(p) for p in version("torch").split("+")[0].split(".")[:2])  # type: ignore[return-value]
+    except PackageNotFoundError:
+        return (0, 0)
+
+
+# torch 2.11 Dynamo cannot trace the builtin `@` between two user-defined objects
+# (`A.__matmul__(x)` compiles); 2.14 can. 2.12-2.13 are untested, hence not strict.
 TORCH_MATMUL = pytest.mark.xfail(
-    strict=True,
-    reason="torch 2.11 Dynamo cannot trace the builtin `@` between two user-defined objects; "
-    "`A.__matmul__(x)` compiles. Strict, so this fails once torch supports it.",
+    _torch_version() < (2, 14),
+    strict=False,
+    reason="torch < 2.14 Dynamo cannot trace the builtin `@` between two user-defined objects.",
 )
 
 
