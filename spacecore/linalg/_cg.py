@@ -138,7 +138,9 @@ def cg(
     residual_norm = dom._norm_core(r)
     # Stop when ||r|| <= atol + tol ||b||; eps guards the divisions below.
     threshold_value = threshold(cod._norm_core(b), tol, atol)
-    eps = A.ops.asarray(A.ops.eps(A.dtype), dtype=A.dtype)
+    # Scalar diagnostics are real even for a complex operator (ADR-015).
+    real_dtype = A.ops.real_dtype(A.dtype)
+    eps = A.ops.asarray(A.ops.eps(A.dtype), dtype=real_dtype)
     eps2 = eps * eps
 
     def cond_fun(carry: tuple[Any, Any, Any, Any, Any, int, Any]) -> Any:
@@ -172,7 +174,7 @@ def cg(
             should_refresh_residual,
             (lambda _: A.ops.sqrt(rs_next)) if preconditioner is None else (lambda _: dom._norm_core(r_next)),
             lambda _: _residual_norm,
-            A.ops.asarray(0.0, dtype=A.dtype),
+            A.ops.asarray(0.0, dtype=real_dtype),
         )
         return x_next, r_next, p_next, rs_next, residual_norm_next, k_next, active
 

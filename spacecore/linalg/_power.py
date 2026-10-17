@@ -160,7 +160,8 @@ def _power_iteration_core(
     # Normalize x0 and precompute y = A x.
     x, _ = normalize(sops, x)
     y = action.apply(x)
-    zero = action.ops.asarray(0.0, dtype=action.dtype)
+    # The Rayleigh quotient is real, so the eigenvalue carry is real (ADR-015).
+    zero = action.ops.asarray(0.0, dtype=action.ops.real_dtype(action.dtype))
     residual_norm = sops._norm_core(x) + float("inf")
 
     # Carry: current eigenvalue estimate, normalized vector x, product y=A x,

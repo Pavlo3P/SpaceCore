@@ -84,6 +84,9 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 ### Fixed
 
 - Pickling a `TreeSpace` or `StackedSpace` (their `__new__` dispatches on arguments).
+- `power_iteration` on a complex Hermitian operator under `jax.jit`/`lax.while_loop`:
+  the eigenvalue carry is real, as the Rayleigh quotient is; `cg`'s breakdown
+  tolerance is real too (ADR-015's real solver diagnostics).
 - `StackedSpace` of a complex `ElementwiseJordanSpace` in a real context: the guard
   now checks the converted base.
 - `torch.compile` with the traced check level at `"cheap"`: space check caches are

@@ -116,7 +116,7 @@ Turn three recorded design decisions into code:
 | **Ergonomics** | Shipped as the core rule: every public operation is a checked wrapper over a `_<op>_core`, one `install_public_checks` mechanism for all objects, the traced check-level cap. |
 | **ADR-020 — sets and projection** | Shipped (minimal surface: `Set`, `NonnegativeOrthant`, `IndicatorFunctional`). |
 | **ADR-017 — tensor-product spaces** | Not in 0.5.0. Design proposed in ADR-017 (2026-10-17), awaiting acceptance and a named workload. |
-| **Dtype Stage 2 (ADR-015)** | Not in 0.5.0. Open: Stage 2 makes field-level checks the default, which ADR-015's decision keeps strict until a workload justifies it. |
+| **Dtype Stage 2 (ADR-015)** | Safe part shipped: solver scalar diagnostics are real for complex operators (`cg`, `power_iteration` joined Lanczos and `expm_multiply`); `ctx.asarray` already returns an input of the context dtype without copying. Open: field-level `DTypeCheck` by default and dtype-preserving `ctx.asarray` for other dtypes, which ADR-015 keeps strict until a workload justifies them. |
 
 ### `0.6.0` — Interoperability, linalg, and performance
 

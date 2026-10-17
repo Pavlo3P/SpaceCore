@@ -51,4 +51,4 @@ Using exact dtype as the only field proxy was rejected because real-vs-complex m
 - `Space.field` describes entries and is derived from the context dtype.
 - `Space.scalar_field` describes coefficients.
 - Current dtype membership remains exact and strict.
-- Solver scalar diagnostics should use real workspaces when mathematically real, especially for complex operators.
+- Solver scalar diagnostics should use real workspaces when mathematically real, especially for complex operators. (0.5.0: every solver does; `tests/linalg/test_real_diagnostics.py` pins `cg` and `power_iteration` on a complex Hermitian operator.)
