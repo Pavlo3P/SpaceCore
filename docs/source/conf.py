@@ -60,6 +60,8 @@ exclude_patterns = ["_build", "Thumbs.db", ".DS_Store", "design/vision.rst", "de
 
 html_theme = "pydata_sphinx_theme"
 html_title = "SpaceCore"
+html_logo = "_static/spacecore-logo.svg"
+html_favicon = "_static/spacecore-logo.svg"
 html_static_path = ["_static"]
 html_extra_path = [".nojekyll"]
 html_css_files = ["custom.css"]

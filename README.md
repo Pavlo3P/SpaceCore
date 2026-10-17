@@ -1,4 +1,7 @@
-# SpaceCore
+<h1>
+  <img src="docs/source/_static/spacecore-logo.svg" alt="SpaceCore logo" height="72" align="center">
+  SpaceCore
+</h1>
 
 [![CI](https://github.com/Pavlo3P/SpaceCore/actions/workflows/ci.yml/badge.svg)](https://github.com/Pavlo3P/SpaceCore/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/spacecore.svg)](https://pypi.org/project/spacecore/)
