@@ -64,7 +64,7 @@ def expm_multiply(
     >>> A = sc.DiagonalLinOp(ctx.asarray([0.0, 1.0]), X, ctx)
     >>> v = ctx.asarray([2.0, 3.0])
     >>> result = sc.expm_multiply(A, v, t=0.5, max_iter=5)
-    >>> np.allclose(result.result, [2.0, 3.0 * np.exp(0.5)], atol=1e-10)
+    >>> np.allclose(result.x, [2.0, 3.0 * np.exp(0.5)], atol=1e-10)
     True
     """
     # Validate once: square, not provably non-Hermitian, valid parameters.

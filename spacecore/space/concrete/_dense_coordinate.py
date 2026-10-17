@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from math import prod
-from typing import Any, Callable, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Tuple
 
 from ..base import CoordinateSpace, EuclideanInnerProduct, InnerProduct, InnerProductSpace
 from ..checks import BackendCheck, DTypeCheck, FieldCheck, ShapeCheck, SpaceCheck
@@ -26,6 +26,13 @@ class DenseCoordinateSpace(CoordinateSpace, InnerProductSpace):
     check_level : {"none", "cheap", "standard", "strict"}, optional
         Validation level; the ambient default when omitted.
     """
+
+    if TYPE_CHECKING:
+        # Typing only: the checked public methods are inherited; these narrow their results.
+        def add(self, x: DenseArray, y: DenseArray) -> DenseArray: ...
+        def scale(self, a: Any, x: DenseArray) -> DenseArray: ...
+        def axpy(self, a: Any, x: DenseArray, y: DenseArray) -> DenseArray: ...
+
 
     _fields = ("shape", "ctx", "geometry")
 
