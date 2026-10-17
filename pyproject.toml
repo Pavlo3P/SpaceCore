@@ -85,7 +85,7 @@ addopts = [
   "--doctest-modules",
   "--ignore=tests/typing",
   "--ignore-glob=spacecore/_contextual/*",
-  "--ignore-glob=spacecore/backend/jax/_ops.py",
+  "--ignore-glob=spacecore/backend/jax/*",
   "--ignore-glob=spacecore/backend/cupy/*",
   "--ignore-glob=spacecore/backend/torch/*",
 ]
