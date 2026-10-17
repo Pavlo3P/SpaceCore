@@ -71,10 +71,3 @@ Expected output:
 .. code-block:: text
 
    'DenseCoordinateSpace' object has no attribute 'star'
-
-Current versus planned
-----------------------
-
-The capabilities listed above are implemented in ``0.3.x``. Additional
-specialized structures or solver dispatch rules should be documented as planned
-only when they are not present in the public API.
