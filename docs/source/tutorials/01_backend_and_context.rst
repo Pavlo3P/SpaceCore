@@ -1,346 +1,299 @@
 1 · Backend and Context
 =======================
 
-   **The idea in one line.** In SpaceCore, *which array library you
-   compute with* is an explicit, swappable object — not a hard-wired
-   ``import numpy``.
+**Goal:** build elements and an operator on a NumPy context, write power
+iteration once against the space's operations, and run it unchanged on JAX
+after converting the operator.
 
-Most numerical Python code bakes a backend into every line:
-``np.zeros``, ``np.linalg.solve``, ``jnp.dot``. Moving such code from
-NumPy to JAX (for autodiff/JIT/GPU) or to Torch means a rewrite, and the
-*rules* of the computation — the dtype, what counts as a valid input —
-live only in your head.
+**Before you start:** basic Python and NumPy arrays.
+Run the code blocks in order in a fresh session; see :doc:`index` for setup.
 
-SpaceCore pulls those decisions into one place, the **``Context``**:
+A ``Context`` is a ``BackendOps`` (the array library: ``matmul``, ``exp``,
+``eigh``, ... from NumPy, JAX, Torch or CuPy) plus a default ``dtype``.
+Every space, operator and functional is bound to one context and carries its
+own ``check_level``, which sets how much runtime validation its public
+methods perform.
 
--  a **``BackendOps``** — the numerical contract (``matmul``,
-   ``einsum``, ``eigh``, …) implemented by NumPy, JAX, Torch, or CuPy;
--  a **default ``dtype``** for the arrays you create.
-
-Every space, operator, and functional you will meet in the next
-tutorials carries a context, and its own **checking policy**
-(``check_level``) that decides how much runtime validation it does. This first notebook is about that
-foundation: what a context *is*, how to write code that runs unchanged
-on two backends, and how to dial validation up or down.
-
-**You will learn to**
-
-1. create a ``Context`` and read its parts;
-2. write one function that runs identically on NumPy **and** JAX through
-   ``ctx.ops``;
-3. use ``check_level`` to make bugs loud (or silent);
-4. move an object from one backend to another with ``.convert(...)``.
-
-.. code:: python
-
-    import numpy as np
-    import matplotlib as mpl
-    import matplotlib.pyplot as plt
-    import spacecore as sc
-    
-    # A clean, consistent palette + style for every figure in the tutorials.
-    BLUE, INDIGO, CYAN = "#2563eb", "#4f46e5", "#0891b2"
-    PINK, AMBER, GREEN = "#db2777", "#d97706", "#059669"
-    SLATE, GRID = "#334155", "#e5e9f0"
-    
-    mpl.rcParams.update({
-        "figure.figsize": (7.2, 4.2), "figure.dpi": 120, "savefig.dpi": 120,
-        "figure.facecolor": "white", "axes.facecolor": "white",
-        "axes.edgecolor": SLATE, "axes.linewidth": 1.0,
-        "axes.grid": True, "axes.axisbelow": True,
-        "grid.color": GRID, "grid.linewidth": 1.0,
-        "axes.spines.top": False, "axes.spines.right": False,
-        "axes.titlesize": 13, "axes.titleweight": "bold", "axes.titlecolor": SLATE,
-        "axes.labelcolor": SLATE, "axes.labelsize": 11,
-        "xtick.color": SLATE, "ytick.color": SLATE,
-        "xtick.labelsize": 10, "ytick.labelsize": 10, "font.size": 11,
-        "legend.frameon": False, "legend.fontsize": 10,
-        "lines.linewidth": 2.4, "lines.markersize": 6, "image.cmap": "magma",
-    })
-    mpl.rcParams["axes.prop_cycle"] = mpl.cycler(
-        color=[BLUE, PINK, GREEN, AMBER, INDIGO, CYAN])
-    
-    print("spacecore", sc.__version__, "| numpy", np.__version__)
-
-
-.. parsed-literal::
-
-    spacecore 0.4.0 | numpy 2.4.2
-
-
-1 · Anatomy of a context
-------------------------
-
-A context bundles three decisions. The picture below is the mental model
-to keep.
-
-.. code:: python
-
-    from matplotlib.patches import FancyBboxPatch, FancyArrowPatch
-    
-    fig, ax = plt.subplots(figsize=(8.2, 3.6)); ax.axis("off")
-    ax.set_xlim(0, 10); ax.set_ylim(0, 5)
-    
-    def box(x, y, w, h, title, sub, color):
-        p = FancyBboxPatch((x, y), w, h, boxstyle="round,pad=0.02,rounding_size=0.12",
-                           linewidth=2, edgecolor=color, facecolor=color + "18")
-        ax.add_patch(p)
-        ax.text(x + w/2, y + h*0.62, title, ha="center", va="center",
-                fontsize=12, fontweight="bold", color=color)
-        ax.text(x + w/2, y + h*0.26, sub, ha="center", va="center", fontsize=9.5, color=SLATE)
-    
-    box(0.3, 3.2, 2.9, 1.4, "BackendOps", "matmul · einsum\neigh · vmap", BLUE)
-    box(0.3, 1.5, 2.9, 1.4, "dtype", "float64\n(default)", GREEN)
-    box(0.3, -0.2, 2.9, 1.4, "check_level", "none · cheap\nstandard · strict", PINK)
-    box(5.6, 1.5, 3.9, 1.9, "Context", "owns the backend, dtype,\nand validation policy", INDIGO)
-    
-    for y in (3.9, 2.2, 0.5):
-        ax.add_patch(FancyArrowPatch((3.25, y), (5.55, 2.45), arrowstyle="-|>",
-                     mutation_scale=16, lw=1.8, color=SLATE, alpha=0.55))
-    ax.text(7.55, 0.7, "every Space / LinOp / Functional\ncarries one context",
-            ha="center", va="center", fontsize=9.5, style="italic", color=SLATE)
-    ax.set_title("A Context = backend ops  +  dtype  +  checking policy", loc="center")
-    plt.show()
-
-
-
-.. image:: 01_backend_and_context_files/01_backend_and_context_3_0.png
-
-
-2 · Create a context and read its parts
+1 · A context is a backend plus a dtype
 ---------------------------------------
 
-``Context(ops, dtype=...)`` is all you need. ``NumpyOps`` is always
-available; the others (``JaxOps``, ``TorchOps``, ``CuPyOps``) appear
-only when their optional dependency is installed.
+``NumpyOps`` is always available; ``JaxOps``, ``TorchOps`` and ``CuPyOps``
+need their optional dependency. ``ctx.asarray`` moves Python or NumPy data
+onto the context's backend at the context's dtype.
 
 .. code:: python
+
+    import importlib.util
+    import numpy as np
+    import spacecore as sc
 
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
-    
-    print("backend family :", ctx.ops.family)
-    print("default dtype  :", ctx.dtype)
-    
-    # `asarray` materialises data on this backend at this dtype:
-    x = ctx.asarray([1.0, 2.0, 3.0])
-    print("asarray dtype  :", x.dtype, "->", x)
+    ops = ctx.ops
 
+    x = ctx.asarray([1, 2, 3])
+    assert isinstance(x, np.ndarray) and x.dtype == np.float64
+    print("backend:", ops.family, " dtype:", ctx.dtype)
 
-.. parsed-literal::
+The integer list became a ``float64`` NumPy array because the context fixes
+the dtype of new arrays. The context owns no arrays and holds no checking
+policy; it only describes how arrays are made.
 
-    backend family : numpy
-    default dtype  : float64
-    asarray dtype  : float64 -> [1. 2. 3.]
+2 · Build elements of a space
+-----------------------------
 
+A space fixes the shape, the scalar field and the inner product of its
+elements. ``DenseVectorSpace`` holds one-dimensional vectors;
+``DenseCoordinateSpace`` holds arrays of any fixed shape. With the default
+Euclidean geometry,
 
-The context never *owns* arrays; it is a small, immutable description of
-*how* to make them. ``ctx.asarray`` is the canonical way to
-bring Python/NumPy data onto the context’s backend and dtype.
+.. math::
 
-3 · ``BackendOps``: one function, two backends
-----------------------------------------------
+   \langle x,y\rangle=\sum_i x_i y_i,\qquad \|x\|=\sqrt{\langle x,x\rangle}.
 
-``ctx.ops`` is the numerical contract. If you write your computation
-against it instead of against ``numpy`` directly, the *same function*
-runs on any backend. Here is a small routine that builds a Gaussian
-kernel matrix and smooths a signal — written once.
+The norm is induced by the inner product, so both come from the space, not
+from ``numpy``.
 
 .. code:: python
 
-    def smooth_with_gaussian(ctx, signal, sigma=1.5):
-        """Backend-agnostic: only touches ctx.ops and ctx.asarray."""
-        ops = ctx.ops
-        x = ctx.asarray(signal)
-        n = x.shape[0]
-        idx = ops.arange(0, n, dtype=ctx.dtype)
-        # pairwise squared distances via broadcasting, then a normalised Gaussian kernel
-        d2 = (idx[:, None] - idx[None, :]) ** 2
-        K = ops.exp(-d2 / (2.0 * sigma ** 2))
-        K = K / ops.sum(K, axis=1)[:, None]
-        return ops.matmul(K, x), K
-    
-    rng = np.random.default_rng(0)
-    raw = np.cumsum(rng.standard_normal(60))        # a noisy random walk
-    sm_np, K_np = smooth_with_gaussian(ctx, raw)
-    print("numpy output dtype:", sm_np.dtype)
+    X = sc.DenseVectorSpace((3,), ctx)
+    Mats = sc.DenseCoordinateSpace((2, 3), ctx)
 
+    z = X.zeros()
+    y = ctx.asarray([4.0, -1.0, 0.5])
+    W = Mats.zeros()
+    for element, space in [(z, X), (x, X), (y, X), (W, Mats)]:
+        space.check_member(element)
+    assert z.shape == (3,) and W.shape == (2, 3)
 
-.. parsed-literal::
+    w = X.axpy(2.0, x, y)                      # 2 x + y
+    np.testing.assert_allclose(w, 2 * np.array([1, 2, 3]) + np.array([4, -1, 0.5]))
+    np.testing.assert_allclose(X.inner(x, y), np.dot(x, y))
+    np.testing.assert_allclose(X.norm(x), np.linalg.norm(x))
 
-    numpy output dtype: float64
+``zeros`` and ``asarray`` produce members; ``check_member`` raises when an
+array is not one. ``axpy``, ``inner`` and ``norm`` agree with the NumPy
+formulas for the Euclidean geometry.
 
+3 · ``check_level`` decides what is caught
+------------------------------------------
 
-Now run the **exact same function** through a JAX context. We enable
-64-bit mode first so JAX matches NumPy’s ``float64`` (JAX defaults to
-``float32``).
-
-.. code:: python
-
-    try:
-        import jax
-        jax.config.update("jax_enable_x64", True)
-        ctx_jax = sc.Context(sc.JaxOps(), dtype=jax.numpy.float64)
-        sm_jax, K_jax = smooth_with_gaussian(ctx_jax, raw)   # same function, new backend
-        max_diff = float(np.max(np.abs(np.asarray(sm_jax) - np.asarray(sm_np))))
-        HAVE_JAX = True
-        print("jax output type   :", type(sm_jax).__name__)
-        print("max abs(numpy - jax):", max_diff)
-    except ImportError:
-        HAVE_JAX = False
-        print("JAX not installed — skipping the JAX backend comparison.")
-
-
-.. parsed-literal::
-
-    jax output type   : ArrayImpl
-    max abs(numpy - jax): 1.7763568394002505e-15
-
-
-.. parsed-literal::
-
-    W0622 05:48:02.899710 11890930 cpp_gen_intrinsics.cc:74] Empty bitcode string provided for eigen. Optimizations relying on this IR will be disabled.
-
-
-.. code:: python
-
-    fig, axes = plt.subplots(1, 2, figsize=(9.6, 3.8))
-    
-    axes[0].plot(raw, color=GRID, lw=1.6, label="noisy signal")
-    axes[0].plot(np.asarray(sm_np), color=BLUE, label="smoothed (NumpyOps)")
-    if HAVE_JAX:
-        axes[0].plot(np.asarray(sm_jax), color=PINK, ls="--", label="smoothed (JaxOps)")
-    axes[0].set_title("Same routine, two backends"); axes[0].set_xlabel("index")
-    axes[0].legend(loc="upper left")
-    
-    im = axes[1].imshow(np.asarray(K_np), cmap="magma")
-    axes[1].set_title("Gaussian kernel matrix  K"); axes[1].set_xlabel("j"); axes[1].set_ylabel("i")
-    axes[1].grid(False)
-    fig.colorbar(im, ax=axes[1], fraction=0.046, pad=0.04)
-    plt.tight_layout(); plt.show()
-
-
-
-.. image:: 01_backend_and_context_files/01_backend_and_context_11_0.png
-
-
-The blue (NumPy) and dashed-pink (JAX) curves lie on top of each other
-to ~1e-13. The function never mentioned ``numpy`` or ``jax`` — only
-``ctx.ops``. That is the whole point of a backend abstraction: **write
-the math once, choose the engine later.**
-
-4 · ``check_level``: how loud should bugs be?
----------------------------------------------
-
-Each space, operator and functional carries a validation policy, set
-with ``check_level=`` when it is built; without it, the object takes the
-ambient level (``sc.get_check_level()``, ``"standard"`` by default;
-change it with ``sc.set_check_level`` or a ``with sc.use_check_level(...)``
-block). There are four levels, cheapest to strictest:
+Each object takes ``check_level=`` at construction; without it, it uses the
+ambient level (``sc.get_check_level()``, ``"standard"`` unless changed with
+``sc.set_check_level`` or ``with sc.use_check_level(...)``).
 
 ============ ==============================================
 level        meaning
 ============ ==============================================
-``none``     no validation — fastest, trust the caller
-``cheap``    O(1) structural checks (shape, dtype, backend)
-``standard`` the default — the everyday safety net
-``strict``   adds expensive probes (e.g. adjoint dot-tests)
+``none``     skip optional checks; invariants still apply
+``cheap``    local structural checks (shape, dtype, backend)
+``standard`` the default
+``strict``   adds expensive probes (e.g. adjoint dot-tests)
 ============ ==============================================
 
-The same wrong input is caught at ``standard`` but silently accepted at
-``none``.
+Three wrong inputs for the real space :math:`\mathbb R^3`: a wrong shape, a
+complex array, and a plain Python list.
 
 .. code:: python
 
     X_checked = sc.DenseVectorSpace((3,), ctx, check_level="standard")
-    X_silent  = sc.DenseVectorSpace((3,), ctx, check_level="none")
-    
-    wrong = np.zeros(4)   # 4 entries for a 3-dimensional space
-    
+    X_silent = sc.DenseVectorSpace((3,), ctx, check_level="none")
+    wrong = {
+        "shape (4,)": np.zeros(4),
+        "complex": np.array([1 + 1j, 0, 0]),
+        "list": [0.0, 0.0, 0.0],
+    }
+    for name, bad in wrong.items():
+        try:
+            X_checked.check_member(bad)
+        except sc.SpaceValidationError as exc:
+            print(f"standard rejects {name}: {exc}")
+        else:
+            raise AssertionError(f"standard accepted {name}")
+        X_silent.check_member(bad)             # no exception at "none"
+
     try:
-        X_checked.check_member(wrong)
-    except sc.SpaceValidationError as exc:
-        print("standard  ->", exc)
-    
-    X_silent.check_member(wrong)
-    print("none      -> accepted silently (no exception raised)")
-
-
-.. parsed-literal::
-
-    standard  -> Expected shape (3,), got (4,)
-    none      -> accepted silently (no exception raised)
-
-
-.. code:: python
-
-    fig, ax = plt.subplots(figsize=(8.6, 2.4)); ax.axis("off")
-    ax.set_xlim(0, 4); ax.set_ylim(0, 1)
-    levels = [("none", "trust caller", PINK),
-              ("cheap", "shape / dtype", AMBER),
-              ("standard", "everyday safety", GREEN),
-              ("strict", "+ deep probes", INDIGO)]
-    for i, (name, sub, color) in enumerate(levels):
-        ax.add_patch(FancyBboxPatch((i + 0.08, 0.2), 0.84, 0.6,
-                     boxstyle="round,pad=0.02,rounding_size=0.08",
-                     lw=2, edgecolor=color, facecolor=color + "18"))
-        ax.text(i + 0.5, 0.58, name, ha="center", fontsize=12, fontweight="bold", color=color)
-        ax.text(i + 0.5, 0.35, sub, ha="center", fontsize=9, color=SLATE)
-        if i < 3:
-            ax.annotate("", xy=(i + 1.06, 0.5), xytext=(i + 0.92, 0.5),
-                        arrowprops=dict(arrowstyle="-|>", color=SLATE, lw=1.6))
-    ax.set_title("check_level: more validation  →", loc="left")
-    plt.show()
-
-
-
-.. image:: 01_backend_and_context_files/01_backend_and_context_15_0.png
-
-
-Use ``none`` in tight production loops you have already validated, and
-``standard``/``strict`` while developing. (Older code used
-``enable_checks=True/False``; that spelling was removed in 0.5.0a, so use
-``check_level``.)
-
-5 · Switching backends with ``.convert(...)``
----------------------------------------------
-
-Because a context is immutable, you do not mutate a backend — you
-rebuild an object on a new context. Every SpaceCore object (space,
-operator, functional) supports ``.convert(...)``, which accepts a
-``Context``, a backend name, or a ``BackendFamily``.
-
-.. code:: python
-
-    X_np = sc.DenseVectorSpace((3,), ctx)            # numpy
-    print("original :", X_np.ops.family)
-    
-    if HAVE_JAX:
-        X_to_jax = X_np.convert("jax")               # rebuilt on JAX
-        print("converted:", X_to_jax.ops.family, "(new object:", X_to_jax is not X_np, ")")
-        print("same ctx returns self:", X_np.convert(ctx) is X_np)
+        X_checked.scale(1j, x)
+    except sc.SpaceValidationError:
+        pass
     else:
-        print("JAX not available; convert('jax') would rebuild this space on JAX.")
+        raise AssertionError("a real space accepted a complex multiplier")
+    assert X_checked.ctx == X_silent.ctx
 
+Both spaces share one context and differ only in policy. At ``standard``
+every wrong input raises ``SpaceValidationError``, including scaling by
+``1j``, which would leave a space over the reals. At ``none`` the same
+inputs pass; ``none`` skips optional checks, not constructor invariants or
+backend errors.
 
-.. parsed-literal::
+4 · Write an operator: cores, not public methods
+------------------------------------------------
 
-    original : numpy
-    converted: jax (new object: True )
-    same ctx returns self: True
+A ``LinOp`` subclass implements two check-free cores, ``_apply_core`` and
+``_rapply_core``. The inherited public ``apply`` and ``rapply`` check the
+input and output against the domain and codomain, then call the cores. For
+a symmetric matrix M with the Euclidean inner product the adjoint is M
+itself:
 
+.. math::
 
-Recap
------
+   \langle Mx,y\rangle=\langle x,M^\top y\rangle=\langle x,My\rangle.
 
--  A **``Context``** = backend ops + default dtype. It is immutable and
-   owns no data; the checking policy belongs to each object built on it.
--  Writing code against **``ctx.ops``** (not ``numpy``) makes it
-   backend-portable — we ran one routine on NumPy and JAX with identical
-   results.
--  **``check_level``** (``none`` → ``strict``) trades speed for safety;
-   ``standard`` is the default.
--  **``.convert(...)``** rebuilds any SpaceCore object on another
-   backend.
+The class below stores M and lists its constructor fields; ``_fields`` is
+what lets ``convert`` rebuild it on another backend in section 6.
+
+.. code:: python
+
+    class SymmetricMatVec(sc.LinOp):
+        """x -> M x for a real symmetric matrix M."""
+
+        _fields = ("M", "space:domain", "ctx")
+        _dynamic = ("M",)
+
+        def __init__(self, M, space, ctx=None, check_level=None):
+            super().__init__(space, space, ctx, check_level=check_level)
+            self.M = self.ctx.asarray(M)
+
+        def _apply_core(self, x):
+            return self.ops.matmul(self.M, x)
+
+        def _rapply_core(self, y):
+            return self.ops.matmul(self.M, y)     # symmetric: adjoint is M
+
+    n = 6
+    rng = np.random.default_rng(0)
+    G = rng.standard_normal((n, n))
+    M = (G + G.T) / 2
+    V = sc.DenseVectorSpace((n,), ctx)
+    A = SymmetricMatVec(M, V)
+
+    u = ctx.asarray(rng.standard_normal(n))
+    v = ctx.asarray(rng.standard_normal(n))
+    np.testing.assert_allclose(V.inner(A.apply(u), v), V.inner(u, A.H.apply(v)))
+    np.testing.assert_allclose(A.apply(u), sc.DenseLinOp(M, V, V, ctx).apply(u))
+    try:
+        A.apply(np.zeros(n + 1))
+    except sc.SpaceValidationError:
+        pass
+    else:
+        raise AssertionError("apply accepted a vector of the wrong length")
+
+The adjoint identity holds, and the result matches SpaceCore's own
+``DenseLinOp``. The wrong-length input is rejected by the inherited
+``apply``; ``_apply_core`` contains no check.
+
+5 · Power iteration, written once against the space
+---------------------------------------------------
+
+Power iteration for a self-adjoint T repeats
+
+.. math::
+
+   x_{k+1}=\frac{Tx_k}{\|Tx_k\|},\qquad
+   \lambda_k=\langle x_k,Tx_k\rangle,\qquad
+   r_k=Tx_k-\lambda_k x_k.
+
+It converges to the eigenvalue of largest *magnitude*. For self-adjoint T
+and unit :math:`x_k`, some eigenvalue lies within :math:`\|r_k\|` of
+:math:`\lambda_k`, so the residual norm is the stopping test.
+
+.. code:: python
+
+    eigs = np.linalg.eigvalsh(M)
+    print("eigenvalues of M:", eigs)
+    assert abs(eigs[0]) > abs(eigs[-1])
+
+Here the most negative eigenvalue has the largest magnitude, so iterating
+with A would find :math:`\lambda_{\min}`. Shift by
+:math:`c\ge\max_i|\lambda_i|`: every eigenvalue of :math:`A+cI` is
+nonnegative, the largest one is :math:`\lambda_{\max}+c`, and the shift is
+undone afterwards.
+
+.. code:: python
+
+    def largest_eigenvalue(T, x0, tol, max_iter=2000):
+        """Power iteration using only T.apply and T.domain's operations."""
+        X = T.domain
+        x = X.scale(1.0 / X.norm(x0), x0)
+        for k in range(max_iter):
+            Tx = T.apply(x)
+            lam = X.inner(x, Tx)
+            residual = X.norm(X.axpy(-lam, x, Tx))
+            if residual <= tol * abs(lam):
+                return float(lam), k
+            x = X.scale(1.0 / X.norm(Tx), Tx)
+        raise RuntimeError("power iteration did not converge")
+
+    c = float(np.max(np.abs(eigs)))
+    B = A + c * sc.IdentityLinOp(V)           # SumLinOp, built by the algebra
+    np.testing.assert_allclose(V.inner(B.apply(u), v), V.inner(u, B.H.apply(v)))
+
+    x0 = ctx.asarray(rng.standard_normal(n))
+    lam_B, iters = largest_eigenvalue(B, x0, tol=1e-8)
+    lam_np = lam_B - c
+    np.testing.assert_allclose(lam_np, eigs[-1], rtol=1e-10)
+    print(f"numpy: lambda_max = {lam_np:.12f} after {iters} iterations")
+
+``largest_eigenvalue`` never names ``numpy``: it uses ``T.apply`` and the
+domain's ``scale``, ``inner``, ``norm`` and ``axpy``. The shifted operator
+``B`` comes from operator algebra and still satisfies the adjoint
+identity. The result matches ``np.linalg.eigvalsh`` to ten digits.
+
+6 · Move the operator with ``.convert(...)``
+--------------------------------------------
+
+``convert`` accepts a ``Context``, a backend name or a ``BackendFamily``.
+It rebuilds an object from its fields on the new context; arrays such as
+``M`` are moved with the new context's ``asarray``. A JAX context is used
+here in ``float32`` (JAX's default; 64-bit mode is not enabled), so the
+tolerances are those of single precision. Without JAX installed, the block
+falls back to a NumPy ``float32`` context and runs the same code.
+
+.. code:: python
+
+    HAVE_JAX = importlib.util.find_spec("jax") is not None
+    if HAVE_JAX:
+        import jax.numpy as jnp
+        ctx32 = sc.Context(sc.JaxOps(), dtype=jnp.float32)
+    else:
+        ctx32 = sc.Context(sc.NumpyOps(), dtype=np.float32)
+
+    B32 = B.convert(ctx32)
+    V32 = B32.domain
+    assert V.convert(ctx) is V                 # same context: no rebuild
+    assert V32.ops.family == ctx32.ops.family and V32.dtype == ctx32.dtype
+
+    u32 = ctx32.asarray(np.asarray(u))
+    np.testing.assert_allclose(np.asarray(B32.apply(u32)), B.apply(u), rtol=1e-5, atol=1e-5)
+
+    lam_B32, iters32 = largest_eigenvalue(B32, ctx32.asarray(np.asarray(x0)), tol=1e-5)
+    np.testing.assert_allclose(lam_B32 - c, eigs[-1], rtol=1e-4)
+    print(f"{ctx32.ops.family}: lambda_max = {lam_B32 - c:.6f} after {iters32} iterations")
+
+    try:
+        B32.apply(u)                           # float64 NumPy input
+    except sc.SpaceValidationError as exc:
+        print("converted operator rejects the old array:", exc)
+    else:
+        raise AssertionError("float32 operator accepted a float64 array")
+
+``SymmetricMatVec`` inside the sum was rebuilt from its ``_fields`` with no
+conversion code of its own. The converted operator agrees with the original
+to single precision, and the unchanged ``largest_eigenvalue`` reproduces
+:math:`\lambda_{\max}` to four digits. A float64 NumPy array is not a member
+of the float32 space, so the converted operator rejects it at ``standard``.
+
+Check your understanding
+------------------------
+
+* Remove the shift (call ``largest_eigenvalue(A, x0, tol=1e-8)``). Which
+  eigenvalue does it return, and why?
+* Rebuild ``A`` with ``check_level="none"`` and pass ``np.zeros(n + 1)`` to
+  ``A.apply``. Which error appears now, and which layer raises it?
+* Tighten the float32 tolerance to ``1e-8``. Predict whether the loop still
+  stops, given float32 machine epsilon of about ``1.2e-7``.
+* Count iterations against the ratio
+  :math:`(\lambda_{n-1}+c)/(\lambda_n+c)` of the two largest eigenvalues of
+  ``B``; a smaller ratio means fewer iterations.
 
 **Next:** :doc:`2 · Linear algebra <02_linear_algebra>` — build
 spaces and operators and solve a linear system with conjugate gradients.

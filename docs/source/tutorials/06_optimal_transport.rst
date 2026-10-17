@@ -1,266 +1,297 @@
-6 · Optimal transport with a matrix-free operator
-=================================================
+6 · Optimal transport: build the dual from functionals
+======================================================
 
-Optimal transport asks how to move mass from a source distribution
-:math:`a` to a target :math:`b` at least cost. A **transport plan** is a
-nonnegative matrix :math:`P \in \mathbb{R}^{n\times m}` whose row sums
-are :math:`a` and column sums are :math:`b`:
+**Goal:** construct the entropic OT dual as a linear functional minus an
+exponential functional pulled back through an adjoint. Then maximise it
+with gradient ascent, using named potentials ``u`` and ``v``.
 
-.. math::  P\,\mathbf{1} = a, \qquad P^\top \mathbf{1} = b. 
+**Before you start:** read :doc:`03_functionals` and :doc:`04_tree_spaces`.
+Run the blocks in order in a fresh session; see :doc:`index` for setup.
 
-Those two constraints are a single **linear operator** acting on the
-plan,
+1 · Plans, marginals, and potentials live in spaces
+---------------------------------------------------
 
-.. math::  K : P \;\longmapsto\; (P\mathbf{1},\; P^\top\mathbf{1}), 
+A plan P sends mass from n source bins to m target bins: ``P[i, j]`` is
+the amount sent from i to j. Its row sums must equal the source marginal
+and its column sums must equal the target marginal. These vectors may
+have different sizes, so their product space is a ``TreeSpace``.
 
-and it would be wasteful to store it as an :math:`(n+m)\times nm`
-matrix. This is the perfect job for a **``MatrixFreeLinOp``**: we give
-SpaceCore the forward action and its adjoint as two small functions. We
-then solve entropic OT with the Sinkhorn algorithm, in which that
-operator’s **adjoint** is exactly the step that turns dual potentials
-into a transport plan.
-
-**You will learn to** express marginalisation as a matrix-free operator,
-verify its adjoint, and use it inside a real algorithm.
+Use the same named structure for the dual potentials and the prescribed
+marginals. The field ``u`` refers to the source block, and ``v`` to the
+target block. With Euclidean geometry we identify dual covectors with
+their Riesz representers in this product space.
 
 .. code:: python
 
+    from typing import NamedTuple
     import numpy as np
-    import matplotlib as mpl
-    import matplotlib.pyplot as plt
     import spacecore as sc
-    
-    # A clean, consistent palette + style for every figure in the tutorials.
-    BLUE, INDIGO, CYAN = "#2563eb", "#4f46e5", "#0891b2"
-    PINK, AMBER, GREEN = "#db2777", "#d97706", "#059669"
-    SLATE, GRID = "#334155", "#e5e9f0"
-    
-    mpl.rcParams.update({
-        "figure.figsize": (7.2, 4.2), "figure.dpi": 120, "savefig.dpi": 120,
-        "figure.facecolor": "white", "axes.facecolor": "white",
-        "axes.edgecolor": SLATE, "axes.linewidth": 1.0,
-        "axes.grid": True, "axes.axisbelow": True,
-        "grid.color": GRID, "grid.linewidth": 1.0,
-        "axes.spines.top": False, "axes.spines.right": False,
-        "axes.titlesize": 13, "axes.titleweight": "bold", "axes.titlecolor": SLATE,
-        "axes.labelcolor": SLATE, "axes.labelsize": 11,
-        "xtick.color": SLATE, "ytick.color": SLATE,
-        "xtick.labelsize": 10, "ytick.labelsize": 10, "font.size": 11,
-        "legend.frameon": False, "legend.fontsize": 10,
-        "lines.linewidth": 2.4, "lines.markersize": 6, "image.cmap": "magma",
-    })
-    mpl.rcParams["axes.prop_cycle"] = mpl.cycler(
-        color=[BLUE, PINK, GREEN, AMBER, INDIGO, CYAN])
-    
-    print("spacecore", sc.__version__, "| numpy", np.__version__)
 
-
-.. parsed-literal::
-
-    spacecore 0.4.0 | numpy 2.4.2
-
-
-.. code:: python
+    class UV(NamedTuple):
+        u: object
+        v: object
 
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
     ops = ctx.ops
+    n, m = 3, 4
+    U = sc.DenseVectorSpace((n,), ctx)
+    V = sc.DenseVectorSpace((m,), ctx)
+    dual_space = sc.TreeSpace.from_template(UV(0, 0), (U, V), ctx=ctx)
+    plan_space = sc.DenseCoordinateSpace((n, m), ctx)
 
-1 · A source, a target, and a cost
-----------------------------------
+    marginals = UV(ctx.asarray([0.2, 0.5, 0.3]),
+                   ctx.asarray([0.1, 0.2, 0.3, 0.4]))
+    z = dual_space.zeros()
+    dual_space.check_member(marginals)
+    dual_space.check_member(z)
+    assert isinstance(z, UV)
+    assert z.u.shape == (n,) and z.v.shape == (m,)
+    np.testing.assert_allclose(ops.sum(marginals.u), ops.sum(marginals.v))
+    assert np.all(marginals.u > 0) and np.all(marginals.v > 0)
 
-We place :math:`n` source bins and :math:`m` target bins on the line
-:math:`[0,1]`. The source is a single bump, the target is bimodal. The
-cost to move a unit of mass from :math:`x_i` to :math:`y_j` is the
-squared distance :math:`C_{ij} = (x_i - y_j)^2`.
+``z.u`` and ``z.v`` are the two potential vectors. ``marginals.u`` and
+``marginals.v`` are the prescribed masses. Both are members of
+``dual_space``; they have different mathematical roles, not different
+storage layouts. The space's inner product pairs corresponding blocks
+and adds their dot products.
+
+2 · The marginal operator and its adjoint
+-----------------------------------------
+
+Let :math:`A:P\mapsto(P\mathbf1,P^\top\mathbf1)`. It maps the plan
+space into the dual-variable space. Its adjoint goes the other way:
+
+.. math::
+
+   A^\#(u,v)_{ij}=u_i+v_j.
+
+To derive this, expand the pairing:
+
+.. math::
+
+   \langle AP,(u,v)\rangle
+   =\sum_i u_i\sum_jP_{ij}+\sum_jv_j\sum_iP_{ij}
+   =\sum_{ij}P_{ij}(u_i+v_j).
+
+Thus the adjoint of summation is broadcasting. In SpaceCore, ``A.H``
+is :math:`A^\#`.
 
 .. code:: python
 
-    n, m = 16, 16
-    xs = np.linspace(0, 1, n)
-    ys = np.linspace(0, 1, m)
-    
-    def normalize(v): return v / v.sum()
-    a = normalize(np.exp(-((xs - 0.30) / 0.12) ** 2))                       # source: one bump
-    b = normalize(np.exp(-((ys - 0.30) / 0.10) ** 2)
-                  + 0.8 * np.exp(-((ys - 0.75) / 0.08) ** 2))               # target: two bumps
-    Cmat = (xs[:, None] - ys[None, :]) ** 2                                 # cost matrix
-    
-    fig, axes = plt.subplots(1, 2, figsize=(10.4, 3.6))
-    axes[0].bar(xs, a, width=0.045, color=BLUE, label="source $a$")
-    axes[0].bar(ys, -b, width=0.045, color=PINK, label="target $b$")
-    axes[0].axhline(0, color=SLATE, lw=1); axes[0].set_title("Source and target distributions")
-    axes[0].set_xlabel("position"); axes[0].legend()
-    im = axes[1].imshow(Cmat, cmap="magma", origin="lower"); axes[1].grid(False)
-    axes[1].set_title("Cost  $C_{ij}=(x_i-y_j)^2$"); axes[1].set_xlabel("target $j$"); axes[1].set_ylabel("source $i$")
-    fig.colorbar(im, ax=axes[1], fraction=0.046, pad=0.04); plt.tight_layout(); plt.show()
+    def marginal_sums(P):
+        return UV(ops.sum(P, axis=1), ops.sum(P, axis=0))
 
+    def potential_sums(z):
+        return z.u[:, None] + z.v[None, :]
 
+    A = sc.MatrixFreeLinOp(
+        marginal_sums, potential_sums, plan_space, dual_space, ctx,
+        euclidean_adjoint=False,
+    )
 
-.. image:: 06_optimal_transport_files/06_optimal_transport_4_0.png
-
-
-2 · Marginalisation as a ``MatrixFreeLinOp``
---------------------------------------------
-
-The plan lives in the matrix space :math:`\mathbb{R}^{n\times m}`; the
-marginals live in :math:`\mathbb{R}^{n+m}`. The forward map stacks the
-row sums and column sums. Its **adjoint** is the “broadcast” map that
-takes a vector :math:`(\phi,\psi)` and spreads it back over the matrix
-as :math:`\phi_i + \psi_j` — the transpose of summation is tiling.
-
-.. code:: python
-
-    P_space = sc.DenseCoordinateSpace((n, m), ctx)      # transport plans
-    M_space = sc.DenseVectorSpace((n + m,), ctx)        # stacked marginals [row; col]
-    
-    def marginals(P):                                   # forward:  P → (P1, Pᵀ1)
-        return ops.concatenate([ops.sum(P, axis=1), ops.sum(P, axis=0)])
-    
-    def broadcast(g):                                   # adjoint:  (φ, ψ) → φ_i + ψ_j
-        return g[:n][:, None] + g[n:][None, :]
-    
-    K = sc.MatrixFreeLinOp(marginals, broadcast, P_space, M_space, ctx)
-    
-    # Verify the adjoint identity  <K P, g> = <P, K* g>  (no matrix ever formed)
     rng = np.random.default_rng(0)
     P_test = ctx.asarray(rng.standard_normal((n, m)))
-    g_test = ctx.asarray(rng.standard_normal(n + m))
-    lhs = float(M_space.inner(K.apply(P_test), g_test))
-    rhs = float(P_space.inner(P_test, K.rapply(g_test)))
-    print(f"<K P, g> = {lhs:.10f}")
-    print(f"<P, K*g> = {rhs:.10f}")
-    print("adjoint identity holds:", np.isclose(lhs, rhs))
+    direction = UV(ctx.asarray(rng.standard_normal(n)),
+                   ctx.asarray(rng.standard_normal(m)))
+    np.testing.assert_allclose(
+        dual_space.inner(A.apply(P_test), direction),
+        plan_space.inner(P_test, A.H.apply(direction)),
+        atol=1e-12,
+    )
 
+``euclidean_adjoint=False`` explicitly says the supplied callable already
+is the adjoint for the declared geometries. Here both geometries are
+Euclidean. We test the identity before using this pair in optimisation.
+No matrix representing A is stored.
 
-.. parsed-literal::
+3 · Derive the linear-minus-exponential dual
+--------------------------------------------
 
-    <K P, g> = -1.8810878180
-    <P, K*g> = -1.8810878180
-    adjoint identity holds: True
+Choose a cost matrix C and a positive entropy parameter epsilon. The
+primal problem is
 
+.. math::
 
-3 · Sinkhorn, powered by the adjoint
-------------------------------------
+   \min_{P\geq0,\ AP=r}
+   \sum_{ij}C_{ij}P_{ij}
+   +\varepsilon\sum_{ij}P_{ij}(\log P_{ij}-1),
 
-Entropic OT solves
-:math:`\min_P \langle C, P\rangle + \varepsilon\sum_{ij} P_{ij}\log P_{ij}`
-subject to the marginals. Its optimal plan has the form
-:math:`P_{ij} = \exp\big((\phi_i + \psi_j - C_{ij})/\varepsilon\big)` —
-and :math:`\phi_i+\psi_j` is precisely ``K.rapply([φ, ψ])``. Sinkhorn
-alternately rescales rows and columns to hit :math:`a` and :math:`b`. We
-track the marginal error with ``K.apply``. Nutz, *Introduction to Entropic
-Optimal Transport*, Algorithm 6.1, gives the potential updates; in finite
-coordinates absorb the positive marginal masses into the scaling vectors
-and use cost ``C / eps`` to obtain ``u = a / (kernel @ v)`` and its column analogue.
+where r denotes ``marginals``. The entropy term smooths the transport
+plan; this is not the unregularised transport linear program.
 
-.. code:: python
+Use the Lagrangian with the sign convention
+:math:`L(P,z)=\text{primal objective}+\langle r-AP,z\rangle`.
+Differentiating each positive entry of P gives
 
-    eps = 0.01
-    kernel = np.exp(-Cmat / eps)
-    u, v = np.ones(n), np.ones(m)
-    errors = []
-    for it in range(200):
-        u = a / np.maximum(kernel @ v, 1e-300)
-        v = b / np.maximum(kernel.T @ u, 1e-300)
-        P = u[:, None] * kernel * v[None, :]
-        err = float(M_space.norm(K.apply(ctx.asarray(P)) - ctx.asarray(np.concatenate([a, b]))))
-        errors.append(err)
-    
-    print("final marginal error :", errors[-1])
-    print("transport cost <C,P>  :", float(np.sum(Cmat * P)))
-    
-    # the dual-potential form really does reproduce the plan, via the adjoint
-    phi, psi = eps * np.log(u), eps * np.log(v)
-    P_dual = np.exp((np.asarray(K.rapply(ctx.asarray(np.concatenate([phi, psi])))) - Cmat) / eps)
-    print("plan == exp((K* potentials − C)/ε):", np.allclose(P, P_dual))
+.. math::
 
+   C_{ij}+\varepsilon\log P_{ij}-(A^\#z)_{ij}=0,
+   \qquad P(z)=\exp((A^\#z-C)/\varepsilon).
 
-.. parsed-literal::
+Substitution eliminates P and leaves a concave dual objective to
+**maximise**:
 
-    final marginal error : 1.1943853798950167e-16
-    transport cost <C,P>  : 0.05880594096841237
-    plan == exp((K* potentials − C)/ε): True
+.. math::
 
+   D(z)=\underbrace{\langle r,z\rangle}_{\ell(z)}
+       -\underbrace{\varepsilon\sum_{ij}
+          \exp(((A^\#z)_{ij}-C_{ij})/\varepsilon)}_{E(A^\#z)}.
+
+Build the exponential functional on the matrix space first:
+:math:`E(X)=\varepsilon\sum_{ij}\exp((X_{ij}-C_{ij})/\varepsilon)`.
+Then pull it back along :math:`X=A^\#z`. A pullback simply means
+composition: evaluate the operator, then the functional. When epsilon
+is one this is precisely ``sum(exp(X - C))``.
 
 .. code:: python
 
-    fig, ax = plt.subplots(figsize=(6.0, 3.4))
-    ax.semilogy(errors, color=BLUE)
-    ax.set_title("Sinkhorn: marginal error  $\\|K P - (a,b)\\|$")
-    ax.set_xlabel("iteration"); ax.set_ylabel("error (log)"); plt.show()
+    xs = np.linspace(0, 1, n)
+    ys = np.linspace(0, 1, m)
+    C = ctx.asarray((xs[:, None] - ys[None, :]) ** 2)
+    eps = 0.15
 
+    class SumExpCost(sc.Functional):
+        """E(X) = eps * sum(exp((X - C) / eps)), on a real matrix space."""
 
+        _fields = ("C", "eps", "dom", "ctx")
+        _dynamic = ("C",)
 
-.. image:: 06_optimal_transport_files/06_optimal_transport_9_0.png
+        def __init__(self, C, eps, dom, ctx=None, check_level=None):
+            super().__init__(dom, ctx, check_level=check_level)
+            if not np.isfinite(eps) or eps <= 0:
+                raise ValueError("eps must be finite and positive")
+            self.C = self.ctx.asarray(C)
+            self.domain.check_member(self.C)
+            self.eps = eps
 
+        def _value_core(self, X):
+            return self.eps * self.ops.sum(self.ops.exp((X - self.C) / self.eps))
 
-4 · The transport plan
-----------------------
+        def _grad_core(self, X):
+            coordinate_gradient = self.ops.exp((X - self.C) / self.eps)
+            return self.domain.riesz_inverse(coordinate_gradient)
 
-The coupling sits between the two marginals. We display it with the
-**source on the horizontal axis and the target on the vertical axis**,
-so the source marginal :math:`a` sits on top and the target marginal
-:math:`b` runs up the right — each aligned with the axis it belongs to.
-Mass flows from the single source bump to *both* target bumps.
+    linear = sc.InnerProductFunctional(marginals, dual_space)
+    exponential = SumExpCost(C, eps, plan_space)
+    pulled_back = exponential @ A.H
+    dual = linear - pulled_back
+
+``linear`` and ``pulled_back`` now have the same domain, so subtracting
+them produces a functional on ``dual_space``. Only ``SumExpCost`` needs
+custom code. Composition, subtraction, and their gradient rules come
+from SpaceCore's functional algebra.
+
+4 · Read the gradient as a marginal mismatch
+--------------------------------------------
+
+In the Euclidean plan geometry, :math:`\nabla E(X)=\exp((X-C)/\varepsilon)`.
+The chain rule for the pullback applies the adjoint of :math:`A^\#`,
+which is A. Consequently,
+
+.. math::
+
+   \nabla D(z)=r-A\exp((A^\#z-C)/\varepsilon)=r-AP(z).
+
+The gradient has named fields too. ``grad.u`` is missing source mass;
+``grad.v`` is missing target mass. Increasing a potential where mass is
+missing raises the corresponding entries of the next plan.
 
 .. code:: python
 
-    from matplotlib.gridspec import GridSpec
-    fig = plt.figure(figsize=(6.4, 6.4))
-    gs = GridSpec(2, 2, width_ratios=[4, 1], height_ratios=[1, 4],
-                  wspace=0.05, hspace=0.05)
-    ax_top = fig.add_subplot(gs[0, 0]); ax_main = fig.add_subplot(gs[1, 0])
-    ax_right = fig.add_subplot(gs[1, 1])
-    
-    # transpose the plan so the x-axis is the source and the y-axis is the target
-    ax_main.imshow(P.T, cmap="magma", origin="lower", aspect="auto"); ax_main.grid(False)
-    ax_main.set_xlabel("source $i$"); ax_main.set_ylabel("target $j$")
-    ax_top.bar(np.arange(n), a, color=BLUE, width=0.9); ax_top.axis("off")       # source marginal
-    ax_top.set_title("Transport plan with its marginals")
-    ax_right.barh(np.arange(m), b, color=PINK, height=0.9); ax_right.axis("off") # target marginal
-    plt.show()
+    def transport_plan(z):
+        return ops.exp((A.H.apply(z) - C) / eps)
 
+    P = transport_plan(z)
+    expected = dual_space.add(marginals, dual_space.scale(-1.0, A.apply(P)))
+    grad = dual.grad(z)
+    assert isinstance(grad, UV)
+    np.testing.assert_allclose(grad.u, expected.u)
+    np.testing.assert_allclose(grad.v, expected.v)
+    np.testing.assert_allclose(
+        dual.value(z),
+        dual_space.inner(marginals, z) - eps * ops.sum(P),
+    )
 
+    h = 1e-6
+    slope = (dual.value(dual_space.axpy(h, direction, z))
+             - dual.value(dual_space.axpy(-h, direction, z))) / (2 * h)
+    np.testing.assert_allclose(slope, dual_space.inner(grad, direction),
+                               rtol=1e-6, atol=1e-8)
 
-.. image:: 06_optimal_transport_files/06_optimal_transport_11_0.png
+The first check tests the composed gradient against the marginal formula;
+the second checks the sign and scale of the derivative by finite differences.
+Unlike a row-normalised parameterisation, this full dual does not impose
+either marginal exactly until convergence. Positivity is automatic.
 
+5 · Maximise the dual with gradient ascent
+------------------------------------------
 
-A second view makes the *movement* explicit: each ribbon connects a
-source bin to a target bin, with width proportional to the transported
-mass :math:`P_{ij}`.
+Because D is concave, take an ascent step ``z + step * dual.grad(z)``.
+Equivalently, this is gradient descent on ``-dual``. Exponential curvature
+has no global constant bound, so choose the step by backtracking: halve
+it until the objective increases by at least a small fraction of the
+linear prediction :math:`\text{step}\,\|\nabla D\|^2`.
 
 .. code:: python
 
-    fig, ax = plt.subplots(figsize=(8.4, 3.8))
-    Pn = P / P.max()
-    for i in range(n):
-        for j in range(m):
-            if Pn[i, j] > 0.02:
-                ax.plot([0, 1], [xs[i], ys[j]], color=INDIGO,
-                        alpha=float(min(Pn[i, j], 1.0)) * 0.7, lw=2.2 * Pn[i, j])
-    ax.scatter(np.zeros(n), xs, s=900 * a, color=BLUE, zorder=5, label="source")
-    ax.scatter(np.ones(m),  ys, s=900 * b, color=PINK, zorder=5, label="target")
-    ax.set_xlim(-0.15, 1.15); ax.set_xticks([0, 1]); ax.set_xticklabels(["source", "target"])
-    ax.set_ylabel("position"); ax.set_title("Where the mass goes"); ax.legend(loc="upper center")
-    plt.show()
+    z = dual_space.zeros()
+    values = []
+    for iteration in range(5000):
+        value, grad = dual.value_and_grad(z)
+        values.append(float(value))
+        error = max(float(ops.max(ops.abs(grad.u))),
+                    float(ops.max(ops.abs(grad.v))))
+        if error < 1e-8:
+            break
+        step = 1.0
+        slope = float(dual_space.inner(grad, grad))
+        for _ in range(40):
+            candidate = dual_space.axpy(step, grad, z)
+            # NumPy trial values may overflow; reject them and shorten the step.
+            with np.errstate(over="ignore"):
+                trial = float(dual.value(candidate))
+            if np.isfinite(trial) and trial >= float(value) + 1e-4 * step * slope:
+                break
+            step *= 0.5
+        else:
+            raise RuntimeError("Backtracking failed to find an ascent step")
+        z = candidate
+    else:
+        raise RuntimeError("Marginal tolerance not reached")
 
+    P = transport_plan(z)
+    actual = A.apply(P)
+    assert np.all(P > 0)
+    np.testing.assert_allclose(actual.u, marginals.u, atol=1e-8, rtol=0)
+    np.testing.assert_allclose(actual.v, marginals.v, atol=1e-8, rtol=0)
+    assert np.min(np.diff(values)) >= -1e-12
+    print("gradient steps:", iteration)
+    print("source potential u:", z.u)
+    print("target potential v:", z.v)
+    print("maximum marginal error:", error)
 
+Both marginal errors should be below ``1e-8``, and the dual objective
+should be nondecreasing up to rounding. A small transport cost alone
+would not certify feasibility. This loop uses the composed functional's
+gradient; there are no alternating row and column scaling updates.
 
-.. image:: 06_optimal_transport_files/06_optimal_transport_13_0.png
+Potentials are not unique: adding a constant to u and subtracting it
+from v leaves their pairwise sums unchanged. Equal total marginal mass
+also leaves the linear term unchanged. Thus D and the recovered plan
+are unchanged. Compare plans and marginal errors, not raw potentials.
 
+Check your understanding
+------------------------
 
-Recap
------
+* Why do both terms live on ``dual_space``? The linear term starts there;
+  composition pulls the matrix-space exponential term back there.
+* Why does A appear in the gradient although ``A.H`` appears in the
+  objective? The chain rule applies the adjoint of the inner map.
+* Check the potential freedom by evaluating ``dual.value(UV(z.u + 2,
+  z.v - 2))``. It should equal ``dual.value(z)`` up to roundoff.
+* Decrease epsilon and restart from zero. Expect a more concentrated plan
+  and potentially more difficult step selection; retain the feasibility
+  and derivative checks.
 
--  The OT marginal constraint is a **linear operator** :math:`K`;
-   ``MatrixFreeLinOp(apply, rapply, …)`` captures it with two tiny
-   functions and no stored matrix.
--  ``rapply`` must be the **true adjoint** — here the broadcast/tiling
-   map — and we checked the identity
-   :math:`\langle KP, g\rangle = \langle P, K^\*g\rangle` numerically.
--  That same adjoint is the workhorse inside Sinkhorn: it assembles the
-   plan :math:`P=\exp((K^\*[\phi,\psi]-C)/\varepsilon)` from the dual
-   potentials.
-
-**Next:** :doc:`7 · Manifold descent <07_manifold_descent>` —
-optimisation with a genuinely non-Euclidean geometry.
+**Next:** :doc:`07_manifold_descent` constructs gradient steps respecting
+another kind of constraint: membership in a curved manifold.

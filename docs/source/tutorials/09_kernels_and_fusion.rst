@@ -1,188 +1,221 @@
 9 · Lazy operator algebra and fusion
 ====================================
 
-The first eight tutorials are about *expressing* mathematics. This one
-is about making operator expressions run fast **without changing how you
-write them**: lazy operator algebra and fusion (design record ADR-021,
-``docs/dev/adr/021_lazy_operator_algebra_and_simplification.md`` in the repository).
-Cheap rewrites happen automatically at construction; materializing
-fusions, such as collapsing ``A @ B @ C`` of dense operators into one
-matrix, are an **explicit** ``fuse()`` call. Neither touches the
-matrix-free contract: a matrix-free operator is never silently turned
-into a dense one.
+**Goal:** build a smoothing operator from a dense blur and a custom
+difference operator with SpaceCore's lazy algebra, collapse its dense part
+with ``fuse()``, and run power iteration on both forms.
+
+**Before you start:** read :doc:`02_linear_algebra` and the custom
+functional in :doc:`03_functionals`. Run the blocks in order in a fresh
+session; see :doc:`index` for setup.
+
+1 · A custom operator from two cores
+------------------------------------
+
+The forward difference :math:`D:\mathbb R^n\to\mathbb R^{n-1}` is
+
+.. math::
+
+   (Dx)_i = x_{i+1}-x_i,\qquad
+   (D^\# y)_j = y_{j-1}-y_j\quad(y_0=y_n=0).
+
+The adjoint follows from summation by parts:
+:math:`\sum_i y_i(x_{i+1}-x_i)=\sum_j x_j(y_{j-1}-y_j)`.
 
 .. code:: python
 
+    import time
     import numpy as np
     import spacecore as sc
-    
+
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
-    rng = np.random.default_rng(0)
-
-.. code:: python
-
-    n = 6
+    n = 120
     X = sc.DenseCoordinateSpace((n,), ctx)
+    Y = sc.DenseCoordinateSpace((n - 1,), ctx)
 
-1 · Lazy operator algebra and ``fuse()``
-----------------------------------------
+    class ForwardDifference(sc.LinOp):
+        """(D x)_i = x[i+1] - x[i]; no matrix is stored."""
 
-Operator expressions are **lazy**: ``A @ B``, ``A + B``, ``c * A``,
-``A.H`` build a small tree, evaluating nothing until you apply it.
-Simplification has two tiers.
+        _fields = ("dom", "cod", "ctx")
 
-**Tier 1 — automatic, at construction.** Cheap, local rewrites happen
-the moment you build the expression: an identity factor disappears, a
-zero map collapses the product, nested scalars fold. These cost nothing
-and are always applied.
+        def __init__(self, dom, cod, ctx=None, check_level=None):
+            super().__init__(dom, cod, ctx, check_level=check_level)
 
-.. code:: python
+        # Indexing the last axis makes each core work on one vector or a batch.
+        def _apply_core(self, x):
+            return x[..., 1:] - x[..., :-1]
 
-    M1 = sc.DenseLinOp(ctx.asarray(rng.standard_normal((n, n))), X, X, ctx)
-    I  = sc.IdentityLinOp(X, ctx)
-    
-    print("M1 @ I  is  M1 :", (M1 @ I) is M1)          # identity elided at construction
-    print("type of 2*(3*M1):", type(2.0 * (3.0 * M1)).__name__,
-          "-> one ScaledLinOp with scalar", (2.0 * (3.0 * M1)).scalar)
+        def _rapply_core(self, y):
+            return self.ops.concatenate(
+                [-y[..., :1], y[..., :-1] - y[..., 1:], y[..., -1:]], axis=-1)
 
+        _vapply_core, _rvapply_core = _apply_core, _rapply_core
 
-.. parsed-literal::
+    D = ForwardDifference(X, Y, ctx)
 
-    M1 @ I  is  M1 : True
-    type of 2*(3*M1): ScaledLinOp -> one ScaledLinOp with scalar 6.0
+    rng = np.random.default_rng(0)
+    x = ctx.asarray(rng.standard_normal(n))
+    y = ctx.asarray(rng.standard_normal(n - 1))
+    D_dense = np.diff(np.eye(n), axis=0)          # (n-1) x n reference matrix
+    np.testing.assert_allclose(D.apply(x), D_dense @ x, atol=1e-12)
+    np.testing.assert_allclose(Y.inner(D.apply(x), y), X.inner(x, D.H.apply(y)),
+                               atol=1e-12)
+    np.testing.assert_allclose(D.to_dense(), D_dense, atol=1e-12)
 
+The class supplies only the check-free cores. The public ``apply`` and
+``rapply`` it inherits check membership and then call them; ``vapply`` and
+``rvapply`` do the same over a leading batch axis, which is why the cores
+index from the end. ``_fields``
+lists the constructor arguments, which gives the operator equality,
+pytree flattening and ``convert``. ``to_dense`` probes ``D`` with basis
+vectors; it exists for tests like this one, not for solvers.
 
-**Tier 2 — explicit, with ``fuse()``.** *Multiplying operators together*
-is a materializing rewrite, so it is something you ask for. ``fuse()``
-collapses each maximal run of dense operators into a single
-``DenseLinOp`` holding the matrix product — the whole chain becomes one
-matrix.
+2 · Build the operator lazily
+-----------------------------
 
-Fusing reassociates the arithmetic (a matrix product, then apply,
-differs at the last bit from applying in sequence), so the result is
-equal **up to rounding**, not bit-for-bit. It is adjoint-consistent on
-any geometry — including non-Euclidean — because the shared middle-space
-Riesz maps cancel: ``R_X^-1 B^H R_Y R_Y^-1 A^H R_Z = R_X^-1 (A B)^H R_Z``.
-Trefethen & Bau, *Numerical Linear Algebra*, Eq. (2.4), gives the conjugate-transpose
-product identity; :doc:`../design/geometry` supplies the Gram factors.
+Let K be a Gaussian blur matrix, :math:`K_{ij}=e^{-(i-j)^2/(2s^2)}`. It is
+symmetric positive semidefinite. Combine it with D:
 
-.. code:: python
+.. math::
 
-    M2 = sc.DenseLinOp(ctx.asarray(rng.standard_normal((n, n))), X, X, ctx)
-    M3 = sc.DenseLinOp(ctx.asarray(rng.standard_normal((n, n))), X, X, ctx)
-    
-    expr  = M1 @ M2 @ M3                 # a lazy composition tree
-    fused = expr.fuse()                  # one DenseLinOp: M1 @ M2 @ M3 as a single matrix
-    
-    xv = ctx.asarray(rng.standard_normal(n))
-    print("before fuse :", type(expr).__name__)
-    print("after  fuse :", type(fused).__name__)
-    print("same action :", np.allclose(np.asarray(fused.apply(xv)), np.asarray(expr.apply(xv))))
+   T = K^2 + \tfrac12 K + \alpha\,D^\# D .
 
-
-.. parsed-literal::
-
-    before fuse : ComposedLinOp
-    after  fuse : DenseLinOp
-    same action : True
-
-
-The matrix-free rail
-~~~~~~~~~~~~~~~~~~~~
-
-``fuse()`` only multiplies operators that already hold a cheap matrix. A
-**matrix-free** operator — defined by callables, with no stored matrix —
-is left untouched: it stays a lazy leaf and simply breaks the fusible
-run, so its matrix-free contract is preserved.
-
-If you genuinely want to densify a matrix-free operand — accepting the
-cost and giving up the matrix-free property — that is an **explicit
-opt-in**: ``fuse(materialize=True)``.
+Each term is symmetric positive semidefinite, so the largest eigenvalue of T
+is real and nonnegative. :math:`D^\#D` is the discrete Neumann Laplacian.
 
 .. code:: python
 
-    Mf = sc.MatrixFreeLinOp(lambda v: 2.0 * v, lambda v: 2.0 * v, X, X, ctx)  # matrix-free
-    
-    print("(M1 @ Mf).fuse()                 ->", type((M1 @ Mf).fuse()).__name__,
-          " (matrix-free kept lazy)")
-    print("(M1 @ Mf).fuse(materialize=True) ->", type((M1 @ Mf).fuse(materialize=True)).__name__,
-          " (explicitly densified)")
+    s, alpha = 4.0, 0.3
+    idx = np.arange(n)
+    K_mat = np.exp(-((idx[:, None] - idx[None, :]) ** 2) / (2 * s**2))
+    K = sc.DenseLinOp(ctx.asarray(K_mat), X, X, ctx)
 
+    T = K @ K + 0.5 * K + alpha * (D.H @ D)
+    T_dense = K_mat @ K_mat + 0.5 * K_mat + alpha * D_dense.T @ D_dense
 
-.. parsed-literal::
+    print(T)
+    assert isinstance(T, sc.SumLinOp) and len(T.parts) == 3
+    square, half_K, laplacian = T.parts
+    assert isinstance(square, sc.ComposedLinOp)
+    assert isinstance(half_K, sc.ScaledLinOp) and half_K.scalar == 0.5 and half_K.op is K
+    assert isinstance(laplacian, sc.ScaledLinOp) and laplacian.scalar == alpha
+    assert isinstance(laplacian.op, sc.ComposedLinOp)
 
-    (M1 @ Mf).fuse()                 -> ComposedLinOp  (matrix-free kept lazy)
-    (M1 @ Mf).fuse(materialize=True) -> DenseLinOp  (explicitly densified)
+    np.testing.assert_allclose(T.apply(x), T_dense @ x, rtol=1e-12, atol=1e-12)
+    x2 = ctx.asarray(rng.standard_normal(n))
+    np.testing.assert_allclose(X.inner(T.apply(x), x2), X.inner(x, T.H.apply(x2)),
+                               rtol=1e-12)
 
+Building ``T`` computed nothing: it is a tree whose three summands are a
+composition, a scaled dense leaf and a scaled composition. Its ``apply``
+checks ``x`` once at the root and then calls the children's cores. The
+adjoint of the sum is the sum of the children's adjoints, so ``T.H`` needs
+no extra code.
 
-2 · The performance payoff
---------------------------
-
-Here is *why you reach for* ``fuse()`` — measured on this machine, on
-the NumPy backend.
+Some rewrites happen at construction because they are free:
 
 .. code:: python
 
-    import timeit
-    
-    def per_apply_us(fn, number=200, repeat=9):
-        """Average per-apply time in microseconds.
-    
-        Times ``number`` back-to-back calls in each of ``repeat`` batches and returns
-        the **mean** over all ``repeat x number`` timed calls (after a warm-up), so the
-        figure is averaged over many runs rather than read off a single measurement.
-        """
-        fn()                                    # warm up (allocator, caches, any JIT)
-        batches = timeit.repeat(fn, number=number, repeat=repeat)
-        return float(np.mean(batches)) / number * 1e6
-    
-    n_big, depth = 384, 16
-    Xb = sc.DenseCoordinateSpace((n_big,), ctx)
-    factors = [sc.DenseLinOp(ctx.asarray(rng.standard_normal((n_big, n_big))), Xb, Xb, ctx)
-               for _ in range(depth)]
-    chain = factors[0]
-    for f in factors[1:]:
-        chain = chain @ f                       # a lazy depth-16 composition
-    fused = chain.fuse()                        # one DenseLinOp: the product matrix
-    xb = ctx.asarray(rng.standard_normal(n_big))
-    
-    t_lazy  = per_apply_us(lambda: chain.apply(xb))
-    t_fused = per_apply_us(lambda: fused.apply(xb))
-    print(f"lazy chain (depth {depth}) : {t_lazy:7.1f} us / apply   ({depth} matvecs)")
-    print(f"fused (one matmul)      : {t_fused:7.1f} us / apply   (1 matvec)")
-    print(f"speedup per apply       : {t_lazy / t_fused:5.1f}x")
+    I = sc.IdentityLinOp(X, ctx)
+    assert (K @ I) is K and (I @ K) is K
+    folded = 2.0 * (3.0 * K)
+    assert isinstance(folded, sc.ScaledLinOp) and folded.scalar == 6.0 and folded.op is K
+    assert isinstance(0.0 * K, sc.ZeroLinOp)
+    assert len(((K + K) + K).parts) == 3
 
+An identity factor disappears, nested scalars multiply, a zero scalar gives
+the zero map, and nested sums flatten. None of these multiplies matrices.
 
-.. parsed-literal::
+3 · Fuse the dense part
+-----------------------
 
-    lazy chain (depth 16) :   218.9 us / apply   (16 matvecs)
-    fused (one matmul)      :    19.1 us / apply   (1 matvec)
-    speedup per apply       :  11.5x
+``fuse()`` is the explicit, materializing rewrite. It replaces every
+composition of two dense operators by one ``DenseLinOp`` holding the
+product, folds scalars into dense matrices, and adds dense summands:
 
+.. math::
 
-**Fusion amortizes a deep composition.** Applying the lazy chain walks
-every factor on *every* call — ``depth`` matrix–vector products.
-``fuse()`` precomputes the single product matrix once, so each later
-apply is **one** matvec. The wall-clock gain tracks that ``depth → 1``
-reduction once the operator is large enough for the matrix multiply —
-not the fixed per-call validation — to dominate.
+   \operatorname{fuse}(T) = \underbrace{(K^2+\tfrac12K)}_{\text{one matrix}}
+   + \alpha\,D^\# D .
 
-This is the classic *fuse once, apply many* win: in a solver that
-applies the same operator hundreds of times, you pay the product once
-and collect the speedup on every iteration. It holds on **any** backend
-— it is simply fewer operations per apply.
+The custom D holds no matrix, so the Laplacian term stays lazy.
 
-Takeaways
----------
+.. code:: python
 
--  **Fusion (ADR-021)** simplifies the *operator expression*. Cheap
-   identities fold automatically at construction; ``fuse()`` multiplies
-   dense operators into one matrix (equal up to rounding,
-   adjoint-consistent on any geometry). It never densifies a matrix-free
-   operand unless you pass ``materialize=True``.
--  **Performance:** fusion is a structural win on *any* backend — fewer
-   operations per apply, a multi-× speedup for a deep chain applied
-   repeatedly.
--  Under ``jax.jit`` or ``torch.compile`` the compiler fuses and batches
-   the work of a lazy expression on its own; ``fuse()`` remains the way
-   to precompute a product matrix once and reuse it across calls.
+    T_fused = T.fuse()
+    print(T_fused)
+    assert isinstance(T_fused, sc.SumLinOp) and len(T_fused.parts) == 2
+    dense_part, lazy_part = T_fused.parts
+    assert isinstance(dense_part, sc.DenseLinOp)
+    np.testing.assert_allclose(dense_part.to_dense(), K_mat @ K_mat + 0.5 * K_mat,
+                               rtol=1e-12, atol=1e-12)
+    assert lazy_part == laplacian
+
+    for v in (x, x2):
+        np.testing.assert_allclose(T_fused.apply(v), T.apply(v), rtol=1e-10, atol=1e-10)
+        np.testing.assert_allclose(T_fused.rapply(v), T.rapply(v), rtol=1e-10, atol=1e-10)
+    np.testing.assert_allclose(X.inner(T_fused.apply(x), x2),
+                               X.inner(x, T_fused.H.apply(x2)), rtol=1e-12)
+    np.testing.assert_allclose(T_fused.to_dense(), T_dense, rtol=1e-10, atol=1e-10)
+
+The fused operator agrees with the lazy one only up to rounding, because
+the matrix product reassociates the arithmetic. Its adjoint is still the
+metric adjoint: in the composition the Riesz maps of the middle space
+cancel, :math:`R_X^{-1}K^\dagger R_X R_X^{-1}K^\dagger R_X
+=R_X^{-1}(KK)^\dagger R_X`. ``lazy_part == laplacian`` compares by
+``_fields``, so the unfused term is the same operator.
+
+4 · Power iteration with both forms
+-----------------------------------
+
+Power iteration repeats :math:`v\leftarrow Tv/\|Tv\|` and reads the
+Rayleigh quotient :math:`\lambda=\langle v,Tv\rangle`. For a symmetric T
+it converges to the largest eigenvalue when the start has a component
+along its eigenvector.
+
+.. code:: python
+
+    def power_iteration(op, v0, iterations=300):
+        v = X.scale(1.0 / X.norm(v0), v0)
+        for _ in range(iterations):
+            w = op.apply(v)
+            v = X.scale(1.0 / X.norm(w), w)
+        return float(X.inner(v, op.apply(v))), v
+
+    v0 = ctx.asarray(rng.standard_normal(n))
+    start = time.perf_counter()
+    lam_lazy, v_lazy = power_iteration(T, v0)
+    t_lazy = time.perf_counter() - start
+    start = time.perf_counter()
+    lam_fused, v_fused = power_iteration(T_fused, v0)
+    t_fused = time.perf_counter() - start
+
+    lam_exact = np.linalg.eigvalsh(T_dense)[-1]
+    np.testing.assert_allclose(lam_lazy, lam_fused, rtol=1e-12)
+    np.testing.assert_allclose(lam_lazy, lam_exact, rtol=1e-8)
+    np.testing.assert_allclose(v_lazy, v_fused, atol=1e-8)
+    residual = T_dense @ v_lazy - lam_lazy * v_lazy
+    assert np.linalg.norm(residual) < 1e-4 * lam_exact
+    print(f"largest eigenvalue: {lam_lazy:.10f}  (eigvalsh {lam_exact:.10f})")
+    print(f"lazy  loop: {t_lazy * 1e3:6.1f} ms   fused loop: {t_fused * 1e3:6.1f} ms")
+
+Both loops return the same eigenvalue and eigenvector, and both match
+``eigvalsh``. Per apply, the lazy ``T`` does three dense matrix-vector
+products plus the difference cores; the fused ``T`` does one plus the
+same cores. The printed timings depend on the machine and are not
+checked. Fusing pays off only after enough applications to amortize the
+one matrix-matrix product it costs.
+
+Check your understanding
+------------------------
+
+* Why does ``T.fuse()`` keep two summands rather than one? ``D`` stores
+  no matrix, so its term is not densely fusible.
+* Rewrite ``T`` as ``0.5 * K + K @ K + alpha * (D.H @ D)``. Is the fused
+  structure the same? Check with the assertions of section 3.
+* Time ``T.fuse()`` itself. If it costs S seconds and the fused apply
+  saves d seconds, fusion pays off after about S/d applications.
+* Drop the two end terms from ``_rapply_core``, keeping ``y[..., :-1] - y[..., 1:]``.
+  Which assertion of section 1 fails first?
+
+This is the last tutorial; :doc:`index` lists the full sequence.

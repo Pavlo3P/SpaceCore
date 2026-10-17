@@ -51,6 +51,7 @@ cupy = [
 ]
 docs = [
   "sphinx>=8.0",
+  "matplotlib>=3.8",
   "pydata-sphinx-theme>=0.16",
   "sphinx-copybutton>=0.5",
   "sphinx-design>=0.6",

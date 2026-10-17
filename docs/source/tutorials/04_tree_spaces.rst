@@ -1,301 +1,274 @@
 4 · Tree spaces: structured elements and block operators
 ========================================================
 
-Not every unknown is a flat vector. A saddle-point system has a *primal*
-block and a *dual* block of different sizes; a PDE solve might carry a
-field plus a handful of scalar multipliers. A **``TreeSpace``** is the
-direct product of heterogeneous leaf spaces, organised as a Python tree
-(a tuple, list, dict, or ``NamedTuple``). Its elements are trees of
-arrays; its inner product is the **sum of the leaf inner products**; and
-**block operators** map one tree space to another.
+**Goal:** solve a coupled 2×2 block system whose unknown keeps its
+names and its block shapes. Build the block operator, write the energy
+it minimises as a functional, and solve by block Gauss–Seidel, updating
+``x.u`` and ``x.p`` by name.
 
-We will assemble a :math:`2\times 2` block SPD system
+**Before you start:** read :doc:`02_linear_algebra` and
+:doc:`03_functionals`. Run the blocks in order in a fresh session; see
+:doc:`index` for setup.
+
+1 · A space made of named blocks
+--------------------------------
+
+The unknown is a pair :math:`x=(u,p)` with :math:`u\in\mathbb R^3` and
+:math:`p\in\mathbb R^2`. Its space is the direct product
 
 .. math::
 
-    \begin{pmatrix} A & B^\top \\ B & D \end{pmatrix}
-      \begin{pmatrix} u \\ p \end{pmatrix} =
-      \begin{pmatrix} f \\ g \end{pmatrix}, 
+   T=\mathbb R^3\times\mathbb R^2,\qquad
+   \langle x,y\rangle_T=\langle u,u'\rangle+\langle p,p'\rangle .
 
-with :math:`u \in \mathbb{R}^2` and :math:`p \in \mathbb{R}^1` living in
-different leaves, and solve it with ``sc.cg`` directly over the tree
-space.
-
-**You will learn to** build a ``TreeSpace`` and ``TreeElement``, compose
-blocks with ``BlockMatrixLinOp``, and run a Krylov solver over
-structured unknowns.
-
-.. code:: python
-
-    import numpy as np
-    import matplotlib as mpl
-    import matplotlib.pyplot as plt
-    import spacecore as sc
-    
-    # A clean, consistent palette + style for every figure in the tutorials.
-    BLUE, INDIGO, CYAN = "#2563eb", "#4f46e5", "#0891b2"
-    PINK, AMBER, GREEN = "#db2777", "#d97706", "#059669"
-    SLATE, GRID = "#334155", "#e5e9f0"
-    
-    mpl.rcParams.update({
-        "figure.figsize": (7.2, 4.2), "figure.dpi": 120, "savefig.dpi": 120,
-        "figure.facecolor": "white", "axes.facecolor": "white",
-        "axes.edgecolor": SLATE, "axes.linewidth": 1.0,
-        "axes.grid": True, "axes.axisbelow": True,
-        "grid.color": GRID, "grid.linewidth": 1.0,
-        "axes.spines.top": False, "axes.spines.right": False,
-        "axes.titlesize": 13, "axes.titleweight": "bold", "axes.titlecolor": SLATE,
-        "axes.labelcolor": SLATE, "axes.labelsize": 11,
-        "xtick.color": SLATE, "ytick.color": SLATE,
-        "xtick.labelsize": 10, "ytick.labelsize": 10, "font.size": 11,
-        "legend.frameon": False, "legend.fontsize": 10,
-        "lines.linewidth": 2.4, "lines.markersize": 6, "image.cmap": "magma",
-    })
-    mpl.rcParams["axes.prop_cycle"] = mpl.cycler(
-        color=[BLUE, PINK, GREEN, AMBER, INDIGO, CYAN])
-    
-    print("spacecore", sc.__version__, "| numpy", np.__version__)
-
-
-.. parsed-literal::
-
-    spacecore 0.4.0 | numpy 2.4.2
-
-
-.. code:: python
-
-    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
-
-1 · A space made of spaces
---------------------------
-
-``TreeSpace.from_leaf_spaces((X, S))`` glues leaf spaces into a
-tuple-structured product. An element is just a tuple ``(u, p)`` of leaf
-arrays.
-
-.. code:: python
-
-    X = sc.DenseVectorSpace((2,), ctx)        # primal leaf  u ∈ ℝ²
-    S = sc.DenseVectorSpace((1,), ctx)        # dual leaf    p ∈ ℝ¹
-    T = sc.TreeSpace.from_leaf_spaces((X, S), ctx)
-    
-    u = (ctx.asarray([1.0, 2.0]), ctx.asarray([3.0]))
-    v = (ctx.asarray([4.0, 5.0]), ctx.asarray([6.0]))
-    
-    print("leaf paths :", T.leaf_paths)
-    print("<u, v>_T   :", T.inner(u, v), " (= 1·4 + 2·5 + 3·6 — sum over leaves)")
-    print("||u||_T    :", T.norm(u))
-    print("flatten    :", T.flatten(u), " (tree → one dense vector)")
-    print("zeros      :", T.zeros())
-    
-    el = sc.TreeElement(T, u)                 # an explicit element bound to its space
-    print("element    :", el.value)
-
-
-.. parsed-literal::
-
-    leaf paths : ((0,), (1,))
-    <u, v>_T   : 32.0  (= 1·4 + 2·5 + 3·6 — sum over leaves)
-    ||u||_T    : 3.7416573867739413
-    flatten    : [1. 2. 3.]  (tree → one dense vector)
-    zeros      : (array([0., 0.]), array([0.]))
-    element    : (array([1., 2.]), array([3.]))
-
-
-.. code:: python
-
-    from matplotlib.patches import FancyBboxPatch, FancyArrowPatch
-    fig, ax = plt.subplots(figsize=(7.6, 3.0)); ax.axis("off")
-    ax.set_xlim(0, 10); ax.set_ylim(0, 3)
-    
-    def box(x, y, w, h, t, s, color):
-        ax.add_patch(FancyBboxPatch((x, y), w, h, boxstyle="round,pad=0.02,rounding_size=0.1",
-                     lw=2, edgecolor=color, facecolor=color + "18"))
-        ax.text(x+w/2, y+h*0.62, t, ha="center", fontsize=12, fontweight="bold", color=color)
-        ax.text(x+w/2, y+h*0.25, s, ha="center", fontsize=9.5, color=SLATE)
-    
-    box(0.4, 1.7, 3.0, 1.1, "leaf X", "ℝ²  (primal u)", BLUE)
-    box(0.4, 0.2, 3.0, 1.1, "leaf S", "ℝ¹  (dual p)", PINK)
-    box(6.1, 0.95, 3.4, 1.1, "TreeSpace  T", "elements = (u, p)\n<·,·>_T = sum of leaves", INDIGO)
-    for y in (2.25, 0.75):
-        ax.add_patch(FancyArrowPatch((3.45, y), (6.05, 1.5), arrowstyle="-|>",
-                     mutation_scale=16, lw=1.8, color=SLATE, alpha=0.55))
-    ax.set_title("TreeSpace = direct product of heterogeneous leaves", loc="center")
-    plt.show()
-
-
-
-.. image:: 04_tree_spaces_files/04_tree_spaces_5_0.png
-
-
-2 · Block operators over the tree
----------------------------------
-
-Each block is an ordinary ``DenseLinOp`` between leaves;
-``BlockMatrixLinOp`` arranges them into a single map :math:`T \to T`
-with :math:`y_i = \sum_j A_{ij}\, x_j`.
-
-.. code:: python
-
-    Amat = np.array([[4.0, 1.0], [1.0, 3.0]])     # X → X
-    Bmat = np.array([[1.0, 2.0]])                  # X → S
-    Dmat = np.array([[10.0]])                      # S → S
-    
-    A_op  = sc.DenseLinOp(ctx.asarray(Amat),   X, X, ctx)
-    Bt_op = sc.DenseLinOp(ctx.asarray(Bmat.T), S, X, ctx)   # Bᵀ : S → X
-    B_op  = sc.DenseLinOp(ctx.asarray(Bmat),   X, S, ctx)   # B  : X → S
-    D_op  = sc.DenseLinOp(ctx.asarray(Dmat),   S, S, ctx)
-    
-    M = sc.BlockMatrixLinOp([[A_op, Bt_op],
-                             [B_op, D_op]])
-    print("M : T → T  square?", M.dom == M.cod)
-    print("M·(u,p)         :", M.apply((ctx.asarray([1.0, 0.0]), ctx.asarray([1.0]))))
-
-
-.. parsed-literal::
-
-    M : T → T  square? True
-    M·(u,p)         : (array([5., 3.]), array([11.]))
-
-
-.. code:: python
-
-    full = np.block([[Amat, Bmat.T], [Bmat, Dmat]])     # dense reference, for the picture
-    fig, ax = plt.subplots(figsize=(4.8, 4.4))
-    im = ax.imshow(full, cmap="magma")
-    for i in range(full.shape[0]):
-        for j in range(full.shape[1]):
-            ax.text(j, i, f"{full[i,j]:.0f}", ha="center", va="center",
-                    color="white" if full[i,j] < 7 else "black", fontsize=11)
-    # block separators between the X (size 2) and S (size 1) leaves
-    ax.axhline(1.5, color="white", lw=2.5); ax.axvline(1.5, color="white", lw=2.5)
-    ax.set_xticks(range(3)); ax.set_yticks(range(3)); ax.grid(False)
-    ax.set_title("Block system  [[A, Bᵀ], [B, D]]")
-    fig.colorbar(im, fraction=0.046, pad=0.04); plt.show()
-    print("eigenvalues:", np.round(np.linalg.eigvalsh(full), 3), "→ SPD, so CG applies")
-
-
-
-.. image:: 04_tree_spaces_files/04_tree_spaces_8_0.png
-
-
-.. parsed-literal::
-
-    eigenvalues: [ 2.165  4.081 10.755] → SPD, so CG applies
-
-
-3 · Solve it with conjugate gradients over the tree
----------------------------------------------------
-
-``sc.cg`` does not care that the unknown is a tree — it only needs
-``M.apply`` and the tree inner product. The right-hand side and the
-solution are tree elements.
-
-.. code:: python
-
-    b = (ctx.asarray([1.0, -2.0]), ctx.asarray([0.5]))     # RHS as a tree element
-    res = sc.cg(M, b, tol=1e-12, maxiter=50)
-    
-    print("converged :", bool(res.converged), " iterations:", int(res.num_iters))
-    print("u block   :", res.x[0])
-    print("p block   :", res.x[1])
-    
-    # cross-check against a plain dense solve on the flattened system
-    ref = np.linalg.solve(full, np.array([1.0, -2.0, 0.5]))
-    print("matches dense solve:", np.allclose(T.flatten(res.x), ref))
-
-
-.. parsed-literal::
-
-    converged : True  iterations: 4
-    u block   : [ 0.43684211 -0.94210526]
-    p block   : [0.19473684]
-    matches dense solve: True
-
-
-.. code:: python
-
-    ks = np.arange(1, 7)
-    hist = [float(sc.cg(M, b, tol=0.0, atol=0.0, maxiter=int(k), check_every=1).residual_norm)
-            for k in ks]
-    
-    fig, axes = plt.subplots(1, 2, figsize=(10.2, 3.9))
-    axes[0].semilogy(ks, hist, color=BLUE, marker="o")
-    axes[0].set_title("CG residual over the tree space"); axes[0].set_xlabel("iteration")
-    axes[0].set_ylabel("residual (log)")
-    
-    labels = ["u₁", "u₂", "p₁"]
-    axes[1].bar(labels, T.flatten(res.x), color=[BLUE, BLUE, PINK])
-    axes[1].axhline(0, color=SLATE, lw=1)
-    axes[1].set_title("Solution, split by leaf"); axes[1].set_ylabel("value")
-    plt.tight_layout(); plt.show()
-
-
-
-.. image:: 04_tree_spaces_files/04_tree_spaces_11_0.png
-
-
-The two ``u`` bars (blue) and the ``p`` bar (pink) come back in their
-own leaves — the solver never flattened your problem into an anonymous
-vector.
-
-4 · Named blocks
-----------------
-
-A tuple tree is fine, but the blocks here *mean* something — a primal
-**state** and a dual **multiplier**. A ``TreeSpace`` can carry that
-naming: build it from a ``NamedTuple`` template with ``from_template``,
-and elements round-trip as that type, so you read blocks **by name**
-instead of by position. The geometry, operators, and solvers are exactly
-the same — only your access pattern changes.
+The inner product is the sum of the leaf inner products, so
+:math:`\|x\|_T^2=\|u\|^2+\|p\|^2`. A ``TreeSpace`` built from a
+``NamedTuple`` template returns elements of that type.
 
 .. code:: python
 
     from typing import NamedTuple
-    
-    class KKT(NamedTuple):
-        state: object        # the u block, in X = ℝ²
-        multiplier: object   # the p block, in S = ℝ¹
-    
-    T_named = sc.TreeSpace.from_template(KKT(0, 0), (X, S), ctx=ctx)
-    
-    xb = T_named.element(KKT(state=ctx.asarray([1.0, 2.0]),
-                             multiplier=ctx.asarray([3.0])))
-    
-    print("element type :", type(xb.value).__name__)         # KKT — the original type
-    print("read by name :", xb.value.state, "|", xb.value.multiplier)
-    print("inner         :", T_named.inner(xb.value, xb.value))
-    print("same as tuple :", float(T_named.inner(xb.value, xb.value))
-                              == float(T.inner((xb.value.state, xb.value.multiplier),
-                                               (xb.value.state, xb.value.multiplier))))
+    import numpy as np
+    import spacecore as sc
 
+    class State(NamedTuple):
+        u: object
+        p: object
 
-.. parsed-literal::
+    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    U = sc.DenseVectorSpace((3,), ctx)
+    P = sc.DenseVectorSpace((2,), ctx)
+    T = sc.TreeSpace.from_template(State(0, 0), (U, P), ctx=ctx)
 
-    element type : KKT
-    read by name : [1. 2.] | [3.]
-    inner         : 14.0
-    same as tuple : True
+    x = State(u=ctx.asarray([1.0, 2.0, 3.0]), p=ctx.asarray([1.0, -1.0]))
+    y = State(u=ctx.asarray([0.5, 0.0, -1.0]), p=ctx.asarray([2.0, 1.0]))
+    T.check_member(x)
+    z = T.zeros()
+    assert isinstance(z, State) and z.u.shape == (3,) and z.p.shape == (2,)
+    assert isinstance(T.axpy(2.0, x, y), State)
+    np.testing.assert_allclose(T.inner(x, y), x.u @ y.u + x.p @ y.p)
+    np.testing.assert_allclose(T.norm(x) ** 2, x.u @ x.u + x.p @ x.p)
+    np.testing.assert_allclose(T.flatten(x), [1.0, 2.0, 3.0, 1.0, -1.0])
+    assert T.unflatten(T.flatten(x)).p.tolist() == [1.0, -1.0]
 
+``zeros``, ``axpy`` and ``unflatten`` all return a ``State``, so a block
+is read as ``x.p`` rather than ``x[1]``. ``flatten`` concatenates the
+leaves in field order, each in C order; this is the bridge to a dense
+reference used in section 5.
 
-Dicts work as well —
-``sc.TreeSpace({"state": 0, "multiplier": 0}, (X, S), ctx=ctx)`` — with
-one caveat: dict leaves are ordered by **sorted key**, so check
-``T.leaf_paths`` to confirm how ``leaf_spaces`` pairs up. A
-``NamedTuple`` keeps your declared field order, which is usually what
-you want.
+2 · A coupled block operator
+----------------------------
 
-Recap
------
+Take symmetric positive definite blocks :math:`A:\mathbb R^3\to\mathbb R^3`
+and :math:`D:\mathbb R^2\to\mathbb R^2`, and a coupling
+:math:`B:\mathbb R^3\to\mathbb R^2`. The block operator is
 
--  A **``TreeSpace``** is a direct product of heterogeneous leaves;
-   elements are Python trees; inner products and squared norms sum over leaves.
-   ``flatten``/``unflatten`` bridge to a plain vector.
--  **``BlockMatrixLinOp``** (and ``BlockDiagonalLinOp``) compose leaf operators
-   into maps between tree spaces; a one-column or one-row block matrix stacks one
-   space into a tree or sums a tree into one space.
--  Solvers like **``sc.cg``** run unchanged over tree spaces — structure
-   is preserved end to end.
+.. math::
+
+   K\begin{pmatrix}u\\p\end{pmatrix}
+   =\begin{pmatrix}A & B^\#\\ B & D\end{pmatrix}
+    \begin{pmatrix}u\\p\end{pmatrix}
+   =\begin{pmatrix}Au+B^\#p\\ Bu+Dp\end{pmatrix}.
+
+Row :math:`i` of the block matrix produces output block :math:`i`.
+Unlike a KKT saddle-point matrix, this K has a positive definite lower
+block, and the choice below makes K positive definite.
+
+.. code:: python
+
+    A = sc.DenseLinOp(ctx.asarray([[4.0, 1.0, 0.0],
+                                   [1.0, 3.0, 1.0],
+                                   [0.0, 1.0, 2.0]]), U, U, ctx)
+    B = sc.DenseLinOp(ctx.asarray([[1.0, 0.0, 1.0],
+                                   [0.0, 1.0, -1.0]]), U, P, ctx)
+    D = sc.DenseLinOp(ctx.asarray([[5.0, 0.0],
+                                   [0.0, 4.0]]), P, P, ctx)
+
+    K = sc.BlockMatrixLinOp(State(u=State(u=A, p=B.H),
+                                  p=State(u=B, p=D)))
+    Kdiag = sc.BlockDiagonalLinOp(State(u=A, p=D))
+    coupling = K - Kdiag
+
+    assert K.dom == T and K.cod == T and Kdiag.dom == T
+    Kx = K.apply(x)
+    assert isinstance(Kx, State)
+    np.testing.assert_allclose(Kx.u, A.apply(x.u) + B.H.apply(x.p))
+    np.testing.assert_allclose(Kx.p, B.apply(x.u) + D.apply(x.p))
+    Cx = coupling.apply(x)
+    np.testing.assert_allclose(Cx.u, B.H.apply(x.p))
+    np.testing.assert_allclose(Cx.p, B.apply(x.u))
+
+The outer ``State`` lists the rows and each inner ``State`` lists one
+row's blocks, so both endpoints of K are ``T`` with named fields.
+``BlockDiagonalLinOp`` keeps only A and D. Subtracting it from K with
+operator algebra leaves the off-diagonal coupling, which mixes the
+blocks: ``Cx.u`` depends only on ``x.p`` and ``Cx.p`` only on ``x.u``.
+
+3 · The adjoint in the tree inner product
+-----------------------------------------
+
+The adjoint of a block operator is the transposed block matrix of the
+block adjoints:
+
+.. math::
+
+   \langle Kx,y\rangle_T=\langle x,K^\#y\rangle_T,\qquad
+   K^\#=\begin{pmatrix}A^\# & B^\#\\ (B^\#)^\# & D^\#\end{pmatrix}
+       =\begin{pmatrix}A & B^\#\\ B & D\end{pmatrix}=K .
+
+The second equality uses :math:`A^\#=A`, :math:`D^\#=D` and
+:math:`(B^\#)^\#=B`, so K is self-adjoint on T.
+
+.. code:: python
+
+    np.testing.assert_allclose(T.inner(K.apply(x), y),
+                               T.inner(x, K.H.apply(y)), atol=1e-12)
+    np.testing.assert_allclose(T.flatten(K.H.apply(y)),
+                               T.flatten(K.apply(y)), atol=1e-12)
+
+    Kmat = K.to_matrix()
+    assert Kmat.shape == (5, 5)
+    np.testing.assert_allclose(Kmat, Kmat.T)
+    eigenvalues = np.linalg.eigvalsh(Kmat)
+    assert eigenvalues.min() > 0.5
+    print("eigenvalues of K:", np.round(eigenvalues, 3))
+
+``K.H`` is assembled block by block, never from a matrix. ``to_matrix``
+is used only for checks: it is the 5×5 matrix of K in the flattened
+coordinates, and its smallest eigenvalue, about 0.51, certifies that K
+is positive definite.
+
+4 · The energy as a custom tree functional
+------------------------------------------
+
+Because K is self-adjoint and positive definite, solving :math:`Kx=b`
+is the same as minimising the strictly convex energy
+
+.. math::
+
+   E(x)=\tfrac12\langle x,Kx\rangle_T-\langle b,x\rangle_T,
+   \qquad \nabla E(x)=Kx-b .
+
+The gradient formula uses :math:`K^\#=K`; it is the metric gradient in
+T, itself a tree element. Its blocks are the two residuals
+:math:`Au+B^\#p-f` and :math:`Bu+Dp-g`, where :math:`b=(f,g)`.
+
+Write E with the two check-free cores. The inherited public ``value``
+and ``grad`` check that their argument belongs to T before calling them.
+
+.. code:: python
+
+    class BlockEnergy(sc.Functional):
+        """E(x) = 1/2 <x, K x>_T - <b, x>_T for a self-adjoint K on a tree space."""
+
+        _fields = ("K", "b", "dom", "ctx")
+        _dynamic = ("K", "b")
+
+        def __init__(self, K, b, dom, ctx=None, check_level=None):
+            super().__init__(dom, ctx, check_level=check_level)
+            if K.dom != self.domain or K.cod != self.domain:
+                raise ValueError("K must map the energy's domain to itself")
+            self.domain.check_member(b)
+            self.K, self.b = K, b
+
+        def _value_core(self, x):
+            T = self.domain
+            return 0.5 * T.inner(x, self.K.apply(x)) - T.inner(self.b, x)
+
+        def _grad_core(self, x):
+            return self.domain.axpy(-1.0, self.b, self.K.apply(x))
+
+    b = State(u=ctx.asarray([1.0, 2.0, 3.0]), p=ctx.asarray([0.0, 1.0]))
+    energy = BlockEnergy(K, b, T)
+
+    grad = energy.grad(x)
+    assert isinstance(grad, State)
+    np.testing.assert_allclose(grad.u, A.apply(x.u) + B.H.apply(x.p) - b.u)
+    np.testing.assert_allclose(grad.p, B.apply(x.u) + D.apply(x.p) - b.p)
+
+    h = 1e-6
+    slope = (energy.value(T.axpy(h, y, x))
+             - energy.value(T.axpy(-h, y, x))) / (2 * h)
+    np.testing.assert_allclose(slope, T.inner(grad, y), rtol=1e-7)
+
+    wrong_shape = State(u=ctx.asarray([1.0, 2.0]), p=x.p)
+    try:
+        energy.value(wrong_shape)
+    except sc.SpaceValidationError as error:
+        print("rejected:", error)
+    else:
+        raise AssertionError("a 2-vector u should not be a member of T")
+
+The first two checks match the gradient's named fields to the block
+residuals. The central difference along ``y`` matches
+:math:`\langle\nabla E(x),y\rangle_T`, which tests sign and scale. The
+last check comes from the inherited ``value``: the cores never test
+shapes, yet a ``u`` of length 2 is rejected.
+
+5 · Block Gauss–Seidel, by name
+-------------------------------
+
+Block Gauss–Seidel minimises E exactly over one block with the other
+fixed, then alternates:
+
+.. math::
+
+   u\leftarrow A^{-1}(f-B^\#p),\qquad p\leftarrow D^{-1}(g-Bu).
+
+Each update sets one block of :math:`\nabla E` to zero, so E never
+increases. For a symmetric positive definite K the iteration converges
+to the solution of :math:`Kx=b`. Each leaf solve is a CG solve on the
+small SPD block; stop when :math:`\|b-Kx\|_T\le10^{-10}\|b\|_T`.
+
+.. code:: python
+
+    x = T.zeros()
+    values = [float(energy.value(x))]
+    for sweep in range(200):
+        x = x._replace(u=sc.cg(A, U.axpy(-1.0, B.H.apply(x.p), b.u), tol=1e-14).x)
+        x = x._replace(p=sc.cg(D, P.axpy(-1.0, B.apply(x.u), b.p), tol=1e-14).x)
+        values.append(float(energy.value(x)))
+        residual = T.axpy(-1.0, K.apply(x), b)
+        if T.norm(residual) <= 1e-10 * T.norm(b):
+            break
+    else:
+        raise RuntimeError("block Gauss-Seidel did not converge")
+
+    reference = sc.cg(K, b, tol=1e-12, maxiter=50)
+    dense = np.linalg.solve(Kmat, T.flatten(b))
+
+    assert isinstance(x, State) and bool(reference.converged)
+    np.testing.assert_allclose(T.flatten(x), T.flatten(reference.x), atol=1e-9)
+    np.testing.assert_allclose(T.flatten(x), dense, atol=1e-9)
+    np.testing.assert_allclose(x.p, T.unflatten(dense).p, atol=1e-9)
+    assert np.max(np.diff(values)) <= 1e-12
+    assert np.linalg.norm(T.flatten(energy.grad(x))) <= 1e-9
+    print("sweeps:", sweep + 1)
+    print("u:", x.u)
+    print("p:", x.p)
+
+``_replace`` writes one named field and keeps the other, so the loop
+reads like the two update formulas. The residual and its norm come from
+T, not from a flattened vector. The result agrees with ``sc.cg`` run on
+the whole tree and with ``np.linalg.solve`` on the flattened matrix. The
+energy sequence is nonincreasing, as exact block minimisation requires,
+and the gradient vanishes at the solution. The loop takes 36 sweeps;
+the rate is set by the coupling strength relative to A and D.
+
+Check your understanding
+------------------------
+
+* Why does ``coupling = K - Kdiag`` act on T without flattening? Both
+  operands map T to T, so operator subtraction is defined blockwise.
+* Why must ``_grad_core`` return a ``State`` rather than a flat array?
+  The gradient is an element of T, and ``axpy`` in the loop and in the
+  finite-difference test combines it with other elements of T.
+* Scale the coupling by replacing B with 3B. Recompute the smallest
+  eigenvalue of ``K.to_matrix()``. If it is no longer positive, neither
+  Gauss–Seidel convergence nor ``sc.cg`` is justified.
+* Replace the two leaf CG solves with one step of the gradient
+  ``energy.grad(x)`` on each field. Expect many more sweeps; keep the
+  residual stopping test and the dense comparison.
 
 **Next:** :doc:`5 · Weighted Tikhonov <05_weighted_tikhonov>` — a
 worked inverse problem where the *metric adjoint* does the heavy

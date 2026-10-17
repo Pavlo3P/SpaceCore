@@ -39,6 +39,9 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e ".[docs]"
 
+      - name: Execute tutorial examples
+        run: python scripts/check_tutorials.py
+
       - name: Build HTML documentation
         run: sphinx-build -W --keep-going -b html docs/source docs/build/html
 

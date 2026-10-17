@@ -1,262 +1,309 @@
 8 · PDHG for a conic program
 ============================
 
-A huge family of problems are **conic programs**:
+**Goal:** build a small linear program over the nonnegative orthant from
+SpaceCore spaces, a custom constraint operator and proximal functionals.
+Then solve it with a hand-written primal–dual hybrid gradient (PDHG) loop
+and certify the answer against ``scipy.optimize.linprog``.
 
-.. math::  \min_x \; c^\top x \quad\text{subject to}\quad A x = b,\;\; x \in \mathcal{K}, 
+**Before you start:** read :doc:`02_linear_algebra` and :doc:`03_functionals`.
+Run the blocks in order in a fresh session; see :doc:`index` for setup.
 
-where :math:`\mathcal{K}` is a convex cone — the nonnegative orthant
-(LP), the second-order cone (SOCP), or the PSD cone (SDP). The
-**Primal–Dual Hybrid Gradient** method (PDHG / Chambolle–Pock) solves
-these with three ingredients, each of which SpaceCore provides directly:
+1 · The program and its spaces
+------------------------------
 
--  a linear operator :math:`A` and its **adjoint** — a ``LinOp``;
--  a **projection onto the cone** :math:`\mathcal{K}` — for the orthant,
-   the cone of squares of a Jordan-algebra space, projected with
-   ``spectral_apply``;
--  a dual update for the equality constraint.
+Put probability mass x on n grid points :math:`t_i\in[0,1]`. Each point
+has a cost :math:`c_i`; the mass must sum to one and have mean
+:math:`\mu`:
 
-We solve a tiny standard-form LP whose optimum we know, and watch PDHG
-walk a primal path across the probability simplex to the answer.
+.. math::
 
-**You will learn to** assemble a saddle-point solver from a SpaceCore
-operator and a cone projection, with no dense KKT system.
+   \min_{x\in\mathbb{R}^n}\ \langle c,x\rangle
+   \quad\text{s.t.}\quad Ax=b,\quad x\in\mathcal{K}=\mathbb{R}^n_{\geq0},
+   \qquad Ax=\Big(\sum_ix_i,\ \sum_it_ix_i\Big),\quad b=(1,\mu).
+
+This is a conic program with the orthant as cone: a linear program in
+standard form. The primal x lives in :math:`X=\mathbb{R}^n`, the
+multiplier y of the two equalities in :math:`Y=\mathbb{R}^2`.
 
 .. code:: python
 
     import numpy as np
-    import matplotlib as mpl
     import matplotlib.pyplot as plt
+    from scipy.optimize import linprog
     import spacecore as sc
-    
-    # A clean, consistent palette + style for every figure in the tutorials.
-    BLUE, INDIGO, CYAN = "#2563eb", "#4f46e5", "#0891b2"
-    PINK, AMBER, GREEN = "#db2777", "#d97706", "#059669"
-    SLATE, GRID = "#334155", "#e5e9f0"
-    
-    mpl.rcParams.update({
-        "figure.figsize": (7.2, 4.2), "figure.dpi": 120, "savefig.dpi": 120,
-        "figure.facecolor": "white", "axes.facecolor": "white",
-        "axes.edgecolor": SLATE, "axes.linewidth": 1.0,
-        "axes.grid": True, "axes.axisbelow": True,
-        "grid.color": GRID, "grid.linewidth": 1.0,
-        "axes.spines.top": False, "axes.spines.right": False,
-        "axes.titlesize": 13, "axes.titleweight": "bold", "axes.titlecolor": SLATE,
-        "axes.labelcolor": SLATE, "axes.labelsize": 11,
-        "xtick.color": SLATE, "ytick.color": SLATE,
-        "xtick.labelsize": 10, "ytick.labelsize": 10, "font.size": 11,
-        "legend.frameon": False, "legend.fontsize": 10,
-        "lines.linewidth": 2.4, "lines.markersize": 6, "image.cmap": "magma",
-    })
-    mpl.rcParams["axes.prop_cycle"] = mpl.cycler(
-        color=[BLUE, PINK, GREEN, AMBER, INDIGO, CYAN])
-    
-    print("spacecore", sc.__version__, "| numpy", np.__version__)
-
-
-.. parsed-literal::
-
-    spacecore 0.4.0 | numpy 2.4.2
-
-
-.. code:: python
 
     ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
     ops = ctx.ops
+    n, mu = 8, 0.4
+    grid = np.linspace(0.0, 1.0, n)
+    t = ctx.asarray(grid)
+    c = ctx.asarray(np.cos(3 * np.pi * grid) + grid)
+    b = ctx.asarray([1.0, mu])
 
-1 · The problem and the cone
-----------------------------
+    X = sc.DenseCoordinateSpace((n,), ctx)
+    Y = sc.DenseCoordinateSpace((2,), ctx)
+    X.check_member(c)
+    Y.check_member(b)
+    assert grid[0] <= mu <= grid[-1]          # some x >= 0 has mean mu
+
+The last assertion guarantees feasibility: mass split between the end
+points 0 and 1 attains any mean in between. Both spaces carry the
+Euclidean inner product, so the orthant projection below is
+coordinatewise and the adjoint is the transpose.
+
+2 · The constraint operator from cores
+--------------------------------------
+
+The adjoint of A follows from expanding the pairing:
 
 .. math::
 
-    \min \; c^\top x \;\;\text{s.t.}\;\; \mathbf{1}^\top x = 1,\;\; x \ge 0,
-      \qquad c = (2, 1, 3). 
+   \langle Ax,y\rangle_Y=y_0\sum_ix_i+y_1\sum_it_ix_i
+   =\sum_ix_i(y_0+y_1t_i),
+   \qquad A^\#y=y_0\mathbf1+y_1t.
 
-The feasible set is the probability simplex; since the objective is
-linear, the optimum is the cheapest vertex — here
-:math:`x^\star = (0,1,0)` with value :math:`1`.
-
-The cone :math:`\mathcal{K} = \mathbb{R}^3_{\ge 0}` is the **cone of
-squares** of an ``ElementwiseJordanSpace``. Projection onto it is
-:math:`\max(\cdot, 0)`, expressed through the Jordan spectral calculus.
+A subclass of ``sc.LinOp`` writes these two maps as check-free cores;
+the inherited ``apply``, ``rapply`` and ``A.H`` check their inputs and
+call them.
 
 .. code:: python
 
-    A_mat = np.array([[1.0, 1.0, 1.0]])
-    b     = ctx.asarray([1.0])
-    c     = ctx.asarray([2.0, 1.0, 3.0])
-    
-    X = sc.ElementwiseJordanSpace((3,), ctx)     # primal lives in the nonnegative orthant
-    Y = sc.DenseVectorSpace((1,), ctx)           # multiplier for the equality constraint
-    A = sc.DenseLinOp(ctx.asarray(A_mat), X, Y, ctx)
-    
-    # Projection onto K = {x >= 0}, via the Jordan spectral map  s -> max(s, 0)
-    proj_K = lambda x: X.spectral_apply(x, lambda s: ops.maximum(s, 0.0))
-    
-    demo = ctx.asarray([0.7, -0.4, 0.2])
-    print("project (0.7, -0.4, 0.2) onto the orthant:", proj_K(demo))
+    class MomentOp(sc.LinOp):
+        """x -> (sum x, sum t x): total mass and first moment on a grid."""
 
+        _fields = ("t", "dom", "cod", "ctx")
+        _dynamic = ("t",)
 
-.. parsed-literal::
+        def __init__(self, t, dom, cod, ctx=None, check_level=None):
+            super().__init__(dom, cod, ctx, check_level=check_level)
+            self.t = self.ctx.asarray(t)
 
-    project (0.7, -0.4, 0.2) onto the orthant: [0.7 0.  0.2]
+        def _apply_core(self, x):
+            return self.ops.stack([self.ops.sum(x), self.ops.sum(self.t * x)])
 
+        def _rapply_core(self, y):
+            return y[0] + y[1] * self.t
 
-.. code:: python
+    A = MomentOp(t, X, Y)
 
-    # a picture of the cone projection in 2D
-    rng = np.random.default_rng(1)
-    E2 = sc.ElementwiseJordanSpace((2,), ctx)
-    pj2 = lambda v: E2.spectral_apply(v, lambda s: ops.maximum(s, 0.0))
-    pts = rng.uniform(-1, 1, size=(14, 2))
-    
-    fig, ax = plt.subplots(figsize=(5.2, 5.2))
-    ax.axhspan(0, 1.2, xmin=0.5, color=GREEN, alpha=0.06)
-    ax.fill([0, 1.2, 1.2, 0], [0, 0, 1.2, 1.2], color=GREEN, alpha=0.08)
-    for p in pts:
-        q = np.asarray(pj2(ctx.asarray(p)))
-        ax.annotate("", xy=q, xytext=p, arrowprops=dict(arrowstyle="-|>", color=GRID, lw=1.4))
-        ax.scatter(*p, color=BLUE, s=24); ax.scatter(*q, color=PINK, s=24, zorder=5)
-    ax.axhline(0, color=SLATE, lw=1); ax.axvline(0, color=SLATE, lw=1)
-    ax.set_xlim(-1.2, 1.2); ax.set_ylim(-1.2, 1.2); ax.set_aspect("equal")
-    ax.set_title("Projection onto the cone  $\\{x \\geq 0\\}$")
-    ax.text(0.6, 1.05, "cone $\\mathcal{K}$", color=GREEN, fontsize=11, ha="center")
-    plt.show()
+    rng = np.random.default_rng(0)
+    x_test = ctx.asarray(rng.standard_normal(n))
+    y_test = ctx.asarray(rng.standard_normal(2))
+    np.testing.assert_allclose(Y.inner(A.apply(x_test), y_test),
+                               X.inner(x_test, A.H.apply(y_test)), atol=1e-12)
+    A_dense = np.vstack([np.ones(n), grid])
+    np.testing.assert_allclose(A.to_dense(), A_dense)
 
+The first assertion is the adjoint identity on random elements; the
+second compares the materialised operator with the 2 × n matrix written
+by hand. PDHG never uses ``A_dense``; ``linprog`` does in section 6.
 
+3 · Objective and constraints as proximal functionals
+-----------------------------------------------------
 
-.. image:: 08_pdhg_conic_program_files/08_pdhg_conic_program_5_0.png
+Write the program as :math:`\min_x G(x)+F(Ax)` with
 
+.. math::
 
-2 · The PDHG iteration
-----------------------
+   G(x)=\langle c,x\rangle+\iota_{\mathcal{K}}(x),\qquad
+   F=\iota_{\{b\}},\qquad F^*(y)=\langle b,y\rangle.
 
-PDHG alternates a **primal** step (gradient in :math:`c + A^\top y`,
-then project onto :math:`\mathcal{K}`), an over-relaxation, and a
-**dual** step (drive :math:`Ax \to b`). The operator’s adjoint
-``A.rapply`` supplies :math:`A^\top y`; the cone projection is the
-primal proximal step. Chambolle & Pock, "A First-Order Primal-Dual Algorithm
-for Convex Problems with Applications to Imaging", Algorithm 1 and Theorem 1;
-shift the dual index to write the primal step first, with
-``G(x) = c.T x + indicator_K(x)`` and ``F*(y) = b.T y``. A saddle point exists
-for this LP, and ``tau * sigma * ||A||^2 < 1`` with extrapolation one ensures
-finite-dimensional convergence.
+Here :math:`\iota_S` is zero on S and :math:`+\infty` off it. PDHG needs
+:math:`\operatorname{prox}_{\tau G}` and :math:`\operatorname{prox}_{\sigma F^*}`.
+SpaceCore has a prox rule for an indicator, namely the set's projection,
+but none for a sum with a linear term. Completing the square gives the
+shift instead:
+
+.. math::
+
+   \operatorname{prox}_{\tau G}(v)
+   =\arg\min_{z\geq0}\langle c,z\rangle+\tfrac{1}{2\tau}\|z-v\|^2
+   =\operatorname{prox}_{\tau\iota_{\mathcal{K}}}(v-\tau c).
+
+For :math:`F^*`, ``F.conjugate_prox`` applies the Moreau identity
+:math:`\operatorname{prox}_{\sigma F^*}(w)=w-\sigma\operatorname{prox}_{F/\sigma}(w/\sigma)=w-\sigma b`.
+The singleton :math:`\{b\}` is not built in, so we write it as a ``Set``.
 
 .. code:: python
 
-    L = float(np.linalg.norm(A_mat, 2))     # operator norm of A
-    tau = sigma = 0.9 / L                     # step sizes:  tau*sigma*L^2 < 1
-    
-    x = ctx.asarray(np.full(3, 1/3))          # start at the simplex centroid
-    y = Y.zeros()
-    x_star = np.array([0.0, 1.0, 0.0])
-    
-    traj, obj_gap, feas = [np.asarray(x).copy()], [], []
-    for k in range(8000):
-        x_prev = x
-        x = proj_K(x - tau * (c + A.rapply(y)))          # primal: step + cone projection
-        x_bar = 2.0 * x - x_prev                          # over-relaxation
-        y = y + sigma * (A.apply(x_bar) - b)              # dual: enforce Ax = b
-        obj_gap.append(abs(float(ops.vdot(c, x)) - 1.0))
-        feas.append(float(Y.norm(A.apply(x) - b)))
-        if k % 40 == 0:
-            traj.append(np.asarray(x).copy())
-    traj = np.array(traj)
-    
-    print("PDHG solution x :", np.round(np.asarray(x), 6))
-    print("objective cᵀx   :", float(ops.vdot(c, x)), " (optimum = 1.0)")
-    print("feasibility ‖Ax−b‖:", feas[-1])
-    print("x ≥ 0 ?          :", bool(np.all(np.asarray(x) >= -1e-12)))
+    class Point(sc.Set):
+        """The closed convex set {p} in its ambient space."""
 
+        _fields = ("p", "ambient", "check_level")
+        is_convex = True
 
-.. parsed-literal::
+        def __init__(self, p, ambient, *, check_level=None):
+            super().__init__(ambient, check_level=check_level)
+            self.p = p
 
-    PDHG solution x : [0. 1. 0.]
-    objective cᵀx   : 0.9999999999999999  (optimum = 1.0)
-    feasibility ‖Ax−b‖: 1.1102230246251565e-16
-    x ≥ 0 ?          : True
+        def contains(self, y):
+            return self.ops.xp.all(y == self.p)
 
+        def project(self, y):
+            return self.p
+
+    linear = sc.InnerProductFunctional(c, X)
+    K = sc.IndicatorFunctional(sc.NonnegativeOrthant(X))
+    F = sc.IndicatorFunctional(Point(b, Y))
+
+    try:
+        (linear + K).prox(x=c, step=0.5)
+    except sc.CapabilityError:
+        pass
+    else:
+        raise AssertionError("a sum with a linear term has no prox rule")
+
+    def prox_G(v, tau):
+        return K.prox(x=X.axpy(-tau, c, v), step=tau)
+
+    v, tau = ctx.asarray(rng.standard_normal(n)), 0.3
+    z = prox_G(v, tau)
+    g = X.add(c, X.scale(1 / tau, X.axpy(-1.0, v, z)))   # c + (z - v) / tau
+    assert K.value(z) == 0.0 and np.all(g >= -1e-12)
+    np.testing.assert_allclose(z * g, 0.0, atol=1e-12)
+
+    w, sigma = ctx.asarray([0.3, -2.0]), 0.7
+    np.testing.assert_allclose(F.conjugate_prox(w, sigma), Y.axpy(-sigma, b, w))
+    assert F.value(b) == 0.0 and F.value(w) == np.inf
+
+The ``try`` block confirms that SpaceCore refuses the sum rather than
+guessing. The next three assertions are the optimality conditions of
+the shifted prox: :math:`z\geq0`, :math:`g=c+(z-v)/\tau\geq0` and
+:math:`z_ig_i=0`, i.e. :math:`-g\in N_{\mathcal{K}}(z)`. The last two
+check the Moreau formula and the indicator's values.
+
+4 · Step sizes from the operator norm
+-------------------------------------
+
+PDHG with extrapolation one converges for :math:`\tau\sigma\|A\|^2<1`
+when a saddle point exists (Chambolle & Pock, "A First-Order Primal-Dual
+Algorithm for Convex Problems with Applications to Imaging", Algorithm 1
+and Theorem 1). Since :math:`\|A\|^2` is the top eigenvalue of
+:math:`A^\#A`, power iteration on the composed operator estimates it.
 
 .. code:: python
+
+    norm_sq = sc.power_iteration(A.H @ A, tol=1e-12, maxiter=500).eigenvalue
+    np.testing.assert_allclose(norm_sq, np.linalg.norm(A_dense, 2) ** 2, rtol=1e-10)
+    tau = sigma = 0.95 / float(np.sqrt(norm_sq))
+    assert tau * sigma * norm_sq < 1
+
+``A.H @ A`` is a lazy composite of the custom operator and its adjoint;
+no 8 × 8 matrix is formed for the estimate.
+
+5 · The PDHG loop
+-----------------
+
+One iteration reads
+
+.. math::
+
+   x^{k+1}=\operatorname{prox}_{\tau G}(x^k-\tau A^\#y^k),\qquad
+   \bar x=2x^{k+1}-x^k,\qquad
+   y^{k+1}=\operatorname{prox}_{\sigma F^*}(y^k+\sigma A\bar x).
+
+The dual of the program is :math:`\max_y -\langle b,y\rangle` subject to
+:math:`s=c+A^\#y\geq0`. Stop when three residuals are small: primal
+infeasibility :math:`\|Ax-b\|`, dual infeasibility
+:math:`\|s-\max(s,0)\|`, and the gap
+:math:`|\langle c,x\rangle+\langle b,y\rangle|`.
+
+.. code:: python
+
+    x, y = X.zeros(), Y.zeros()
+    history = []
+    for k in range(20000):
+        x_new = prox_G(X.axpy(-tau, A.H.apply(y), x), tau)
+        x_bar = X.axpy(-1.0, x, X.scale(2.0, x_new))
+        y = F.conjugate_prox(Y.axpy(sigma, A.apply(x_bar), y), sigma)
+        x = x_new
+
+        s = X.add(c, A.H.apply(y))
+        primal = float(Y.norm(Y.axpy(-1.0, b, A.apply(x))))
+        dual = float(X.norm(X.axpy(-1.0, K.prox(x=s, step=1.0), s)))
+        gap = abs(float(linear.value(x) + Y.inner(b, y)))
+        history.append((primal, dual, gap))
+        if max(primal, dual, gap) < 1e-9:
+            break
+    else:
+        raise RuntimeError("PDHG tolerance not reached")
+
+    print("iterations:", k + 1)
+    print("x:", np.round(x, 6))
+    print("objective:", float(linear.value(x)))
 
     fig, ax = plt.subplots(figsize=(6.4, 3.8))
-    ax.semilogy(obj_gap, color=BLUE, label="objective gap  $|c^\\top x_k - 1|$")
-    ax.semilogy(feas, color=PINK, label="feasibility  $\\|Ax_k - b\\|$")
-    ax.set_title("PDHG convergence"); ax.set_xlabel("iteration"); ax.set_ylabel("(log)")
-    ax.legend(); plt.show()
-
-
+    for series, label in zip(np.array(history).T,
+                             ["primal  $\\|Ax-b\\|$", "dual  $\\|\\min(s,0)\\|$",
+                              "gap  $|\\langle c,x\\rangle+\\langle b,y\\rangle|$"]):
+        ax.semilogy(series, label=label)
+    ax.set_xlabel("iteration"); ax.set_title("PDHG residuals"); ax.legend()
+    plt.show()
 
 .. image:: 08_pdhg_conic_program_files/08_pdhg_conic_program_8_0.png
 
+Every primal iterate is nonnegative, because it leaves ``K.prox``; the
+equality constraints and dual feasibility hold only in the limit. The
+loop calls only space operations, the operator and its adjoint, and the
+two prox maps.
 
-3 · The path across the simplex
--------------------------------
+6 · Certify against linprog
+---------------------------
 
-Mapping each iterate to barycentric coordinates, we see PDHG start at
-the centroid and head to the cheap vertex :math:`x^\star=(0,1,0)`. The
-background shades the linear objective :math:`c^\top x` — its straight
-level sets confirm the optimum must sit at a corner.
+A small gap alone does not certify optimality; it must come with primal
+and dual feasibility. Assert all three, then compare with the HiGHS
+solver in ``linprog`` on the dense matrix.
 
 .. code:: python
 
-    import matplotlib.tri as mtri
-    corners = np.array([[0.0, 0.0], [1.0, 0.0], [0.5, np.sqrt(3)/2]])   # triangle in 2D
-    def bary(x):                                                        # simplex → 2D
-        x = np.asarray(x); return x @ corners
-    
-    # shade the objective over the simplex interior
-    s = rng.dirichlet(np.ones(3), size=4000)
-    pts2d = s @ corners
-    vals = s @ np.asarray(c)
-    
-    fig, ax = plt.subplots(figsize=(6.2, 5.6))
-    tri = mtri.Triangulation(pts2d[:, 0], pts2d[:, 1])
-    ax.tricontourf(tri, vals, levels=18, cmap="magma", alpha=0.85)
-    ax.plot(*np.vstack([corners, corners[0]]).T, color=SLATE, lw=1.6)
-    
-    P = bary(traj)
-    ax.plot(P[:, 0], P[:, 1], color=CYAN, lw=2.6, marker="o", ms=3, label="PDHG iterates")
-    ax.scatter(*bary(x_star), color=GREEN, s=240, marker="*", zorder=6, label="optimum $(0,1,0)$")
-    labels = ["$x_1$ (c=2)", "$x_2$ (c=1)", "$x_3$ (c=3)"]
-    for corner, lab in zip(corners, labels):
-        off = (corner - corners.mean(0)) * 0.16
-        ax.text(*(corner + off), lab, ha="center", va="center", fontsize=10, color=SLATE)
-    ax.set_aspect("equal"); ax.axis("off"); ax.legend(loc="upper right")
-    ax.set_title("PDHG path on the probability simplex\n(background = objective $c^\\top x$)")
-    plt.show()
+    s = X.add(c, A.H.apply(y))
+    assert K.value(x) == 0.0
+    np.testing.assert_allclose(A.apply(x), b, atol=1e-8)
+    assert np.all(s >= -1e-8)
+    np.testing.assert_allclose(linear.value(x), -Y.inner(b, y), atol=1e-8)
 
+    reference = linprog(np.asarray(c), A_eq=A_dense, b_eq=np.asarray(b),
+                        bounds=(0, None), method="highs")
+    assert reference.status == 0
+    np.testing.assert_allclose(linear.value(x), reference.fun, atol=1e-8)
+    np.testing.assert_allclose(x, reference.x, atol=1e-6)
+    np.testing.assert_allclose(y, -reference.eqlin.marginals, atol=1e-6)
+    print("support:", grid[x > 1e-6], "weights:", x[x > 1e-6])
 
+    fig, ax = plt.subplots(figsize=(6.4, 3.8))
+    ax.plot(grid, c, "o-", color="#94a3b8", label="cost $c_i$")
+    ax.plot(grid, -(y[0] + y[1] * grid), "--", color="#059669",
+            label="dual line $-(y_0+y_1t)$")
+    ax.bar(grid, x, width=0.04, color="#db2777", label="optimal mass $x_i$")
+    ax.axvline(mu, color="#334155", lw=1)
+    ax.set_xlabel("t"); ax.set_title("Optimal mass and the supporting dual line")
+    ax.set_ylim(top=2.4); ax.legend(loc="upper left"); plt.show()
 
 .. image:: 08_pdhg_conic_program_files/08_pdhg_conic_program_10_0.png
 
+The dual slack :math:`s_i=c_i-\ell(t_i)` with
+:math:`\ell(t)=-(y_0+y_1t)` is nonnegative, so the dual line lies under
+every cost point. Complementarity :math:`x_is_i=0` puts all mass on
+points where the line touches. Here this is the two grid points
+:math:`t=2/7` and :math:`t=1`, with weights 0.84 and 0.16: their mean is
+:math:`0.4=\mu`. The multiplier sign is opposite to ``linprog``'s
+``eqlin.marginals`` because the saddle uses :math:`+\langle Ax,y\rangle`.
 
-The iterates slide down the objective gradient and park at the
-:math:`x_2` corner — the vertex with the smallest cost coefficient —
-exactly the LP optimum.
+Check your understanding
+------------------------
 
-   **Other cones, same loop.** Only the projection changes. For the
-   second-order cone use the Lorentz projection; for the PSD cone use
-   ``sc.HermitianSpace(n).psd_proj``, which clips the eigenvalues at
-   zero. The operator :math:`A`, the adjoint ``A.rapply``, and the PDHG
-   skeleton stay identical — which is the point of phrasing the whole
-   thing in terms of spaces and operators.
+* Why does ``prox_G`` subtract :math:`\tau c` before projecting rather
+  than after? Shifting after the projection, :math:`\max(v,0)-\tau c`,
+  leaves the orthant wherever :math:`c_i>0` and :math:`v_i\leq0`.
+* Why does the optimum use at most two grid points? A vertex of
+  :math:`\{x\geq0,\ Ax=b\}` has at most as many nonzeros as A has rows.
+* Set ``tau = sigma = 1.5 / np.sqrt(norm_sq)`` and rerun section 5. The
+  step condition fails; record whether the residuals still decrease.
+* Replace ``Point(b, Y)`` by a box :math:`\{l\leq y\leq u\}` set to model
+  inequality constraints :math:`l\leq Ax\leq u`. Only ``project`` and
+  ``contains`` change in the set and ``F.conjugate_prox`` in the loop is
+  unchanged; the gap must then use the support function of the box.
 
-Recap
------
-
--  A **conic program** needs a linear operator, its adjoint, and a cone
-   projection — PDHG glues them into a primal–dual saddle-point solver.
--  SpaceCore supplies :math:`A` and ``A.rapply`` as a ``LinOp``, and the
-   **orthant projection** as the Jordan spectral map
-   :math:`\max(\cdot,0)` on an ``ElementwiseJordanSpace``.
--  Swapping the cone (SOC, PSD) swaps only the projection; the operator
-   algebra is untouched.
-
-That closes the tutorial path: from
-:doc:`contexts <01_backend_and_context>` and
-:doc:`spaces <02_linear_algebra>`, through
-:doc:`functionals <03_functionals>` and
-:doc:`structure <04_tree_spaces>`, to four worked examples — a
-:doc:`Tikhonov inverse problem <05_weighted_tikhonov>`, :doc:`optimal transport <06_optimal_transport>`, :doc:`manifold descent <07_manifold_descent>`, and conic optimisation — all
-built from the same handful of typed objects.
+**Next:** :doc:`09_kernels_and_fusion` shows when an operator expression
+such as ``A.H @ A`` is worth materialising.
