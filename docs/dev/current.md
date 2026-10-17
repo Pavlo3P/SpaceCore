@@ -14,9 +14,11 @@ over a check-free `_<op>_core` that families implement; an undecorated public
 override becomes the class's core (`install_public_checks`), composites call
 cores, and the solvers run on cores directly (`SpaceCoreOps` is gone). Spaces,
 operators and functionals are hashable. Checks inside `jax.jit` / `torch.compile`
-follow `set_traced_check_level` (default `"none"`). Not yet verified for the
-release: the CuPy backend on a GPU, SDPLab against this version, the typing gates
-(pyright/mypy) and Python 3.11/3.12, which CI runs.
+follow `set_traced_check_level` (default `"none"`). Verified locally on
+Python 3.11, 3.12 and 3.13 (suite, doctests, coverage 94%, pyright/mypy typing
+tests, ruff, docstring and JIT audits, `sphinx -W`). Not yet verified: the CuPy
+backend on a GPU, and SDPLab, whose `master` still targets SpaceCore 0.4.2 and
+does not import on 0.4.3 or later (`jax_pytree_class`).
 
 ### `0.5.0a` real functional contract — 2026-10-07
 
