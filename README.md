@@ -5,9 +5,14 @@
 [![Python](https://img.shields.io/pypi/pyversions/spacecore.svg)](https://pypi.org/project/spacecore/)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-Typed vector spaces and linear operators for NumPy, JAX, Torch, and CuPy.
-A space knows its inner product; an operator `A : X -> Y` knows its spaces, so
-its adjoint is the metric adjoint, not the matrix transpose.
+Building blocks for first-order optimization: spaces, geometry, linear operators,
+functionals and proximal maps, on NumPy, JAX, Torch and CuPy.
+
+The geometry lives in the space. Gradients, adjoints and proxes are taken in the
+space's inner product, so an algorithm written once stays correct in a weighted or
+operator metric, on matrices, Jordan algebras or nested trees. SpaceCore ships no
+optimization loops: you write them in a few lines, or use
+[spacecore-optimize](https://github.com/Pavlo3P/spacecore-optimize).
 
 ## Install
 
@@ -27,56 +32,64 @@ import spacecore as sc
 ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
 X = sc.DenseCoordinateSpace((2,), ctx, geometry=sc.WeightedInnerProduct(ctx.asarray([2.0, 5.0])))
 A = sc.DenseLinOp(ctx.asarray([[1.0, 2.0], [0.0, 1.0]]), X, X, ctx)
-x = ctx.asarray([1.0, 2.0])
+b = ctx.asarray([1.0, 2.0])
 
-print(X.inner(x, x))                  # 22.0          (2·1 + 5·4)
-print(A.rapply(x))                    # [1.  2.8]     metric adjoint; A.T @ x is [1. 4.]
+print(X.inner(b, b))   # 22.0: the weighted inner product 2*1 + 5*4
+print(A.rapply(b))     # [1.  2.8]: the adjoint in this geometry, not A.T @ b = [1. 4.]
 
-N = A.H @ A + 0.1 * sc.IdentityLinOp(X, ctx)
-print(N.is_hermitian())               # True          inferred from the structure
-print(sc.cg(N, x, tol=1e-12).converged)  # True
+# Weighted lasso, minimize 1/2 ||A x - b||^2 + 0.1 ||x||_1, by proximal gradient.
+f = sc.SquaredL2NormFunctional(X) @ A - sc.InnerProductFunctional(A.rapply(b), X, ctx)
+g = 0.1 * sc.L1NormFunctional(X)
+x, t = X.zeros(), 0.05
+for _ in range(500):
+    x = g.prox(X.axpy(-t, f.grad(x), x), t)
+print(x)               # about [-2.83  1.94]
 ```
 
-[Metric proximal operations](docs/source/design/proximal_contract.rst) add
-optional `f.prox(x, step)`, `f.conjugate_prox(x, step)`, and set indicators.
+The loop is the algorithm; the space supplies the geometry it runs in.
 
-## Features
+## What is in it
 
-- **Spaces:** dense vectors, matrices, Jordan algebras, nested trees, and stacks.
-- **Operators:** dense, sparse, diagonal, matrix-free, and block operators;
-  lazy sums, scaling, and composition.
-- **Functionals:** linear, quadratic, least squares, norms, entropy, KL, and Huber;
-  geometry-aware gradients and proximal maps.
-- **Solvers:** CG, LSQR, Lanczos, power iteration, and matrix exponential action.
-- **Optimizer adapters:** SciPy and Optax, with metric-to-coordinate gradient conversion.
-- **Backends:** NumPy, JAX, Torch, and CuPy. See
-  [conformance](https://pavlo3p.github.io/SpaceCore/design/backend_conformance.html) and
-  [deviations](https://pavlo3p.github.io/SpaceCore/design/backend_deviations.html).
+- **Spaces:** dense vectors and matrices, Hermitian matrices and Jordan algebras,
+  stacks, and trees of any of these; Euclidean, weighted and operator metrics.
+- **Operators:** dense, sparse, diagonal, matrix-free and block operators, with
+  lazy sums, scaling and composition; `rapply` is always the metric adjoint.
+- **Functionals:** linear, quadratic and norm functionals, sums, products and
+  pull-backs; gradients in the space's geometry; `prox` and `conjugate_prox`;
+  sets and indicators.
+- **Sub-step solvers:** CG, LSQR, Lanczos, power iteration, `expm_multiply`.
+- **Backends:** NumPy, JAX, Torch, CuPy; the objects run inside `jax.jit` and
+  `torch.compile`.
 
-## Validation
+## Extending
 
-Each space, operator and functional has a `check_level`: `"none"`, `"cheap"`
-(shape/dtype/structure), `"standard"` (+ membership, Hermiticity), `"strict"`
-(+ bounded probes). Set it per object with `check_level=`, or globally with
-`sc.set_check_level(...)` / `sc.use_check_level(...)`. Run hot paths at `"none"`,
-tests at `"strict"`. Failures raise `sc.SpaceValidationError`.
+A new space, operator or functional implements check-free cores (`_add_core`,
+`_inner_core`, `_apply_core`, `_grad_core`, ...). The public methods (`add`,
+`inner`, `apply`, `grad`, ...) are inherited wrappers that run the checks and call
+the cores, and composites call cores, so each object checks once. See
+[Extending](https://pavlo3p.github.io/SpaceCore/design/extending.html).
 
-Solvers validate once at entry, not per iteration. Batching goes through
-`vapply` / `rvapply` / `vvalue`; iterative solvers are unbatched.
+## Checks
+
+Every object has a `check_level`: `"none"`, `"cheap"` (shape, dtype),
+`"standard"` (membership, e.g. Hermiticity) or `"strict"` (+ probes). Set it per
+object, or with `sc.set_check_level` / `sc.use_check_level`. Failures raise
+`sc.SpaceValidationError`. Inside `jax.jit` / `torch.compile` checks are capped by
+`sc.set_traced_check_level` (default `"none"`).
 
 ## Docs
 
-[Design notes](https://pavlo3p.github.io/SpaceCore/design/index.html) ·
+[Design](https://pavlo3p.github.io/SpaceCore/design/index.html) ·
 [API](https://pavlo3p.github.io/SpaceCore/api/index.html) ·
 [Release notes](https://pavlo3p.github.io/SpaceCore/release_notes.html)
 
-Experimental (0.x): the API may change before 1.0.
-Contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). Apache 2.0.
+Experimental (0.x): the API may change before 1.0. Contributions welcome — see
+[CONTRIBUTING.md](CONTRIBUTING.md). Apache 2.0.
 
 ```bibtex
 @software{spacecore,
   author = {Pavlo Pelikh},
-  title = {SpaceCore: Backend-aware vector spaces and linear operators},
+  title = {SpaceCore: Spaces, geometry and operators for first-order optimization},
   url = {https://github.com/Pavlo3P/SpaceCore},
   year = {2026},
 }
