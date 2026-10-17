@@ -13,8 +13,7 @@ Rules for geometry, validation, batching, conversion, and backend behavior.
    capability_dispatch
    checking_policy
    geometry
-   performance
-   jax_integration
+   performance_and_jit
    tree_spaces
    backend_ops_array_api
    backend_conformance
