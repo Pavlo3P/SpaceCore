@@ -20,52 +20,9 @@ tests, ruff, docstring and JIT audits, `sphinx -W`). Not yet verified: the CuPy
 backend on a GPU, and SDPLab, whose `master` still targets SpaceCore 0.4.2 and
 does not import on 0.4.3 or later (`jax_pytree_class`).
 
-### `0.5.0a` real functional contract — 2026-10-07
-
-All Functionals have a real codomain and produce real values, including on
-complex domains. Complex outputs, codomains, scaling coefficients and offsets
-are rejected even at `check_level="none"`. Inner-product functionals and
-Hermitian quadratic forms use the real pairing. Batch, fused, conversion and
-pytree paths preserve the contract; see ADR-010.
-
-### `0.5.0a` simplification pass — 2026-10-06
-
-The package lost layers without changing the Backend → Space → Mapping
-(LinOp / Functional) → Element division:
-
-- `LinOp` and `Functional` own their checked public methods; subclasses write only
-  the check-free cores (`_apply_core`, `_value_core`, ...). The `kernels` package
-  that held those cores as free functions is gone.
-- A class declares its constructor `_fields` once; pytree flattening, `convert`
-  and `Mapping` equality derive from it (`docs/source/design/extending.rst`).
-- `BlockMatrixLinOp` covers stacking and summing (`stack()`, `from_operators()`);
-  `StackedLinOp`, `SumToSingleLinOp`, `spacecore.opfamily`, the legacy
-  `BlockDiagonalLinOp(dom, cod, parts, ctx)` form and `_check_policy.py` are gone.
-- The map algebra lives in the `spacecore.mapping` package.
-- The optimizer adapters moved to the separate `spacecore-optimize` package; the
-  notebooks, tutorial notebooks, examples and the `bench` suite left the
-  repository (the rendered tutorial pages stay in the docs).
-
-### `0.5.0a` proximal milestone — 2026-09-28
-
-The first-order toolbox now has optional functional prox rules, Hilbert conjugate prox, and the minimal
-ADR-020 set/indicator/projection surface. Tests exercise
-unchanged proximal-gradient/PDHG loops across dense/native elements and
-Euclidean/weighted geometry, including compiled JAX. Unsupported operations
-raise explicit capability errors. See `docs/source/design/proximal_contract.rst`.
-
-Next: downstream adoption, demand-driven additional rules, and measured
-performance improvements/regression tracking. Broad performance parity is not
-established. The release train below is historical planning: ADR-016 dispatch,
-the ADR-018 adapters and the ADR-023 bench have since left the package, and native
-functionals and Krylov paths have advanced.
-
-### Earlier release planning
-
-`0.4.0` is implemented bar the Phase J/M closeout (backend-conformance matrix
-completion, deviation catalog, doc-build hygiene). Active work is the post-`0.4.0`
-interim line — ADR-016 dispatch (mechanism now implemented, off by default),
-ADR-018 optimizer adapters, ADR-019 everyday toolbox (see Roadmap).
+History of the 0.5.0a work: `CHANGELOG.md`. Next: downstream adoption, demand-driven
+additional prox rules, and measured performance work; broad performance parity is not
+established.
 
 Milestone tracking: [SpaceCore milestones](https://github.com/Pavlo3P/SpaceCore/milestones).
 
@@ -96,19 +53,6 @@ Targets are tentative; the release **gates** are the contract, not the dates. Ea
 ADR moves from Proposed to Accepted before its implementation lands. No
 optimization changes dispatch, and no demand-gated abstraction is built, before
 its ADR is accepted.
-
-### Interim line (post-`0.4.0`)
-
-Turn three recorded design decisions into code:
-
-- **ADR-016 — optimized-kernel dispatch.** *Removed in 0.5.0a*: its batched specs
-  ran mostly slower than the plain loops on eager NumPy and never under `jax.jit`;
-  the check-free cores it sat on are now methods of their classes.
-- **ADR-018 — external optimizer adapters.** *Moved out in 0.5.0a* to the
-  `spacecore-optimize` package (`minimize_scipy`, `line_search_scipy`,
-  `minimize_optax`).
-- **ADR-019 — everyday toolbox.** Battery functionals and a closed-form
-  proximal/projection primitive.
 
 ### `0.5.0` — Ergonomics, identity, dtype, and new abstractions
 
@@ -163,10 +107,8 @@ demonstrated by tutorials outside the core package; reliable interoperability
 adapters; benchmarks and regression tracking running in CI; a defined
 deprecation/compatibility policy.
 
-**Final work** — freeze the public API; remove any abandoned experimental surface
-(the `enable_checks` shim, `opfamily`, the `kernels` package and the legacy
-`BlockDiagonalLinOp` form already went in 0.5.0a); complete the typing
-(`docs/dev/typing-audit.md`, `uvx pyright` baseline), naming, and documentation
+**Final work** — freeze the public API; remove any abandoned experimental surface;
+complete the typing (`uvx pyright` baseline), naming, and documentation
 audits; run full downstream migration and artifact verification.
 
 ## Continuous parallel work
