@@ -38,52 +38,14 @@ Solver assumptions are mathematical assumptions over declared spaces: Hermitian,
 
 `spacecore/contextual/` owns context-bound objects, context normalization, default-context state, backend registration, and conversion, which `ContextBound` derives from a class's declared `_fields`; `PyTreeNode` in `spacecore/backend/_container.py` derives the pytree hooks from the same declaration. `spacecore/_batching.py` provides shared batching helpers. `spacecore/_checks.py` provides the method-level validation decorators used by spaces, operators, and functionals, and defines the `CheckLevel` literal (`"none"`, `"cheap"`, `"standard"`, `"strict"`) with its `CHECK_LEVELS` ordering. Tree-structured handling lives with the space implementations in `spacecore/space/concrete/_tree_space.py` (using `optree`) rather than in a top-level helper module. `spacecore/_version.py` is the package version source used by packaging and docs.
 
-## Public class map
+## Public names
 
-This map lists public concrete class-like exports a contributor is likely to encounter. Abstract contracts such as `BackendOps`, `LinOp`, `Functional`, `VectorSpace`, `CoordinateSpace`, `InnerProduct`, and `SpaceCheck` are discussed above and in the ADRs.
+The public API is `spacecore.__all__`; every exported name is documented, from its
+docstring, on the API pages under `docs/source/api/`. To see the current list:
 
-- `ArrayLike` — runtime-checkable protocol for dense or sparse array-like values accepted by public APIs.
-- `BackendCheck` — membership check that validates an element belongs to the expected backend family.
-- `BackendFamily` — backend-family identifier used by contexts and backend detection.
-- `BlockDiagonalLinOp` — product-space operator that applies component operators independently on each block.
-- `BlockMatrixLinOp` — rectangular block operator `y_i = sum_j A_ij x_j`; one column stacks a space into a tree, one row sums a tree into a space.
-- `ComposedFunctional` — functional representing lazy composition of a functional with a linear operator.
-- `ComposedLinOp` — lazy composition `A @ B` of compatible linear operators.
-- `Context` — execution context containing backend operations, default dtype, and check policy.
-- `ContextBound` — base for objects that carry a `Context` and support explicit conversion.
-- `DenseArray` — runtime-checkable protocol for dense array-like values.
-- `DenseCoordinateSpace` — dense coordinate representation of arrays with a fixed shape and context.
-- `DenseLinOp` — dense matrix- or tensor-backed linear operator.
-- `DenseVectorSpace` — one-dimensional dense coordinate vector space.
-- `DTypeCheck` — membership check enforcing exact dtype membership.
-- `DiagonalLinOp` — coordinatewise diagonal matrix-backed operator on one space.
-- `ElementwiseJordanSpace` — dense elementwise Jordan algebra space.
-- `EuclideanElementwiseJordanSpace` — real Euclidean elementwise Jordan algebra space.
-- `EuclideanInnerProduct` — Euclidean inner-product geometry with identity Riesz maps.
-- `HermitianCheck` — membership check for Hermitian matrix structure.
-- `HermitianSpace` — dense Hermitian matrix space with spectral Jordan operations.
-- `IdentityLinOp` — identity linear operator on one space.
-- `InnerProductFunctional` — linear functional represented by an inner product against a representer.
-- `JaxOps` — optional JAX backend operations class, exported when JAX is installed.
-- `LinalgResult` — result tuple returned by every linalg solver (`cg`, `lsqr`, `power_iteration`, `lanczos_smallest`, `expm_multiply`).
-- `LinOpQuadraticForm` — quadratic functional represented by a linear operator.
-- `MatrixFreeLinearFunctional` — linear functional defined by a user-supplied callable and representer behavior.
-- `MatrixFreeLinOp` — linear operator defined by user-supplied forward and metric-adjoint callables.
-- `NumpyOps` — NumPy/SciPy backend operations class and the baseline backend implementation.
-- `TreeElement` — optional explicit binding of ordered leaves to a tree space.
-- `TreeLinOp` — base class for operators with tree-structured domains or codomains.
-- `TreeSpace` — finite direct-product coordinate space represented by an optree.
-- `TreeSpectralDecomposition` — leafwise spectral data in deterministic tree order.
-- `ScaledLinOp` — lazy scalar multiple of a linear operator.
-- `ShapeCheck` — membership check enforcing element shape.
-- `SparseArray` — runtime-checkable protocol for sparse array-like values.
-- `SparseLinOp` — sparse matrix-backed linear operator over coordinate spaces.
-- `Space` — context-bound mathematical space with membership validation.
-- `SpaceValidationError` — exception raised when an element fails space validation.
-- `SquareMatrixCheck` — membership check enforcing square matrix shape.
-- `StackedSpace` — space representing a fixed leading-axis stack of one base space.
-- `SumLinOp` — lazy finite sum of operators with common domain and codomain.
-- `TorchOps` — optional Torch backend operations class, exported when Torch is installed.
-- `WeightedInnerProduct` — diagonal weighted inner-product geometry with validated positive finite weights.
-- `ZeroLinOp` — zero linear operator between two spaces.
-- `CuPyOps` — optional CuPy backend operations class, exported when CuPy is installed.
+```bash
+python -c "import spacecore; print(sorted(spacecore.__all__))"
+```
+
+Optional backends (`JaxOps`, `TorchOps`, `CuPyOps`) appear only when their package is
+installed. `BackendFamily` and the other backend internals live in `spacecore.backend`.
