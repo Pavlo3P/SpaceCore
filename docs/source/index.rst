@@ -58,4 +58,3 @@ Optax. The API is experimental (0.x) and may change before 1.0.
    dev/index
    api/index
    release_notes
-   release_notes_archive

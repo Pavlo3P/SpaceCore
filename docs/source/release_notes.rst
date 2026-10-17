@@ -329,3 +329,8 @@ Older releases
 --------------
 
 0.3.1 and earlier: :doc:`release_notes_archive`.
+
+.. toctree::
+   :hidden:
+
+   release_notes_archive
