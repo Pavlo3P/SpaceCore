@@ -25,7 +25,8 @@ and [docs/README.md](docs/README.md) to build the documentation.
   unresolved questions need maintainer agreement.
 
 Read the [architecture](docs/dev/contributing/architecture.md) before changing
-core behavior. See [prerequisites](docs/dev/contributing/prerequisites.md) for
+core behavior, and the [docstring style](docs/dev/docstring_style.md) before writing
+public docstrings. See [prerequisites](docs/dev/contributing/prerequisites.md) for
 mathematical background and [process](docs/dev/contributing/process.md) for
 branch, review, and release rules.
 

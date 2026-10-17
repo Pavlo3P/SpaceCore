@@ -21,23 +21,8 @@ Contributor docs stranded on side branches do not satisfy the release gate.
 
 ## Before opening a PR
 
-A PR should normally include:
-
-- tests for changed behavior;
-- updated docstrings if public behavior changed;
-- a changelog entry under `[Unreleased]`;
-- documentation updates if contributor-facing behavior changed;
-- mathematical invariant statement for changes touching geometry, adjoints, spectral methods, scalar fields, or batching.
-
-Run the relevant checks before requesting review:
-
-```bash
-pytest --co -q
-pytest tests/ -x -q
-ruff check .
-```
-
-Use focused tests first while developing, then run the normal gate before the PR is ready.
+The PR checklist and the check commands are in [CONTRIBUTING.md](../../../CONTRIBUTING.md).
+Use focused tests while developing, then run the full gate before the PR is ready.
 
 ## Review order
 
