@@ -7,7 +7,7 @@ raises ``CapabilityError``; SpaceCore never densifies or iterates to get one.
 .. math::
 
    \operatorname{prox}^{X}_{t f}(x)
-   = \arg\min_z f(z) + \frac{\|z-x\|_X^2}{2t}, \qquad t>0.
+   = \operatorname*{arg\,min}_z \left\{ f(z) + \frac{\|z-x\|_X^2}{2t} \right\}, \qquad t>0.
 
 Built-in rules
 --------------
@@ -44,7 +44,7 @@ a Riesz representer, not a coordinate covector.
    \operatorname{prox}^{X}_{t f_X^*}(p)
      &= p-t\operatorname{prox}^{X}_{f/t}(p/t).
 
-This matches ``LinOp.rapply`` in a PDHG dual update. Example: with diagonal metric
+Example: with diagonal metric
 ``W`` and ``f(x) = lam * ||x||_1``, the conjugate is the indicator of
 ``|W p| <= lam`` and its prox clips to those bounds.
 
