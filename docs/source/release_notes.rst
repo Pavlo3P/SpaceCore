@@ -324,13 +324,3 @@ Stage 1 dtype and scalar-field contract
   ADR-015 did not authorize one. Stage 2 (operand-dtype-preserving
   ``ctx.asarray``, opt-in exact dtype membership, operand-dtype solver
   workspaces) is deferred to ``0.5.0``.
-
-Older releases
---------------
-
-0.3.1 and earlier: :doc:`release_notes_archive`.
-
-.. toctree::
-   :hidden:
-
-   release_notes_archive
