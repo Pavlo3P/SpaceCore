@@ -11,6 +11,7 @@ if TYPE_CHECKING:
 from .._checks import CHECK_LEVELS, CheckLevel
 from ._container import PyTreeNode, PyTreeRegistry, registry as pytree_registry
 from ._ops import BackendOps
+from ._eager import EagerControlFlowMixin
 from ._family import BackendFamily
 from .numpy import NumpyOps
 from ._optional import available_ops
@@ -38,6 +39,7 @@ __all__ = [
     "CHECK_LEVELS",
     "BackendFamily",
     "BackendOps",
+    "EagerControlFlowMixin",
     "NumpyOps",
     "OpsRegistry",
     "PyTreeNode",

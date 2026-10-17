@@ -267,4 +267,7 @@ Example: operator and functional
 
 Both classes work under ``jax.jit`` as pytrees without further code.
 
+A new array library is a backend, not a space: see *Adding a backend* in
+:doc:`backend_conformance`.
+
 Related: :doc:`context_dtype_conversion`, :doc:`checking_policy`, :doc:`performance_and_jit`.

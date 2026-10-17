@@ -26,15 +26,101 @@ How it is checked
 Adding a backend
 ----------------
 
-1. Subclass ``BackendOps``, set ``_family``, and implement the abstract
-   methods: ``dense_array``, ``sparse_array``, ``sanitize_dtype``,
-   ``assparse``, ``sparse_matmul``, ``allclose_sparse``, ``logsumexp``,
-   ``ix_``, and ``fori_loop`` / ``while_loop`` / ``scan`` / ``cond`` (or mix in
-   ``EagerControlFlowMixin`` for those four).
-2. Register it with ``spacecore.register_ops``.
-3. Add the family to ``_all_families`` and ``backend_ops`` in
-   ``tests/backend/conftest.py``.
-4. Add its column to the matrix.
+A backend is a ``BackendOps`` subclass registered under a family name. Everything
+the Array API standard covers delegates to the class attribute ``xp``; you write
+only what it does not.
+
+1. **Subclass** ``sc.BackendOps`` and set:
+
+   * ``xp`` — an Array API namespace (``array_api_compat.<library>``);
+   * ``_family`` — the registry key, any lowercase string;
+   * ``_allow_sparse`` — whether the backend has sparse arrays.
+
+2. **Implement the abstract methods:** ``dense_array`` and ``sparse_array`` (the
+   array types), ``sanitize_dtype`` (``None`` means the default dtype),
+   ``logsumexp``, ``ix_``, ``assparse``, ``sparse_matmul`` and
+   ``allclose_sparse`` (raise ``CapabilityError`` without sparse support), and
+   ``fori_loop`` / ``while_loop`` / ``scan`` / ``cond``. An eager library mixes in
+   ``spacecore.backend.EagerControlFlowMixin`` for those four; a tracing one maps
+   them to its own primitives, as ``JaxOps`` does with ``jax.lax``.
+3. **Implement** ``_copy`` and ``_scatter_add_inplace`` if ``index_set`` /
+   ``index_add`` should work; override any inherited method whose ``xp`` behaviour
+   differs from NumPy's (``TorchOps`` overrides ``where``, ``concatenate``, ...).
+4. **Register** with ``sc.register_ops(cls)``. A family can be registered once per
+   process (``ContextConflictError`` otherwise). ``Context("<family>")`` and
+   ``Context(cls())`` then both work, and ``convert`` moves spaces, operators and
+   functionals onto it.
+5. **Test it:** add the family to ``_all_families`` and ``backend_ops`` in
+   ``tests/backend/conftest.py`` so the conformance suite runs against the NumPy
+   reference, and add its column to the matrix below.
+
+A complete dense-only backend over NumPy:
+
+.. code-block:: python
+
+   import numpy as np
+   import scipy.special
+   import array_api_compat.numpy
+   import spacecore as sc
+   from spacecore.backend import EagerControlFlowMixin
+
+
+   class DenseNumpyOps(EagerControlFlowMixin, sc.BackendOps):
+       """NumPy arrays, no sparse support: the smallest complete backend."""
+
+       xp = array_api_compat.numpy          # every Array API method delegates here
+       _family = "npdense"                  # registry key; Context("npdense") finds it
+       _allow_sparse = False
+
+       # --- array types and dtypes ------------------------------------------
+       @property
+       def dense_array(self):
+           return np.ndarray
+
+       @property
+       def sparse_array(self):
+           return ()
+
+       def sanitize_dtype(self, dtype):
+           return np.float64 if dtype is None else np.dtype(dtype)
+
+       # --- what the Array API standard does not cover ------------------------
+       def logsumexp(self, a, axis=None, b=None, keepdims=False, return_sign=False):
+           return scipy.special.logsumexp(a, axis=axis, b=b, keepdims=keepdims,
+                                          return_sign=return_sign)
+
+       def ix_(self, *args):
+           return np.ix_(*args)
+
+       def _copy(self, x):                  # used by index_set / index_add
+           return x.copy()
+
+       def _scatter_add_inplace(self, y, index, values):
+           np.add.at(y, index, values)
+
+       # --- sparse: refuse, since _allow_sparse is False ----------------------
+       def assparse(self, x, *, format="csr", dtype=None):
+           raise sc.CapabilityError("npdense has no sparse arrays")
+
+       def sparse_matmul(self, a, b):
+           raise sc.CapabilityError("npdense has no sparse arrays")
+
+       def allclose_sparse(self, a, b, rtol=1e-5, atol=1e-8):
+           raise sc.CapabilityError("npdense has no sparse arrays")
+
+
+   sc.register_ops(DenseNumpyOps)
+
+   ctx = sc.Context("npdense", dtype=np.float64)
+   X = sc.DenseCoordinateSpace((3,), ctx)
+   A = sc.DenseLinOp(ctx.asarray(np.diag([1.0, 2.0, 4.0])), X, X, ctx)
+   b = ctx.asarray([1.0, 1.0, 1.0])
+   x = sc.cg(A, b).x
+   assert ctx.ops.family == "npdense"
+   np.testing.assert_allclose(x, [1.0, 0.5, 0.25])
+
+   A_np = A.convert(sc.Context(sc.NumpyOps(), dtype=np.float64))   # move to another backend
+   np.testing.assert_allclose(A_np.apply(b), A.apply(b))
 
 Matrix
 ------
