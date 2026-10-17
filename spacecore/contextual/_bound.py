@@ -39,6 +39,19 @@ class ContextBound(ABC):
         super().__init_subclass__(**kwargs)
         # Families implement ``_*_core``; a public operation they override keeps the base checks.
         install_public_checks(cls)
+        # Defining __eq__ sets __hash__ to None; a value class keeps its family's hash, which
+        # hashes only structure every override of __eq__ also compares.
+        if "__eq__" in vars(cls) and vars(cls).get("__hash__", ...) is None:
+            inherited = next((vars(base)["__hash__"] for base in cls.__mro__[1:]
+                              if vars(base).get("__hash__") not in (None, object.__hash__)), None)
+            if inherited is not None:
+                cls.__hash__ = inherited
+
+    def _repr_html_(self) -> str:
+        """Render the text repr for notebooks."""
+        import html
+
+        return f"<code>{html.escape(repr(self))}</code>"
 
 
     def __init__(

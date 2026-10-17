@@ -130,9 +130,10 @@ class TestSpaceEquality:
         t3 = sc.TreeSpace((0, 0), (sc.DenseVectorSpace((3,), ctx), sc.DenseVectorSpace((9,), ctx)), ctx=ctx)
         assert t1 == t2 and t1 != t3
 
-    def test_spaces_unhashable(self, ctx):
-        with pytest.raises(TypeError):
-            hash(sc.DenseVectorSpace((3,), ctx))
+    def test_spaces_hash_consistently_with_equality(self, ctx):
+        a, b = sc.DenseVectorSpace((3,), ctx), sc.DenseVectorSpace((3,), ctx)
+        assert a == b and hash(a) == hash(b)
+        assert {a: "v"}[b] == "v"
 
 
 # ===========================================================================

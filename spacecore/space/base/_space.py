@@ -106,6 +106,13 @@ class Space(ContextBound):
             return NotImplemented
         return self._eq_algebra(other)
 
+    def __hash__(self) -> int:
+        # Only what equality also requires: equal spaces share type, backend, dtype and
+        # shape. Geometry weights compare numerically, so they cannot enter the hash.
+        if not hasattr(self, "_ctx"):
+            return object.__hash__(self)  # not yet bound (e.g. hashed while torch traces __init__)
+        return hash((type(self), self.ops.family, str(self.dtype), getattr(self, "shape", None)))
+
     def _eq_algebra(self, other: Any) -> bool:
         """Algebraic-equality comparison, run only after the backend gate passes.
 

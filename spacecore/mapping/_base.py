@@ -153,6 +153,13 @@ class Mapping(Algebraic, PyTreeNode, ContextBound):
     def codomain(self) -> Any:
         """Codomain: a space for operators, a :class:`~spacecore.space.RealField` for functionals."""
 
+    def __hash__(self) -> int:
+        # Consistent with __eq__: arrays compare with allclose, so only the structure that
+        # equality also requires is hashed; without ``_fields`` equality is identity.
+        if not getattr(type(self), "_fields", ()) or not hasattr(self, "_ctx"):
+            return object.__hash__(self)  # identity equality, or not yet bound (torch tracing)
+        return hash((type(self), self.ops.family, str(self.dtype), self.domain, self.codomain))
+
     def __eq__(self, other: Any) -> bool:
         """Compare declared ``_fields``; without them, fall back to identity symmetrically."""
         if not getattr(type(self), "_fields", ()) or not self.same_math(other):
