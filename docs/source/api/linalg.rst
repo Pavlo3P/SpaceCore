@@ -14,7 +14,6 @@ Linear solves
    spacecore.linalg.cg
    spacecore.linalg.LinalgResult
 
-* ``cg`` solves ``A x = b`` for Hermitian positive-definite ``A : X -> X`` with residuals measured in ``X.norm``.
 * ``LinalgResult`` is returned by every solver below: ``x``, ``converged``, ``num_iters`` and
   ``residual_norm``, plus ``eigenvalue`` or ``normal_residual_norm`` where the solver produces them.
 
@@ -26,8 +25,6 @@ Least squares
 
    spacecore.linalg.lsqr
 
-* ``lsqr`` solves least-squares problems for ``A : X -> Y`` using ``X.inner`` and ``Y.inner``.
-
 Eigenvalue and spectral methods
 -------------------------------
 
@@ -37,9 +34,6 @@ Eigenvalue and spectral methods
    spacecore.linalg.lanczos_smallest
    spacecore.linalg.power_iteration
 
-* ``lanczos_smallest`` approximates the smallest eigenpair of a Hermitian ``A : X -> X``.
-* ``power_iteration`` estimates the dominant eigenpair of a self-adjoint action or quadratic-form Hessian.
-
 Matrix functions
 ----------------
 
@@ -47,8 +41,6 @@ Matrix functions
    :nosignatures:
 
    spacecore.linalg.expm_multiply
-
-* ``expm_multiply`` approximates ``exp(t A) v`` for square Hermitian ``A : X -> X`` using Krylov projection.
 
 Native elements and JAX
 -----------------------

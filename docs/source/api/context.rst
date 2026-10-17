@@ -50,9 +50,6 @@ Context helpers
 * ``get_traced_check_level`` / ``set_traced_check_level`` cap every object's level
   while a backend traces (``jax.jit``, ``jax.vmap``, ``torch.compile``); the default
   ``"none"`` turns checks off in traced code.
-* ``normalize_context`` turns backend names, families, concrete contexts, or ``None`` into a context.
-* ``resolve_context_priority`` chooses a common context for constructors.
-* ``register_ops`` adds a custom backend implementation.
 
 .. autofunction:: spacecore.get_context
 .. autofunction:: spacecore.set_context

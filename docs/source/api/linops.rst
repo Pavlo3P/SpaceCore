@@ -15,10 +15,6 @@ Matrix-backed operators
    spacecore.linop.SparseLinOp
    spacecore.linop.DiagonalLinOp
 
-* ``DenseLinOp`` stores a dense matrix or tensor interpreted in domain and codomain coordinates.
-* ``SparseLinOp`` stores a backend sparse matrix for sparse forward and adjoint products.
-* ``DiagonalLinOp`` stores coordinate diagonal entries for a map ``X -> X``.
-
 Matrix-free and canonical operators
 -----------------------------------
 
@@ -30,11 +26,8 @@ Matrix-free and canonical operators
    spacecore.linop.IdentityLinOp
    spacecore.linop.ZeroLinOp
 
-* ``LinOp`` is the abstract base contract.
 * ``MatrixFreeLinOp`` wraps forward and metric-adjoint callables exactly as
   supplied; it does not derive or Riesz-correct matrix-free adjoints.
-* ``IdentityLinOp`` represents ``I : X -> X``.
-* ``ZeroLinOp`` represents ``0 : X -> Y``.
 
 Algebraic operators
 -------------------
@@ -49,9 +42,6 @@ Algebraic operators
    spacecore.linop.make_composed
    spacecore.linop.make_scaled
 
-* ``SumLinOp`` represents ``A + B`` for maps with the same domain and codomain.
-* ``ComposedLinOp`` represents ``A @ B`` where ``B.codomain == A.domain``.
-* ``ScaledLinOp`` represents ``alpha * A``.
 * Helper constructors perform the same simplifications used by Python operator overloads.
 
 Tree and block operators
@@ -64,7 +54,6 @@ Tree and block operators
    spacecore.linop.BlockDiagonalLinOp
    spacecore.linop.BlockMatrixLinOp
 
-* ``TreeLinOp`` is the base for operators with a ``TreeSpace`` domain or codomain.
 * ``BlockDiagonalLinOp(blocks)`` maps corresponding tree leaves independently
   and infers both ``TreeSpace`` endpoints from the block domains and codomains.
 * ``BlockMatrixLinOp(block_rows)`` computes row sums for a rectangular matrix

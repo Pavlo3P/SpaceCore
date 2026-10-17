@@ -15,11 +15,8 @@ Backend families
    spacecore.backend.JaxOps
    spacecore.backend.TorchOps
 
-* ``BackendOps`` is the abstract operation surface.
-* ``NumpyOps`` is always available and uses NumPy plus SciPy sparse.
-* ``JaxOps`` is optional and follows JAX tracing and dtype configuration.
-* ``TorchOps`` is optional and follows PyTorch tensor, dtype, device, and autograd semantics.
-* ``CuPyOps`` is optional and follows CuPy/CuPy sparse semantics.
+``NumpyOps`` is always available; ``JaxOps``, ``TorchOps`` and ``CuPyOps`` are exported only
+when their package is installed.
 
 Choosing a backend
 ------------------

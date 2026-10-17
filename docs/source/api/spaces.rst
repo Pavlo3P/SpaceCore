@@ -16,12 +16,6 @@ Coordinate and vector spaces
    spacecore.space.DenseCoordinateSpace
    spacecore.space.DenseVectorSpace
 
-* ``Space`` owns context and membership checking.
-* ``VectorSpace`` adds linear operations on elements.
-* ``CoordinateSpace`` adds a finite coordinate shape and flattening.
-* ``DenseCoordinateSpace`` represents dense arrays of fixed shape with an inner product.
-* ``DenseVectorSpace`` represents one-dimensional dense vectors with star but no Jordan capability by default.
-
 Structured spaces
 -----------------
 
@@ -34,11 +28,8 @@ Structured spaces
    spacecore.space.TreeSpectralDecomposition
    spacecore.space.StackedSpace
 
-* ``HermitianSpace`` represents dense Hermitian or symmetric matrices with Frobenius geometry.
 * ``TreeSpace`` is the single structured finite direct-product abstraction. Its
   Python tree records representation, not a tensor product.
-* ``TreeElement`` binds ordered leaves to a ``TreeSpace`` and reconstructs the Python value.
-* ``StackedSpace`` represents a fixed number of leading-axis copies of one coordinate leaf space.
 
 Inner products and geometries
 -----------------------------
@@ -52,12 +43,6 @@ Inner products and geometries
    spacecore.space.OperatorInnerProduct
    spacecore.space.InnerProductSpace
 
-* ``InnerProduct`` defines ``inner`` and Riesz maps.
-* ``EuclideanInnerProduct`` is the standard coordinate ``vdot`` geometry.
-* ``WeightedInnerProduct`` is a positive diagonal metric whose weights broadcast to the space shape (a 0-d array scales the Euclidean metric); weight values are checked from ``standard`` upward.
-* ``OperatorInnerProduct`` is the metric of a self-adjoint positive-definite operator ``M``; ``M_inverse``, possibly inexact, inverts its Riesz map.
-* ``InnerProductSpace`` exposes ``inner``, ``norm``, ``riesz``, and ``riesz_inverse``.
-
 Star and Jordan-capable spaces
 ------------------------------
 
@@ -69,12 +54,6 @@ Star and Jordan-capable spaces
    spacecore.space.EuclideanJordanAlgebraSpace
    spacecore.space.ElementwiseJordanSpace
    spacecore.space.EuclideanElementwiseJordanSpace
-
-* ``StarSpace`` exposes a canonical involution.
-* ``JordanAlgebraSpace`` exposes Jordan products and spectral calculus.
-* ``EuclideanJordanAlgebraSpace`` marks Jordan structure compatible with Euclidean geometry.
-* ``ElementwiseJordanSpace`` represents coordinatewise multiplication and spectral application.
-* ``EuclideanElementwiseJordanSpace`` is the real Euclidean specialization.
 
 Validation
 ----------

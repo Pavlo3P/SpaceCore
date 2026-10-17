@@ -88,10 +88,6 @@ Scalar maps
    spacecore.functional.ComposedFunctional
    spacecore.functional.make_functional_composed
 
-* ``Functional`` is the base scalar-valued map contract.
-* ``ComposedFunctional`` represents pullback ``f o A`` for a linear operator ``A``.
-* ``make_functional_composed`` constructs the same pullback with simplifications.
-
 Algebra
 -------
 
@@ -114,9 +110,6 @@ types, never values.
    spacecore.functional.make_constant_functional
    spacecore.functional.make_functional_product
 
-* ``ScaledFunctional`` is ``a * F``; the Riesz gradient scales by the real scalar ``a``.
-* ``SumFunctional`` is ``F_1 + ... + F_n`` on a shared domain.
-* ``ZeroFunctional`` is the additive identity, recognized by the canonicalizers.
 * ``ConstantFunctional`` is ``x -> c``, the embedding of a scalar into the
   algebra; ``make_constant_functional`` collapses ``c = 0`` to ``ZeroFunctional``.
 * ``ProductFunctional`` is the pointwise product ``F(x) * G(x)``, with the
@@ -147,8 +140,6 @@ Linear functionals
    spacecore.functional.InnerProductFunctional
    spacecore.functional.MatrixFreeLinearFunctional
 
-* ``LinearFunctional`` is the base class for linear maps to scalars.
-* ``InnerProductFunctional`` stores a Riesz representer ``c`` and evaluates ``<c, x>``.
 * ``MatrixFreeLinearFunctional`` wraps a callable evaluator; a stored gradient is optional
   and is not inferred from the callable.
 
@@ -160,9 +151,6 @@ Quadratic functionals
 
    spacecore.functional.QuadraticForm
    spacecore.functional.LinOpQuadraticForm
-
-* ``QuadraticForm`` models objectives with value, gradient, and Hessian-vector action.
-* ``LinOpQuadraticForm`` represents ``0.5 <x, Qx> + ell(x) + a``.
 
 Norm functionals
 ----------------
@@ -176,9 +164,6 @@ metric (Riesz) gradients under the domain geometry.
    spacecore.functional.SquaredL2NormFunctional
    spacecore.functional.LpNormFunctional
    spacecore.functional.L1NormFunctional
-
-* ``SquaredL2NormFunctional`` is ``1/2 ||x||_X^2`` (gradient ``x``, clean shrinkage prox).
-* ``LpNormFunctional`` / ``L1NormFunctional`` are coordinate ``p``-norms.
 
 The norms live in the :mod:`spacecore.functional.tools` subpackage and are
 re-exported from :mod:`spacecore.functional` and the top-level ``spacecore`` namespace.
