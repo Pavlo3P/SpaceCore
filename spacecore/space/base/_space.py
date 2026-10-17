@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Any, ClassVar, Literal
 
-from ..._check_policy import CheckLevel, check_level_at_least, normalize_check_level
-from ..._lazy_algebra import is_recognizably_nonreal
+from ..._checks import CheckLevel, check_level_at_least
+from ...mapping._lazy_algebra import is_recognizably_nonreal
 from ...contextual import ContextBound
 from ..._repr import field_symbol
 from ...contextual import Context
@@ -19,10 +19,7 @@ class Space(ContextBound):
     ctx : Context, str, or None, optional
         Context specification used for elements and validation checks.
     check_level : {"none", "cheap", "standard", "strict"}, optional
-        Runtime validation policy for this object. When omitted, the ambient
-        default (see :func:`spacecore.get_check_level`) is used. Unlike the
-        backend/dtype context, the validation policy is a property of the bound
-        object, not of the :class:`Context`.
+        Validation level; the ambient default when omitted.
     """
 
     checks: ClassVar[tuple[SpaceCheck, ...]] = ()
@@ -30,9 +27,14 @@ class Space(ContextBound):
     def __init__(
         self,
         ctx: Context | str | None = None,
-        check_level: CheckLevel | bool | None = None,
+        check_level: CheckLevel | None = None,
     ) -> None:
         super().__init__(ctx, check_level=check_level)
+        # Spaces hold floating data; a complex scalar field needs complex storage.
+        if not self.ops.xp.isdtype(self.dtype, ("real floating", "complex floating")):
+            raise TypeError("Spaces require floating storage, not integer or Boolean dtype.")
+        if self.scalar_field == "complex" and not self.ops.is_complex_dtype(self.dtype):
+            raise TypeError("A complex scalar field requires complex floating storage.")
         # Lazy caches. Populated on first call to member_checks() /
         # _checks_for_level() and reused for every subsequent membership
         # validation. Spaces are immutable after construction (`convert`
@@ -79,6 +81,7 @@ class Space(ContextBound):
 
     def _check_scalar(self, a: Any) -> None:
         """Raise if ``a`` is not an admissible multiplier for this space."""
+        # Only a provably non-real scalar is rejected, so traced scalars pass.
         if self.scalar_field == "real" and is_recognizably_nonreal(a):
             raise SpaceValidationError(
                 f"{self._space_descriptor()} is a vector space over ℝ, so scaling by "
@@ -102,6 +105,13 @@ class Space(ContextBound):
         if not self.same_math(other):
             return NotImplemented
         return self._eq_algebra(other)
+
+    def __hash__(self) -> int:
+        # Only what equality also requires: equal spaces share type, backend, dtype and
+        # shape. Geometry weights compare numerically, so they cannot enter the hash.
+        if not hasattr(self, "_ctx"):
+            return object.__hash__(self)  # not yet bound (e.g. hashed while torch traces __init__)
+        return hash((type(self), self.ops.family, str(self.dtype), getattr(self, "shape", None)))
 
     def _eq_algebra(self, other: Any) -> bool:
         """Algebraic-equality comparison, run only after the backend gate passes.
@@ -139,17 +149,21 @@ class Space(ContextBound):
         Subclasses that depend on mutable state (none in 0.4.0) must
         clear ``self._cached_member_checks`` themselves.
         """
+        # Computed once: spaces are immutable after construction.
         cached = self._cached_member_checks
         if cached is not None:
             return cached
         checks: list[SpaceCheck] = []
+        # Base classes first: each contributes its class checks and instance checks.
         for klass in reversed(type(self).__mro__):
             checks.extend(klass.__dict__.get("checks", ()))
             local_checks = klass.__dict__.get("_local_checks")
             if local_checks is not None:
                 checks.extend(local_checks(self))
         result = tuple(checks)
-        self._cached_member_checks = result
+        # No write under a tracer: torch.compile breaks the graph on a dict mutated mid-trace.
+        if not self.ops.is_tracing():
+            self._cached_member_checks = result
         return result
 
     def _checks_for_level(self, level: CheckLevel) -> tuple[SpaceCheck, ...]:
@@ -159,6 +173,7 @@ class Space(ContextBound):
         ``_check_member`` and ``_run_checks``; precomputing it removes
         per-call MRO walks and per-check ``minimum_level`` comparisons.
         """
+        # Filter the checks this level runs, once per level.
         cached = self._cached_checks_by_level.get(level)
         if cached is not None:
             return cached
@@ -166,28 +181,14 @@ class Space(ContextBound):
             check for check in self.member_checks()
             if check_level_at_least(level, check.minimum_level)
         )
-        self._cached_checks_by_level[level] = result
+        if not self.ops.is_tracing():  # see member_checks
+            self._cached_checks_by_level[level] = result
         return result
 
     def _check_member(self, x: Any) -> None:
         """Raise if ``x`` is not a valid element of this space."""
-        # Hot path: use the per-level cached check list and run inline,
-        # avoiding the generic ``_run_checks`` MRO walk.
-        level = normalize_check_level(getattr(self, "check_level", "standard"))
-        for check in self._checks_for_level(level):
-            if not check.validate(self, x, allow_leading=False):
-                raise SpaceValidationError(
-                    check.validation_message(self, x, allow_leading=False)
-                )
+        _run_checks(self, x, allow_leading=False)
 
     def check_member(self, x: Any) -> None:
         if self.check_level != "none":
             self._check_member(x)
-
-    def _convert(self, new_ctx: Context) -> Space:
-        raise NotImplementedError()
-
-    # ``_run_checks`` is kept importable for backwards compatibility but
-    # callers inside SpaceCore go through ``_check_member`` (single
-    # element) or ``_check_batched_member`` (batched) above.
-    _legacy_run_checks = staticmethod(_run_checks)

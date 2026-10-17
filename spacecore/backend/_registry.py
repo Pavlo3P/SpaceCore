@@ -1,39 +1,19 @@
-"""Registry of backend implementations, keyed by backend family.
+"""
+Registry of backend classes by family: which backends exist in this process.
 
-The single answer to "which ``BackendOps`` classes exist in this process". It is
-seeded at construction from :func:`~spacecore.backend._optional.available_ops`
-— what is *importable* in this environment — and can then be extended at runtime
-via :meth:`OpsRegistry.register`, which is how a third-party backend joins
-without an entry point.
-
-Separation of concerns: this module answers *what backends exist*;
-:mod:`spacecore.contextual` answers *which one is currently in effect*. Those are
-different kinds of state — a registry is process-wide and shared by every thread,
-while ambient policy is scoped and swappable — and holding them in one object
-made the registry impossible to test without the ambient singleton. Compare
-:mod:`spacecore.backend._container`, which applies the same split to pytree
-registration.
-
-Two deliberate differences from :class:`~spacecore.backend._container.PyTreeRegistry`:
-
-* **Duplicate registration raises** here rather than being idempotent. Two
-  different classes claiming ``"numpy"`` is a genuine conflict a caller should
-  hear about, whereas re-wiring an already-wired ``(backend, class)`` pair is a
-  no-op by construction.
-* **Removal is supported** (:meth:`unregister`). ``PyTreeRegistry`` must stay
-  monotonic because its two-axis back-fill depends on it; this registry is a
-  plain keyed lookup with no derived state, so removing an entry is safe. It
-  exists for tests and for backends registered dynamically.
+Seeded from :func:`~spacecore.backend._optional.available_ops` and extendable at
+runtime. Which backend is currently in effect lives in :mod:`spacecore.contextual`.
+Unlike the pytree registry, a duplicate registration raises and removal is allowed.
 """
 from __future__ import annotations
 
-import threading
 from types import MappingProxyType
 from typing import Any, Mapping
 
 from .._errors import ContextConflictError, UnknownBackendError
 from ._family import BackendFamily
 from ._ops import BackendOps
+from ._optional import available_ops
 
 #: Anything that can name a backend: a family string, the enum, an ops instance
 #: or class, or a Context (duck-typed via ``.ops`` to avoid importing contextual).
@@ -48,17 +28,18 @@ def backend_key(x: BackendKeyLike) -> str:
     object exposing a ``.ops`` attribute (a ``Context``; duck-typed so this
     module need not import :mod:`spacecore.contextual`, which would be a cycle).
     """
+    # Ops instances and classes, families, names ('pytorch' aliases 'torch'), or anything with .ops.
     if isinstance(x, BackendOps):
         return backend_key(x.family)
     if isinstance(x, type) and issubclass(x, BackendOps):
         return backend_key(x._family)
     if isinstance(x, BackendFamily):
-        return x.value.lower()
+        return x.value
     if isinstance(x, str):
         key = x.lower()
         return "torch" if key == "pytorch" else key
     ops = getattr(x, "ops", None)
-    if ops is not None and isinstance(ops, BackendOps):
+    if isinstance(ops, BackendOps):
         return backend_key(ops)
     raise TypeError(f"Unsupported backend key source: {type(x)!r}")
 
@@ -78,40 +59,23 @@ class OpsRegistry:
 
     def __init__(self, seed: Any = ()) -> None:
         self._ops: dict[str, type[BackendOps]] = {}
-        self._lock = threading.RLock()
         for cls in seed:
             self.register(cls)
 
     def register(self, ops: type[BackendOps]) -> type[BackendOps]:
-        """Register a backend class under its family name.
+        """
+        Register a backend class under its family name; usable as a decorator.
 
-        Parameters
-        ----------
-        ops : type of BackendOps
-            Backend class to register.
-
-        Returns
-        -------
-        type of BackendOps
-            The class, so this can be used as a decorator.
-
-        Raises
-        ------
-        TypeError
-            If ``ops`` is not a ``BackendOps`` subclass.
-        ContextConflictError
-            If the family is already registered — including by this same class.
-            Re-registration is treated as a conflict rather than a no-op because
-            it almost always means two implementations are competing for one
-            family name.
+        Raises ``TypeError`` for a non-``BackendOps`` class and ``ContextConflictError`` if the
+        family is taken, even by the same class.
         """
         if not isinstance(ops, type) or not issubclass(ops, BackendOps):
             raise TypeError(f"Expected type[BackendOps], got {type(ops)!r}")
         family = backend_key(ops)
-        with self._lock:
-            if family in self._ops:
-                raise ContextConflictError(f"BackendOps {family} is already registered.")
-            self._ops[family] = ops
+        # One class per family; registering a family twice is a conflict.
+        if family in self._ops:
+            raise ContextConflictError(f"BackendOps {family} is already registered.")
+        self._ops[family] = ops
         return ops
 
     def unregister(self, key: BackendKeyLike) -> type[BackendOps] | None:
@@ -122,8 +86,7 @@ class OpsRegistry:
         requires monotonicity). Intended for tests and dynamically scoped
         backends, not for routine use.
         """
-        with self._lock:
-            return self._ops.pop(backend_key(key), None)
+        return self._ops.pop(backend_key(key), None)
 
     def get_class(self, key: BackendKeyLike) -> type[BackendOps]:
         """Return the registered class for ``key``.
@@ -134,14 +97,13 @@ class OpsRegistry:
             If no backend is registered under that family.
         """
         family = backend_key(key)
-        with self._lock:
-            cls = self._ops.get(family)
-            if cls is None:
-                allowed = ", ".join(self._ops)
-                raise UnknownBackendError(
-                    f"Unknown backend: {family!r}. Expected one of: {allowed}"
-                )
-            return cls
+        cls = self._ops.get(family)
+        if cls is None:
+            allowed = ", ".join(self._ops)
+            raise UnknownBackendError(
+                f"Unknown backend: {family!r}. Expected one of: {allowed}"
+            )
+        return cls
 
     def get(self, key: BackendKeyLike) -> BackendOps:
         """Return a fresh instance of the backend registered under ``key``."""
@@ -149,15 +111,14 @@ class OpsRegistry:
 
     def classes(self) -> Mapping[str, type[BackendOps]]:
         """Return a read-only view of family name to registered class."""
-        with self._lock:
-            return MappingProxyType(dict(self._ops))
+        return MappingProxyType(dict(self._ops))
 
     def families(self) -> tuple[str, ...]:
         """Return the registered family names, in registration order."""
-        with self._lock:
-            return tuple(self._ops)
+        return tuple(self._ops)
 
     def __contains__(self, key: BackendKeyLike) -> bool:
+        # Unrecognized key types count as absent.
         try:
             return backend_key(key) in self._ops
         except TypeError:
@@ -171,6 +132,7 @@ class OpsRegistry:
         error, keeping inference conservative: a backend that cannot answer
         simply does not claim the value.
         """
+        # Every backend whose is_array accepts x; one that fails to construct is skipped.
         matched: list[BackendOps] = []
         for cls in tuple(self.classes().values()):
             try:
@@ -182,12 +144,5 @@ class OpsRegistry:
         return matched
 
 
-def _seeded_registry() -> OpsRegistry:
-    """Build the process registry from whatever backends are importable."""
-    from ._optional import available_ops
-
-    return OpsRegistry(available_ops())
-
-
 #: Process-wide backend registry used by :mod:`spacecore.contextual`.
-registry = _seeded_registry()
+registry = OpsRegistry(available_ops())

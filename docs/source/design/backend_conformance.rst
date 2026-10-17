@@ -1,452 +1,290 @@
 Backend conformance
 ===================
 
-This page is the normative conformance matrix for ``BackendOps``. Every
-public method on ``spacecore.backend.BackendOps`` appears as a row. Columns
-record which backends implement it within tolerance, which dtypes each
-backend honors, optional-argument coverage, sparse support, JIT
-compatibility, native ``vmap``, and conversion behavior. Each row links to
-the test(s) that pin it.
+Every ``BackendOps`` method must match the NumPy reference within its per-op
+tolerance on every backend; the matrix below records what ``tests/backend/``
+checks.
 
-Tests live under ``tests/backend/``. The shared harness
-(``tests/backend/_conformance.py``) defines per-op tolerances, the
-``backend_ops`` fixture, and the ``assert_matches_reference`` helper. The
-matrix is the contract; tests instantiate it.
-
-Scope and policy
-----------------
-
-* **In scope.** NumPy is the reference. JAX, Torch, and CuPy are compared
-  against NumPy through the harness. Sparse paths exist where the backend
-  exposes a sparse array type.
-* **Out of scope.** Performance, device placement, JAX sharding, autograd,
-  and downstream library compatibility.
-* **Tolerance.** Per-op + per-dtype, set in
-  ``tests/backend/_conformance.py:TOLERANCE_TABLE``. The default is
-  ``rtol=1e-6, atol=1e-8``. Spectral and complex sqrt entries are looser.
-* **Skip vs deviation.** A backend that genuinely lacks an op is skipped
-  with a justification. A backend that returns a different result inside
-  tolerance is a *deviation* and appears in :doc:`backend_deviations`.
-* **Adding a backend.** Implement ``BackendOps``, register the family,
-  add a fixture branch in ``tests/backend/conftest.py``, and update the
-  ``Backends`` column of every row this implementation supports.
-
-How to read a row
+How it is checked
 -----------------
 
-* **Method** — ``BackendOps`` method name.
-* **NumPy reference** — the ``numpy`` or ``numpy.linalg`` callable used as
-  ground truth. ``—`` means no direct NumPy spelling; the row is
-  compared against another invariant (identity, round-trip, etc.).
-* **Backends** — ``N J T C`` columns; ``y`` = covered, ``s`` = covered
-  with a skip on absent platforms, ``d`` = deviation (see
-  :doc:`backend_deviations`), ``—`` = not implemented for this backend.
-* **dtypes** — ``r32 r64 c64 c128``; ``y`` covered, ``—`` not covered
-  by the backend natively.
-* **Tests** — link(s) to the test file(s) that pin this row.
+* **Harness.** ``tests/_conformance.py`` (re-exported by
+  ``tests/backend/_conformance.py``) holds ``TOLERANCE_TABLE`` and
+  ``assert_matches_reference``. Tolerance is keyed by ``(op, dtype kind)``;
+  the default is ``rtol=1e-6, atol=1e-8``, looser for ``eigh``, ``svd``,
+  complex ``sqrt``, and float32 ``logsumexp`` / ``cholesky`` / ``solve``.
+* **Backends.** The ``backend_ops`` fixture (``tests/backend/conftest.py``)
+  runs each test on NumPy and on each of JAX, Torch, CuPy that is importable.
+* **dtypes.** ``float32``, ``float64``, ``complex64``, ``complex128``. A dtype
+  the backend does not honor is skipped (``backend_supports_dtype``): JAX
+  64-bit without ``jax_enable_x64``, Torch according to its default dtype.
+* **Not checked.** Performance, device placement, sharding, autograd.
+* **Differences.** A result that passes but differs from NumPy in a way users
+  notice (dtype promotion, default precision) is listed in
+  :doc:`backend_deviations`.
+
+Adding a backend
+----------------
+
+A backend is a ``BackendOps`` subclass registered under a family name. Everything
+the Array API standard covers delegates to the class attribute ``xp``; you write
+only what it does not.
+
+1. **Subclass** ``sc.BackendOps`` and set:
+
+   * ``xp`` — an Array API namespace (``array_api_compat.<library>``);
+   * ``_family`` — the registry key, any lowercase string;
+   * ``_allow_sparse`` — whether the backend has sparse arrays.
+
+2. **Implement the abstract methods:** ``dense_array`` and ``sparse_array`` (the
+   array types), ``sanitize_dtype`` (``None`` means the default dtype),
+   ``logsumexp``, ``ix_``, ``assparse``, ``sparse_matmul`` and
+   ``allclose_sparse`` (raise ``CapabilityError`` without sparse support), and
+   ``fori_loop`` / ``while_loop`` / ``scan`` / ``cond`` (see *Control flow* below:
+   an eager library mixes in ``spacecore.backend.EagerControlFlowMixin``).
+3. **Implement** ``_copy`` and ``_scatter_add_inplace`` if ``index_set`` /
+   ``index_add`` should work; override any inherited method whose ``xp`` behaviour
+   differs from NumPy's (``TorchOps`` overrides ``where``, ``concatenate``, ...).
+4. **Register** by decorating the class with ``@sc.register_ops`` (or calling
+   ``sc.register_ops(cls)``). A family can be registered once per
+   process (``ContextConflictError`` otherwise). ``Context("<family>")`` and
+   ``Context(cls())`` then both work, and ``convert`` moves spaces, operators and
+   functionals onto it.
+5. **Test it:** add the family to ``_all_families`` and ``backend_ops`` in
+   ``tests/backend/conftest.py`` so the conformance suite runs against the NumPy
+   reference, and add its column to the matrix below.
+
+A complete dense-only backend over NumPy:
+
+.. code-block:: python
+
+   import numpy as np
+   import scipy.special
+   import array_api_compat.numpy
+   import spacecore as sc
+   from spacecore.backend import EagerControlFlowMixin
+
+
+   @sc.register_ops                     # registers the class and returns it
+   class DenseNumpyOps(EagerControlFlowMixin, sc.BackendOps):
+       """NumPy arrays, no sparse support: the smallest complete backend."""
+
+       xp = array_api_compat.numpy          # every Array API method delegates here
+       _family = "npdense"                  # registry key; Context("npdense") finds it
+       _allow_sparse = False
+
+       # --- array types and dtypes ------------------------------------------
+       @property
+       def dense_array(self):
+           return np.ndarray
+
+       @property
+       def sparse_array(self):
+           return ()
+
+       def sanitize_dtype(self, dtype):
+           return np.float64 if dtype is None else np.dtype(dtype)
+
+       # --- what the Array API standard does not cover ------------------------
+       def logsumexp(self, a, axis=None, b=None, keepdims=False, return_sign=False):
+           return scipy.special.logsumexp(a, axis=axis, b=b, keepdims=keepdims,
+                                          return_sign=return_sign)
+
+       def ix_(self, *args):
+           return np.ix_(*args)
+
+       def _copy(self, x):                  # used by index_set / index_add
+           return x.copy()
+
+       def _scatter_add_inplace(self, y, index, values):
+           np.add.at(y, index, values)
+
+       # --- sparse: refuse, since _allow_sparse is False ----------------------
+       def assparse(self, x, *, format="csr", dtype=None):
+           raise sc.CapabilityError("npdense has no sparse arrays")
+
+       def sparse_matmul(self, a, b):
+           raise sc.CapabilityError("npdense has no sparse arrays")
+
+       def allclose_sparse(self, a, b, rtol=1e-5, atol=1e-8):
+           raise sc.CapabilityError("npdense has no sparse arrays")
+
+
+   ctx = sc.Context("npdense", dtype=np.float64)
+   X = sc.DenseCoordinateSpace((3,), ctx)
+   A = sc.DenseLinOp(ctx.asarray(np.diag([1.0, 2.0, 4.0])), X, X, ctx)
+   b = ctx.asarray([1.0, 1.0, 1.0])
+   x = sc.cg(A, b).x
+   assert ctx.ops.family == "npdense"
+   np.testing.assert_allclose(x, [1.0, 0.5, 0.25])
+
+   A_np = A.convert(sc.Context(sc.NumpyOps(), dtype=np.float64))   # move to another backend
+   np.testing.assert_allclose(A_np.apply(b), A.apply(b))
+
+Control flow
+------------
+
+**Library loops go through** ``ops``, **so one solver runs eagerly and compiles under
+``jax.jit``.** ``cg``, ``power_iteration``, ``lanczos_smallest`` and
+``expm_multiply`` never write a Python ``while``; they call ``ops.while_loop``,
+``ops.fori_loop``, ``ops.cond`` and ``ops.scan``. Each backend decides what those
+mean.
+
+========================================================  =====================================================
+Method (``jax.lax`` semantics)                            Eager meaning
+========================================================  =====================================================
+``fori_loop(lower, upper, body(i, carry), init)``         ``for i in range(lower, upper): carry = body(i, carry)``
+``while_loop(cond(carry), body(carry), init)``            ``while cond(carry): carry = body(carry)``
+``cond(pred, true_fun, false_fun, *operands)``            ``true_fun(*operands) if pred else false_fun(*operands)``
+``scan(f(carry, x) -> (carry, y), init, xs)``             loop over the leading axis of ``xs``; stack the ``y``
+========================================================  =====================================================
+
+The two kinds of backend need different implementations:
+
+* **Tracing** (``JaxOps``): a Python ``while`` cannot test a traced value, a Python
+  ``if`` cannot branch on one, and a Python ``for`` unrolls into the compiled graph.
+  ``JaxOps`` maps the four methods to ``jax.lax.while_loop`` / ``fori_loop`` /
+  ``cond`` / ``scan`` and does not use the mixin.
+* **Eager** (``NumpyOps``, ``TorchOps``, ``CuPyOps`` through ``NumpyOps``): the
+  values are concrete, so plain Python loops are correct. ``EagerControlFlowMixin``
+  is that one implementation, including the tree stacking ``scan`` needs; list it
+  before ``BackendOps`` in the bases so its methods win.
+
+A new eager backend therefore mixes it in and writes no control flow. A new
+tracing backend implements the four with its own staged primitives, keeping the
+carry structure fixed across iterations and both ``cond`` branches returning the
+same structure, as ``jax.lax`` requires. Code written against ``ops`` follows the
+same rules:
+
+.. code-block:: python
+
+   def newton_sqrt(ops, a, tol=1e-12):
+       """sqrt(a) by Newton's method, written once against ops."""
+       def keep_going(carry):
+           x, step = carry
+           return step > tol
+
+       def update(carry):
+           x, _ = carry
+           x_new = 0.5 * (x + a / x)
+           return x_new, ops.abs(x_new - x)
+
+       x, _ = ops.while_loop(keep_going, update, (a, ops.asarray(1.0)))
+       return x
+
+   np_ops = sc.NumpyOps()
+   print(newton_sqrt(np_ops, np_ops.asarray(2.0)))          # eager Python loop
+
+   import jax
+   jax_ops = sc.JaxOps()
+   print(jax.jit(lambda a: newton_sqrt(jax_ops, a, tol=1e-6))(jax_ops.asarray(2.0)))  # lax.while_loop
 
 Matrix
 ------
 
+``N J T C`` = NumPy, JAX, Torch, CuPy. ``y`` = checked against the reference;
+``s`` = checked, skipped when the library or platform lacks the operation
+(e.g. CuPy without a GPU).
+
 Metadata and predicates
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-.. list-table::
-   :header-rows: 1
-   :widths: 16 18 12 12 18
+==============================================================================  ====================================  =======
+Method                                                                          Reference                             N J T C
+==============================================================================  ====================================  =======
+``family`` / ``allow_sparse`` / ``has_native_vmap``                             constant                              y y y y
+``dense_array`` / ``sparse_array``                                              array type                            y y y s
+``is_dense`` / ``is_sparse`` / ``is_array``                                     direct                                y y y y
+``get_dtype`` / ``shape`` / ``ndim`` / ``size``                                 ``x.dtype`` / ``x.shape`` / ...       y y y y
+``is_complex_dtype`` / ``real_dtype`` / ``complex_dtype`` / ``sanitize_dtype``  dtype kind                            y y y y
+==============================================================================  ====================================  =======
 
-   * - Method
-     - NumPy reference
-     - Backends (N J T C)
-     - dtypes (r32 r64 c64 c128)
-     - Tests
-   * - ``family``
-     - identity
-     - y y y y
-     - n/a
-     - ``test_backend_registry.py``
-   * - ``allow_sparse``
-     - identity
-     - y y y y
-     - n/a
-     - ``test_backend_registry.py``
-   * - ``has_native_vmap``
-     - constant
-     - y y y y
-     - n/a
-     - ``test_backend_vmap.py``
-   * - ``dense_array``
-     - identity
-     - y y y y
-     - n/a
-     - ``test_backend_registry.py``
-   * - ``sparse_array``
-     - identity
-     - y y y s
-     - n/a
-     - ``test_backend_registry.py``, ``test_backend_optional_args.py``
-   * - ``is_dense`` / ``is_sparse`` / ``is_array``
-     - direct
-     - y y y y
-     - n/a
-     - ``test_conformance_numpy.py``
-   * - ``get_dtype``
-     - ``x.dtype``
-     - y y y y
-     - y y y y
-     - ``test_conformance_numpy.py``
-   * - ``shape`` / ``ndim`` / ``size``
-     - ``x.shape`` / ``x.ndim`` / ``x.size``
-     - y y y y
-     - y y y y
-     - ``test_conformance_numpy.py``
-   * - ``is_complex_dtype`` / ``real_dtype`` / ``sanitize_dtype``
-     - dtype kind
-     - y y y y
-     - y y y y
-     - ``test_conformance_numpy.py``
+Construction
+~~~~~~~~~~~~
 
-Construction and dtype
-~~~~~~~~~~~~~~~~~~~~~~
-
-.. list-table::
-   :header-rows: 1
-   :widths: 16 18 12 12 18
-
-   * - Method
-     - NumPy reference
-     - Backends (N J T C)
-     - dtypes (r32 r64 c64 c128)
-     - Tests
-   * - ``asarray``
-     - ``np.asarray``
-     - y y y y
-     - y y y y
-     - ``test_conformance_numpy.py``, ``test_backend_conversion.py``
-   * - ``astype``
-     - ``x.astype``
-     - y y y y
-     - y y y y
-     - ``test_conformance_numpy.py``, ``test_backend_dtype_promotion.py``
-   * - ``empty`` / ``zeros`` / ``ones`` / ``full``
-     - ``np.empty`` / ...
-     - y y y y
-     - y y y y
-     - ``test_conformance_numpy.py``
-   * - ``zeros_like`` / ``ones_like`` / ``full_like``
-     - direct
-     - y y y y
-     - y y y y
-     - ``test_conformance_numpy.py``
-   * - ``arange``
-     - ``np.arange``
-     - y y y y
-     - y y y y
-     - ``test_conformance_numpy.py``
-   * - ``eye``
-     - ``np.eye``
-     - y y y y
-     - y y y y
-     - ``test_conformance_numpy.py``
-   * - ``assparse``
-     - SciPy sparse
-     - y s s s
-     - y y y y
-     - ``test_backend_conversion.py``
-   * - ``sparse_matmul``
-     - SciPy sparse dot
-     - y s s s
-     - y y y y
-     - ``test_backend_conversion.py``
+==============================================================================  ====================================  =======
+Method                                                                          Reference                             N J T C
+==============================================================================  ====================================  =======
+``asarray`` / ``astype``                                                        ``np.asarray`` / ``x.astype``         y y y y
+``empty`` / ``zeros`` / ``ones`` / ``full`` and their ``*_like``                ``np.zeros`` / ...                    y y y y
+``arange`` / ``eye``                                                            ``np.arange`` / ``np.eye``            y y y y
+==============================================================================  ====================================  =======
 
 Shape and layout
 ~~~~~~~~~~~~~~~~
 
-.. list-table::
-   :header-rows: 1
-   :widths: 16 18 12 12 18
-
-   * - Method
-     - NumPy reference
-     - Backends (N J T C)
-     - dtypes (r32 r64 c64 c128)
-     - Tests
-   * - ``ravel`` / ``reshape``
-     - direct
-     - y y y y
-     - y y y y
-     - ``test_conformance_numpy.py``, ``test_backend_consistency.py``
-   * - ``transpose`` / ``swapaxes`` / ``moveaxis``
-     - direct
-     - y y y y
-     - y y y y
-     - ``test_backend_consistency.py``
-   * - ``broadcast_to`` / ``expand_dims`` / ``squeeze``
-     - direct
-     - y y y y
-     - y y y y
-     - ``test_backend_consistency.py``
-   * - ``stack`` / ``concatenate``
-     - direct
-     - y y y y
-     - y y y y
-     - ``test_conformance_numpy.py``
+==============================================================================  ====================================  =======
+Method                                                                          Reference                             N J T C
+==============================================================================  ====================================  =======
+``ravel`` / ``reshape`` / ``transpose`` / ``swapaxes`` / ``moveaxis``           direct                                y y y y
+``broadcast_to`` / ``expand_dims`` / ``squeeze``                                direct                                y y y y
+``stack`` / ``concatenate`` / ``hstack`` / ``vstack``                           direct                                y y y y
+``dstack`` / ``column_stack``                                                   direct                                y y y y
+==============================================================================  ====================================  =======
 
 Elementwise and reductions
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. list-table::
-   :header-rows: 1
-   :widths: 16 18 12 12 18
-
-   * - Method
-     - NumPy reference
-     - Backends (N J T C)
-     - dtypes (r32 r64 c64 c128)
-     - Tests
-   * - ``conj`` / ``real`` / ``imag`` / ``abs`` / ``sign``
-     - direct
-     - y y y y
-     - y y y y
-     - ``test_conformance_numpy.py``, ``test_backend_field_consistency.py``
-   * - ``sqrt`` / ``exp`` / ``log``
-     - direct
-     - y y y y
-     - y y y y
-     - ``test_conformance_numpy.py``
-   * - ``sum`` / ``mean`` / ``min`` / ``max`` / ``prod``
-     - direct
-     - y y y y
-     - y y y y
-     - ``test_conformance_numpy.py``, ``test_backend_optional_args.py``
-   * - ``argmin`` / ``argmax`` / ``argsort`` / ``sort``
-     - direct
-     - y y y y
-     - y y y y
-     - ``test_conformance_numpy.py``
-   * - ``maximum`` / ``minimum`` / ``where`` / ``clip``
-     - direct
-     - y y y y
-     - y y y y
-     - ``test_conformance_numpy.py``
-   * - ``isfinite`` / ``isnan``
-     - direct
-     - y y y y
-     - y y y y
-     - ``test_conformance_numpy.py``
-   * - ``logsumexp``
-     - ``scipy.special.logsumexp``
-     - y y y y
-     - y y y y
-     - ``test_conformance_numpy.py``
+==============================================================================  ====================================  =======
+Method                                                                          Reference                             N J T C
+==============================================================================  ====================================  =======
+``conj`` / ``real`` / ``imag`` / ``abs`` / ``sign``                             direct                                y y y y
+``sqrt`` / ``exp`` / ``log``                                                    direct                                y y y y
+``sum`` / ``mean`` / ``min`` / ``max`` / ``prod``                               direct                                y y y y
+``argmin`` / ``argmax`` / ``argsort`` / ``sort``                                direct                                y y y y
+``maximum`` / ``minimum`` / ``where`` / ``clip``                                direct                                y y y y
+``isfinite`` / ``isnan``                                                        direct                                y y y y
+``logsumexp``                                                                   ``scipy.special.logsumexp``           y y y y
+==============================================================================  ====================================  =======
 
 Linear algebra
 ~~~~~~~~~~~~~~
 
-.. list-table::
-   :header-rows: 1
-   :widths: 16 18 12 12 18
+==============================================================================  ====================================  =======
+Method                                                                          Reference                             N J T C
+==============================================================================  ====================================  =======
+``vdot`` / ``matmul`` / ``kron`` / ``einsum``                                   ``np.vdot`` / ``np.matmul`` / ...     y y y y
+``norm`` / ``solve`` / ``eigvalsh`` / ``svd`` / ``cholesky``                    ``np.linalg.*``                       y y y y
+``eigh``                                                                        identity ``A v = λ v``                y y y s
+``trace`` / ``diag`` / ``diagonal`` / ``tril`` / ``triu``                       direct                                y y y y
+==============================================================================  ====================================  =======
 
-   * - Method
-     - NumPy reference
-     - Backends (N J T C)
-     - dtypes (r32 r64 c64 c128)
-     - Tests
-   * - ``vdot``
-     - ``np.vdot``
-     - y y y y
-     - y y y y
-     - ``test_conformance_numpy.py``, ``test_backend_field_consistency.py``
-   * - ``matmul``
-     - ``np.matmul``
-     - y y y y
-     - y y y y
-     - ``test_conformance_numpy.py``, ``test_backend_consistency.py``
-   * - ``kron`` / ``einsum``
-     - direct
-     - y y y y
-     - y y y y
-     - ``test_conformance_numpy.py``
-   * - ``norm``
-     - ``np.linalg.norm``
-     - y y y y
-     - y y y y
-     - ``test_backend_consistency.py``
-   * - ``solve``
-     - ``np.linalg.solve``
-     - y y y y
-     - y y y y
-     - ``test_backend_consistency.py``
-   * - ``eigh``
-     - ``A v = λ v`` identity
-     - y y y s
-     - y y y y
-     - ``test_conformance_numpy.py``, ``test_backend_consistency.py``
-   * - ``eigvalsh``
-     - ``np.linalg.eigvalsh``
-     - y y y y
-     - y y y y
-     - ``test_backend_consistency.py``
-   * - ``svd``
-     - ``np.linalg.svd``
-     - y y y y
-     - y y y y
-     - ``test_backend_consistency.py``
-   * - ``cholesky``
-     - ``np.linalg.cholesky``
-     - y y y y
-     - y y y y
-     - ``test_backend_consistency.py``
-   * - ``trace`` / ``diag`` / ``diagonal`` / ``tril`` / ``triu``
-     - direct
-     - y y y y
-     - y y y y
-     - ``test_conformance_numpy.py``
+Indexing, control flow, mapping
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Indexing and updates
-~~~~~~~~~~~~~~~~~~~~
+==============================================================================  ====================================  =======
+Method                                                                          Reference                             N J T C
+==============================================================================  ====================================  =======
+``take`` / ``ix_``                                                              ``np.take`` / ``np.ix_``              y y y y
+``index_set`` / ``index_add``                                                   ``x[i] = v`` / ``x[i] += v``          y y y y
+``fori_loop`` / ``while_loop`` / ``scan`` / ``cond``                            sequential Python                     y y y y
+``vmap`` / ``vectorize``                                                        stacked Python loop                   y y y y
+==============================================================================  ====================================  =======
 
-.. list-table::
-   :header-rows: 1
-   :widths: 16 18 12 12 18
+Sparse
+~~~~~~
 
-   * - Method
-     - NumPy reference
-     - Backends (N J T C)
-     - dtypes (r32 r64 c64 c128)
-     - Tests
-   * - ``take``
-     - ``np.take``
-     - y y y y
-     - y y y y
-     - ``test_conformance_numpy.py``
-   * - ``index_set`` / ``index_add``
-     - functional indexing
-     - y y y y
-     - y y y y
-     - ``test_backend_optional_args.py``
-   * - ``ix_``
-     - ``np.ix_``
-     - y y y y
-     - n/a
-     - ``test_conformance_numpy.py``
+==============================================================================  ====================================  =======
+Method                                                                          Reference                             N J T C
+==============================================================================  ====================================  =======
+``assparse`` round-trip / ``sparse_matmul`` / ``allclose_sparse``               SciPy sparse                          y y y s
+==============================================================================  ====================================  =======
 
-Control flow
-~~~~~~~~~~~~
+Conversion and constants
+~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. list-table::
-   :header-rows: 1
-   :widths: 16 18 12 12 18
+==============================================================================  ====================================  =======
+Method                                                                          Reference                             N J T C
+==============================================================================  ====================================  =======
+``Context.asarray`` / ``Context.convert`` across backends                       round-trip equality                   y y y y
+``allclose``                                                                    ``np.allclose``                       y y y y
+``inf`` / ``nan`` / ``pi`` / ``e`` / ``eps(dtype)``                             ``np.inf`` / ``np.finfo(dtype).eps``  y y y y
+==============================================================================  ====================================  =======
 
-   * - Method
-     - NumPy reference
-     - Backends (N J T C)
-     - dtypes (r32 r64 c64 c128)
-     - Tests
-   * - ``fori_loop`` / ``while_loop`` / ``scan`` / ``cond``
-     - sequential Python
-     - y y y y
-     - n/a
-     - ``test_backend_loops.py``
-   * - ``vmap``
-     - sequential stacked loop
-     - y y y y
-     - y y y y
-     - ``test_backend_vmap.py``
+``trace`` sums the diagonal over the **trailing two axes**, so a
+``(batch, n, n)`` stack returns one trace per matrix.
 
-Conversion and inspection
-~~~~~~~~~~~~~~~~~~~~~~~~~
+``is_tracing`` and ``install_pytree_protocol`` have no NumPy reference and are
+not in the matrix.
 
-.. list-table::
-   :header-rows: 1
-   :widths: 16 18 12 12 18
-
-   * - Method
-     - NumPy reference
-     - Backends (N J T C)
-     - dtypes (r32 r64 c64 c128)
-     - Tests
-   * - ``Context.asarray`` (cross-backend)
-     - round-trip equality
-     - y y y y
-     - y y y y
-     - ``test_backend_conversion.py``
-   * - ``Context.to_numpy``
-     - identity
-     - y y y y
-     - y y y y
-     - ``test_backend_conversion.py``
-   * - ``allclose`` / ``allclose_sparse``
-     - ``np.allclose``
-     - y y y y
-     - y y y y
-     - ``test_conformance_numpy.py``
-
-Sparse paths
-~~~~~~~~~~~~
-
-.. list-table::
-   :header-rows: 1
-   :widths: 16 18 12 12 18
-
-   * - Method
-     - NumPy reference
-     - Backends (N J T C)
-     - dtypes (r32 r64 c64 c128)
-     - Tests
-   * - ``sparse_matmul``
-     - SciPy
-     - y — — s
-     - y y y y
-     - ``test_backend_conversion.py``
-   * - ``assparse`` round-trip
-     - SciPy
-     - y — — s
-     - y y y y
-     - ``test_backend_conversion.py``
-
-Constants
-~~~~~~~~~
-
-.. list-table::
-   :header-rows: 1
-   :widths: 16 18 12 12 18
-
-   * - Method
-     - NumPy reference
-     - Backends (N J T C)
-     - dtypes (r32 r64 c64 c128)
-     - Tests
-   * - ``inf`` / ``nan`` / ``pi`` / ``e``
-     - ``np.inf`` / ...
-     - y y y y
-     - y y y y
-     - ``test_conformance_numpy.py``
-   * - ``eps``
-     - ``np.finfo(dtype).eps``
-     - y y y y
-     - y y y y
-     - ``test_conformance_numpy.py``
-
-Reading the result columns
---------------------------
-
-* ``s`` — skipped at runtime because the backend is not installed in the
-  current environment, or because the underlying library does not expose
-  the operation on this platform (e.g. CuPy sparse without a GPU).
-* ``d`` — the backend returns a numerically valid result that differs from
-  NumPy within the per-op tolerance; the deviation is documented in
-  :doc:`backend_deviations`. Tests still pass.
-* ``—`` — not implemented for this backend. ``BackendOps`` raises
-  ``NotImplementedError`` (not a soft skip) and the test asserts that
-  behavior in ``test_backend_optional_args.py``.
-
-Cross-references
-----------------
-
-* :doc:`backend_deviations` — user-facing list of accepted differences.
-* :doc:`batching_test_policy` — what is and isn't tested for batched paths.
-* :doc:`dtype_policy` and :doc:`conversion_policy` — dtype/scalar-field
-  contract underlying the conformance promises.
-* ``docs/dev/0.4.0-phase-a-inventory.md`` section A6 — the gap inventory
-  that seeded this matrix.
+See :doc:`context_dtype_conversion` for the dtype and conversion contract.

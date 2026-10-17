@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import warnings
+from ..space import DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace
+from ..space.base import CoordinateSpace, InnerProductSpace
+from ..space._capabilities import require
 
-from ..space.base import InnerProduct, InnerProductSpace
 
-
-_METRIC_BATCH_FALLBACK_ERRORS = (TypeError, ValueError, NotImplementedError)
+_VECTOR_SPACES = (DenseCoordinateSpace, DenseVectorSpace, ElementwiseJordanSpace)
 
 # Metric Hermiticity checks apply the operator to every coordinate basis vector.
 # Above this size, return "unknown" instead of doing O(n) work implicitly.
@@ -14,31 +14,22 @@ _METRIC_HERMITIAN_BASIS_CHECK_MAX_SIZE = 1024
 
 def space_has_riesz_maps(space) -> bool:
     """Return whether ``space`` exposes usable Riesz maps for metric adjoints."""
+    # Tree spaces: every leaf must be Euclidean or have Riesz maps.
     leaves = getattr(space, "leaf_spaces", None)
     if leaves is not None:
         return all(leaf.is_euclidean or space_has_riesz_maps(leaf) for leaf in leaves)
 
-    geometry = getattr(space, "geometry", None)
-    if geometry is None or not isinstance(space, InnerProductSpace):
-        return False
-    geometry_type = type(geometry)
-    geometry_has_maps = (
-        geometry_type.riesz is not InnerProduct.riesz
-        and geometry_type.riesz_inverse is not InnerProduct.riesz_inverse
+    # Riesz maps exist if the space overrides them or its geometry has them.
+    return isinstance(space, InnerProductSpace) and (
+        type(space)._riesz_core is not InnerProductSpace._riesz_core or space.geometry.has_riesz_maps
     )
-    space_has_maps = (
-        type(space).riesz is not InnerProductSpace.riesz
-        and type(space).riesz_inverse is not InnerProductSpace.riesz_inverse
-    )
-    return geometry_has_maps or space_has_maps
 
 
 def _requires_euclidean_or_riesz(dom, cod, opname: str) -> None:
     """Reject non-Euclidean spaces that cannot define metric adjoints."""
+    # Each endpoint must be Euclidean or provide Riesz maps.
     for space, role in ((dom, "domain"), (cod, "codomain")):
-        if isinstance(space, InnerProductSpace) and (
-            space.is_euclidean or space_has_riesz_maps(space)
-        ):
+        if space_has_riesz_maps(space):
             continue
         raise TypeError(
             f"{opname} on non-Euclidean {role} {type(space).__name__} "
@@ -50,6 +41,9 @@ def _requires_euclidean_or_riesz(dom, cod, opname: str) -> None:
 
 def _metric_is_hermitian_by_basis(op) -> bool | None:
     """Check self-adjointness by comparing forward and adjoint basis actions."""
+    # Small square coordinate operators: compare A with A# column by column.
+    if not isinstance(op.domain, CoordinateSpace):
+        return None
     if op.domain != op.codomain:
         return False
     if op.domain.size > _METRIC_HERMITIAN_BASIS_CHECK_MAX_SIZE:
@@ -60,9 +54,9 @@ def _metric_is_hermitian_by_basis(op) -> bool | None:
         apply_cols = []
         adjoint_cols = []
         for i in range(size):
-            e_i = op.domain.unflatten(eye[:, i])
-            apply_cols.append(op.domain.flatten(op.apply(e_i)))
-            adjoint_cols.append(op.domain.flatten(op.rapply(e_i)))
+            e_i = op.domain._unflatten_core(eye[:, i])
+            apply_cols.append(op.domain._flatten_core(op.apply(e_i)))
+            adjoint_cols.append(op.domain._flatten_core(op.rapply(e_i)))
         A = op.ops.stack(tuple(apply_cols), axis=1)
         A_sharp = op.ops.stack(tuple(adjoint_cols), axis=1)
         return bool(op.ops.allclose(A, A_sharp))
@@ -70,63 +64,30 @@ def _metric_is_hermitian_by_basis(op) -> bool | None:
         return None
 
 
-def _warn_metric_batch_fallback(opname: str, error: Exception) -> None:
-    """Warn that batched Riesz maps were unavailable and vmap fallback is used."""
-    warnings.warn(
-        f"{opname}.rvapply() could not use batched Riesz maps and is falling "
-        f"back to vmap(self.rapply). Original error: "
-        f"{type(error).__name__}: {error}",
-        RuntimeWarning,
-        stacklevel=2,
-    )
-
-
 def metric_rapply(domain, codomain, euclidean_rapply, y):
     r"""Apply the metric adjoint ``R_X^{-1} A^dagger R_Y`` to one element.
 
-    Derivation. Write ``R_X``, ``R_Y`` for the Riesz maps sending an element to
-    the coordinate functional that represents it, and ``A^dagger`` for the plain
-    coordinate (conjugate-)transpose. The defining identity
+    Write ``R_X``, ``R_Y`` for the positive-definite Gram matrices and ``A^dagger``
+    for the conjugate transpose (Trefethen & Bau, *Numerical Linear Algebra*,
+    Lecture 2, pp. 11-12). The defining identity
     ``<Ax, y>_Y = <x, A^# y>_X`` expands to ``(Ax)^dagger R_Y y = x^dagger R_X A^# y``
     for all ``x``, hence ``A^dagger R_Y = R_X A^#`` and
     ``A^# = R_X^{-1} A^dagger R_Y``. The Euclidean short-circuit below is the case
-    ``R_X = R_Y = I``, where the metric adjoint collapses to the transpose.
+    ``R_X = R_Y = I``, where the metric adjoint is the conjugate transpose.
 
-    Getting this wrong is silent: a coordinate transpose satisfies the identity on
-    every Euclidean space, so only a non-Euclidean test can detect it.
+    Using the coordinate adjoint without the Gram factors can pass Euclidean tests
+    while failing the identity on weighted spaces.
     """
+    require(domain, InnerProductSpace, "metric_rapply")
+    require(codomain, InnerProductSpace, "metric_rapply")
+    # Euclidean fast path; otherwise A# y = R_X^-1 A^T R_Y y.
     if domain.is_euclidean and codomain.is_euclidean:
         return euclidean_rapply(y)
-    return domain.riesz_inverse(euclidean_rapply(codomain.riesz(y)))
+    return domain._riesz_inverse_core(euclidean_rapply(codomain._riesz_core(y)))
 
 
-def metric_rvapply(
-    domain,
-    codomain,
-    euclidean_rapply,
-    euclidean_rvapply,
-    ys,
-    *,
-    opname: str,
-    ops,
-):
-    """Apply the metric adjoint over a leading batch axis.
-
-    The fast path uses batched Riesz maps, which should broadcast over the
-    leading batch axis. If a space does not support batched Riesz maps, this
-    falls back to backend ``vmap`` over :func:`metric_rapply` and emits a
-    runtime warning.
-    """
+def metric_rvapply(domain, codomain, euclidean_rvapply, ys):
+    """Apply the metric adjoint over a leading batch axis; Riesz maps broadcast over it."""
     if domain.is_euclidean and codomain.is_euclidean:
         return euclidean_rvapply(ys)
-    try:
-        yd = codomain.riesz(ys)
-        tmp = euclidean_rvapply(yd)
-        return domain.riesz_inverse(tmp)
-    except _METRIC_BATCH_FALLBACK_ERRORS as err:
-        _warn_metric_batch_fallback(opname, err)
-
-        def per_elem(y):
-            return metric_rapply(domain, codomain, euclidean_rapply, y)
-
-        return ops.vmap(per_elem, in_axes=0, out_axes=0)(ys)
+    return domain._riesz_inverse_core(euclidean_rvapply(codomain._riesz_core(ys)))

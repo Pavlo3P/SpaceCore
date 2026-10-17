@@ -20,7 +20,9 @@ Inner-product geometry is part of the space contract. Euclidean and weighted geo
 
 ## LinOp and Functional layers
 
-`spacecore/linop/` contains typed maps between domain and codomain spaces. `apply(x)` evaluates the forward map `A x`; `rapply(y)` evaluates the metric adjoint `A^sharp y`; `.H` returns an adjoint view that swaps those actions. Algebraic operators implement composition, sums, scalar multiples, products, stacking, and block structure without eagerly materializing matrices.
+`spacecore/mapping/` holds `Mapping`, the common parent of `LinOp` and `Functional`, with the lazy algebra both families share: the operator-overload rule table, the scaled/sum/zero nodes and the scalar helpers. It also derives equality from a class's declared `_fields` (see `docs/source/design/extending.rst`).
+
+`spacecore/linop/` contains typed maps between domain and codomain spaces. `apply(x)` evaluates the forward map `A x`; `rapply(y)` evaluates the metric adjoint `A^sharp y`; `.H` returns an adjoint view that swaps those actions. `LinOp` owns these checked public methods and subclasses implement the check-free cores `_apply_core`, `_rapply_core` (and optionally the batched ones), which composites and solvers call directly. Algebraic operators implement composition, sums, scalar multiples, and block structure without eagerly materializing matrices; `BlockMatrixLinOp` also covers stacking one space into a tree (one column) and summing a tree into one space (one row).
 
 Matrix-backed operators own a coordinate matrix or tensor, so they can compute metric adjoints with Riesz maps. Matrix-free operators do not own a matrix. `MatrixFreeLinOp.rapply` is a user-supplied assertion that the callable is already the correct metric adjoint for the declared spaces. SpaceCore validates membership when checks are enabled, but it does not derive or correct matrix-free adjoints.
 
@@ -34,59 +36,16 @@ Solver assumptions are mathematical assumptions over declared spaces: Hermitian,
 
 ## Cross-cutting infrastructure
 
-`spacecore/_contextual/` owns context-bound objects, context normalization, default-context state, backend registration, and conversion dispatch. `spacecore/_batching.py` provides shared batching helpers. `spacecore/_checks.py` provides method-level validation decorators used by spaces, operators, and functionals; runtime check intensity is selected from `spacecore/_check_policy.py`, which defines the `CheckLevel` literal (`"none"`, `"cheap"`, `"standard"`, `"strict"`) and the `CHECK_LEVELS` ordering. Tree-structured handling lives with the space implementations in `spacecore/space/concrete/_tree_space.py` (using `optree`) rather than in a top-level helper module. `spacecore/_version.py` is the package version source used by packaging and docs.
+`spacecore/contextual/` owns context-bound objects, context normalization, default-context state, backend registration, and conversion, which `ContextBound` derives from a class's declared `_fields`; `PyTreeNode` in `spacecore/backend/_container.py` derives the pytree hooks from the same declaration. `spacecore/_batching.py` provides shared batching helpers. `spacecore/_checks.py` provides the method-level validation decorators used by spaces, operators, and functionals, and defines the `CheckLevel` literal (`"none"`, `"cheap"`, `"standard"`, `"strict"`) with its `CHECK_LEVELS` ordering. Tree-structured handling lives with the space implementations in `spacecore/space/concrete/_tree_space.py` (using `optree`) rather than in a top-level helper module. `spacecore/_version.py` is the package version source used by packaging and docs.
 
-## Public class map
+## Public names
 
-This map lists public concrete class-like exports a contributor is likely to encounter. Abstract contracts such as `BackendOps`, `LinOp`, `Functional`, `VectorSpace`, `CoordinateSpace`, `InnerProduct`, and `SpaceCheck` are discussed above and in the ADRs.
+The public API is `spacecore.__all__`; every exported name is documented, from its
+docstring, on the API pages under `docs/source/api/`. To see the current list:
 
-- `ArrayLike` — runtime-checkable protocol for dense or sparse array-like values accepted by public APIs.
-- `BackendCheck` — membership check that validates an element belongs to the expected backend family.
-- `BackendFamily` — backend-family identifier used by contexts and backend detection.
-- `BlockDiagonalLinOp` — product-space operator that applies component operators independently on each block.
-- `CGResult` — result tuple returned by conjugate-gradient solves.
-- `ComposedFunctional` — functional representing lazy composition of a functional with a linear operator.
-- `ComposedLinOp` — lazy composition `A @ B` of compatible linear operators.
-- `Context` — execution context containing backend operations, default dtype, and check policy.
-- `ContextBound` — base for objects that carry a `Context` and support explicit conversion.
-- `DenseArray` — runtime-checkable protocol for dense array-like values.
-- `DenseCoordinateSpace` — dense coordinate representation of arrays with a fixed shape and context.
-- `DenseLinOp` — dense matrix- or tensor-backed linear operator.
-- `DenseVectorSpace` — one-dimensional dense coordinate vector space.
-- `DTypeCheck` — membership check enforcing exact dtype membership.
-- `DiagonalLinOp` — coordinatewise diagonal matrix-backed operator on one space.
-- `ElementwiseJordanSpace` — dense elementwise Jordan algebra space.
-- `EuclideanElementwiseJordanSpace` — real Euclidean elementwise Jordan algebra space.
-- `EuclideanInnerProduct` — Euclidean inner-product geometry with identity Riesz maps.
-- `ExpmMultiplyResult` — result tuple returned by exponential-action routines.
-- `HermitianCheck` — membership check for Hermitian matrix structure.
-- `HermitianSpace` — dense Hermitian matrix space with spectral Jordan operations.
-- `IdentityLinOp` — identity linear operator on one space.
-- `InnerProductFunctional` — linear functional represented by an inner product against a representer.
-- `JaxOps` — optional JAX backend operations class, exported when JAX is installed.
-- `LanczosResult` — result tuple returned by Lanczos routines.
-- `LinOpQuadraticForm` — quadratic functional represented by a linear operator.
-- `LSQRResult` — result tuple returned by LSQR solves.
-- `MatrixFreeLinearFunctional` — linear functional defined by a user-supplied callable and representer behavior.
-- `MatrixFreeLinOp` — linear operator defined by user-supplied forward and metric-adjoint callables.
-- `NumpyOps` — NumPy/SciPy backend operations class and the baseline backend implementation.
-- `PowerIterationResult` — result tuple returned by power iteration.
-- `TreeElement` — optional explicit binding of ordered leaves to a tree space.
-- `TreeLinOp` — base class for operators with tree-structured domains or codomains.
-- `TreeSpace` — finite direct-product coordinate space represented by an optree.
-- `TreeSpectralDecomposition` — leafwise spectral data in deterministic tree order.
-- `ScaledLinOp` — lazy scalar multiple of a linear operator.
-- `ShapeCheck` — membership check enforcing element shape.
-- `SparseArray` — runtime-checkable protocol for sparse array-like values.
-- `SparseLinOp` — sparse matrix-backed linear operator over coordinate spaces.
-- `Space` — context-bound mathematical space with membership validation.
-- `SpaceValidationError` — exception raised when an element fails space validation.
-- `SquareMatrixCheck` — membership check enforcing square matrix shape.
-- `StackedLinOp` — operator mapping one domain into a tree codomain.
-- `StackedSpace` — space representing a fixed leading-axis stack of one base space.
-- `SumLinOp` — lazy finite sum of operators with common domain and codomain.
-- `SumToSingleLinOp` — operator mapping a tree domain into one codomain by summing leaf outputs.
-- `TorchOps` — optional Torch backend operations class, exported when Torch is installed.
-- `WeightedInnerProduct` — diagonal weighted inner-product geometry with validated positive finite weights.
-- `ZeroLinOp` — zero linear operator between two spaces.
-- `CuPyOps` — optional CuPy backend operations class, exported when CuPy is installed.
+```bash
+python -c "import spacecore; print(sorted(spacecore.__all__))"
+```
+
+Optional backends (`JaxOps`, `TorchOps`, `CuPyOps`) appear only when their package is
+installed. `BackendFamily` and the other backend internals live in `spacecore.backend`.

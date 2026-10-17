@@ -37,7 +37,7 @@ autodoc_default_options = {
     "show-inheritance": True,
     "exclude-members": (
         "tree_flatten, tree_unflatten, "
-        "ctx, ops, dtype, enable_checks, representer, A, parts, n, "
+        "ctx, ops, dtype, representer, A, parts, n, "
         "xp, torch, "
         "__dict__, __weakref__, __module__"
     ),
@@ -56,10 +56,12 @@ numpydoc_class_members_toctree = False
 numpydoc_validation_checks = set()
 
 templates_path = ["_templates"]
-exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
+exclude_patterns = ["_build", "Thumbs.db", ".DS_Store", "design/vision.rst", "dev/vision.rst"]  # not part of SpaceCore
 
 html_theme = "pydata_sphinx_theme"
 html_title = "SpaceCore"
+html_logo = "_static/spacecore-logo.svg"
+html_favicon = "_static/spacecore-logo.svg"
 html_static_path = ["_static"]
 html_extra_path = [".nojekyll"]
 html_css_files = ["custom.css"]

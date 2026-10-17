@@ -30,13 +30,13 @@ class _NonCoordinateInnerProductSpace(sc.InnerProductSpace):
     def zeros(self):
         return (0.0, 0.0)
 
-    def add(self, x, y):
+    def _add_core(self, x, y):
         return (x[0] + y[0], x[1] + y[1])
 
-    def scale(self, a, x):
+    def _scale_core(self, a, x):
         return (a * x[0], a * x[1])
 
-    def inner(self, x, y):
+    def _inner_core(self, x, y):
         return x[0] * y[0] + x[1] * y[1]
 
     def _convert(self, new_ctx):

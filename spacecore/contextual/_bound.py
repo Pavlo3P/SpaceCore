@@ -4,17 +4,18 @@ from abc import ABC
 from typing import Any, Self
 
 from ..backend import BackendFamily, BackendOps
-from .._check_policy import (
+from ..backend._container import field_values, rebuild_class
+from .._checks import (
+    install_public_checks,
     CheckLevel,
     check_level_at_least,
-    level_to_enabled,
+    effective_check_level,
     minimum_check_level,
     normalize_check_level,
 )
 from .._repr import format_dtype
 from ..types import DType
 from ._state import (
-    enforce_convert_policy,
     get_check_level,
     normalize_context,
     resolve_context_priority,
@@ -31,16 +32,32 @@ class ContextBound(ABC):
     ctx : Context, str, or None, optional
         Context specification used to resolve backend operations and dtype.
     check_level : {"none", "cheap", "standard", "strict"}, optional
-        Runtime validation policy for this object. When omitted, the ambient
-        default (see :func:`spacecore.get_check_level`) is used. Unlike the
-        backend/dtype context, the validation policy is a property of the bound
-        object, not of the :class:`Context`.
+        Validation level; the ambient default when omitted.
     """
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        # Families implement ``_*_core``; a public operation they override keeps the base checks.
+        install_public_checks(cls)
+        # Defining __eq__ sets __hash__ to None; a value class keeps its family's hash, which
+        # hashes only structure every override of __eq__ also compares.
+        if "__eq__" in vars(cls) and vars(cls).get("__hash__", ...) is None:
+            inherited = next((vars(base)["__hash__"] for base in cls.__mro__[1:]
+                              if vars(base).get("__hash__") not in (None, object.__hash__)), None)
+            if inherited is not None:
+                cls.__hash__ = inherited
+
+    def _repr_html_(self) -> str:
+        """Render the text repr for notebooks."""
+        import html
+
+        return f"<code>{html.escape(repr(self))}</code>"
+
 
     def __init__(
         self,
         ctx: Context | str | None = None,
-        check_level: CheckLevel | bool | None = None,
+        check_level: CheckLevel | None = None,
     ):
         ctx = normalize_context(ctx)
         self._ctx = ctx
@@ -70,37 +87,16 @@ class ContextBound(ABC):
         ctx: Any,
         *children: Any,
         sources: tuple[Any, ...] | None = None,
-        check_level: CheckLevel | bool | None = None,
+        check_level: CheckLevel | None = None,
     ):
-        """Resolve the priority context, store it, and re-bind children onto it.
-
-        This factors the context-binding prologue shared by every contextual
-        container: it resolves ``ctx`` (taking an explicit context first, then
-        inferring from ``sources``), assigns :attr:`_ctx`, and returns each
-        child converted onto the resolved context. Containers assign the result
-        to their named attributes, e.g.::
-
-            self.dom, self.cod = self._bind_context(ctx, dom, cod)
-
-        Parameters
-        ----------
-        ctx : Context, BackendFamily, str, or None
-            Context specification. An already-resolved :class:`Context` is used
-            as-is, which avoids re-resolving when a subclass has normalized the
-            context early (e.g. to validate stored arrays before ``__init__``).
-        *children : Any
-            Context-bound objects (spaces, operators, functionals) to convert
-            onto the resolved context and return, in order.
-        sources : tuple, optional
-            Objects used to infer the context when ``ctx`` is not explicit.
-            Defaults to ``children``. Use this when the inference sources differ
-            from the attributes being converted.
-
-        Returns
-        -------
-        tuple
-            ``children`` converted onto the resolved context, in order.
         """
+        Resolve the context, store it with the check level, and return ``children`` converted onto it.
+
+        An explicit ``ctx`` wins; otherwise it is inferred from ``sources`` (``children`` by
+        default). The check level is the explicit one or the lowest among ``children``.
+        Typical use: ``self.dom, self.cod = self._bind_context(ctx, dom, cod)``.
+        """
+        # An explicit context wins; otherwise infer one from the sources.
         if isinstance(ctx, Context):
             resolved = ctx
         else:
@@ -108,12 +104,27 @@ class ContextBound(ABC):
                 ctx, *(children if sources is None else sources)
             )
         self._ctx = resolved
+        # Explicit level, else the least strict of the children, else ambient.
         if check_level is not None:
             self._check_level = normalize_check_level(check_level)
         else:
             levels = [c._check_level for c in children if isinstance(c, ContextBound)]
             self._check_level = minimum_check_level(tuple(levels)) if levels else get_check_level()
+        # Move every child onto the resolved context.
         return tuple(child.convert(resolved) for child in children)
+
+    def _with_check_level(self, level: CheckLevel | bool) -> Self:
+        """Return a copy of this object validating at ``level``.
+
+        Routes through the subclass's own :meth:`_convert` rather than calling
+        ``type(self)(...)``, so a subclass whose constructor takes more than a
+        context keeps working — ``_convert`` is the extension point that already
+        has to know how to rebuild it. Mirrors :meth:`convert`, which likewise
+        assigns ``_check_level`` onto a freshly built object.
+        """
+        result = self._convert(self.ctx)
+        result._check_level = normalize_check_level(level)
+        return result
 
     @property
     def ops(self) -> BackendOps:
@@ -142,14 +153,9 @@ class ContextBound(ABC):
             return self._check_level
         return get_check_level()
 
-    @property
-    def _enable_checks(self) -> bool:
-        """Deprecated internal Boolean view retained for compatibility."""
-        return level_to_enabled(self.check_level)
-
     def _checks_at_least(self, level: CheckLevel) -> bool:
         """Return whether this object runs checks assigned to ``level``."""
-        return check_level_at_least(self.check_level, level)
+        return check_level_at_least(effective_check_level(self.check_level, self.ops), level)
 
     def _coerce_dense(self, x: Any) -> Any:
         """Return ``x`` asserted as a dense array when cheap checks are enabled.
@@ -196,8 +202,24 @@ class ContextBound(ABC):
         return f"{self._repr_class_name()}({inner})"
 
     def _convert(self, new_ctx: Context) -> Self:
-        """Rebuild this object in ``new_ctx``."""
-        raise NotImplementedError()
+        """Rebuild this object in ``new_ctx`` from its declared ``_fields``."""
+        if not getattr(type(self), "_fields", ()):
+            raise NotImplementedError(f"{type(self).__name__} declares no _fields to convert.")
+        ops = self.ops
+
+        def move(name: str, value: Any) -> Any:
+            # The context is replaced, convertible objects and dense arrays move, the rest stays.
+            if name == "ctx":
+                return new_ctx
+            if hasattr(value, "convert"):
+                return value.convert(new_ctx)
+            if isinstance(value, (tuple, list)) and value and all(hasattr(v, "convert") for v in value):
+                return tuple(v.convert(new_ctx) for v in value)
+            if ops.is_dense(value):
+                return new_ctx.asarray(value)
+            return value
+
+        return rebuild_class(type(self))(**{name: move(name, value) for name, value in field_values(self).items()})
 
     def convert(self, new_ctx: Context | BackendFamily | str | None = None) -> Self:
         """Return this object represented in ``new_ctx``.
@@ -206,7 +228,8 @@ class ContextBound(ABC):
         backend/dtype context, so it is preserved across conversion rather than
         re-seeded from the ambient default.
         """
-        _, new_ctx = enforce_convert_policy(self, new_ctx)
+        # Same context: nothing to do. Otherwise rebuild, keeping the check level.
+        new_ctx = normalize_context(new_ctx)
         if self.ctx == new_ctx:
             return self
         result = self._convert(new_ctx)

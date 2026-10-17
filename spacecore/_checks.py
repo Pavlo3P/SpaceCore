@@ -1,132 +1,188 @@
 from __future__ import annotations
 
+import inspect
 from functools import wraps
-from typing import Any, Callable
-
-from ._check_policy import (
-    CheckLevel,
-    check_level_at_least,
-    enabled_to_level,
-    normalize_check_level,
-    require_mutually_exclusive,
-)
+from typing import Any, Callable, Literal, TypeVar, cast
 
 
-def _as_positions(
-    arg_pos: int | None,
-    arg_positions: int | tuple[int, ...] | None,
-) -> tuple[int, ...]:
-    """Normalize legacy and multi-position argument selectors."""
-    require_mutually_exclusive("arg_pos", arg_pos, "arg_positions", arg_positions)
-    if arg_positions is None:
-        return (0,) if arg_pos is None else (arg_pos,)
-    if isinstance(arg_positions, int):
-        return (arg_positions,)
-    return tuple(arg_positions)
+CheckLevel = Literal["none", "cheap", "standard", "strict"]
+
+CHECK_LEVELS: tuple[CheckLevel, ...] = ("none", "cheap", "standard", "strict")
+_CHECK_LEVEL_ORDER = {level: index for index, level in enumerate(CHECK_LEVELS)}
 
 
-def _space_target(self: Any, space_name: str) -> Any:
-    """Return the space object named by ``space_name``."""
-    return self if space_name == "self" else getattr(self, space_name)
+def require_mutually_exclusive(
+    name_a: str,
+    value_a: object,
+    name_b: str,
+    value_b: object,
+    *,
+    verb: str = "Use",
+) -> None:
+    """Raise ``TypeError`` when two mutually exclusive arguments are both supplied.
+
+    Parameters
+    ----------
+    name_a, name_b : str
+        Public names of the two arguments, used in the error message.
+    value_a, value_b : object
+        Supplied values. Either being ``None`` means "not provided".
+    verb : str, optional
+        Leading verb of the error message (``"Use"`` or ``"Specify"``).
+
+    Raises
+    ------
+    TypeError
+        If both ``value_a`` and ``value_b`` are not ``None``.
+    """
+    if value_a is not None and value_b is not None:
+        raise TypeError(f"{verb} either {name_a} or {name_b}, not both.")
 
 
-def _object_check_level(obj: Any) -> CheckLevel:
-    """Read the new policy while supporting legacy decorator users."""
-    level = getattr(obj, "check_level", None)
-    if level is not None:
-        return normalize_check_level(level)
-    return enabled_to_level(getattr(obj, "_enable_checks", True))
+def normalize_check_level(
+    check_level: CheckLevel | str | None = None,
+    *,
+    default: CheckLevel = "standard",
+) -> CheckLevel:
+    """Return ``check_level`` (or ``default`` when ``None``), validated against the known levels."""
+    level = default if check_level is None else check_level
+    if level not in _CHECK_LEVEL_ORDER:
+        allowed = ", ".join(repr(item) for item in CHECK_LEVELS)
+        raise ValueError(f"Unknown check_level {level!r}. Expected one of: {allowed}.")
+    return level  # type: ignore[return-value]
+
+
+def check_level_at_least(actual: CheckLevel, required: CheckLevel) -> bool:
+    """Return whether ``actual`` includes checks assigned to ``required``."""
+    return _CHECK_LEVEL_ORDER[actual] >= _CHECK_LEVEL_ORDER[required]
+
+
+def minimum_check_level(levels: tuple[CheckLevel, ...]) -> CheckLevel:
+    """Return the least expensive policy shared by all supplied levels."""
+    return min(levels, key=_CHECK_LEVEL_ORDER.__getitem__, default="none")
+
+
+# Cap on every object's check level while a backend traces (jit, vmap, compile).
+# Value checks cannot run on a tracer, so the default turns checks off under tracing.
+_traced_check_level: CheckLevel = "none"
+
+
+def set_traced_check_level(level: CheckLevel | None) -> None:
+    """
+    Set the process-wide cap on check levels while a backend is tracing.
+
+    Inside ``jax.jit``, ``jax.vmap`` or ``torch.compile`` an object checks at the lower of
+    its own level and this cap. ``"cheap"`` keeps shape and dtype checks, which run once at
+    trace time and cost nothing in the compiled program; ``"standard"`` and above compare
+    values, which a tracer cannot do.
+
+    Parameters
+    ----------
+    level : {"none", "cheap", "standard", "strict"} or None
+        New cap. ``None`` restores the default, ``"none"``.
+    """
+    global _traced_check_level
+    _traced_check_level = normalize_check_level(level, default="none")
+
+
+def get_traced_check_level() -> CheckLevel:
+    """
+    Return the process-wide cap on check levels while a backend is tracing.
+
+    Returns
+    -------
+    CheckLevel
+        The cap set by :func:`set_traced_check_level`; ``"none"`` by default.
+    """
+    return _traced_check_level
+
+
+def effective_check_level(level: CheckLevel, ops: Any) -> CheckLevel:
+    """Return ``level``, capped by :func:`get_traced_check_level` when ``ops`` is tracing."""
+    if level == "none" or ops is None or not ops.is_tracing():
+        return level
+    return minimum_check_level((level, _traced_check_level))
+
+
+_Method = TypeVar("_Method", bound=Callable[..., Any])
+
+# Sentinel: the core of a checked method defaults to ``_<name>_core``.
+_DEFAULT_CORE = object()
 
 
 def checked_method(
     *,
     in_space: str | None = None,
     out_space: str | None = None,
-    arg_pos: int | None = None,
     arg_positions: int | tuple[int, ...] | None = None,
     in_batched: bool = False,
     out_batched: bool = False,
-    out_scalar: bool = False,
     out_batched_scalar: bool = False,
-) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    core: str | None | object = _DEFAULT_CORE,
+) -> Callable[[_Method], _Method]:
     """
-    Build a decorator that validates method inputs and outputs against spaces.
+    Build a decorator that checks a method's inputs and outputs against spaces.
+
+    Checks follow ``self.check_level``; at ``"none"`` the wrapper calls the method directly.
 
     Parameters
     ----------
     in_space : str or None, optional
-        Name of the attribute on ``self`` containing the input
-        :class:`~spacecore.space.Space`, ``"self"`` to validate against the
-        receiver itself, or ``None`` to skip input validation.
+        Attribute of ``self`` holding the input space, ``"self"``, or ``None`` for no input check.
     out_space : str or None, optional
-        Name of the attribute on ``self`` containing the output
-        :class:`~spacecore.space.Space`, ``"self"`` to validate against the
-        receiver itself, or ``None`` to skip output validation.
-    arg_pos : int or None, optional
-        Deprecated alias for a single entry in ``arg_positions``.
+        Attribute of ``self`` holding the output space, ``"self"``, or ``None`` for no output check.
     arg_positions : int, tuple of int, or None, optional
-        Zero-based positions in ``*args`` of input values that should be checked
-        against ``in_space``. Defaults to ``(0,)``.
+        Positions in ``*args`` checked against ``in_space``; ``(0,)`` by default.
     in_batched : bool, optional
-        Validate inputs as leading-axis batches instead of single elements.
+        Check inputs as leading-axis batches.
     out_batched : bool, optional
-        Validate outputs as leading-axis batches instead of single elements.
-    out_scalar : bool, optional
-        Validate that the output is scalar-shaped (``shape == ()``). This is the
-        codomain check for a :class:`~spacecore.functional.Functional`, whose
-        codomain is the scalar field rather than a :class:`Space` object and so
-        cannot be expressed through ``out_space``.
+        Check outputs as leading-axis batches.
     out_batched_scalar : bool, optional
-        Validate that the output is a vector of scalars, one per input element:
-        ``shape == (N,)`` for a leading batch of size ``N``. The batch size is
-        read from the *input* named by ``in_space`` at the first checked
-        position, so this flag requires ``in_space``.
+        Check the output has shape ``(N,)`` for an input batch of size ``N``; needs ``in_space``.
+    core : str or None, optional
+        The check-free core this public method calls, ``_<name>_core`` by default; ``None``
+        when it has none. Recorded for :func:`install_public_checks`.
 
     Returns
     -------
-    Callable[[Callable[..., Any]], Callable[..., Any]]
-        Decorator that wraps a method and performs checks selected by
-        ``self.check_level``. Legacy objects exposing only ``_enable_checks``
-        continue to map ``True`` to ``"standard"`` and ``False`` to ``"none"``.
-
-    Notes
-    -----
-    The fast path is the ``check_level == "none"`` case: the wrapper does
-    a single attribute read and calls the underlying method directly.
-    The validated path resolves ``in_space``/``out_space`` once per call
-    (rather than per argument position) and uses the per-instance
-    ``_check_member`` cache populated by :class:`spacecore.space.Space`.
-
-    The scalar-output checks run at ``standard`` and above, matching the
-    hand-written ``_checks_at_least("standard")`` gating they replace. Shape is
-    static under ``jax.jit``, so they are safe to run while tracing.
+    Callable[[_Method], _Method]
+        The decorator.
     """
-    require_mutually_exclusive(
-        "out_scalar", out_scalar or None, "out_batched_scalar", out_batched_scalar or None
-    )
     if out_batched_scalar and in_space is None:
         # TypeError, matching ``require_mutually_exclusive``: both are misuse of
         # the decorator's argument combination, not a bad runtime value.
         raise TypeError("out_batched_scalar requires in_space to locate the batch size.")
-    positions = _as_positions(arg_pos, arg_positions)
+    # Precompute which arguments to check, so the wrapper stays cheap.
+    positions = (
+        (0,) if arg_positions is None
+        else (arg_positions,) if isinstance(arg_positions, int)
+        else tuple(arg_positions)
+    )
     # Resolve positions to a single-element fast path or a tuple iteration.
     single_pos = positions[0] if len(positions) == 1 else None
     # The batch size for out_batched_scalar comes from the first checked input.
     batch_pos = positions[0]
+    last_pos = max(positions)
 
-    def decorate(method: Callable[..., Any]) -> Callable[..., Any]:
+    def decorate(method: _Method) -> _Method:
+        # Parameter names after ``self``, to find a checked argument passed by keyword.
+        names = tuple(inspect.signature(method).parameters)[1:]
+
         @wraps(method)
         def wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
-            # Fast path: ``check_level == "none"`` means no validation
-            # on either side. Read the attribute directly; the
-            # legacy-fallback path is only taken on objects that don't
-            # expose ``check_level`` (older user code).
-            level = getattr(self, "check_level", None)
-            if level is None:
-                level = enabled_to_level(getattr(self, "_enable_checks", True))
+            # Fast path: ``check_level == "none"`` means no validation on either side.
+            level: CheckLevel = getattr(self, "check_level", "standard")
             if level == "none":
                 return method(self, *args, **kwargs)
+            level = effective_check_level(level, getattr(self, "ops", None))
+            if level == "none":
+                return method(self, *args, **kwargs)
+            if len(args) <= last_pos:
+                # A checked argument came by keyword: pass the leading ones positionally.
+                lead = [name for name in names[len(args):last_pos + 1] if name in kwargs]
+                args = args + tuple(kwargs.pop(name) for name in lead)
 
+            # Check the selected inputs: element membership, or batch membership.
             if in_space is not None:
                 check_target = self if in_space == "self" else getattr(self, in_space)
                 if in_batched:
@@ -145,6 +201,7 @@ def checked_method(
                         for pos in positions:
                             check_member(args[pos])
 
+            # Run the method, then check its output the same way.
             y = method(self, *args, **kwargs)
 
             if out_space is not None:
@@ -156,21 +213,71 @@ def checked_method(
                 else:
                     out_target._check_member(y)
 
-            if (out_scalar or out_batched_scalar) and check_level_at_least(level, "standard"):
-                from ._batching import _check_scalar_shape
+            # A batched scalar output must have shape (N,).
+            if out_batched_scalar and check_level_at_least(level, "standard"):
+                from ._batching import _check_scalar_shape, _leading_batch_size
 
-                if out_scalar:
-                    _check_scalar_shape(y, ())
-                else:
-                    from ._batching import _leading_batch_size
-
-                    batch_target = self if in_space == "self" else getattr(self, in_space)
-                    _check_scalar_shape(
-                        y, (_leading_batch_size(batch_target, args[batch_pos]),)
-                    )
+                batch_target = self if in_space == "self" else getattr(self, cast(str, in_space))
+                _check_scalar_shape(y, (_leading_batch_size(batch_target, args[batch_pos]),))
 
             return y
 
-        return wrapper
+        mark_checked(wrapper, decorate, f"_{method.__name__}_core" if core is _DEFAULT_CORE else core)
+        return cast(_Method, wrapper)
 
     return decorate
+
+
+def mark_checked(wrapper: Any, rewrap: Callable[[Any], Any], core: Any) -> None:
+    """Record on a checked public method how to re-check an override and which core it calls."""
+    wrapper._spacecore_checked = True
+    wrapper._spacecore_rewrap = rewrap
+    wrapper._spacecore_core = core
+
+
+def install_public_checks(cls: type) -> None:
+    """Give each public method ``cls`` overrides the checks of the checked method it replaces.
+
+    Families implement ``_*_core`` methods. A class that overrides a public checked
+    method instead, without decorating it, has that override installed as its core and
+    the public name restored to the base's checked method, so internal paths (which call
+    cores) and public calls both see it. An override that calls ``super().<same name>``
+    cannot be a core (the base method would call it back), so it is re-checked in place; so is one
+    whose class also defines the core, or whose base method has no core. Runs from
+    ``ContextBound.__init_subclass__``, so it covers spaces, operators and functionals.
+    """
+    for name, method in list(vars(cls).items()):
+        if name.startswith("_") or not inspect.isfunction(method):
+            continue
+        if getattr(method, "_spacecore_checked", False):
+            _restore_core_of_assigned(cls, name, method)
+            continue
+        for base in cls.__mro__[1:]:
+            checked = vars(base).get(name)
+            rewrap = getattr(checked, "_spacecore_rewrap", None)
+            if rewrap is None:
+                continue
+            core = checked._spacecore_core
+            # ``super().<name>(...)`` would reach the base method, which calls the core back.
+            calls_super = "__class__" in method.__code__.co_freevars and name in method.__code__.co_names
+            # Map onto a core only where the base method really delegates to one.
+            if core is None or core in vars(cls) or calls_super or not hasattr(cls, core):
+                setattr(cls, name, rewrap(method))
+            else:
+                setattr(cls, core, method)
+                setattr(cls, name, checked)
+            break
+
+
+def _restore_core_of_assigned(cls: type, name: str, checked: Any) -> None:
+    # ``name = Base.name`` restores Base's behaviour, so it also restores Base's core.
+    core = getattr(checked, "_spacecore_core", None)
+    if core is None or core in vars(cls):
+        return
+    # The defining class, not a subclass that merely re-installed the same wrapper.
+    owner_name = checked.__qualname__.rpartition(".")[0]
+    for base in cls.__mro__[1:]:
+        if base.__qualname__ == owner_name and vars(base).get(name) is checked:
+            if core in vars(base):
+                setattr(cls, core, vars(base)[core])
+            return

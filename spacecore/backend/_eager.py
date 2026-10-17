@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Callable, Optional, Sequence, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Optional, Sequence, Tuple, cast
+
+if TYPE_CHECKING:
+    from ._ops import BackendOps
 
 from ..types import Carry, R, T, X, Y
 
@@ -20,14 +23,10 @@ class EagerControlFlowMixin:
     backend without referencing a backend-specific array namespace.
     """
 
-    if TYPE_CHECKING:
-        # Provided by the BackendOps host this mixin is combined with.
-        def stack(self, *args: Any, **kwargs: Any) -> Any: ...
-        def asarray(self, *args: Any, **kwargs: Any) -> Any: ...
-
     # -- pytree helpers ----------------------------------------------------
 
     def _tree_map(self, f: Callable[[Any], Any], tree: Any) -> Any:
+        # Recurse into dict/tuple/list containers; anything else is a leaf.
         if isinstance(tree, dict):
             return {k: self._tree_map(f, v) for k, v in tree.items()}
         if isinstance(tree, tuple):
@@ -38,6 +37,7 @@ class EagerControlFlowMixin:
 
     def _tree_multimap(self, f: Callable[..., Any], *trees: Any) -> Any:
         # assumes matching structure
+        # Walk the trees in lockstep, following the structure of the first.
         t0 = trees[0]
         if isinstance(t0, dict):
             return {k: self._tree_multimap(f, *(t[k] for t in trees)) for k in t0.keys()}
@@ -49,6 +49,7 @@ class EagerControlFlowMixin:
 
     def _tree_take0(self, xs: Any) -> Any:
         """Grab a representative leaf to infer leading length."""
+        # The first leaf in depth-first order.
         if isinstance(xs, dict):
             return self._tree_take0(next(iter(xs.values())))
         if isinstance(xs, (tuple, list)):
@@ -76,9 +77,9 @@ class EagerControlFlowMixin:
         def _stack_leaves(*leaves: Any) -> Any:
             # Prefer the portable backend stack; fall back to asarray for ragged leaves.
             try:
-                return self.stack(leaves, axis=0)
+                return cast("BackendOps", self).stack(leaves, axis=0)
             except Exception:
-                return self.asarray(leaves)
+                return cast("BackendOps", self).asarray(leaves)
 
         return self._tree_multimap(_stack_leaves, *ys_list)
 
@@ -130,18 +131,8 @@ class EagerControlFlowMixin:
         """
         carry = init
 
-        if xs is None:
-            if length is None:
-                raise ValueError("scan(xs=None) requires an explicit `length`.")
-            n = int(length)
-            indices = range(n - 1, -1, -1) if reverse else range(n)
-            ys_steps: list[Any] = []
-            for _i in indices:
-                carry, y = f(carry, None)  # type: ignore[arg-type]
-                ys_steps.append(y)
-            if reverse:
-                ys_steps.reverse()
-            return carry, self._tree_stack(ys_steps)
+        if xs is None and length is None:
+            raise ValueError("scan(xs=None) requires an explicit `length`.")
 
         # infer length from xs if not provided
         if length is None:
@@ -155,11 +146,12 @@ class EagerControlFlowMixin:
         else:
             n = int(length)
 
+        # Feed slice i of xs; outputs are restored to forward order when reversed.
         indices = range(n - 1, -1, -1) if reverse else range(n)
-        ys_steps = []
+        ys_steps: list[Any] = []
         for i in indices:
-            x_i = self._tree_index(xs, i)
-            carry, y = f(carry, x_i)
+            x_i = None if xs is None else self._tree_index(xs, i)
+            carry, y = f(carry, cast(X, x_i))
             ys_steps.append(y)
 
         if reverse:

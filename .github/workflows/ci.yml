@@ -26,6 +26,8 @@ jobs:
       - run: pip install -e ".[jax,torch,dev]"
       - run: pytest --durations=25 --cov=spacecore --cov-report=term-missing --cov-fail-under=70
       - run: python scripts/jit_audit.py --check
+      - run: pyright --project tests/typing/pyrightconfig.json
+      - run: mypy --follow-imports=silent --warn-unused-ignores tests/typing/*.py
       - run: ruff check .
       - run: ruff check --select D spacecore/
       - run: python scripts/docstring_audit.py --check
@@ -45,6 +47,8 @@ jobs:
       - run: pip install -e ".[dev]"
       - run: pytest --co -q
       - run: pytest tests/ -q
+      - run: pyright --project tests/typing/pyrightconfig.json tests/typing/arrays.py
+      - run: mypy --follow-imports=silent --warn-unused-ignores tests/typing/arrays.py
 
   package:
     runs-on: ubuntu-latest
@@ -58,6 +62,17 @@ jobs:
 
       - run: python -m pip install --upgrade pip build twine
       - run: python -m build
+      - name: Check packaged typing marker
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          wheels = list(Path("dist").glob("*.whl"))
+          assert wheels
+          for wheel in wheels:
+              with ZipFile(wheel) as archive:
+                  assert "spacecore/py.typed" in archive.namelist()
+          PY
       - run: python -m twine check dist/*
 
   publish:

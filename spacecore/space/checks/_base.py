@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any, ClassVar
 
-from ..._check_policy import CheckLevel, check_level_at_least, normalize_check_level
+from ..._checks import CheckLevel, effective_check_level, normalize_check_level
 
 
 class SpaceValidationError(ValueError, TypeError):
@@ -13,6 +13,7 @@ class SpaceValidationError(ValueError, TypeError):
 
 def _shape_of(space: Any, x: Any) -> tuple[int, ...] | None:
     """Return the backend-visible shape of ``x`` when available."""
+    # Ask the backend first, then fall back to the object's own attribute.
     try:
         return tuple(space.ops.shape(x))
     except Exception:
@@ -22,6 +23,7 @@ def _shape_of(space: Any, x: Any) -> tuple[int, ...] | None:
 
 def _dtype_of(space: Any, x: Any) -> Any:
     """Return the backend-visible dtype of ``x`` when available."""
+    # Ask the backend first, then fall back to the object's own attribute.
     try:
         return space.ops.get_dtype(x)
     except Exception:
@@ -57,6 +59,7 @@ class SpaceCheck(ABC):
 
     def leading_dims(self, x: Any, space: Any) -> tuple[int, ...] | None:
         """Return leading batch dimensions before this check's core axes."""
+        # Leading (batch) dims are whatever precedes the element's core shape.
         shape = _shape_of(space, x)
         if shape is None:
             return None
@@ -70,6 +73,7 @@ class SpaceCheck(ABC):
 
     def validate(self, space: Any, x: Any, *, allow_leading: bool) -> bool:
         """Return whether ``x`` is valid under member or batched shape policy."""
+        # Trailing dims must equal the core shape; leading dims only when batched.
         if self.enforce_core_shape:
             shape = _shape_of(space, x)
             core_shape = self.core_shape(space)
@@ -110,7 +114,6 @@ class BackendCheck(SpaceCheck):
     """
 
     name: str = "backend"
-    core_rank: ClassVar[int] = 0
     minimum_level: ClassVar[CheckLevel] = "cheap"
 
     def is_valid(self, space: Any, x: Any) -> bool:
@@ -144,6 +147,7 @@ class ShapeCheck(SpaceCheck):
         if shape is None:
             return False
 
+        # Scalars (rank 0) always match; otherwise compare the trailing dims.
         core_shape = self.core_shape(space)
         core_rank = len(core_shape)
         if core_rank == 0:
@@ -174,7 +178,6 @@ class DTypeCheck(SpaceCheck):
     """
 
     name: str = "dtype"
-    core_rank: ClassVar[int] = 0
     minimum_level: ClassVar[CheckLevel] = "cheap"
 
     def is_valid(self, space: Any, x: Any) -> bool:
@@ -196,13 +199,13 @@ class FieldCheck(SpaceCheck):
     """
 
     name: str = "field"
-    core_rank: ClassVar[int] = 0
     minimum_level: ClassVar[CheckLevel] = "cheap"
 
     def is_valid(self, space: Any, x: Any) -> bool:
         dtype = _dtype_of(space, x)
         if dtype is None:
             return False
+        # Complex spaces accept any dtype; real spaces reject complex data.
         return space.field == "complex" or not space.ops.is_complex_dtype(dtype)
 
     def error_message(self, space: Any, x: Any) -> str:
@@ -265,6 +268,7 @@ class HermitianCheck(SpaceCheck):
         if not self.enforce:
             return True
 
+        # Hermitian: x equals its conjugate transpose within the tolerances.
         ops = space.ops
         x_adj = ops.conj(ops.swapaxes(x, -1, -2))
         return bool(ops.allclose(x, x_adj, atol=self.atol, rtol=self.rtol))
@@ -281,10 +285,11 @@ class HermitianCheck(SpaceCheck):
 
 def _run_checks(space: Any, x: Any, *, allow_leading: bool) -> None:
     """Run all membership checks with a shared member/batched shape policy."""
+    # Run every check this level includes, raising on the first failure.
     level = normalize_check_level(getattr(space, "check_level", "standard"))
-    for check in space.member_checks():
-        if not check_level_at_least(level, check.minimum_level):
-            continue
+    level = effective_check_level(level, getattr(space, "ops", None))
+    # The per-level cached check list; raise on the first failure.
+    for check in space._checks_for_level(level):
         if not check.validate(space, x, allow_leading=allow_leading):
             raise SpaceValidationError(
                 check.validation_message(space, x, allow_leading=allow_leading)

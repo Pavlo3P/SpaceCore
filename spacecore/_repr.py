@@ -26,8 +26,6 @@ _BOOL_DTYPES = {"bool", "bool_", "torch.bool"}
 
 def field_symbol(field: str | None) -> str:
     """Return the glyph (``ℝ``/``ℂ``) for a scalar field name."""
-    if field is None:
-        return "?"
     return _FIELD_SYMBOLS.get(field, "?")
 
 
@@ -82,6 +80,7 @@ def summarize_value(value: Any) -> str:
     The function is written to never raise on pathological inputs, so it is safe
     to use from any ``__repr__``.
     """
+    # SpaceCore objects: their short form. Arrays: shape and dtype, or the value if 0-d.
     short = getattr(value, "_short_repr", None)
     if callable(short):
         return cast(str, short())
@@ -110,7 +109,7 @@ def summarize_value(value: Any) -> str:
 
     # Python scalars: keep ints/bools exact, collapse floats/complex to .6g so a
     # Python ``2.0`` and a 0-d backend ``2.0`` array render identically.
-    if isinstance(value, bool) or isinstance(value, int):
+    if isinstance(value, int):
         return repr(value)
     if isinstance(value, (float, complex)):
         return _format_scalar(value)

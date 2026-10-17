@@ -4,22 +4,36 @@ from abc import abstractmethod
 from typing import Any, Callable
 
 from ._base import Domain, Functional
-from .._batching import _check_scalar_shape
+from .._batching import _batched_real_pairing, _check_batched, _check_scalar_shape
 from .._checks import checked_method
-from .._check_policy import CheckLevel
+from .._checks import CheckLevel
 from ..contextual import Context
-from ..kernels import core_kernels
-from ..space import Space, TreeElement, TreeSpace
+from ..space import Space, CoordinateSpace, TreeElement, TreeSpace
+
+
+def _broadcast_space_element(space: Any, value: Any, n: int) -> Any:
+    """Broadcast a single space element to a leading-axis batch of size ``n``."""
+    # Tree spaces broadcast leaf by leaf; array spaces to (n, *shape).
+    if isinstance(space, TreeSpace):
+        return space.unflatten_tree(
+            tuple(
+                _broadcast_space_element(part, component, n)
+                for part, component in zip(space.leaf_spaces, space.flatten_tree(value))
+            )
+        )
+    return space.ops.broadcast_to(value, (n,) + tuple(space.shape))
+
 
 
 def _convert_space_element(space: Space, value: Any) -> Any:
     """Convert a value recursively into a possibly tree-valued space."""
+    # Tree spaces convert leaf by leaf; other spaces convert the array directly.
     if isinstance(space, TreeSpace):
         if isinstance(value, TreeElement):
             source_spaces = value.space.leaf_spaces
             leaves = value.leaves
             converted = tuple(
-                target.unflatten(space.ctx.asarray(source.flatten(leaf)))
+                target._unflatten_core(space.ctx.asarray(source._flatten_core(leaf)))
                 for source, target, leaf in zip(source_spaces, space.leaf_spaces, leaves)
             )
         else:
@@ -29,24 +43,39 @@ def _convert_space_element(space: Space, value: Any) -> Any:
                 for leaf_space, leaf in zip(space.leaf_spaces, leaves)
             )
         return space.unflatten_tree(converted)
+    if not isinstance(space, CoordinateSpace):
+        return value
     return space.ctx.asarray(value)
 
 
-@core_kernels("functional-linear")
 class LinearFunctional(Functional[Domain]):
-    r"""
-    Represent a linear scalar-valued map.
+    """
+    A linear scalar-valued map on ``dom``.
 
     Parameters
     ----------
     dom : Space
-        Domain space.
+        Domain.
     ctx : Context, str, or None, optional
-        Backend context specification. Default is resolved from ``dom``.
-    check_level : {{"none", "cheap", "standard", "strict"}}, optional
-        Runtime validation policy for this object. When omitted, the ambient
-        default (see :func:`spacecore.get_check_level`) is used.
+        Backend context; resolved from ``dom`` when omitted.
+    check_level : {"none", "cheap", "standard", "strict"}, optional
+        Validation level; the ambient default when omitted.
     """
+
+    def _grad_core(self, x: Any) -> Any:
+        return self.representer
+
+    def _vgrad_core(self, xs: Any) -> Any:
+        # A linear functional's gradient is its representer, repeated per batch row.
+        dom = self.dom
+        sample = dom.flatten_tree(xs)[0] if isinstance(dom, TreeSpace) else xs
+        n = int(getattr(sample, "shape", (0,))[0])
+        return _broadcast_space_element(dom, self.representer, n)
+
+
+    def _derivative_core(self, x: Any, *args: Any, **kwargs: Any) -> "LinearFunctional":
+        """Return this linear functional itself, even without a representer."""
+        return self
 
     @property
     @abstractmethod
@@ -58,137 +87,95 @@ class LinearFunctional(Functional[Domain]):
         raise ``NotImplementedError``.
         """
 
-    @checked_method(in_space="domain", out_space="domain")
-    def grad(self, x: Any) -> Any:
-        """
-        Return the constant Riesz gradient of this linear functional.
-
-        For ``ell(x) = <c, x>_X``, the gradient is the space element ``c``.
-        Matrix-free functionals without a stored representer inherit the
-        ``NotImplementedError`` raised by :attr:`representer`.
-        """
-        return self._grad_core(x)
-
-    @checked_method(in_space="domain", out_space="domain", in_batched=True, out_batched=True)
-    def vgrad(self, xs: Any) -> Any:
-        """Return the constant Riesz gradient over a leading batch axis."""
-        return self._vgrad_core(xs)
 
 
-@core_kernels("inner-product-functional")
 class InnerProductFunctional(LinearFunctional[Domain]):
     r"""
-    Linear functional represented by a domain element.
+    The functional :math:`x \mapsto \operatorname{Re}\langle c, x\rangle_X` of a representer ``c``.
 
-    ``InnerProductFunctional(c, X)`` evaluates
-    :math:`\ell_c(x) = \langle c, x\rangle_X`.
+    The real part of this pairing is always used. This represents real
+    differentials on complex parameter spaces.
 
     Parameters
     ----------
     c : array-like
         Riesz representer in ``dom``.
     dom : Space
-        Domain space.
+        Domain.
     ctx : Context, str, or None, optional
-        Backend context specification. Default is resolved from ``dom``.
-    check_level : {{"none", "cheap", "standard", "strict"}}, optional
-        Runtime validation policy for this object. When omitted, the ambient
-        default (see :func:`spacecore.get_check_level`) is used.
-
-    Attributes
-    ----------
-    representer : array-like
-        Stored domain element ``c``.
+        Backend context; resolved from ``dom`` when omitted.
+    check_level : {"none", "cheap", "standard", "strict"}, optional
+        Validation level; the ambient default when omitted.
     """
+
+    _fields = ("c:_c", "dom", "ctx", "check_level")
+    _dynamic = ("c",)
+
+    def _value_core(self, x: Any) -> Any:
+        return self.domain._real_inner_core(self._c, x)
+
+    def _vvalue_core(self, xs: Any) -> Any:
+        return _batched_real_pairing(self.domain, self._c, xs)
 
     def __init__(
         self,
         c: Any,
         dom: Domain,
         ctx: Context | str | None = None,
-        check_level: CheckLevel | bool | None = None,
+        check_level: CheckLevel | None = None,
     ) -> None:
         super().__init__(dom, ctx, check_level=check_level)
+        # Store the representer on the functional's backend, and check it belongs.
         self._c = _convert_space_element(self.domain, c)
         if self._checks_at_least("standard"):
             self.domain._check_member(self._c)
 
+
     @property
     def representer(self) -> Any:
-        """Stored domain element ``c`` defining ``ell_c(x) = <c, x>``."""
+        """Stored domain element ``c`` defining ``ell_c(x) = Re<c, x>``."""
         return self._c
-
-    @checked_method(in_space="domain", out_scalar=True)
-    def value(self, x: Any) -> Any:
-        """Return ``domain.inner(representer, x)``."""
-        return self._value_core(x)
-
-    @checked_method(in_space="domain", in_batched=True, out_batched_scalar=True)
-    def vvalue(self, xs: Any) -> Any:
-        """Evaluate ``domain.inner(representer, xs[i])`` without a Python loop."""
-        return self._vvalue_core(xs)
 
     def __eq__(self, other: Any) -> bool:
         """Return whether another inner-product functional has the same representer."""
         if not self.same_math(other):              # Tier 1: backend
             return NotImplemented
-        if self.domain != other.domain:                         # Tier 2: domain before allclose
+        if self.domain != other.domain or self.codomain != other.codomain:                         # Tier 2: domain before allclose
             return False
         return bool(self.ops.allclose(                          # Tier 3: representer
-            self.domain.flatten(self._c),
-            other.domain.flatten(other._c),
+            self.domain._flatten_core(self._c),
+            other.domain._flatten_core(other._c),
             equal_nan=True,
         ))
 
-    def tree_flatten(self):
-        """Flatten this functional for pytree registration."""
-        children = (self._c,)
-        aux = (self.domain, self.ctx)
-        return children, aux
-
-    @classmethod
-    def tree_unflatten(cls, aux, children):
-        """Rebuild this functional from pytree data."""
-        domain, ctx = aux
-        c = children[0]
-        return cls(c, domain, ctx)
-
-    def _convert(self, new_ctx: Context) -> InnerProductFunctional:
-        """Convert the domain and representer to ``new_ctx``."""
-        return InnerProductFunctional(self._c, self.domain.convert(new_ctx), new_ctx)
-
-
-@core_kernels("matrixfree-linear-functional")
 class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
     """
-    Linear functional defined by user-supplied evaluation callables.
-
-    ``MatrixFreeLinearFunctional(value, X)`` represents a linear scalar-valued
-    map on ``X`` without storing or materializing a Riesz representer.
+    Linear functional given by an evaluation callable; no Riesz representer is stored.
 
     Parameters
     ----------
     value : callable
-        Callable with signature ``value(x: Any) -> Any`` accepting an element of
-        ``dom`` and returning a scalar-like backend value.
+        ``value(x)`` returning a scalar for ``x`` in ``dom``.
     dom : Space
-        Domain space of the functional.
+        Domain.
     ctx : Context, str, or None, optional
-        Optional context specification. An explicit context wins over inferred
-        and default contexts.
+        Backend context.
     vvalue : callable or None, optional
-        Optional callable with signature ``vvalue(xs: Any) -> Any`` for batched
-        evaluation. If omitted, backend ``vmap`` fallback is used.
-    check_level : {{"none", "cheap", "standard", "strict"}}, optional
-        Runtime validation policy for this object. When omitted, the ambient
-        default (see :func:`spacecore.get_check_level`) is used.
-
-    Returns
-    -------
-    MatrixFreeLinearFunctional
-        Functional using the supplied callable for scalar evaluation and,
-        optionally, batched scalar evaluation.
+        Batched evaluation; ``vmap`` of ``value`` by default.
+    check_level : {"none", "cheap", "standard", "strict"}, optional
+        Validation level; the ambient default when omitted.
+        The callable must return real values; no projection is applied.
     """
+
+    _fields = ("value:value_fn", "dom", "ctx", "vvalue:vvalue_fn", "check_level")
+
+    def _value_core(self, x: Any) -> Any:
+        return self.value_fn(x)
+
+    def _vvalue_core(self, xs: Any) -> Any:
+        if self.vvalue_fn is None:
+            return self._vmap_vvalue(xs)
+        return self.vvalue_fn(xs)
 
     def __init__(
         self,
@@ -196,31 +183,9 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
         dom: Domain,
         ctx: Context | str | None = None,
         vvalue: Callable[[Any], Any] | None = None,
-        check_level: CheckLevel | bool | None = None,
+        check_level: CheckLevel | None = None,
     ) -> None:
-        """
-        Initialize a matrix-free linear functional.
-
-        Parameters
-        ----------
-        value:
-            Callable ``value(x)`` accepting an element of ``dom`` and returning
-            a scalar-like value.
-        dom:
-            Domain space of the functional.
-        ctx:
-            Optional context specification for the functional and converted
-            domain.
-        vvalue:
-            Optional callable ``vvalue(xs)`` accepting a batch of domain
-            elements and returning a batch of scalar-like values.
-
-        Returns
-        -------
-        None
-            The initializer stores the callables and converted domain on
-            ``self``.
-        """
+        # Validate the callables, then bind the domain.
         if not callable(value):
             raise TypeError(f"value must be callable, got {type(value).__name__}.")
         if vvalue is not None and not callable(vvalue):
@@ -228,6 +193,7 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
         super().__init__(dom, ctx, check_level=check_level)
         self.value_fn = value
         self.vvalue_fn = vvalue
+
 
     @property
     def representer(self) -> Any:
@@ -244,23 +210,6 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
             This property never returns; it raises ``NotImplementedError``.
         """
         raise NotImplementedError(f"{type(self).__name__} does not store a Riesz representer.")
-
-    @checked_method(in_space="domain", out_scalar=True)
-    def value(self, x: Any) -> Any:
-        """
-        Evaluate the scalar functional.
-
-        Parameters
-        ----------
-        x:
-            Element of ``self.domain`` passed to ``value_fn``.
-
-        Returns
-        -------
-        Any
-            Scalar-like backend value returned by ``value_fn``.
-        """
-        return self._value_core(x)
 
     # NOT ``out_batched_scalar=True``: the decorator derives the expected batch
     # shape as ``(_leading_batch_size(domain, xs),)`` — one leading axis, the
@@ -284,55 +233,15 @@ class MatrixFreeLinearFunctional(LinearFunctional[Domain]):
             Backend array of scalar-like values with shape matching the leading
             batch shape.
         """
+        # Use the supplied batched evaluator, else vmap; check one scalar per input.
         if self.vvalue_fn is None:
             return super().vvalue(xs)
         values = self.vvalue_fn(xs)
+        if self.check_level != "none":
+            _check_batched(self.codomain, values)  # real values, as the base vvalue checks
         if self._checks_at_least("standard"):
             shape = tuple(getattr(xs, "shape", ()))
             base = tuple(self.domain.shape)
             leading = shape if not base else shape[: len(shape) - len(base)]
             _check_scalar_shape(values, leading)
         return values
-
-    def __eq__(self, other: Any) -> bool:
-        """Return whether another matrix-free functional uses the same callables."""
-        if not self.same_math(other):              # Tier 1: backend
-            return NotImplemented
-        if self.domain != other.domain:                         # Tier 2: domain
-            return False
-        # Callable identity: extensional equality of callables is undecidable.
-        return self.value_fn is other.value_fn and self.vvalue_fn is other.vvalue_fn
-
-    def tree_flatten(self):
-        """Flatten this functional for pytree registration."""
-        children = ()
-        aux = (self.value_fn, self.domain, self.ctx, self.vvalue_fn)
-        return children, aux
-
-    @classmethod
-    def tree_unflatten(cls, aux, children):
-        """Rebuild this functional from pytree data."""
-        value_fn, domain, ctx, vvalue_fn = aux
-        return cls(value_fn, domain, ctx, vvalue_fn)
-
-    def _convert(self, new_ctx: Context) -> MatrixFreeLinearFunctional:
-        """
-        Convert this functional to ``new_ctx``.
-
-        Parameters
-        ----------
-        new_ctx:
-            Concrete target context for the converted domain.
-
-        Returns
-        -------
-        MatrixFreeLinearFunctional
-            Functional with converted domain and the same user-supplied
-            callables.
-        """
-        return MatrixFreeLinearFunctional(
-            self.value_fn,
-            self.domain.convert(new_ctx),
-            new_ctx,
-            self.vvalue_fn,
-        )

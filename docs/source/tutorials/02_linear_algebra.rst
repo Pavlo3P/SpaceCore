@@ -1,289 +1,293 @@
 2 · Linear algebra: spaces, operators, conjugate gradients
 ==========================================================
 
-In SpaceCore a **space** is more than a shape: it knows its geometry
-(the inner product), how to validate elements, and how to interpret
-adjoints. An **operator** is a *typed map* :math:`A : X \to Y` between
-spaces — not just an array.
+**Goal:** build a matrix-free Laplacian operator, assemble new operators
+from it, and solve its linear system with a conjugate-gradient loop you
+write yourself over the space operations.
 
-This notebook builds the two core objects and uses them to solve a
-linear system with the conjugate gradient (CG) method, entirely through
-SpaceCore.
-
-**You will learn to**
-
-1. create coordinate spaces with Euclidean and weighted geometry;
-2. read geometry through ``inner``, ``norm``, and the Riesz map;
-3. build operators (``DenseLinOp``, ``DiagonalLinOp``) and apply them
-   and their adjoints;
-4. solve a symmetric positive-definite system with ``sc.cg`` and watch
-   it converge.
-
-.. code:: python
-
-    import numpy as np
-    import matplotlib as mpl
-    import matplotlib.pyplot as plt
-    import spacecore as sc
-    
-    # A clean, consistent palette + style for every figure in the tutorials.
-    BLUE, INDIGO, CYAN = "#2563eb", "#4f46e5", "#0891b2"
-    PINK, AMBER, GREEN = "#db2777", "#d97706", "#059669"
-    SLATE, GRID = "#334155", "#e5e9f0"
-    
-    mpl.rcParams.update({
-        "figure.figsize": (7.2, 4.2), "figure.dpi": 120, "savefig.dpi": 120,
-        "figure.facecolor": "white", "axes.facecolor": "white",
-        "axes.edgecolor": SLATE, "axes.linewidth": 1.0,
-        "axes.grid": True, "axes.axisbelow": True,
-        "grid.color": GRID, "grid.linewidth": 1.0,
-        "axes.spines.top": False, "axes.spines.right": False,
-        "axes.titlesize": 13, "axes.titleweight": "bold", "axes.titlecolor": SLATE,
-        "axes.labelcolor": SLATE, "axes.labelsize": 11,
-        "xtick.color": SLATE, "ytick.color": SLATE,
-        "xtick.labelsize": 10, "ytick.labelsize": 10, "font.size": 11,
-        "legend.frameon": False, "legend.fontsize": 10,
-        "lines.linewidth": 2.4, "lines.markersize": 6, "image.cmap": "magma",
-    })
-    mpl.rcParams["axes.prop_cycle"] = mpl.cycler(
-        color=[BLUE, PINK, GREEN, AMBER, INDIGO, CYAN])
-    
-    print("spacecore", sc.__version__, "| numpy", np.__version__)
-
-
-.. parsed-literal::
-
-    spacecore 0.4.0 | numpy 2.4.2
-
-
-.. code:: python
-
-    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+**Before you start:** :doc:`01_backend_and_context`; dot products and matrix multiplication.
+Run the code blocks in order in a fresh session; see :doc:`index` for setup.
 
 1 · A space carries geometry
 ----------------------------
 
-``DenseVectorSpace((n,), ctx)`` describes one vector in
-:math:`\mathbb{R}^n`. With the default geometry the inner product is the
-ordinary dot product.
+A space fixes the shape of its elements and the inner product between
+them. ``DenseVectorSpace((n,), ctx)`` uses the dot product; a
+``WeightedInnerProduct(w)`` geometry uses
+
+.. math::
+
+   \langle x, y\rangle_W = \sum_i w_i\, x_i y_i, \qquad (Rx)_i = w_i x_i.
+
+The second formula is the Riesz map R: it converts a vector into the
+coefficients that pair with it, so that :math:`\langle x, y\rangle_W = (Rx)^\top y`.
 
 .. code:: python
 
-    X = sc.DenseVectorSpace((3,), ctx)
+    import numpy as np
+    import spacecore as sc
+
+    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    ops = ctx.ops
+
+    w = ctx.asarray([1.0, 4.0, 9.0])
+    X3 = sc.DenseVectorSpace((3,), ctx)
+    X3w = sc.DenseVectorSpace((3,), ctx, geometry=sc.WeightedInnerProduct(w))
     x = ctx.asarray([3.0, 4.0, 0.0])
     y = ctx.asarray([0.0, 1.0, 2.0])
-    
-    print("shape       :", X.shape)
-    print("<x, y>      :", X.inner(x, y))     # dot product
-    print("||x||       :", X.norm(x))         # sqrt(<x,x>)
-    print("euclidean?  :", X.is_euclidean)
 
+    np.testing.assert_allclose(X3.inner(x, y), x @ y)
+    np.testing.assert_allclose(X3w.inner(x, y), np.sum(w * x * y))
+    np.testing.assert_allclose(X3w.norm(ctx.asarray([0.0, 1.0, 0.0])), 2.0)
+    np.testing.assert_allclose(X3w.riesz(x), w * x)
+    np.testing.assert_allclose(X3w.inner(x, y), X3w.riesz(x) @ y)
+    np.testing.assert_allclose(X3w.riesz_inverse(X3w.riesz(x)), x)
+    assert X3.is_euclidean and not X3w.is_euclidean
 
-.. parsed-literal::
+The two spaces hold the same arrays but measure them differently: the
+second basis vector has length 2 under the weights. The Riesz map of the
+weighted space is multiplication by w, and ``riesz_inverse`` undoes it.
 
-    shape       : (3,)
-    <x, y>      : 4.0
-    ||x||       : 5.0
-    euclidean?  : True
+2 · Operators are typed maps with an adjoint
+--------------------------------------------
 
+A linear operator :math:`A : X \to Y` is bound to its two spaces.
+``A.apply`` is the forward map, and ``A.H`` is the adjoint defined by
 
-Weighted geometry changes the ruler
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.. math::
 
-A *weighted* inner product keeps the same coordinates but measures them
-differently: :math:`\langle x, y\rangle_W = \sum_i w_i\, x_i y_i`. The
-geometry shows up visually as the shape of the **unit ball**
-:math:`\{x : \|x\|=1\}` — a circle in Euclidean geometry, an ellipse
-under weights.
+   \langle A x, y\rangle_Y = \langle x, A^\# y\rangle_X
+   \quad\text{for all } x \in X,\ y \in Y.
 
-.. code:: python
-
-    w  = ctx.asarray([1.0, 4.0])
-    Xe = sc.DenseVectorSpace((2,), ctx)                                   # Euclidean
-    Xw = sc.DenseVectorSpace((2,), ctx, geometry=sc.WeightedInnerProduct(w))
-    
-    theta = np.linspace(0, 2*np.pi, 256)
-    circle = np.stack([np.cos(theta), np.sin(theta)])                    # Euclidean unit ball
-    ellipse = circle / np.sqrt(np.asarray(w))[:, None]                   # weighted unit ball
-    
-    fig, ax = plt.subplots(figsize=(5.2, 5.2))
-    ax.plot(*circle,  color=BLUE, label=r"$\|x\|_{\mathrm{Euclid}} = 1$")
-    ax.plot(*ellipse, color=PINK, label=r"$\|x\|_{W} = 1$,  $w=(1,4)$")
-    ax.scatter([0], [0], color=SLATE, s=20, zorder=5)
-    ax.set_aspect("equal"); ax.set_title("Geometry = the shape of the unit ball")
-    ax.set_xlabel("$x_1$"); ax.set_ylabel("$x_2$"); ax.legend(loc="upper right")
-    plt.show()
-    
-    print("Euclidean ||(0,1)|| :", float(Xe.norm(ctx.asarray([0.0, 1.0]))))
-    print("Weighted  ||(0,1)|| :", float(Xw.norm(ctx.asarray([0.0, 1.0]))), " (= sqrt(4))")
-
-
-
-.. image:: 02_linear_algebra_files/02_linear_algebra_6_0.png
-
-
-.. parsed-literal::
-
-    Euclidean ||(0,1)|| : 1.0
-    Weighted  ||(0,1)|| : 2.0  (= sqrt(4))
-
-
-The **Riesz map** turns a coordinate vector into the dual vector that
-represents it under the geometry. For Euclidean geometry it is the
-identity; for weights :math:`w` it multiplies by :math:`w`. It is what
-makes gradients and adjoints *metric-aware* (you will use it in
-tutorials 3 and 6).
+On Euclidean spaces with real arrays, :math:`A^\#` is the transpose.
 
 .. code:: python
 
-    v = ctx.asarray([1.0, 1.0])
-    print("Euclidean riesz:", Xe.riesz(v))   # identity
-    print("Weighted  riesz:", Xw.riesz(v))   # multiply by w = (1, 4)
-
-
-.. parsed-literal::
-
-    Euclidean riesz: [1. 1.]
-    Weighted  riesz: [1. 4.]
-
-
-2 · Operators are typed maps :math:`A : X \to Y`
-------------------------------------------------
-
-``DenseLinOp(A, dom, cod, ctx)`` wraps a matrix as a map between
-*spaces*. ``apply`` is the forward map; ``rapply`` is the **adjoint with
-respect to the spaces’ inner products** (for Euclidean spaces this is
-the ordinary transpose; see :doc:`design/geometry <../design/geometry>`
-for the metric case).
-
-.. code:: python
-
-    M  = ctx.asarray([[2.0, 1.0],
-                      [1.0, 3.0]])
+    M = ctx.asarray([[2.0, 1.0, 0.0],
+                     [0.0, 3.0, 1.0]])
     X2 = sc.DenseVectorSpace((2,), ctx)
-    A  = sc.DenseLinOp(M, X2, X2, ctx)
-    
-    u = ctx.asarray([1.0, 0.0])
-    print("A u        :", A.apply(u))
-    print("A* (1,1)   :", A.rapply(ctx.asarray([1.0, 1.0])))   # adjoint
-    print("hermitian? :", A.is_hermitian())
-    
-    # A diagonal operator only stores its diagonal:
-    D = sc.DiagonalLinOp(ctx.asarray([2.0, 0.5]), X2, ctx)
-    print("D (1,1)    :", D.apply(ctx.asarray([1.0, 1.0])))
+    A = sc.DenseLinOp(M, X3, X2, ctx)
+    v = ctx.asarray([1.0, -2.0])
 
+    np.testing.assert_allclose(A.apply(x), M @ x)
+    np.testing.assert_allclose(A.H.apply(v), M.T @ v)
+    np.testing.assert_allclose(X2.inner(A.apply(x), v), X3.inner(x, A.H.apply(v)))
+    try:
+        A.apply(v)                      # v lives in X2, not in the domain X3
+    except sc.SpaceValidationError as err:
+        print("rejected:", err)
+    else:
+        raise AssertionError("a wrong-shape input was accepted")
 
-.. parsed-literal::
+``A.H`` maps ``X2`` back to ``X3``, and the identity holds with each
+inner product taken in its own space. The public ``apply`` checks its
+input against the domain, so a codomain vector is rejected before any
+arithmetic runs.
 
-    A u        : [2. 1.]
-    A* (1,1)   : [3. 4.]
-    hermitian? : True
-    D (1,1)    : [2.  0.5]
+3 · Build a matrix-free Laplacian
+---------------------------------
 
+The 1-D Dirichlet Laplacian on n interior grid points is the stencil
 
-Seeing an operator as a deformation
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.. math::
 
-A linear map sends the unit circle to an ellipse whose axes are the
-eigenvectors of :math:`A`, stretched by its eigenvalues. Visualising
-that makes “operator” concrete.
+   (Lx)_i = 2x_i - x_{i-1} - x_{i+1}, \qquad x_0 = x_{n+1} = 0.
 
-.. code:: python
+L is the tridiagonal matrix with 2 on the diagonal and -1 beside it; it
+is symmetric with eigenvalues :math:`2-2\cos(k\pi/(n+1)) > 0`, so it is positive definite.
 
-    pts = circle                                    # reuse the unit circle from before
-    img = np.asarray(A.to_dense()) @ pts
-    evals, evecs = np.linalg.eigh(np.asarray(M))
-    
-    fig, ax = plt.subplots(figsize=(5.6, 5.6))
-    ax.plot(*pts, color=GRID, lw=2, label="unit circle")
-    ax.plot(*img, color=BLUE, label=r"image $A\,\cdot$")
-    for lam, vec in zip(evals, evecs.T):
-        ax.annotate("", xy=lam*vec, xytext=(0, 0),
-                    arrowprops=dict(arrowstyle="-|>", color=PINK, lw=2.4))
-        ax.text(*(lam*vec*1.12), f"λ={lam:.2f}", color=PINK, fontsize=9, ha="center")
-    ax.set_aspect("equal"); ax.set_title("A symmetric operator stretches along its eigenvectors")
-    ax.set_xlabel("$x_1$"); ax.set_ylabel("$x_2$"); ax.legend(loc="upper left")
-    plt.show()
-
-
-
-.. image:: 02_linear_algebra_files/02_linear_algebra_12_0.png
-
-
-3 · Solving :math:`A x = b` with conjugate gradients
-----------------------------------------------------
-
-``sc.cg`` expects a square, symmetric, positive-definite operator and
-solves :math:`Ax = b` using only ``A.apply`` and the domain inner
-product — it never forms :math:`A^{-1}`. We build a classic SPD example:
-a 1-D discrete Laplacian (tridiagonal :math:`2,-1`).
+A SpaceCore operator is written by implementing the check-free cores
+``_apply_core`` and ``_rapply_core``; the inherited ``apply``, ``rapply``
+and ``A.H`` check inputs and outputs around them. ``_fields`` names the
+constructor keyword (``space``, read from the attribute ``domain``) so
+that equality, conversion and pytree flattening can rebuild the operator.
+For the adjoint use the metric formula :math:`L^\# = R^{-1} L^\top R`;
+on a Euclidean space R is the identity and this is the stencil again.
 
 .. code:: python
+
+    class Laplacian1D(sc.LinOp):
+        """Dirichlet second difference on one vector space; no matrix stored."""
+
+        _fields = ("space:domain",)
+
+        def __init__(self, space):
+            super().__init__(space, space, space.ctx)
+
+        def _stencil(self, x):
+            zero = x[:1] * 0
+            left = ops.concatenate([zero, x[:-1]])      # x_{i-1}, with x_0 = 0
+            right = ops.concatenate([x[1:], zero])      # x_{i+1}, with x_{n+1} = 0
+            return 2.0 * x - left - right
+
+        def _apply_core(self, x):
+            return self._stencil(x)
+
+        def _rapply_core(self, y):
+            R = self.domain                             # L^# = R^{-1} L^T R, L^T = L
+            return R.riesz_inverse(self._stencil(R.riesz(y)))
 
     n = 40
-    lap = (2.0 * np.eye(n) - np.eye(n, k=1) - np.eye(n, k=-1))
-    Xn  = sc.DenseVectorSpace((n,), ctx)
-    L   = sc.DenseLinOp(ctx.asarray(lap), Xn, Xn, ctx)
-    
-    b   = ctx.asarray(np.ones(n))
-    res = sc.cg(L, b, tol=1e-10, maxiter=n)
-    
-    print("converged   :", bool(res.converged))
-    print("iterations  :", int(res.num_iters))
-    print("residual    :", float(res.residual_norm))
-    print("check Ax≈b   :", np.allclose(np.asarray(L.apply(res.x)), np.asarray(b)))
+    X = sc.DenseVectorSpace((n,), ctx)
+    L = Laplacian1D(X)
+    L_np = 2.0 * np.eye(n) - np.eye(n, k=1) - np.eye(n, k=-1)
 
+    def matrix_of(op):
+        """Column j is op applied to the j-th basis vector."""
+        return np.column_stack([op.apply(e) for e in np.eye(op.domain.shape[0])])
 
-.. parsed-literal::
+    rng = np.random.default_rng(0)
+    u = ctx.asarray(rng.standard_normal(n))
+    z = ctx.asarray(rng.standard_normal(n))
+    np.testing.assert_allclose(matrix_of(L), L_np)
+    np.testing.assert_allclose(matrix_of(L.H), L_np.T)
+    np.testing.assert_allclose(X.inner(L.apply(u), z), X.inner(u, L.H.apply(z)))
+    assert L == Laplacian1D(X)
+    lam = np.linalg.eigvalsh(L_np)
+    np.testing.assert_allclose(lam, 2 - 2 * np.cos(np.arange(1, n + 1) * np.pi / (n + 1)))
+    assert lam.min() > 0
 
-    converged   : True
-    iterations  : 40
-    residual    : 7.869487166620889e-29
-    check Ax≈b   : True
+``matrix_of`` applies the stencil to every basis vector and recovers the
+tridiagonal matrix built with NumPy; ``L.to_dense()`` does the same through
+the batched ``vapply``, which warns on NumPy unless ``_vapply_core`` is also written. The adjoint identity and the
+eigenvalue formula both hold, and two Laplacians on the same space
+compare equal because their ``_fields`` agree.
 
+4 · Assemble operators from the algebra
+---------------------------------------
 
-To *watch* CG converge we ask it for the residual after :math:`k` steps,
-for :math:`k = 1, 2, \dots` (re-running from scratch with ``tol=0`` so
-it always takes exactly :math:`k` iterations). The residual drops
-sharply once CG has explored enough of the Krylov subspace.
+Sums, scalings and compositions of operators are operators. With
+:math:`\sigma > 0`, the reaction-diffusion operator and the squared
+Laplacian
+
+.. math::
+
+   S = L + \sigma I, \qquad K = L^\# L
+
+are both symmetric positive definite: :math:`\langle Sx,x\rangle \ge \sigma\|x\|^2`
+and :math:`\langle Kx,x\rangle = \|Lx\|^2 > 0` for :math:`x \ne 0`.
 
 .. code:: python
 
-    ks = np.arange(1, n + 1)
-    hist = [float(sc.cg(L, b, tol=0.0, atol=0.0, maxiter=int(k), check_every=1).residual_norm)
-            for k in ks]
-    
-    fig, axes = plt.subplots(1, 2, figsize=(10.2, 4.0))
-    axes[0].semilogy(ks, hist, color=BLUE, marker="o", ms=3)
-    axes[0].axhline(1e-10, color=PINK, ls="--", lw=1.4, label="tol = 1e-10")
-    axes[0].set_title("CG residual  $\\|b - A x_k\\|$"); axes[0].set_xlabel("iteration $k$")
-    axes[0].set_ylabel("residual (log)"); axes[0].legend()
-    
-    axes[1].plot(np.asarray(res.x), color=INDIGO)
-    axes[1].fill_between(np.arange(n), np.asarray(res.x), color=INDIGO, alpha=0.12)
-    axes[1].set_title("Solution $x = L^{-1}\\mathbf{1}$"); axes[1].set_xlabel("index")
-    axes[1].set_ylabel("value")
-    plt.tight_layout(); plt.show()
+    sigma = 2.0
+    S = L + sigma * sc.IdentityLinOp(X)
+    K = L.H @ L
 
+    np.testing.assert_allclose(matrix_of(S), L_np + sigma * np.eye(n))
+    np.testing.assert_allclose(matrix_of(K), L_np.T @ L_np)
+    np.testing.assert_allclose(X.inner(K.apply(u), u), X.norm(L.apply(u)) ** 2)
+    np.testing.assert_allclose(X.inner(S.apply(u), z), X.inner(u, S.H.apply(z)))
+    print(type(S).__name__, type(K).__name__)
 
+No new class was written: ``S`` and ``K`` are lazy nodes whose ``apply``
+calls the Laplacian's cores, and ``S.H`` is assembled from ``L.H`` by the
+rule :math:`(L+\sigma I)^\# = L^\# + \sigma I`.
 
-.. image:: 02_linear_algebra_files/02_linear_algebra_16_0.png
+5 · Write conjugate gradients
+-----------------------------
 
+For a symmetric positive-definite A, conjugate gradients minimises
+:math:`\tfrac12\langle Ax,x\rangle - \langle b,x\rangle` over growing
+Krylov subspaces. From :math:`x_0 = 0,\ r_0 = p_0 = b` it repeats
 
-The solution is the smooth “tent” you expect from inverting a Laplacian
-against a constant load — recovered with a handful of operator
-applications and no explicit matrix inverse.
+.. math::
 
-Recap
------
+   \alpha_k = \frac{\langle r_k, r_k\rangle}{\langle p_k, Ap_k\rangle},\quad
+   x_{k+1} = x_k + \alpha_k p_k,\quad
+   r_{k+1} = r_k - \alpha_k Ap_k,\quad
+   p_{k+1} = r_{k+1} + \frac{\langle r_{k+1}, r_{k+1}\rangle}{\langle r_k, r_k\rangle} p_k,
 
--  A **space** owns geometry: ``inner``, ``norm``, ``riesz``, and
-   ``is_euclidean``. Weighting the inner product reshapes the unit ball.
--  An **operator** :math:`A : X \to Y` has ``apply`` (forward) and
-   ``rapply`` (metric adjoint), and can be materialised with
-   ``to_dense()``.
--  **``sc.cg``** solves SPD systems matrix-free, using only ``apply``
-   and the space’s inner product.
+and stops once :math:`\|r_k\| \le \mathrm{tol}\,\|b\|`. In exact arithmetic it
+terminates in at most n steps. Every operation below is a space method or ``A.apply``.
+
+.. code:: python
+
+    def conjugate_gradient(A, b, tol=1e-10, maxiter=1000):
+        X = A.domain
+        x = X.zeros()
+        r = b
+        p = r
+        rr = X.inner(r, r)
+        b_norm = X.norm(b)
+        for k in range(maxiter):
+            if np.sqrt(rr) <= tol * b_norm:
+                return x, k
+            Ap = A.apply(p)
+            alpha = rr / X.inner(p, Ap)
+            x = X.axpy(alpha, p, x)          # x + alpha p
+            r = X.axpy(-alpha, Ap, r)        # r - alpha A p
+            rr_new = X.inner(r, r)
+            p = X.axpy(rr_new / rr, p, r)    # r + beta p
+            rr = rr_new
+        raise RuntimeError("CG did not reach the tolerance")
+
+    b = ctx.asarray(np.ones(n))
+    x_cg, iters = conjugate_gradient(L, b)
+
+    i = np.arange(1, n + 1)
+    np.testing.assert_allclose(x_cg, i * (n + 1 - i) / 2, rtol=1e-8)
+    np.testing.assert_allclose(x_cg, np.linalg.solve(L_np, b), rtol=1e-8)
+    np.testing.assert_allclose(x_cg, sc.cg(L, b, tol=1e-10).x, rtol=1e-8)
+    assert X.norm(X.axpy(-1.0, L.apply(x_cg), b)) <= 1e-10 * X.norm(b)
+    assert iters <= n
+    print("CG iterations on L:", iters)
+
+    _, iters_L = conjugate_gradient(L, z)          # random load: no symmetry to exploit
+    x_s, iters_S = conjugate_gradient(S, z)
+    np.testing.assert_allclose(x_s, np.linalg.solve(L_np + sigma * np.eye(n), z), rtol=1e-8)
+    assert iters_S < iters_L / 2
+    print("random load, iterations on L and on S:", iters_L, iters_S)
+
+The unit load gives the discrete parabola :math:`x_i = i(n+1-i)/2`, and
+the loop matches it, ``np.linalg.solve`` and ``sc.cg``. The shift in S
+raises the smallest eigenvalue from about :math:`(\pi/(n+1))^2 \approx 0.006`
+to above :math:`\sigma = 2`, so the condition number drops from about 700
+to below 3 and CG on a random load needs less than half the iterations.
+
+6 · Geometry lives in the space, not in the operator
+----------------------------------------------------
+
+Put the same stencil on a weighted space. The forward map is unchanged,
+but the adjoint must satisfy the identity in the weighted inner product:
+
+.. math::
+
+   L_W^\# = W^{-1} L^\top W \ne L^\top \quad\text{unless } w \text{ is constant}.
+
+The core ``_rapply_core`` already applies :math:`R^{-1}` and R, so nothing
+new is written; only the space changes.
+
+.. code:: python
+
+    weights = ctx.asarray(np.linspace(1.0, 3.0, n))
+    Xw = sc.DenseVectorSpace((n,), ctx, geometry=sc.WeightedInnerProduct(weights))
+    Lw = Laplacian1D(Xw)
+    W = np.diag(weights)
+
+    np.testing.assert_allclose(matrix_of(Lw), L_np)
+    np.testing.assert_allclose(matrix_of(Lw.H), np.linalg.inv(W) @ L_np.T @ W)
+    np.testing.assert_allclose(Xw.inner(Lw.apply(u), z), Xw.inner(u, Lw.H.apply(z)))
+    gap = abs(Xw.inner(Lw.apply(u), z) - Xw.inner(u, L_np.T @ z))
+    assert gap > 1e-3
+    assert Lw != L
+    print("transpose misses the weighted identity by", gap)
+
+The weighted adjoint is not the transpose, and the transpose fails the
+identity by a visible margin. Since :math:`L_W^\# \ne L_W`, the Laplacian
+is not self-adjoint on ``Xw``, so CG's hypothesis fails there; the
+geometry, not the stored data, decides which algorithms apply.
+
+Check your understanding
+------------------------
+
+* Delete the Riesz maps from ``_rapply_core``. Which assertion fails
+  first, and on which space?
+* Why does ``conjugate_gradient(S, b)`` converge faster than on L? Compare
+  the extreme eigenvalues of both dense matrices.
+* Show that :math:`\langle Kx,x\rangle = \|Lx\|^2` would fail on ``Xw`` if
+  K were built as ``Laplacian1D(Xw) @ Laplacian1D(Xw)`` instead of ``Lw.H @ Lw``.
+* With a constant load CG finishes in about n/2 steps rather than n.
+  Which symmetry of the problem halves the Krylov space?
 
 **Next:** :doc:`3 · Functionals <03_functionals>` — scalar
 objectives, metric-aware gradients, and gradient descent.

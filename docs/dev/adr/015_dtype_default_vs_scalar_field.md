@@ -16,11 +16,22 @@ Some mathematical constraints are already dtype-sensitive. `EuclideanElementwise
 
 ## Decision
 
-`Context.dtype` is a representation default, not the full mathematical scalar-field contract. `Space.field` describes whether membership is over a real or complex scalar field. Dtype checks remain representation checks. Field-level checks decide whether complex values are mathematically allowed, while exact dtype checks continue to decide representation compatibility.
+`Context.dtype` is a representation default, not the full mathematical scalar-field contract. `Space.field` describes real or complex entries; `Space.scalar_field` describes the allowed coefficients. Dtype checks remain representation checks. Field-level checks decide whether complex values are mathematically allowed, while exact dtype checks continue to decide representation compatibility.
 
 For 0.4.0 Stage 1, `Space.field` is derived from `Context.dtype`; no constructor-level override is provided. `FieldCheck` makes scalar-field compatibility explicit while `DTypeCheck` continues to enforce exact representation dtype. Conversion rejects complex-to-real narrowing unless the caller explicitly extracts a real part first.
 
 Exact dtype equality and cross-precision compatibility remain strict until concrete workloads justify relaxing them. Solver workspaces should be operand-driven: real diagnostics for complex operators use `ops.real_dtype(ctx.dtype)`, while vector workspaces use the operator/context dtype.
+
+A declared complex coefficient field over real floating storage is rejected at
+construction; integer and Boolean storage are rejected. For example, a
+`HermitianSpace` over `complex128` is a real vector space that keeps its
+`complex128` storage. `RealField`, the codomain of every functional, stores
+values in the real dtype corresponding to its context and converts to the
+target backend at that real precision. It has a Euclidean inner product and
+scalar shape membership, but no coordinate or batching capability.
+
+(0.5.0a removed `Space.scalars` and `ComplexField`: once functionals became
+real-valued nothing consumed the object-valued coefficient field.)
 
 ## Rationale
 
@@ -37,6 +48,7 @@ Using exact dtype as the only field proxy was rejected because real-vs-complex m
 ## Contributor invariants
 
 - `Context.dtype` controls representation defaults and constructors.
-- `Space.field` is the mathematical contract for real vs complex membership and is derived from the context dtype in 0.4.0.
+- `Space.field` describes entries and is derived from the context dtype.
+- `Space.scalar_field` describes coefficients.
 - Current dtype membership remains exact and strict.
-- Solver scalar diagnostics should use real workspaces when mathematically real, especially for complex operators.
+- Solver scalar diagnostics should use real workspaces when mathematically real, especially for complex operators. (0.5.0: every solver does; `tests/linalg/test_real_diagnostics.py` pins `cg` and `power_iteration` on a complex Hermitian operator.)

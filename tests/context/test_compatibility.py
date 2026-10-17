@@ -21,20 +21,15 @@ Covers the free helpers that gate operator algebra and context resolution.
 * ``Contextual.ctx_from_ops`` — dtype sanitization for a raw ``BackendOps``
   instance. Validation policy is not part of the context: the ambient level
   seeds the bound object instead.
-* ``normalize_check_level`` — the deprecated ``enable_checks`` legacy shim,
-  now the only surviving home of the Boolean switch, and the
-  ``DeprecationWarning`` it emits under ``warn_legacy=True``.
 
 References are independent: NumPy dtypes, explicit family strings, and the
-source contracts read from ``_state.py`` / ``_bound.py`` / ``_check_policy.py``.
+source contracts read from ``_state.py`` / ``_bound.py`` / ``_checks.py``.
 """
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
 import spacecore as sc
-from spacecore._check_policy import normalize_check_level
 from spacecore.contextual._contextual import Contextual
 from spacecore.backend import OpsRegistry
 
@@ -213,21 +208,3 @@ class TestCtxFromOps:
         out = self.state.ctx_from_ops(ops)
         assert out.ops.family == "numpy"
 
-
-# ===========================================================================
-# normalize_check_level — legacy enable_checks shim + DeprecationWarning
-# ===========================================================================
-class TestEnableChecksShim:
-    def test_enable_checks_true_resolves_standard(self):
-        assert normalize_check_level(enable_checks=True) == "standard"
-
-    def test_enable_checks_false_resolves_none(self):
-        assert normalize_check_level(enable_checks=False) == "none"
-
-    def test_enable_checks_emits_deprecation_warning_when_requested(self):
-        """The shim warns only under ``warn_legacy=True``; no production caller
-        passes it, so the warning is opt-in for callers still bridging the
-        Boolean switch."""
-        with pytest.warns(DeprecationWarning) as caught:
-            normalize_check_level(enable_checks=True, warn_legacy=True)
-        assert "enable_checks is deprecated" in str(caught[0].message)

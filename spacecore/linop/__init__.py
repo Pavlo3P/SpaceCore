@@ -3,8 +3,6 @@
 from ._base import LinOp
 from ._algebra import (
     ComposedLinOp,
-    IdentityLinOp,
-    MatrixFreeLinOp,
     ScaledLinOp,
     SumLinOp,
     ZeroLinOp,
@@ -13,9 +11,10 @@ from ._algebra import (
     make_sum,
 )
 from ._dense import DenseLinOp
+from ._matrix_free import IdentityLinOp, MatrixFreeLinOp
 from ._diagonal import DiagonalLinOp
 from ._sparse import SparseLinOp
-from .tree import BlockDiagonalLinOp, BlockMatrixLinOp, StackedLinOp, SumToSingleLinOp, TreeLinOp
+from .tree import BlockDiagonalLinOp, BlockMatrixLinOp, TreeLinOp
 
 __all__ = [
     "LinOp",
@@ -32,8 +31,6 @@ __all__ = [
     "make_scaled",
     "make_sum",
     "TreeLinOp",
-    "SumToSingleLinOp",
     "BlockDiagonalLinOp",
     "BlockMatrixLinOp",
-    "StackedLinOp",
 ]

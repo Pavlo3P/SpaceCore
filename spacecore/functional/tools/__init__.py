@@ -1,36 +1,13 @@
-"""Everyday functional and proximal toolbox (ADR-019).
+"""Coordinate norm functionals used by the closed-form prox rules.
 
-Named constructors over the existing ``Functional`` machinery -- least squares,
-coordinate and spectral norms, entropy objectives, the Huber loss, and a
-closed-form metric-aware proximal primitive -- with no new core type hierarchy.
+The named catalogue (least squares, entropy, Huber, spectral lifts, shrinkage
+helpers) lives in the ``spacecore-optimize`` package.
 """
 
-from ._entropy import KLDivergenceFunctional, NegativeEntropyFunctional
-from ._huber import HuberFunctional
-from ._least_squares import least_squares
 from ._norms import L1NormFunctional, LpNormFunctional, SquaredL2NormFunctional
-from ._proximal import generalized_shrinkage, project_nonneg, prox_l1, prox_l2sq
-from ._spectral import (
-    NuclearNormFunctional,
-    SpectralFunctional,
-    eigenvalue_space,
-    spectralize,
-)
 
 __all__ = [
-    "HuberFunctional",
-    "KLDivergenceFunctional",
     "L1NormFunctional",
     "LpNormFunctional",
-    "NegativeEntropyFunctional",
-    "NuclearNormFunctional",
-    "SpectralFunctional",
     "SquaredL2NormFunctional",
-    "generalized_shrinkage",
-    "least_squares",
-    "project_nonneg",
-    "prox_l1",
-    "prox_l2sq",
-    "eigenvalue_space",
-    "spectralize",
 ]

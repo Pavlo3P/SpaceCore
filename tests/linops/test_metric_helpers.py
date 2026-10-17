@@ -2,10 +2,8 @@
 
 Checklist item 2:
 
-* ``space_has_riesz_maps`` — true on weighted spaces with Riesz maps,
-  false on plain DenseCoordinateSpace lacking them (well, all do via
-  EuclideanInnerProduct, so the test verifies the predicate's contract on
-  weighted vs Euclidean).
+* ``space_has_riesz_maps`` — true on weighted and Euclidean geometries with
+  explicit maps, false when only the unsupported base methods are inherited.
 * ``_requires_euclidean_or_riesz`` — accepts Euclidean / weighted-with-Riesz
   spaces; raises with informative message on spaces lacking metric machinery.
 * ``_metric_is_hermitian_by_basis`` — returns ``None`` on non-square ops;
@@ -44,11 +42,22 @@ class TestSpaceHasRieszMaps:
         )
         assert space_has_riesz_maps(space) is True
 
-    def test_euclidean_dense_coordinate_returns_false(self, numpy_ctx):
-        """Euclidean spaces don't need Riesz maps; the helper returns False
-        (callers handle Euclidean explicitly before invoking this predicate)."""
+    def test_euclidean_dense_coordinate_has_identity_maps(self, numpy_ctx):
+        """Identity maps now belong explicitly to EuclideanInnerProduct."""
         space = sc.DenseCoordinateSpace((2,), numpy_ctx)
-        assert space_has_riesz_maps(space) is False
+        assert space_has_riesz_maps(space) is True
+
+    def test_native_space_with_own_maps_needs_no_geometry_object(self, numpy_ctx):
+        from tests.linalg.test_native_krylov import PairSpace
+
+        class WithMaps(PairSpace):
+            def riesz(self, x):
+                return x
+
+            def riesz_inverse(self, x):
+                return x
+
+        assert space_has_riesz_maps(WithMaps(numpy_ctx)) is True
 
     def test_tree_of_weighted_leaves_returns_true(self, numpy_ctx):
         weights = numpy_ctx.asarray([2.0, 3.0])
@@ -190,16 +199,10 @@ class TestMetricRvapply:
         X = sc.DenseCoordinateSpace((3,), numpy_ctx)
         ys = numpy_ctx.asarray([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
 
-        def euclid_rapply(y):  # noqa: ARG001
-            raise AssertionError("should not be called on Euclidean fast path")
-
         def euclid_rvapply(zs):
             return zs * 2.0
 
-        out = metric_rvapply(
-            X, X, euclid_rapply, euclid_rvapply, ys,
-            opname="test", ops=numpy_ctx.ops,
-        )
+        out = metric_rvapply(X, X, euclid_rvapply, ys)
         np.testing.assert_allclose(out, ys * 2.0)
 
     def test_weighted_fast_path_no_warning(self, numpy_ctx):
@@ -209,47 +212,14 @@ class TestMetricRvapply:
         )
         ys = numpy_ctx.asarray([[1.0, 2.0], [3.0, 4.0]])
 
-        def euclid_rapply(y):  # noqa: ARG001
-            raise AssertionError("should not be called on fast path")
-
         def euclid_rvapply(zs):
             return zs
 
         with warnings.catch_warnings(record=True) as recorded:
             warnings.simplefilter("always")
-            out = metric_rvapply(
-                X, X, euclid_rapply, euclid_rvapply, ys,
-                opname="test_op", ops=numpy_ctx.ops,
-            )
+            out = metric_rvapply(X, X, euclid_rvapply, ys)
         # No metric-batch-fallback warnings on the fast path.
         assert not any("could not use batched Riesz maps" in str(w.message)
                        for w in recorded)
         # R_X(ys) = ys * weights, identity, R_X^{-1}(...) = ys.
-        np.testing.assert_allclose(out, ys)
-
-    def test_fallback_warns_and_uses_per_element(self, numpy_ctx):
-        """When batched Riesz raises a documented fallback error, the helper
-        warns and falls back to vmap(metric_rapply)."""
-        weights = numpy_ctx.asarray([2.0, 3.0])
-        X = sc.DenseCoordinateSpace(
-            (2,), numpy_ctx, geometry=sc.WeightedInnerProduct(weights),
-        )
-        ys = numpy_ctx.asarray([[1.0, 2.0], [3.0, 4.0]])
-
-        def euclid_rapply(y):
-            return y * 1.0
-
-        def euclid_rvapply(zs):  # noqa: ARG001
-            raise NotImplementedError("simulated unavailable")
-
-        with warnings.catch_warnings(record=True) as recorded:
-            warnings.simplefilter("always")
-            out = metric_rvapply(
-                X, X, euclid_rapply, euclid_rvapply, ys,
-                opname="my_op", ops=numpy_ctx.ops,
-            )
-        assert any("could not use batched Riesz maps" in str(w.message)
-                   for w in recorded)
-        # The fallback applies metric_rapply per row; R_X then R_X^{-1} on
-        # identity-style euclid_rapply round-trips to ys.
         np.testing.assert_allclose(out, ys)

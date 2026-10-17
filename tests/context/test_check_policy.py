@@ -19,7 +19,7 @@ import numpy as np
 import pytest
 
 import spacecore as sc
-from spacecore._check_policy import normalize_check_level
+from spacecore._checks import normalize_check_level
 
 
 def _ctx(dtype=np.float64) -> sc.Context:
@@ -34,13 +34,6 @@ def test_check_level_public_api_and_legacy_mapping():
     assert sc.DenseCoordinateSpace((2,), ctx, check_level="cheap").check_level == "cheap"
     assert sc.DenseCoordinateSpace((2,), ctx, check_level="strict").check_level == "strict"
 
-    assert normalize_check_level(enable_checks=True) == "standard"
-    assert normalize_check_level(enable_checks=False) == "none"
-    with pytest.warns(DeprecationWarning, match="enable_checks"):
-        assert normalize_check_level(enable_checks=True, warn_legacy=True) == "standard"
-
-    with pytest.raises(TypeError, match="either check_level or enable_checks"):
-        normalize_check_level("strict", enable_checks=True)
     with pytest.raises(ValueError, match="Unknown check_level"):
         normalize_check_level("fast")
 

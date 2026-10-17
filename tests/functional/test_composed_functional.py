@@ -21,7 +21,7 @@ import spacecore as sc
 
 from spacecore.functional._composed import make_functional_composed, _require_composable
 from spacecore.functional._linear import _convert_space_element
-from spacecore.kernels.core.functional import _broadcast_space_element
+from spacecore.functional._linear import _broadcast_space_element
 from tests._helpers import to_numpy
 
 
@@ -313,8 +313,8 @@ class TestChainRuleComplex:
         )
         return ctx, X, Y, A
 
-    def test_holomorphic_functional_satisfies_the_plain_identity(self):
-        """A complex-*linear* inner: ``<grad G, h> == DG[h]`` exactly."""
+    def test_inner_product_functional_satisfies_real_pairing_identity(self):
+        """A real-linear functional: ``Re<grad G, h> == DG[h]``."""
         ctx, X, Y, A = self._spaces()
         c = ctx.asarray([1 + 1j, 2 - 0.5j, -1 + 0.3j])
         G = sc.ComposedFunctional(sc.InnerProductFunctional(c, Y, ctx), A)
@@ -325,7 +325,7 @@ class TestChainRuleComplex:
             complex(G.value(X.axpy(eps, h, x))) - complex(G.value(X.axpy(-eps, h, x)))
         ) / (2.0 * eps)
         np.testing.assert_allclose(
-            complex(X.inner(G.grad(x), h)), directional, rtol=1e-6, atol=1e-6
+            complex(X.inner(G.grad(x), h)).real, directional, rtol=1e-6, atol=1e-6
         )
         # ...and equals the adjoint pull-back of the representer.
         np.testing.assert_allclose(to_numpy(G.grad(x)), to_numpy(A.H.apply(c)))

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from math import prod
-from typing import Any
+from typing import Any, NamedTuple
 
 from ..linop import LinOp
 from .._repr import summarize_value
@@ -24,13 +24,14 @@ def require_square(A: LinOp, name: str) -> None:
 
 def require_strict_cg_preconditions(A: LinOp) -> None:
     """Run expensive development-time Hermitian and positive-curvature probes."""
+    # Strict only: probe positive curvature <x, A x> > 0 on one vector.
     if not A._checks_at_least("strict"):
         return
     if A.is_hermitian() is False:
         raise ValueError("cg strict checks require A to be Hermitian/self-adjoint.")
 
     x = default_initial_vector(A)
-    curvature = real_inner(A.domain, x, A.apply(x))
+    curvature = A.domain.real_inner(x, A.apply(x))
     try:
         positive = bool(curvature > 0)
     except Exception as exc:
@@ -41,6 +42,11 @@ def require_strict_cg_preconditions(A: LinOp) -> None:
 
 def default_maxiter(A: LinOp) -> int:
     """Return the default Krylov iteration count for ``A``."""
+    from ..space import CoordinateSpace
+    from .._errors import CapabilityError
+
+    if not isinstance(A.domain, CoordinateSpace):
+        raise CapabilityError("Default iteration count requires CoordinateSpace; supply maxiter explicitly.")
     return max(1, prod(A.domain.shape))
 
 
@@ -54,12 +60,21 @@ def check_maxiter(maxiter: int | None, A: LinOp) -> int:
     return maxiter
 
 
-def check_interval(interval: int) -> int:
-    """Validate a convergence-check interval."""
+def check_interval(interval: int, name: str = "check_every") -> int:
+    """Validate a positive integer parameter, such as a convergence-check interval."""
     interval = int(interval)
     if interval < 1:
-        raise ValueError("check_every must be positive.")
+        raise ValueError(f"{name} must be positive.")
     return interval
+
+
+def require_hermitian_square(A: Any, name: str, message: str | None = None) -> Any:
+    """Return ``A`` as a square LinOp, raising if it is provably not self-adjoint."""
+    A = require_linop(A)
+    require_square(A, name)
+    if A._checks_at_least("standard") and A.is_hermitian() is False:
+        raise ValueError(message or f"{name} requires A to be Hermitian/self-adjoint.")
+    return A
 
 
 def should_check_iteration(k: Any, maxiter: int, interval: int) -> Any:
@@ -89,83 +104,6 @@ def threshold(norm_b: Any, tol: float, atol: float) -> Any:
 # override wins and the checked public method is used. Resolution is done once,
 # at solver entry, so the hot loop pays neither the check nor the lookup.
 # ---------------------------------------------------------------------------
-def _defining_class(cls: type, name: str) -> type | None:
-    """Return the first class in ``cls``'s MRO whose ``__dict__`` defines ``name``."""
-    for base in cls.__mro__:
-        if name in base.__dict__:
-            return base
-    return None
-
-
-def resolve_core(obj: Any, public_name: str, core_name: str) -> Any:
-    """Return ``obj``'s bound check-free core when it is safe to use.
-
-    The core is safe when ``public_name`` is not overridden in a subclass below
-    the class that defines ``core_name`` (so the core cannot silently bypass a
-    subclass's custom semantics). Otherwise the bound public method is returned.
-    """
-    cls = type(obj)
-    core_owner = _defining_class(cls, core_name)
-    if core_owner is None:
-        return getattr(obj, public_name)
-    pub_owner = _defining_class(cls, public_name)
-    if pub_owner is None or issubclass(core_owner, pub_owner):
-        return getattr(obj, core_name)
-    return getattr(obj, public_name)
-
-
-class SpaceCoreOps:
-    """Resolved check-free linear-space ops for a solver's hot loop.
-
-    Each op is resolved once (via :func:`resolve_core`) to the space's check-free
-    core when consistent, or the checked public method otherwise — so the hot
-    loop skips per-iteration validation while still honoring any custom geometry
-    a user space defines. ``axpy`` and ``norm`` are derived from the resolved
-    ``add``/``scale``/``inner`` to match the space's definitions.
-    """
-
-    __slots__ = ("ops", "_inner", "_add", "_scale")
-
-    def __init__(self, space: Any) -> None:
-        self.ops = space.ops
-        self._inner = resolve_core(space, "inner", "_inner_core")
-        self._add = resolve_core(space, "add", "_add_core")
-        self._scale = resolve_core(space, "scale", "_scale_core")
-
-    def inner(self, x: Any, y: Any) -> Any:
-        return self._inner(x, y)
-
-    def real_inner(self, x: Any, y: Any) -> Any:
-        return self.ops.real(self._inner(x, y))
-
-    def add(self, x: Any, y: Any) -> Any:
-        return self._add(x, y)
-
-    def scale(self, a: Any, x: Any) -> Any:
-        return self._scale(a, x)
-
-    def axpy(self, a: Any, x: Any, y: Any) -> Any:
-        return self._add(self._scale(a, x), y)
-
-    def norm(self, x: Any) -> Any:
-        return self.ops.sqrt(self.ops.real(self._inner(x, x)))
-
-
-def resolve_apply(A: Any) -> Any:
-    """Return ``A``'s bound check-free forward core (or checked ``apply``)."""
-    return resolve_core(A, "apply", "_apply_core")
-
-
-def resolve_rapply(A: Any) -> Any:
-    """Return ``A``'s bound check-free adjoint core (or checked ``rapply``)."""
-    return resolve_core(A, "rapply", "_rapply_core")
-
-
-def real_inner(space: Any, x: Any, y: Any) -> Any:
-    """Return the real part of ``space.inner(x, y)`` (checked; for one-shot use)."""
-    return space.ops.real(space.inner(x, y))
-
-
 def is_converged(residual_norm: Any, threshold_value: Any) -> Any:
     """Return backend-compatible convergence predicate."""
     return residual_norm <= threshold_value
@@ -186,26 +124,67 @@ def safe_inverse_nonneg(ops: Any, value: Any) -> Any:
 
 def normalize(space: Any, x: Any) -> tuple[Any, Any]:
     """Normalize a space member and return ``(unit, norm)``."""
-    norm = space.norm(x)
-    return space.scale(safe_inverse_nonneg(space.ops, norm), x), norm
-
-
-def core_normalize(sops: SpaceCoreOps, x: Any) -> tuple[Any, Any]:
-    """Normalize ``x`` through resolved check-free space ops; return ``(unit, norm)``."""
-    norm = sops.norm(x)
-    return sops.scale(safe_inverse_nonneg(sops.ops, norm), x), norm
+    norm = space._norm_core(x)
+    return space._scale_core(safe_inverse_nonneg(space.ops, norm), x), norm
 
 
 def default_initial_vector(A: LinOp) -> Any:
     """Return a deterministic unit vector in ``A.domain`` using its geometry."""
-    size = prod(A.domain.shape)
-    flat = A.ops.ones((size,), dtype=A.dtype)
-    v = A.domain.unflatten(flat)
-    norm = A.domain.norm(v)
-    return A.domain.scale(safe_inverse_nonneg(A.ops, norm), v)
+    from ..space._capabilities import probe_element
+    from .._errors import CapabilityError
+
+    v = probe_element(A.domain, A.ops, A.dtype)
+    if v is None:
+        raise CapabilityError(
+            "Default initialization requires space.ones() or CoordinateSpace; "
+            "supply an explicit initial element (x0)."
+        )
+    return normalize(A.domain, v)[0]
 
 
 def result_repr(name: str, fields: dict[str, Any]) -> str:
     """Return a compact result-object representation."""
     body = ", ".join(f"{key}={summarize_value(value)}" for key, value in fields.items())
     return f"{name}({body})"
+
+
+class LinalgResult(NamedTuple):
+    """
+    Result of every :mod:`spacecore.linalg` solver.
+
+    Fields a solver does not produce are ``None``.
+
+    Parameters
+    ----------
+    x : array-like
+        The computed element: the solution (:func:`cg`, :func:`lsqr`), the eigenvector
+        estimate (:func:`power_iteration`, :func:`lanczos_smallest`), or the action
+        ``exp(t * A) @ v`` (:func:`expm_multiply`).
+    converged : bool-like
+        Whether the solver's stopping test was met.
+    num_iters : int-like
+        Iterations executed; for the Krylov methods :func:`lanczos_smallest` and
+        :func:`expm_multiply`, the Krylov dimension reached.
+    residual_norm : scalar
+        The solver's residual measure: ``norm(b - A x)`` for :func:`cg` and :func:`lsqr`
+        (exact or estimated per ``residual_mode``), ``norm(A x - eigenvalue x)`` for
+        :func:`power_iteration`, the Ritz residual estimate for :func:`lanczos_smallest`,
+        and for :func:`expm_multiply` the projection indicator ``abs(beta[m] phi[m-1])``,
+        which omits ``norm(v)`` and does not bound the error.
+    eigenvalue : scalar or None
+        Eigenvalue estimate (:func:`power_iteration`, :func:`lanczos_smallest`).
+    normal_residual_norm : scalar or None
+        ``norm(A.H (A x - b))`` (:func:`lsqr`).
+    """
+
+    x: Any
+    converged: Any
+    num_iters: Any
+    residual_norm: Any
+    eigenvalue: Any = None
+    normal_residual_norm: Any = None
+
+    def __repr__(self) -> str:
+        """Summarize the fields this solver produced, without printing full arrays."""
+        fields = {k: v for k, v in self._asdict().items() if v is not None}
+        return result_repr(type(self).__name__, fields)

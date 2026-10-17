@@ -72,19 +72,19 @@ def _dense_case(
     if kind == "zero":
         representer = np.zeros_like(c_np)
         functional = sc.InnerProductFunctional(ctx.asarray(representer), domain, ctx)
-        value = np.vdot(representer, metric @ x_np)
+        value = _real_inner(representer, metric @ x_np)
         gradient = representer
     elif kind == "linear":
         functional = sc.InnerProductFunctional(c, domain, ctx)
-        value = np.vdot(c_np, metric @ x_np)
+        value = _real_inner(c_np, metric @ x_np)
         gradient = c_np
     elif kind == "quadratic":
         q = sc.DiagonalLinOp(ctx.asarray(diagonal), domain, ctx)
         linear = sc.InnerProductFunctional(c, domain, ctx)
-        offset = np.asarray(0.75, dtype=dtype)
-        functional = sc.LinOpQuadraticForm(q, linear, ctx.asarray(offset), ctx)
-        value = 0.5 * np.vdot(x_np, metric @ (diagonal * x_np))
-        value = value + np.vdot(c_np, metric @ x_np) + offset
+        offset = 0.75
+        functional = sc.LinOpQuadraticForm(q, linear, offset, ctx)
+        value = 0.5 * _real_inner(x_np, metric @ (diagonal * x_np))
+        value = value + _real_inner(c_np, metric @ x_np) + offset
         gradient = diagonal * x_np + c_np
     else:
         raise ValueError(f"Unknown functional case kind {kind!r}.")
@@ -98,11 +98,11 @@ def _dense_case(
     applied = matrix @ x_np
     metric_adjoint = np.linalg.solve(metric, matrix.conj().T @ metric)
     if kind == "quadratic":
-        pullback_value = 0.5 * np.vdot(applied, metric @ (diagonal * applied))
-        pullback_value = pullback_value + np.vdot(c_np, metric @ applied) + offset
+        pullback_value = 0.5 * _real_inner(applied, metric @ (diagonal * applied))
+        pullback_value = pullback_value + _real_inner(c_np, metric @ applied) + offset
         pullback_gradient = metric_adjoint @ (diagonal * applied + c_np)
     else:
-        pullback_value = np.vdot(gradient, metric @ applied)
+        pullback_value = _real_inner(gradient, metric @ applied)
         pullback_gradient = metric_adjoint @ gradient
 
     target_ctx = _context(_target_dtype(dtype), check_level)
@@ -182,17 +182,9 @@ def _battery_cases(
 ) -> tuple[FunctionalCase, ...]:
     """Generated cases for the ADR-019 battery functionals (real coordinates)."""
     x = np.asarray([0.5, -1.0, 2.0], dtype=dtype)
-    x_pos = np.asarray([0.5, 1.0, 2.0], dtype=dtype)
-    x_huber = np.asarray([0.5, -1.5, 2.0], dtype=dtype)
-    target = np.asarray([1.0, 2.0, 0.5], dtype=dtype)
     weights = np.asarray(_BATTERY_WEIGHTS, dtype=dtype)
-    delta = 1.0
 
     lp_norm = float(np.sum(np.abs(x) ** 2.0) ** 0.5)
-    a = np.abs(x_huber)
-    huber_value = float(
-        np.sum(np.where(a <= delta, 0.5 * a * a, delta * (a - 0.5 * delta)))
-    )
 
     cases: list[FunctionalCase] = []
     for weighted in (False, True):
@@ -215,65 +207,7 @@ def _battery_cases(
                 euclidean_gradient=x / lp_norm,
             )
         )
-        cases.append(
-            _battery_case(
-                dtype, check_level, kind="negative-entropy", weighted=weighted,
-                build=lambda dom, ctx: sc.NegativeEntropyFunctional(dom, ctx),
-                x_np=x_pos,
-                value=float(np.sum(x_pos * np.log(x_pos))),
-                euclidean_gradient=np.log(x_pos) + 1.0,
-            )
-        )
-        cases.append(
-            _battery_case(
-                dtype, check_level, kind="kl-divergence", weighted=weighted,
-                build=lambda dom, ctx: sc.KLDivergenceFunctional(ctx.asarray(target), dom, ctx),
-                x_np=x_pos,
-                value=float(np.sum(x_pos * np.log(x_pos / target))),
-                euclidean_gradient=np.log(x_pos / target) + 1.0,
-            )
-        )
-        cases.append(
-            _battery_case(
-                dtype, check_level, kind="huber", weighted=weighted,
-                build=lambda dom, ctx: sc.HuberFunctional(dom, delta, ctx),
-                x_np=x_huber,
-                value=huber_value,
-                euclidean_gradient=np.where(a <= delta, x_huber, delta * np.sign(x_huber)),
-            )
-        )
     return tuple(cases)
-
-
-def _spectral_case(dtype: Any, check_level: sc.CheckLevel | str) -> FunctionalCase:
-    """Generated case for the Schatten p-norm as a spectral lift of the coordinate p-norm.
-
-    Uses ``p = 2`` so the value is the Frobenius norm and the gradient is
-    ``X / ||X||_F`` -- both computable without an eigendecomposition, giving an
-    independent reference. The ``"real"`` capability is intentionally omitted so
-    the directional-derivative law (which assumes a length-3 coordinate
-    direction) skips this matrix domain; that identity is covered in
-    ``tests/functional/tools/test_spectral.py``.
-    """
-    ctx = _context(dtype, check_level)
-    domain = sc.HermitianSpace(2, ctx=ctx)
-    m = np.asarray([[2.0, 0.5], [0.5, 3.0]], dtype=dtype)
-    frobenius = float(np.linalg.norm(m, "fro"))
-    target_ctx = _context(_target_dtype(dtype), check_level)
-    return FunctionalCase(
-        obj=sc.spectralize(domain, lambda t: sc.LpNormFunctional(t, 2.0), ctx),
-        reference={
-            "kind": "spectral-lp-norm",
-            "domain": domain,
-            "x": ctx.asarray(m),
-            "value": frobenius,
-            "gradient": ctx.asarray(m / frobenius),
-            "target_ctx": target_ctx,
-            "check_level": check_level,
-        },
-        capabilities=frozenset({"gradient", "conversion", "euclidean", "spectral"}),
-        id=f"spectral-lp-norm-frobenius-{np.dtype(dtype).name}-checks-{check_level}",
-    )
 
 
 def _composed_case(dtype: Any, check_level: sc.CheckLevel | str) -> FunctionalCase:
@@ -287,7 +221,7 @@ def _composed_case(dtype: Any, check_level: sc.CheckLevel | str) -> FunctionalCa
     x = ctx.asarray(x_np)
     c = ctx.asarray(c_np)
     operator = sc.DenseLinOp(ctx.asarray(matrix), domain, domain, ctx)
-    source = sc.MatrixFreeLinearFunctional(lambda y: domain.inner(c, y), domain, ctx)
+    source = sc.MatrixFreeLinearFunctional(lambda y: ctx.ops.real(domain.inner(c, y)), domain, ctx)
     functional = source.compose(operator)
     return FunctionalCase(
         obj=functional,
@@ -295,7 +229,7 @@ def _composed_case(dtype: Any, check_level: sc.CheckLevel | str) -> FunctionalCa
             "kind": "composed",
             "domain": domain,
             "x": x,
-            "value": np.vdot(c_np, matrix @ x_np),
+            "value": _real_inner(c_np, matrix @ x_np),
             "gradient": None,
             "source_functional": source,
             "operator": operator,
@@ -327,7 +261,7 @@ def _explicit_composed_case(dtype: Any, check_level: sc.CheckLevel | str) -> Fun
     x = ctx.asarray(x_np)
     c = ctx.asarray(c_np)
     operator = sc.DenseLinOp(ctx.asarray(matrix), domain, domain, ctx)
-    source = sc.MatrixFreeLinearFunctional(lambda y: domain.inner(c, y), domain, ctx)
+    source = sc.MatrixFreeLinearFunctional(lambda y: ctx.ops.real(domain.inner(c, y)), domain, ctx)
     functional = sc.ComposedFunctional(source, operator)
     return FunctionalCase(
         obj=functional,
@@ -335,7 +269,7 @@ def _explicit_composed_case(dtype: Any, check_level: sc.CheckLevel | str) -> Fun
             "kind": "composed",
             "domain": domain,
             "x": x,
-            "value": np.vdot(c_np, matrix @ x_np),
+            "value": _real_inner(c_np, matrix @ x_np),
             "gradient": None,
             "source_functional": source,
             "operator": operator,
@@ -362,7 +296,7 @@ def _matrix_free_linear_case(dtype: Any, check_level: sc.CheckLevel | str) -> Fu
     x_np, c_np, _weights, _diagonal = _values(dtype)
     x = ctx.asarray(x_np)
     c = ctx.asarray(c_np)
-    functional = sc.MatrixFreeLinearFunctional(lambda y: domain.inner(c, y), domain, ctx)
+    functional = sc.MatrixFreeLinearFunctional(lambda y: ctx.ops.real(domain.inner(c, y)), domain, ctx)
     capabilities = {"linear", "euclidean"}
     if np.issubdtype(np.dtype(dtype), np.complexfloating):
         capabilities.add("complex")
@@ -374,7 +308,7 @@ def _matrix_free_linear_case(dtype: Any, check_level: sc.CheckLevel | str) -> Fu
             "kind": "matrix-free-linear",
             "domain": domain,
             "x": x,
-            "value": np.vdot(c_np, x_np),
+            "value": _real_inner(c_np, x_np),
             "gradient": None,
             "target_ctx": None,
             "check_level": check_level,
@@ -401,7 +335,7 @@ def _tree_case(dtype: Any, check_level: sc.CheckLevel | str) -> FunctionalCase:
     x = tuple(ctx.asarray(leaf) for leaf in x_np)
     c = tuple(ctx.asarray(leaf) for leaf in c_np)
     functional = sc.InnerProductFunctional(c, domain, ctx)
-    value = sum(np.vdot(ci, xi) for ci, xi in zip(c_np, x_np))
+    value = sum(_real_inner(ci, xi) for ci, xi in zip(c_np, x_np))
     target_ctx = _context(_target_dtype(dtype), check_level)
     return FunctionalCase(
         obj=functional,
@@ -463,17 +397,17 @@ def _algebra_case(
 def _algebra_cases(dtype: Any, check_level: sc.CheckLevel | str) -> tuple[FunctionalCase, ...]:
     """Generated cases for the functional-algebra nodes.
 
-    Covers Scaled/Sum/Shifted/Zero plus the multiplicative nodes
+    Covers Scaled/Sum/shift/Zero plus the multiplicative nodes
     Constant/Product.
     """
     c2 = np.asarray([0.5, -0.25, 1.0], dtype=dtype)
-    offset = np.asarray(0.75, dtype=dtype)
-    constant = np.asarray(1.25, dtype=dtype)
+    offset = 0.75
+    constant = 1.25
     return (
         _algebra_case(
             dtype, check_level, kind="scaled-functional", id_stub="scaled-functional",
             build=lambda base, domain, ctx: sc.ScaledFunctional(2.0, base),
-            value=lambda x, c: 2.0 * np.vdot(c, x),
+            value=lambda x, c: 2.0 * _real_inner(c, x),
             gradient=lambda x, c: 2.0 * c,
         ),
         _algebra_case(
@@ -481,13 +415,13 @@ def _algebra_cases(dtype: Any, check_level: sc.CheckLevel | str) -> tuple[Functi
             build=lambda base, domain, ctx: sc.SumFunctional(
                 (base, sc.InnerProductFunctional(ctx.asarray(c2), domain, ctx))
             ),
-            value=lambda x, c: np.vdot(c, x) + np.vdot(c2, x),
+            value=lambda x, c: _real_inner(c, x) + _real_inner(c2, x),
             gradient=lambda x, c: c + c2,
         ),
         _algebra_case(
             dtype, check_level, kind="shifted-functional", id_stub="shifted-functional",
-            build=lambda base, domain, ctx: sc.ShiftedFunctional(base, offset),
-            value=lambda x, c: np.vdot(c, x) + offset,
+            build=lambda base, domain, ctx: base + offset,
+            value=lambda x, c: _real_inner(c, x) + offset,
             gradient=lambda x, c: c,
         ),
         # kind "zero" so the constant-value directional-derivative law skips it,
@@ -515,70 +449,27 @@ def _algebra_cases(dtype: Any, check_level: sc.CheckLevel | str) -> tuple[Functi
             build=lambda base, domain, ctx: sc.ProductFunctional(
                 base, sc.InnerProductFunctional(ctx.asarray(c2), domain, ctx)
             ),
-            value=lambda x, c: np.vdot(c, x) * np.vdot(c2, x),
+            value=lambda x, c: _real_inner(c, x) * _real_inner(c2, x),
             gradient=lambda x, c: (
-                np.conj(np.vdot(c2, x)) * c + np.conj(np.vdot(c, x)) * c2
+                np.conj(_real_inner(c2, x)) * c + np.conj(_real_inner(c, x)) * c2
             ),
         ),
     )
 
 
-def _spectral_wrapper_case(dtype, check_level):
-    """Generated case for the general spectral lift ``SpectralFunctional``.
-
-    Uses ``SquaredL2NormFunctional`` on the eigenvalue space, so
-    ``F(X) = 1/2 sum lambda_i^2 = 1/2 ||X||_F^2`` with gradient ``X`` — both
-    available in closed form without an eigendecomposition, giving an
-    independent reference (the wrapper is checked against the hand-written
-    ``NuclearNormFunctional`` in ``tests/functional/tools/test_spectral.py``).
-    """
-    ctx = _context(dtype, check_level)
-    domain = sc.HermitianSpace(2, ctx=ctx)
-    m = np.asarray([[2.0, 0.5], [0.5, 3.0]], dtype=dtype)
-    target_ctx = _context(_target_dtype(dtype), check_level)
+def _indicator_case(check_level, weighted, feasible):
+    ctx = _context(np.float64, check_level)
+    domain = _space(ctx, weighted)
+    x = ctx.asarray([1., .5, 2.] if feasible else [-1., .5, 2.])
     return FunctionalCase(
-        obj=sc.spectralize(domain, sc.SquaredL2NormFunctional, ctx),
+        obj=sc.IndicatorFunctional(sc.NonnegativeOrthant(domain)),
         reference={
-            "kind": "spectral-wrapper",
-            "domain": domain,
-            "x": ctx.asarray(m),
-            "value": 0.5 * float(np.sum(m * m)),
-            "gradient": ctx.asarray(m),
-            "target_ctx": target_ctx,
-            "check_level": check_level,
+            "kind": "indicator", "domain": domain, "x": x,
+            "value": 0. if feasible else np.inf, "gradient": None,
+            "target_ctx": _context(np.float32, check_level), "check_level": check_level,
         },
-        capabilities=frozenset({"gradient", "conversion", "euclidean", "spectral"}),
-        id=f"spectral-wrapper-squared-l2-{np.dtype(dtype).name}-checks-{check_level}",
-    )
-
-
-def _realified_case(dtype, check_level):
-    """Generated case for ``RealifiedFunctional`` over stacked real coordinates.
-
-    ``F(v) = 1/2 ||v||^2`` on a complex space has metric gradient ``v``, so the
-    realified gradient is the stacked real vector itself — the identity map,
-    which is a reference no part of the implementation shares.
-    """
-    ctx = _context(dtype, check_level)
-    base_domain = sc.DenseCoordinateSpace((2,), ctx=ctx)
-    base = sc.SquaredL2NormFunctional(base_domain)
-    obj = sc.RealifiedFunctional(base)
-    v = np.asarray([3.0 + 4.0j, 1.0 - 2.0j], dtype=dtype)
-    w = np.concatenate([v.real, v.imag])
-    target_ctx = _context(np.dtype(_target_dtype(dtype)).type(0).real.dtype, check_level)
-    return FunctionalCase(
-        obj=obj,
-        reference={
-            "kind": "realified",
-            "domain": obj.domain,
-            "x": obj.domain.ctx.asarray(w),
-            "value": 0.5 * float(np.sum(np.abs(v) ** 2)),
-            "gradient": obj.domain.ctx.asarray(w),
-            "target_ctx": target_ctx,
-            "check_level": check_level,
-        },
-        capabilities=frozenset({"gradient", "conversion", "euclidean"}),
-        id=f"realified-squared-l2-{np.dtype(dtype).name}-checks-{check_level}",
+        capabilities=frozenset({"conversion", "real", "indicator", "projection"}),
+        id=f"indicator-weighted-{weighted}-feasible-{feasible}-checks-{check_level}",
     )
 
 
@@ -604,10 +495,12 @@ def functional_cases(
                 cases.extend(_algebra_cases(dtype, check_level))
             # ADR-019 battery functionals are real-coordinate objectives; generate
             # them once per check level for float64 when that dtype is requested.
-            if any(np.dtype(d) == np.dtype(np.complex128) for d in dtypes):
-                cases.append(_realified_case(np.complex128, check_level))
             if any(np.dtype(d) == np.dtype(np.float64) for d in dtypes):
+                cases.extend(_indicator_case(check_level, weighted, feasible)
+                             for weighted in (False, True) for feasible in (False, True))
                 cases.extend(_battery_cases(np.float64, check_level))
-                cases.append(_spectral_case(np.float64, check_level))
-                cases.append(_spectral_wrapper_case(np.float64, check_level))
     return tuple(cases)
+
+
+def _real_inner(a, b):
+    return np.vdot(a, b).real

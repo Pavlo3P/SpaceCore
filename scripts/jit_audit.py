@@ -216,7 +216,7 @@ def main() -> None:
                 lambda traces: (
                     lambda A, x, max_iter: (
                         traces.__setitem__("count", traces["count"] + 1)
-                        or sc.expm_multiply(A, x, max_iter=max_iter).result
+                        or sc.expm_multiply(A, x, max_iter=max_iter).x
                     )
                 ),
                 A2,

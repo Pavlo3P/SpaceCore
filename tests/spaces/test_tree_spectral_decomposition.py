@@ -181,22 +181,6 @@ class TestNestedTree:
         np.testing.assert_allclose(to_numpy(space.flatten(rebuilt)), to_numpy(space.flatten(x)))
 
 
-class TestFlatSpectralRegression:
-    """W3 must not disturb the spectral lift on flat (non-tree) Jordan domains."""
-
-    def test_hermitian_nuclear_norm_unchanged(self, numpy_ctx):
-        X = sc.HermitianSpace(2, ctx=numpy_ctx)
-        A = numpy_ctx.asarray([[2.0, 0.0], [0.0, -3.0]])
-        f = sc.spectralize(X, lambda s: sc.LpNormFunctional(s, 1))  # nuclear norm |2| + |-3|
-        assert float(f.value(A)) == 5.0
-
-    def test_elementwise_frobenius_unchanged(self, numpy_ctx):
-        X = sc.ElementwiseJordanSpace((3,), numpy_ctx)
-        x = numpy_ctx.asarray([3.0, -4.0, 0.0])
-        f = sc.spectralize(X, lambda s: sc.LpNormFunctional(s, 2))  # sqrt(9 + 16) = 5
-        assert float(f.value(x)) == pytest.approx(5.0)
-
-
 class TestStructuredSpectrumEdges:
     def test_single_leaf_tree_flat_vs_structured(self, numpy_ctx):
         # Arity 1: flat returns the bare leaf array; structured still returns a

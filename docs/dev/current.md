@@ -7,10 +7,22 @@ disagree, this document wins.
 
 ## Now
 
-`0.4.0` is implemented bar the Phase J/M closeout (backend-conformance matrix
-completion, deviation catalog, doc-build hygiene). Active work is the post-`0.4.0`
-interim line — ADR-016 dispatch (mechanism now implemented, off by default),
-ADR-018 optimizer adapters, ADR-019 everyday toolbox (see Roadmap).
+### `0.5.0` — 2026-10-17 (release prepared, not tagged)
+
+Every public operation of spaces, operators and functionals is a checked wrapper
+over a check-free `_<op>_core` that families implement; an undecorated public
+override becomes the class's core (`install_public_checks`), composites call
+cores, and the solvers run on cores directly (`SpaceCoreOps` is gone). Spaces,
+operators and functionals are hashable. Checks inside `jax.jit` / `torch.compile`
+follow `set_traced_check_level` (default `"none"`). Verified locally on
+Python 3.11, 3.12 and 3.13 (suite, doctests, coverage 94%, pyright/mypy typing
+tests, ruff, docstring and JIT audits, `sphinx -W`). Not yet verified: the CuPy
+backend on a GPU, and SDPLab, whose `master` still targets SpaceCore 0.4.2 and
+does not import on 0.4.3 or later (`jax_pytree_class`).
+
+History of the 0.5.0a work: `CHANGELOG.md`. Next: downstream adoption, demand-driven
+additional prox rules, and measured performance work; broad performance parity is not
+established.
 
 Milestone tracking: [SpaceCore milestones](https://github.com/Pavlo3P/SpaceCore/milestones).
 
@@ -19,16 +31,6 @@ Milestone tracking: [SpaceCore milestones](https://github.com/Pavlo3P/SpaceCore/
 Design decisions not yet settled. Do not open unsolicited PRs for these unless an
 issue already defines the work or a maintainer has agreed on the design.
 
-- **Dispatch** — ADR-016 is accepted and the structural-dispatch mechanism is
-  implemented (`dispatch_key`/`priority`/`cost`, the registry index, the
-  `dispatch()` entry point with `off`/`on`/`verify` modes and the memory gate),
-  off by default. Three dispatch-eligible algebraic specs now route at the wired
-  call sites (`composed-zero-annihilation`, `composed-identity-elision`,
-  `block-diagonal-uniform-dense-batched`); `NumpyOps.free_memory_bytes()` reports
-  RAM via optional `psutil`. Remaining: per-backend `free_memory_bytes()` for
-  GPU backends; cross-backend bit-exactness of the batched block fold (NumPy-only
-  today); whether build-time materialization may ever be auto-triggered or stays
-  explicit opt-in.
 - **Mixed precision** — which operations may combine precisions without explicit
   conversion?
 - **Solver workspaces** — when should vector workspaces follow operand dtype
@@ -52,46 +54,15 @@ ADR moves from Proposed to Accepted before its implementation lands. No
 optimization changes dispatch, and no demand-gated abstraction is built, before
 its ADR is accepted.
 
-### Interim line (post-`0.4.0`)
-
-Turn three recorded design decisions into code:
-
-- **ADR-016 — optimized-kernel dispatch.** *Implemented* (off by default):
-  `dispatch_key`/`priority`/`cost` on `KernelSpec`, the registry index, the
-  `dispatch()` entry point with its `dispatch_mode` (`off`/`on`/`verify`) and
-  shape-only memory gate, the composed / block-diagonal call sites rewired, and
-  three dispatch-eligible algebraic specs (zero annihilation, identity elision,
-  uniform-dense batched block matmul) each with an `rtol=atol=0` correctness
-  reference and a bench probe. Remaining: GPU-backend `free_memory_bytes()` and
-  cross-backend bit-exactness of the batched block fold (NumPy-only today).
-- **ADR-018 — external optimizer adapters.** *Implemented*: the
-  `spacecore.optimize` subpackage ships `minimize_scipy`, `line_search_scipy`,
-  and `minimize_optax`, each taking a `Functional` and performing the
-  metric→coordinate gradient handoff (`X.riesz(F.grad(x))`) centrally. The SciPy
-  adapters reject complex domains; `minimize_optax` requires a JAX-backed domain
-  and the optional `optax` extra. jaxopt/BlackJAX/pymanopt stay as tutorials.
-- **ADR-019 — everyday toolbox.** Battery functionals and a closed-form
-  proximal/projection primitive.
-
 ### `0.5.0` — Ergonomics, identity, dtype, and new abstractions
 
-- **Object identity.** Restore `__hash__` consistently across the abstract bases
-  (defining `__eq__` left value objects unhashable); add an optional `_repr_html_`
-  for notebooks.
-- **Ergonomics.** Small, explicit wrappers/decorators for repeated jobs —
-  check-level logic, domain/codomain compatibility, scalar-field/dtype checks,
-  context-preserving construction, bare-array→element coercion, batched
-  `vapply`/`rvapply` fallback, functional gradient/pull-back validation. The goal
-  is readability, never magical dispatch; Riesz wrappers stay honest (ADR-009:
-  matrix-free `rapply` is never wrapped).
-- **Dtype Stage 2 (ADR-015).** Dtype-preserving `ctx.asarray`; field-level
-  `DTypeCheck` as default with exact-dtype opt-in; operand-driven solver
-  workspaces.
-- **ADR-017 — tensor-product spaces.** `TensorProductSpace`, tensor-shaped
-  elements, Kronecker/tensor LinOps, and adjoint/flattening rules, kept distinct
-  from `TreeSpace` direct products.
-- **ADR-020 — sets and projection.** A `Set` abstraction owning an ambient space
-  and a metric projector, with a typed `C` for indicators/projection.
+| Item | State in 0.5.0 |
+|---|---|
+| **Object identity** | Shipped: spaces, operators and functionals hash consistently with `==`; `_repr_html_`. |
+| **Ergonomics** | Shipped as the core rule: every public operation is a checked wrapper over a `_<op>_core`, one `install_public_checks` mechanism for all objects, the traced check-level cap. |
+| **ADR-020 — sets and projection** | Shipped (minimal surface: `Set`, `NonnegativeOrthant`, `IndicatorFunctional`). |
+| **ADR-017 — tensor-product spaces** | Not in 0.5.0. Design proposed in ADR-017 (2026-10-17), awaiting acceptance and a named workload. |
+| **Dtype Stage 2 (ADR-015)** | Safe part shipped: solver scalar diagnostics are real for complex operators (`cg`, `power_iteration` joined Lanczos and `expm_multiply`); `ctx.asarray` already returns an input of the context dtype without copying. Open: field-level `DTypeCheck` by default and dtype-preserving `ctx.asarray` for other dtypes, which ADR-015 keeps strict until a workload justifies them. |
 
 ### `0.6.0` — Interoperability, linalg, and performance
 
@@ -107,9 +78,10 @@ Turn three recorded design decisions into code:
   design note on non-Euclidean preconditioning (how preconditioners transform
   under a Riesz map `R_X`).
 - **Performance** — measure abstraction overhead against the stable generators;
-  add optimized kernels for block / Kronecker / tensor-product operators, each
-  behind a correctness reference and a benchmark; add performance-regression
-  tracking to CI on top of `python -m bench`.
+  add a specialized path for block / Kronecker / tensor-product operators only
+  where a benchmark under `jax.jit` shows a gain, each behind a correctness
+  reference; add performance-regression tracking to CI (the benchmark suite now
+  lives outside this repository).
 
 ### `0.7.0` — Documentation and tutorials
 
@@ -135,11 +107,9 @@ demonstrated by tutorials outside the core package; reliable interoperability
 adapters; benchmarks and regression tracking running in CI; a defined
 deprecation/compatibility policy.
 
-**Final work** — freeze the public API; remove the `enable_checks` deprecation
-shim and any abandoned experimental surface; complete the typing
-(`docs/dev/typing-audit.md`, `uvx pyright` baseline), naming, and documentation
-audits; run full downstream migration and artifact verification. Keep the `1.0.0`
-definition in sync with `vision.md`.
+**Final work** — freeze the public API; remove any abandoned experimental surface;
+complete the typing (`uvx pyright` baseline), naming, and documentation
+audits; run full downstream migration and artifact verification.
 
 ## Continuous parallel work
 
@@ -149,8 +119,7 @@ Throughout the train:
   publish patch releases for regressions.
 - Validate changes against SDPLab.
 - Benchmark before and after every optimization; never optimize on intuition.
-- Reject abstractions that hide problem-specific mathematics (the core invariant
-  from `vision.md`).
+- Reject abstractions that hide problem-specific mathematics.
 - Update this document at the **start** of each release, before writing code —
   including the open-question list.
 - Write a new ADR whenever a non-trivial design decision is made.

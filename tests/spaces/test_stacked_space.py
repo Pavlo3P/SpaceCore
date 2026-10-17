@@ -43,10 +43,10 @@ class _PairCoordinateSpace(sc.CoordinateSpace):
     def zeros(self):
         return (0.0, 0.0)
 
-    def add(self, x, y):
+    def _add_core(self, x, y):
         return (x[0] + y[0], x[1] + y[1])
 
-    def scale(self, a, x):
+    def _scale_core(self, a, x):
         return (a * x[0], a * x[1])
 
     def flatten(self, x):
@@ -64,7 +64,7 @@ class _InnerPair(_PairCoordinateSpace, sc.InnerProductSpace):
         _PairCoordinateSpace.__init__(self, ctx)
         self.geometry = sc.EuclideanInnerProduct()
 
-    def inner(self, x, y):
+    def _inner_core(self, x, y):
         return x[0] * y[0] + x[1] * y[1]
 
     def riesz(self, x):
@@ -79,21 +79,21 @@ class _InnerPair(_PairCoordinateSpace, sc.InnerProductSpace):
 
 
 class _StarPair(_PairCoordinateSpace, sc.StarSpace):
-    def star(self, x):
+    def _star_core(self, x):
         return self.ops.conj(x)
 
 
 class _JordanPair(_PairCoordinateSpace, sc.JordanAlgebraSpace):
-    def jordan(self, x, y):
+    def _jordan_core(self, x, y):
         return x * y
 
-    def spectrum(self, x):
+    def _spectrum_core(self, x):
         return x
 
-    def spectral_decompose(self, x):
+    def _spectral_decompose_core(self, x):
         return x, None
 
-    def from_spectrum(self, eigvals, frame):
+    def _from_spectrum_core(self, eigvals, frame):
         if frame is not None:
             raise ValueError("frame must be None")
         return eigvals
@@ -196,7 +196,7 @@ class TestCapabilityDispatch:
 
     def test_inner_star_combination_lifts(self, numpy_ctx):
         class _InnerStarPair(_InnerPair, sc.StarSpace):
-            def star(self, x):
+            def _star_core(self, x):
                 return self.ops.conj(x)
 
         stacked = _InnerStarPair(numpy_ctx).stacked(2)
@@ -204,16 +204,16 @@ class TestCapabilityDispatch:
 
     def test_inner_jordan_combination_lifts(self, numpy_ctx):
         class _InnerJordanPair(_InnerPair, sc.JordanAlgebraSpace):
-            def jordan(self, x, y):
+            def _jordan_core(self, x, y):
                 return x * y
 
-            def spectrum(self, x):
+            def _spectrum_core(self, x):
                 return x
 
-            def spectral_decompose(self, x):
+            def _spectral_decompose_core(self, x):
                 return x, None
 
-            def from_spectrum(self, eigvals, frame):
+            def _from_spectrum_core(self, eigvals, frame):
                 if frame is not None:
                     raise ValueError("frame must be None")
                 return eigvals
@@ -226,16 +226,16 @@ class TestCapabilityDispatch:
 
     def test_star_jordan_combination_lifts(self, numpy_ctx):
         class _StarJordanPair(_StarPair, sc.JordanAlgebraSpace):
-            def jordan(self, x, y):
+            def _jordan_core(self, x, y):
                 return x * y
 
-            def spectrum(self, x):
+            def _spectrum_core(self, x):
                 return x
 
-            def spectral_decompose(self, x):
+            def _spectral_decompose_core(self, x):
                 return x, None
 
-            def from_spectrum(self, eigvals, frame):
+            def _from_spectrum_core(self, eigvals, frame):
                 if frame is not None:
                     raise ValueError("frame must be None")
                 return eigvals
@@ -343,3 +343,43 @@ class TestJaxPytree:
         leaves, treedef = jax.tree_util.tree_flatten(space)
         rebuilt = jax.tree_util.tree_unflatten(treedef, leaves)
         assert rebuilt == space
+
+
+@pytest.mark.parametrize(
+    "make",
+    [
+        lambda V, H, ctx: sc.TreeSpace((0, 0), (V, V)),
+        lambda V, H, ctx: sc.TreeSpace((0, 0), (H, H)),
+        lambda V, H, ctx: sc.StackedSpace(V, 3, ctx=ctx),
+        lambda V, H, ctx: sc.ElementwiseJordanSpace((2,), ctx),
+    ],
+    ids=["tree", "tree-hermitian", "stacked", "elementwise-jordan"],
+)
+def test_dispatching_new_round_trips_through_pickle(make):
+    # A __new__ that picks a capability subclass from its arguments must still unpickle.
+    import pickle
+
+    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    V = sc.DenseVectorSpace((2,), ctx=ctx)
+    H = sc.HermitianSpace(2, ctx=ctx)
+    space = make(V, H, ctx)
+    clone = pickle.loads(pickle.dumps(space))
+    assert type(clone) is type(space)
+    assert clone == space
+
+
+def test_capability_guard_checks_the_converted_base():
+    # A complex ElementwiseJordanSpace becomes Euclidean once converted to a real context.
+    real = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    complex_ctx = sc.Context(sc.NumpyOps(), dtype=np.complex128)
+    stacked = sc.StackedSpace(sc.ElementwiseJordanSpace((2,), complex_ctx), 3, real)
+    assert isinstance(stacked, sc.EuclideanJordanAlgebraSpace)
+    assert stacked.base == sc.ElementwiseJordanSpace((2,), real)
+
+
+def test_capability_guard_rejects_a_base_without_the_capability():
+    from spacecore.space.concrete._stacked import _StackedEuclideanJordanAlgebraSpace
+
+    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+    with pytest.raises(TypeError, match="requires base to be a EuclideanJordanAlgebraSpace"):
+        _StackedEuclideanJordanAlgebraSpace(sc.DenseVectorSpace((2,), ctx=ctx), 3)

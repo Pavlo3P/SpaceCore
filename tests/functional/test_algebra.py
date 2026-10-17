@@ -13,8 +13,7 @@ import pytest
 
 import spacecore as sc
 
-from tests._helpers import has_jax, to_numpy
-from tests.optimize._helpers import has_optax
+from tests._helpers import to_numpy
 
 
 class _SumSquares(sc.Functional):
@@ -92,19 +91,10 @@ class TestScaled:
         with pytest.raises(TypeError, match="Functional"):
             sc.ScaledFunctional(2.0, "nope")
 
-    def test_complex_scalar_conjugates_gradient(self):
-        # Riesz gradient of a*F is conj(a)*grad(F): the inner product conjugates
-        # its first argument, so <grad(aF), h> must recover a * <grad(F), h>.
-        ctx = sc.Context(sc.NumpyOps(), dtype=np.complex128)
-        X = sc.DenseCoordinateSpace((3,), ctx, check_level="standard")
-        c = ctx.asarray([1 + 1j, 2 - 0.5j, -1 + 0.3j])
-        F = sc.InnerProductFunctional(c, X, ctx, check_level="standard")
-        a = 2 + 3j
-        x = ctx.asarray([0.5 - 1j, 1 + 0j, -2 + 0.5j])
-        h = ctx.asarray([1 + 0j, 0 + 1j, 0.5 - 0.5j])
-        lhs = complex(to_numpy(X.inner((a * F).grad(x), h)))
-        rhs = a * complex(to_numpy(X.inner(c, h)))
-        assert np.isclose(lhs, rhs)
+    def test_complex_scalar_is_rejected(self, numpy_ctx):
+        _, F, _ = _dense(numpy_ctx)
+        with pytest.raises(TypeError, match="real value"):
+            2j * F
 
 
 class TestScaledFactory:
@@ -238,11 +228,14 @@ class TestShifted:
         np.testing.assert_allclose(to_numpy((10.0 - F).value(x)), 10.0 - to_numpy(F.value(x)))
         np.testing.assert_allclose(to_numpy((10.0 - F).grad(x)), -to_numpy(F.grad(x)))
 
-    def test_zero_offset_and_nested_fold(self, numpy_ctx):
-        _, F, _ = _dense(numpy_ctx)
+    def test_zero_offset_and_sum_with_constant(self, numpy_ctx):
+        _, F, x = _dense(numpy_ctx)
         assert (F + 0.0) is F
         s = (F + 3.0) + 2.0
-        assert isinstance(s, sc.ShiftedFunctional) and s.offset == 5.0
+        assert isinstance(s, sc.SumFunctional) and isinstance(s.terms[-1], sc.ConstantFunctional)
+        value, grad = s.value_and_grad(x)
+        np.testing.assert_allclose(to_numpy(value), to_numpy(F.value(x)) + 5.0)
+        np.testing.assert_allclose(to_numpy(grad), to_numpy(F.grad(x)))
 
     def test_non_scalar_non_functional_notimplemented(self, numpy_ctx):
         _, F, _ = _dense(numpy_ctx)
@@ -281,7 +274,7 @@ class TestZero:
 
     def test_pytree_round_trip(self, numpy_ctx):
         X, F, _ = _dense(numpy_ctx)
-        for obj, cls in [(F + 3.0, sc.ShiftedFunctional), (sc.ZeroFunctional(X, numpy_ctx), sc.ZeroFunctional)]:
+        for obj, cls in [(F + 3.0, sc.SumFunctional), (sc.ZeroFunctional(X, numpy_ctx), sc.ZeroFunctional)]:
             children, aux = obj.tree_flatten()
             assert cls.tree_unflatten(aux, children) == obj
 
@@ -434,12 +427,8 @@ class TestProduct:
         children, aux = P.tree_flatten()
         assert sc.ProductFunctional.tree_unflatten(aux, children) == P
 
-    def test_complex_factors_conjugate_the_cofactor(self):
-        """Riesz convention: coefficients enter conjugated, as in ``ScaledFunctional``.
-
-        With ``F = <a,·>`` and ``G = <b,·>``, ``<grad(FG)(x), h>`` must recover
-        ``G(x)<a,h> + F(x)<b,h>``.
-        """
+    def test_real_factors_on_complex_domain_use_product_rule(self):
+        """The real pairing of the product gradient matches the directional derivative."""
         ctx = sc.Context(sc.NumpyOps(), dtype=np.complex128)
         X = sc.DenseCoordinateSpace((3,), ctx, check_level="standard")
         a = ctx.asarray([1 + 1j, 2 - 0.5j, -1 + 0.3j])
@@ -449,28 +438,7 @@ class TestProduct:
 
         F = sc.InnerProductFunctional(a, X, ctx)
         G = sc.InnerProductFunctional(b, X, ctx)
-        expected = G.value(x) * X.inner(a, h) + F.value(x) * X.inner(b, h)
+        expected = G.value(x) * X.inner(a, h).real + F.value(x) * X.inner(b, h).real
         np.testing.assert_allclose(
-            to_numpy(X.inner((F * G).grad(x), h)), to_numpy(expected)
+            to_numpy(X.inner((F * G).grad(x), h)).real, to_numpy(expected)
         )
-
-
-# ===========================================================================
-# End-to-end: a composed functional drives minimize_optax
-# ===========================================================================
-@pytest.mark.skipif(not (has_jax() and has_optax()), reason="requires jax and optax")
-class TestOptimizerIntegration:
-    def test_minimize_sum_functional(self):
-        import optax
-
-        from tests.linalg._helpers import make_ctx
-        from tests.optimize._helpers import euclidean_problem
-
-        ctx = make_ctx("jax", np.float32)
-        X, F, x_star = euclidean_problem(ctx)
-        # A SumFunctional of two ScaledFunctionals; argmin(0.5F + 0.5F) == argmin F.
-        composed = 0.5 * F + 0.5 * F
-        assert isinstance(composed, sc.SumFunctional)
-        res = sc.minimize_optax(composed, X.zeros(), optax.adam(1e-1), max_iter=2000, tol=1e-5, verbose=0)
-        assert res.success
-        np.testing.assert_allclose(to_numpy(res.x_element), x_star, atol=1e-2)

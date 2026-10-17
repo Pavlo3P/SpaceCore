@@ -1,17 +1,15 @@
-"""Safe consumption of check-free cores in the iterative-solver hot loops.
+"""Iterative solvers run on check-free cores and still honour user overrides.
 
-The solvers validate their inputs once, at entry, then run the loop through the
-operators'/spaces' check-free ``_*_core`` kernels. The resolution is *safe*: a
-core is used only when it is consistent with the public method, so a user space
-that overrides ``inner`` (custom geometry) without overriding ``_inner_core``
-keeps its override. These tests pin both properties.
+The solvers validate their inputs once, at entry, then call the operators' and
+spaces' ``_*_core`` methods. A user space or operator that overrides a public method
+(``inner``, ``apply``) without decorating it has that override installed as its core
+(``install_public_checks``), so the solvers use it. These tests pin both properties.
 """
 from __future__ import annotations
 
 import numpy as np
 
 import spacecore as sc
-from spacecore.linalg._utils import resolve_apply, resolve_core
 
 
 def make_ctx():
@@ -20,7 +18,25 @@ def make_ctx():
 
 
 class _WeightedSpace(sc.DenseCoordinateSpace):
-    """Overrides ``inner`` (weighted geometry) but inherits ``_inner_core``."""
+    """A custom geometry written as the ``_inner_core`` the public ``inner`` wraps."""
+
+    def __init__(self, weights, ctx):
+        w = ctx.asarray(weights)
+        super().__init__(tuple(w.shape), ctx)
+        self.weights = w
+
+    def _inner_core(self, x, y):
+        return self.ops.vdot(x, self.weights * y)
+
+    def _convert(self, new_ctx):
+        return _WeightedSpace(new_ctx.asarray(self.weights), new_ctx)
+
+
+# ---------------------------------------------------------------------------
+# Public overrides are honoured by the solvers
+# ---------------------------------------------------------------------------
+class _PublicInnerSpace(sc.DenseCoordinateSpace):
+    """A custom geometry written the older way: an undecorated public ``inner``."""
 
     def __init__(self, weights, ctx):
         w = ctx.asarray(weights)
@@ -31,38 +47,48 @@ class _WeightedSpace(sc.DenseCoordinateSpace):
         return self.ops.vdot(x, self.weights * y)
 
     def _convert(self, new_ctx):
-        return _WeightedSpace(new_ctx.asarray(self.weights), new_ctx)
+        return _PublicInnerSpace(new_ctx.asarray(self.weights), new_ctx)
 
 
-# ---------------------------------------------------------------------------
-# resolve_core safety
-# ---------------------------------------------------------------------------
-def test_resolve_core_uses_core_for_builtin_space():
-    X = sc.DenseCoordinateSpace((3,), make_ctx())
-    # inner and _inner_core come from the same class -> the core is consistent.
-    assert resolve_core(X, "inner", "_inner_core") == X._inner_core
-
-
-def test_resolve_core_defers_to_overriding_subclass():
+def test_custom_core_is_what_inner_and_solvers_use():
     ctx = make_ctx()
     space = _WeightedSpace([1.0, 4.0], ctx)
-    inner = resolve_core(space, "inner", "_inner_core")
-    # The override wins over the inherited built-in core.
-    assert inner == space.inner
-    x = ctx.asarray([1.0, 2.0])
-    y = ctx.asarray([3.0, 4.0])
-    np.testing.assert_allclose(
-        float(inner(x, y)), float(space.ops.vdot(x, space.weights * y))
-    )
-    # The euclidean core would give a different (wrong) answer here.
-    assert float(inner(x, y)) != float(space._inner_core(x, y))
+    x, y = ctx.asarray([1.0, 2.0]), ctx.asarray([3.0, 4.0])
+    np.testing.assert_allclose(float(space.inner(x, y)), float(space.ops.vdot(x, space.weights * y)))
 
 
-def test_resolve_apply_uses_core_for_builtin_linop():
+def test_a_public_inner_override_is_the_core_the_solvers_use():
     ctx = make_ctx()
-    X = sc.DenseCoordinateSpace((3,), ctx)
-    A = sc.DenseLinOp(ctx.asarray(np.eye(3)), X, X, ctx)
-    assert resolve_apply(A) == A._apply_core
+    space = _PublicInnerSpace([1.0, 4.0], ctx)
+    assert type(space)._inner_core is vars(_PublicInnerSpace)["_inner_core"]
+    matrix = ctx.asarray([[2.0, 1.0], [0.25, 0.75]])
+    op = sc.MatrixFreeLinOp(lambda x: matrix @ x, lambda x: matrix @ x, space, space, ctx)
+    result = sc.lanczos_smallest(op, ctx.asarray([1.0, 1.0]), max_iter=2, tol=1e-12)
+    expected = float(np.min(np.linalg.eigvals(np.asarray(matrix)).real))
+    np.testing.assert_allclose(float(np.asarray(result.eigenvalue)), expected, rtol=1e-6, atol=1e-6)
+
+
+def test_a_public_apply_override_is_what_cg_applies():
+    ctx = make_ctx()
+    X = sc.DenseCoordinateSpace((2,), ctx)
+    calls = []
+
+    class _Diagonal(sc.LinOp):
+        _fields = ("dom", "cod", "ctx")
+
+        def apply(self, x):  # undecorated public override
+            calls.append(1)
+            return ctx.asarray([2.0, 4.0]) * x
+
+        def rapply(self, y):
+            return self.apply(y)
+
+        def is_hermitian(self):
+            return True
+
+    result = sc.cg(_Diagonal(X, X, ctx), ctx.asarray([2.0, 4.0]), tol=1e-12)
+    np.testing.assert_allclose(np.asarray(result.x), [1.0, 1.0])
+    assert len(calls) > 1
 
 
 # ---------------------------------------------------------------------------

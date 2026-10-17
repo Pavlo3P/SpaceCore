@@ -11,7 +11,6 @@ and scope that default.
 from ._context import Context
 from ._bound import ContextBound as ContextBound
 from ._state import (
-    enforce_convert_policy as enforce_convert_policy,
     get_check_level as get_check_level,
     get_context as get_context,
     normalize_context as normalize_context,
@@ -37,7 +36,6 @@ __all__ = [
     "ContextError",
     "ContextInferenceError",
     "UnknownBackendError",
-    "enforce_convert_policy",
     "get_check_level",
     "get_context",
     "normalize_context",

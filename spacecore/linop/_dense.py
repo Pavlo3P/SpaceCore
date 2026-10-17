@@ -2,76 +2,56 @@ from __future__ import annotations
 
 import warnings
 
+from enum import Enum, auto
 from functools import cached_property
 from math import prod
 from typing import Any, cast
 
-from ._base import Codomain, Domain, LinOp
-from .._check_policy import CheckLevel
-from .._checks import checked_method
-from ._metric import _metric_is_hermitian_by_basis, _requires_euclidean_or_riesz
+from ._base import Codomain, Domain, LinOp, _output_checked_rvapply
+from .._checks import CheckLevel
+from ._metric import (
+    _VECTOR_SPACES, _metric_is_hermitian_by_basis, _requires_euclidean_or_riesz, metric_rapply,
+    metric_rvapply,
+)
 from ..space import (
     DenseCoordinateSpace,
-    DenseVectorSpace,
-    ElementwiseJordanSpace,
     WeightedInnerProduct,
 )
 from ..types import DenseArray
 from ..contextual import Context
 from ..contextual import resolve_context_priority
-from ..kernels import core_kernels
-from ..kernels.core.dense import _DenseMode
 
 
-@core_kernels("dense")
+class _DenseMode(Enum):
+    """Private computation modes for dense coordinate operators."""
+
+    EUCLIDEAN_FLAT = auto()
+    EUCLIDEAN_TENSOR = auto()
+    WEIGHTED_FUSED = auto()
+    GENERAL_METRIC = auto()
+
+
+
 class DenseLinOp(LinOp[Domain, Codomain]):
     r"""
-    Represent a dense coordinate tensor-backed linear operator.
+    Linear operator stored as a dense array of shape ``cod.shape + dom.shape``.
 
-    ``DenseLinOp(A, dom, cod)`` represents a linear map
-    :math:`A \colon X \to Y` where the stored dense array has shape
-    ``cod.shape + dom.shape``. Forward application is the raw coordinate
-    matrix action. Adjoint application is metric-aware: Euclidean spaces use
-    the conjugate transpose fast path, while non-Euclidean spaces use their
-    Riesz maps as ``R_X^{-1} A^dagger R_Y``.
-
-    DenseLinOp does not copy or cast the input array. The caller is responsible
-    for passing an array compatible with `ctx`. This avoids duplicating large dense
-    operators in memory.
+    The adjoint is the conjugate transpose on Euclidean spaces and
+    ``R_X^{-1} A^dagger R_Y`` otherwise. The array is used as given, not copied or cast.
 
     Parameters
     ----------
     A : DenseArray
-        Dense backend array with shape ``cod.shape + dom.shape``.
+        Operator tensor of shape ``cod.shape + dom.shape``.
     dom : Space
-        Domain space.
+        Domain.
     cod : Space or None, optional
-        Codomain space. If omitted, it is inferred from the leading axes of
-        ``A`` — as a **Euclidean** :class:`DenseCoordinateSpace`. Only the
-        *shape* is inferred, never the geometry.
-
-        .. warning::
-
-           On a non-Euclidean domain this is almost certainly not the operator
-           you meant. ``DenseLinOp(M, X)`` with square ``M`` and weighted ``X``
-           builds ``X -> Y_euclidean``, **not** an endomorphism of ``X``: the
-           adjoint is then ``R_X^{-1} M^T`` rather than ``R_X^{-1} M^T R_X``, and
-           ``is_hermitian()`` reports ``False`` for a matrix that is self-adjoint
-           with respect to ``X``. Pass ``cod=X`` explicitly. Note the asymmetry
-           with :class:`~spacecore.DiagonalLinOp` and
-           :class:`~spacecore.IdentityLinOp`, which do reuse the given space.
+        Codomain. When omitted it is a *Euclidean* space of ``A``'s leading shape, so for
+        an endomorphism of a weighted ``X`` pass ``cod=X`` explicitly.
     ctx : Context, str, or None, optional
-        Backend context specification. Default is resolved from the spaces.
+        Backend context; resolved from the spaces when omitted.
     check_level : {"none", "cheap", "standard", "strict"}, optional
-        Runtime validation policy for this object. When omitted, the ambient
-        default (see :func:`spacecore.get_check_level`) is used. Unlike the
-        backend/dtype context, the validation policy is a property of the bound
-        object, not of the :class:`Context`.
-
-    Attributes
-    ----------
-    A : DenseArray
-        Stored dense operator tensor.
+        Validation level; the ambient default when omitted.
 
     Examples
     --------
@@ -84,17 +64,86 @@ class DenseLinOp(LinOp[Domain, Codomain]):
     array([2., 6.])
     """
 
+    _fields = ("A", "dom", "cod", "ctx")
+    _dynamic = ("A",)
+
+    def _apply_core(self, x: Any) -> Any:
+        # Flat or fused: one matvec. Tensor: reshape around it. Else the spaces' flatten/unflatten.
+        if self._mode is _DenseMode.EUCLIDEAN_FLAT or self._mode is _DenseMode.WEIGHTED_FUSED:
+            return self._A2 @ x
+        if self._mode is _DenseMode.EUCLIDEAN_TENSOR:
+            return (self._A2 @ x.reshape((self._dom_size,))).reshape(self.cod.shape)
+        x1 = self.dom._flatten_core(x)
+        y1 = self._A2 @ x1
+        return self.cod._unflatten_core(y1)
+
+    def _rapply_core(self, y: Any) -> Any:
+        # Euclidean: A^H. Fused: the precomputed weighted adjoint. Else wrap A^H with the metrics.
+        if self._mode is _DenseMode.EUCLIDEAN_FLAT or self._mode is _DenseMode.EUCLIDEAN_TENSOR:
+            return self._euclidean_rapply_core(y)
+        if self._mode is _DenseMode.WEIGHTED_FUSED:
+            return self._weighted_A2H @ y
+        return metric_rapply(
+            self.domain, self.codomain, self._euclidean_rapply_core, y
+        )
+
+    def _vapply_core(self, xs: Any) -> Any:
+        # A batch of rows: X A^T on flat coordinates, reshaped to the codomain.
+        if self._mode is _DenseMode.EUCLIDEAN_FLAT or self._mode is _DenseMode.WEIGHTED_FUSED:
+            return xs.reshape((-1, self._dom_size)) @ self._A2T
+        if self._mode is _DenseMode.EUCLIDEAN_TENSOR:
+            lead = tuple(xs.shape[: len(xs.shape) - len(self.dom.shape)])
+            xs2 = xs.reshape((-1, self._dom_size))
+            ys2 = xs2 @ self._A2T
+            return ys2.reshape(lead + tuple(self.cod.shape))
+        xs_flat = self.domain._flatten_batch_core(xs)
+        ys_flat = xs_flat @ self._A2T
+        return self.codomain._unflatten_batch_core(ys_flat)
+
+    def _rvapply_core(self, ys: Any) -> Any:
+        # Batched form of _rapply_core.
+        if self._mode is _DenseMode.EUCLIDEAN_FLAT or self._mode is _DenseMode.EUCLIDEAN_TENSOR:
+            return self._euclidean_rvapply_core(ys)
+        if self._mode is _DenseMode.WEIGHTED_FUSED:
+            return ys @ self._weighted_A2H.T
+        return metric_rvapply(self.domain, self.codomain, self._euclidean_rvapply_core, ys)
+
+    def _euclidean_rapply_core(self, y: Any) -> Any:
+        # Plain conjugate transpose A^H, no metric.
+        if self._mode is _DenseMode.EUCLIDEAN_FLAT:
+            return self._A2H @ y
+        if self._mode is _DenseMode.EUCLIDEAN_TENSOR:
+            return (self._A2H @ y.reshape((self._cod_size,))).reshape(self.dom.shape)
+        y1 = self.cod._flatten_core(y)
+        x1 = self._A2H @ y1
+        return self.dom._unflatten_core(x1)
+
+    def _euclidean_rvapply_core(self, ys: Any) -> Any:
+        # A batch of rows: Y (A^H)^T.
+        if self._mode is _DenseMode.EUCLIDEAN_FLAT:
+            return ys.reshape((-1, self._cod_size)) @ self._A2H.T
+        if self._mode is _DenseMode.EUCLIDEAN_TENSOR:
+            lead = tuple(ys.shape[: len(ys.shape) - len(self.cod.shape)])
+            ys2 = ys.reshape((-1, self._cod_size))
+            xs2 = ys2 @ self._A2H.T
+            return xs2.reshape(lead + tuple(self.dom.shape))
+        ys_flat = self.codomain._flatten_batch_core(ys)
+        xs_flat = ys_flat @ self._A2H.T
+        return self.domain._unflatten_batch_core(xs_flat)
+
     def __init__(
         self,
         A: DenseArray,
         dom: Domain,
         cod: Codomain | None = None,
         ctx: Context | str | None = None,
-        check_level: CheckLevel | bool | None = None,
+        check_level: CheckLevel | None = None,
     ) -> None:
+        # A must already be a dense array of the resolved backend.
         ctx = resolve_context_priority(ctx, dom, cod)
         ctx.assert_dense(A)  # Check if A is ndarray of ctx
 
+        # Infer a Euclidean codomain from A's leading axes; warn if that is suspect.
         if cod is None:
             cod_shape_len = len(A.shape) - len(dom.shape)
             cod = cast(Codomain, DenseCoordinateSpace(tuple(A.shape[:cod_shape_len]), ctx))
@@ -119,12 +168,14 @@ class DenseLinOp(LinOp[Domain, Codomain]):
 
         super(DenseLinOp, self).__init__(dom, cod, ctx, check_level=check_level)
 
+        # A's shape must be cod.shape + dom.shape.
         expected = tuple(self.cod.shape) + tuple(self.dom.shape)
         if tuple(A.shape) != expected:
             raise TypeError(
                 f"Expected A.shape == cod.shape + dom.shape == {expected}, got {A.shape}"
             )
 
+        # Precompute the 2-D matrix and its (conjugate) transpose once, for the cores.
         self._A = A  # Intentionally no dtype conversion to avoid extra memory use.
         self._cod_size = prod(self.cod.shape)
         self._dom_size = prod(self.dom.shape)
@@ -136,26 +187,22 @@ class DenseLinOp(LinOp[Domain, Codomain]):
         self._A2H = self._A2.T.conj() if is_complex else self._A2.T
         self._dom_is_flat = tuple(self.dom.shape) == (self._dom_size,)
         self._cod_is_flat = tuple(self.cod.shape) == (self._cod_size,)
+        # Pick the apply strategy once; weighted spaces get a pre-scaled adjoint.
         self._mode = self._select_mode()
         if self._mode is _DenseMode.WEIGHTED_FUSED:
-            self._dom_weights = self.dom.geometry.weights
-            self._cod_weights = self.cod.geometry.weights
+            # Weights may be stored at any shape that broadcasts to the space's.
+            self._dom_weights = self.ops.broadcast_to(self.dom.geometry.weights, tuple(self.dom.shape))
+            self._cod_weights = self.ops.broadcast_to(self.cod.geometry.weights, tuple(self.cod.shape))
             self._weighted_A2H = (
                 self._A2H * self._cod_weights.reshape((1, self._cod_size))
             ) / self._dom_weights.reshape((self._dom_size, 1))
 
     def _select_mode(self) -> _DenseMode:
         """Select the dense computation mode once for this operator."""
-        vector_dom = type(self.dom) in (
-            DenseCoordinateSpace,
-            DenseVectorSpace,
-            ElementwiseJordanSpace,
-        )
-        vector_cod = type(self.cod) in (
-            DenseCoordinateSpace,
-            DenseVectorSpace,
-            ElementwiseJordanSpace,
-        )
+        # Weighted flat vectors: fused weighted adjoint; Euclidean: plain matmul;
+        # anything else: the general Riesz-map path.
+        vector_dom = type(self.dom) in _VECTOR_SPACES
+        vector_cod = type(self.cod) in _VECTOR_SPACES
         if (
             vector_dom
             and vector_cod
@@ -186,30 +233,7 @@ class DenseLinOp(LinOp[Domain, Codomain]):
         """
         return self._A
 
-    @checked_method(in_space="domain", out_space="codomain")
-    def apply(self, x: DenseArray) -> DenseArray:
-        """Apply the dense operator to ``x``."""
-        return self._apply_core(x)
-
-    @checked_method(in_space="codomain", out_space="domain")
-    def rapply(self, y: DenseArray) -> DenseArray:
-        r"""Apply the adjoint dense operator to ``y``.
-
-        Euclidean spaces use the conjugate transpose of the flattened matrix.
-        Non-Euclidean spaces apply the codomain and domain Riesz maps around
-        that Euclidean adjoint.
-        """
-        return self._rapply_core(y)
-
-    @checked_method(in_space="domain", in_batched=True)
-    def vapply(self, xs: DenseArray) -> DenseArray:
-        """Apply over a leading batch axis. Input must have shape ``(N,) + domain.shape``; use ``moveaxis`` for other layouts."""
-        return self._vapply_core(xs)
-
-    @checked_method(in_space="codomain", out_space="domain", in_batched=True, out_batched=True)
-    def rvapply(self, ys: DenseArray) -> DenseArray:
-        """Apply the adjoint over a leading batch axis. Input must have shape ``(N,) + codomain.shape``; use ``moveaxis`` for other layouts."""
-        return self._rvapply_core(ys)
+    rvapply = _output_checked_rvapply
 
     def to_dense(self) -> DenseArray:
         """
@@ -239,42 +263,12 @@ class DenseLinOp(LinOp[Domain, Codomain]):
             ``True`` or ``False`` when the structure can be checked, otherwise
             ``None``.
         """
+        # Hermitian needs dom == cod; Euclidean compares A with A^H, else test by basis.
         if self.dom != self.cod:
             return False
-        if not (
-            cast(Any, self.domain).is_euclidean
-            and cast(Any, self.codomain).is_euclidean
-        ):
+        if not cast(Any, self.domain).is_euclidean:  # dom == cod, so cod is too
             return _metric_is_hermitian_by_basis(self)
         try:
             return bool(self.ops.allclose(self._A2, self._A2H))
         except Exception:
             return None
-
-    def __eq__(self, other: Any) -> bool:
-        """Return whether another dense operator has the same spaces and values."""
-        if not self.same_math(other):                  # Tier 1: backend
-            return NotImplemented
-        if self.dom != other.dom or self.cod != other.cod:          # Tier 2: spaces before allclose
-            return False
-        return bool(self.ops.allclose(self.A, other.A, equal_nan=True))  # Tier 3: values
-
-    def tree_flatten(self):
-        """Flatten this operator for pytree registration."""
-        aux = (self.dom, self.cod, self.ctx)
-        children = (self.A,)
-        return children, aux
-
-    @classmethod
-    def tree_unflatten(cls, aux, children):
-        """Rebuild this operator from pytree data."""
-        dom, cod, ctx = aux
-        A = children[0]
-        return cls(A, dom, cod, ctx)
-
-    def _convert(self, new_ctx: Context) -> DenseLinOp:
-        """Convert spaces and stored dense tensor to ``new_ctx``."""
-        new_dom = self.dom.convert(new_ctx)
-        new_cod = self.cod.convert(new_ctx)
-        new_A = new_ctx.asarray(self.A)
-        return DenseLinOp(new_A, new_dom, new_cod, new_ctx)

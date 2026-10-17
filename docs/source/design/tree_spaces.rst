@@ -1,27 +1,28 @@
 Tree-structured spaces
 ======================
 
-``TreeSpace`` represents a finite direct product
+``TreeSpace(treedef, leaf_spaces, ctx=None, check_level=None)`` is the finite
+direct product :math:`X = \prod_{\ell} X_\ell` of coordinate spaces; an element
+is a Python tree with one array per leaf. Coordinates of different leaves are
+concatenated, not multiplied: this is not a tensor or Kronecker product.
 
-.. math::
-
-   X = \prod_{\ell \in L} X_\ell.
-
-Each leaf is an ordinary finite-coordinate SpaceCore space. The tree records how
-the corresponding element is organized in Python. This is a Cartesian/direct
-product, not a tensor product: coordinates from different leaves are concatenated,
-not multiplied together.
-
-SpaceCore uses ``optree`` as a required dependency for deterministic traversal,
-structure comparison, reconstruction, and leaf paths. Mathematical operations,
-context conversion, validation, geometry, and batching remain SpaceCore-owned.
-
-Creating tree spaces
---------------------
-
-The first argument may be an ``optree.PyTreeSpec`` or an example tree whose
-leaves define the structure. Dictionary leaves use deterministic sorted-key
-order.
+* ``treedef`` is an ``optree.PyTreeSpec`` or an example element (see below).
+  Leaves follow optree order, so dictionary keys are sorted. ``optree`` is a
+  required dependency.
+* ``leaf_spaces`` must be coordinate spaces (``TypeError``), one per leaf
+  (``ValueError``).
+* ``TreeSpace.from_leaf_spaces((X, S), ctx)`` builds the flat tuple case.
+* ``ctx`` defaults to the context resolved from the leaves; every leaf is
+  converted to it, so the tree has one ``dtype`` and ``field``. ``convert``
+  rebuilds every leaf and keeps the structure.
+* ``check_level`` defaults to the least strict leaf level. ``"cheap"`` checks the
+  tree structure and each leaf's backend, shape, field and dtype; higher levels
+  add the leaves' own checks. Errors name the leaf path.
+* Vector operations, ``flatten``/``unflatten`` and batching act leaf by leaf. An
+  inner-product, star, Jordan or Euclidean-Jordan capability is offered only when
+  every leaf has it; the inner product is the sum of the leaf inner products.
+* ``T.element(value)`` wraps a tree as a ``TreeElement`` bound to ``T``;
+  ``.value`` returns the plain tree. Plain trees are the normal representation.
 
 .. code-block:: python
 
@@ -32,161 +33,89 @@ order.
    X = sc.DenseCoordinateSpace((2,), ctx)
    S = sc.DenseCoordinateSpace((1,), ctx)
 
-   tuple_tree = sc.TreeSpace((0, 0), (X, S), ctx=ctx)
-   dict_tree = sc.TreeSpace({"point": 0, "weight": 0}, (X, S), ctx=ctx)
-   nested_tree = sc.TreeSpace(
-       {"model": (0, {"bias": 0})},
-       (X, S),
-       ctx=ctx,
-   )
-
-Tree elements
--------------
-
-Plain Python trees are the normal element representation. ``TreeElement`` is an
-optional wrapper that explicitly binds ordered leaves to their ``TreeSpace``.
-Use ``element`` to create that wrapper and ``value`` to reconstruct its Python
-tree.
-
-.. code-block:: python
-
+   T = sc.TreeSpace({"model": (0, {"bias": 0})}, (X, S), ctx=ctx)
    x = {"model": (ctx.asarray([1.0, 2.0]), {"bias": ctx.asarray([3.0])})}
-   y = nested_tree.scale(2.0, x)
-
-   print(y)
-   print(nested_tree.leaf_paths)
-
-``zero``/``zeros``, ``add``, ``scale``, dense coordinate
-``flatten``/``unflatten``, and structure-of-batched-leaves operations are
-leafwise. If every leaf is an ``InnerProductSpace``, the tree also advertises
-that capability, sums leaf inner products, and uses the induced product norm.
-The same intersection rule applies to star, Jordan, and Euclidean-Jordan
-capabilities.
-
-Validation and dtype behavior
------------------------------
-
-``check_level="cheap"`` validates tree structure and each leaf's backend,
-shape, field, and exact dtype contract. Higher levels also run the corresponding
-leaf-space mathematical checks. Errors identify the deterministic leaf path.
-
-``TreeSpace`` resolves one context for all leaves. Its public ``dtype`` and
-``field`` are inherited uniformly from those converted leaf spaces, while each
-leaf remains responsible for exact membership checks. Conversion rebuilds every
-leaf space in the target context and preserves the optree structure.
-
-Tuple-style direct products
----------------------------
-
-Use ``TreeSpace.from_leaf_spaces`` for the common flat tuple case. This is still
-a finite Cartesian/direct product, not a tensor product.
-
-.. code-block:: python
+   print(T.scale(2.0, x))
+   print(T.leaf_paths)
 
    pair = sc.TreeSpace.from_leaf_spaces((X, S), ctx)
-   value = (ctx.asarray([1.0, 2.0]), ctx.asarray([3.0]))
-   pair.check_member(value)
+   pair.check_member((ctx.asarray([1.0, 2.0]), ctx.asarray([3.0])))
 
-Block-structured linear operators
----------------------------------
+The template is an example element
+----------------------------------
 
-``BlockDiagonalLinOp`` infers a ``TreeSpace`` domain from the domains of its
-blocks and a ``TreeSpace`` codomain from their codomains. The block tree also
-defines the Python structure of input and output elements.
+An element of a tree space is a plain Python container — tuple, dict,
+``NamedTuple``, or any nesting of them — with one array per leaf. You describe the
+space by handing it one such container, ``TreeSpace.from_template(UV(0, 0), (U, V))``
+or ``TreeSpace(UV(0, 0), (U, V))``. SpaceCore reads only its structure; the leaf
+values are placeholders and are discarded.
 
-.. code-block:: python
+The leaf spaces already fix each leaf's shape, dtype and geometry. The template
+supplies the one thing they cannot: the container.
 
-   A_diag = sc.BlockDiagonalLinOp((A, D))
-   y0, y1 = A_diag.apply((x0, x1))
+* **Results keep the type.** ``zeros``, ``add``, ``scale``, gradients and operator
+  outputs come back as ``UV``, so code reads ``z.u`` and ``z.v`` instead of
+  ``z[0]`` and ``z[1]``.
+* **Leaves pair with leaf spaces in order.** The k-th leaf of the template, in
+  optree order, is an element of ``leaf_spaces[k]``; ``T.leaf_paths`` lists the
+  order.
+* **Membership checks the container first.** At ``"cheap"`` and above, a value
+  with another structure is rejected before any leaf is looked at: a plain tuple
+  is not a member of a ``UV`` space, even with the right arrays.
 
-``BlockMatrixLinOp`` accepts a nonempty rectangular sequence of block rows. If
-
-.. math::
-
-   A : X_0 \to Y_0,\quad B : X_1 \to Y_0,\quad
-   C : X_0 \to Y_1,\quad D : X_1 \to Y_1,
-
-then the following operator maps ``X_0 x X_1`` to ``Y_0 x Y_1`` and computes
-``(A x_0 + B x_1, C x_0 + D x_1)``.
-
-.. code-block:: python
-
-   block = sc.BlockMatrixLinOp(((A, B), (C, D)))
-   y0, y1 = block.apply((x0, x1))
-
-Rows must share compatible codomains and columns must share compatible domains.
-The adjoint transposes the block layout and replaces each block by ``.H``.
-Consequently, ``rapply`` and ``.H.apply`` use each leaf space's metric adjoint,
-not merely the coordinate conjugate transpose when weighted or other
-non-Euclidean inner products are present.
-
-These constructions are finite direct-product block operators. They do not
-construct tensor products, Kronecker products, or a ``ProductSpace``.
-
-Migrating from ``ProductSpace``
--------------------------------
-
-``0.4.0`` removed the public ``ProductSpace`` type. ``TreeSpace`` is now the
-single structured finite direct-product abstraction. The two common cases map
-as follows.
-
-Flat tuples
-~~~~~~~~~~~
+``T.element(value)`` wraps a tree as a ``TreeElement`` bound to ``T``, and
+``.value`` returns the plain tree. It has no arithmetic; plain trees are the
+normal representation, and the template is how the space knows what they look
+like.
 
 .. code-block:: python
 
-   # 0.3.x
-   space = sc.ProductSpace((X1, X2, X3))
+   from typing import NamedTuple
 
-   # 0.4.0
-   space = sc.TreeSpace.from_leaf_spaces((X1, X2, X3), ctx)
+   class UV(NamedTuple):
+       u: object
+       v: object
 
-Use ``from_leaf_spaces`` whenever you previously passed a flat tuple of
-component spaces to ``ProductSpace``.
+   U = sc.DenseCoordinateSpace((2,), ctx)
+   V = sc.DenseCoordinateSpace((3,), ctx)
+   P = sc.TreeSpace.from_template(UV(0, 0), (U, V), ctx=ctx)
 
-Nested, dict, namedtuple, or registered optree structures
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   z = P.zeros()
+   assert isinstance(z, UV) and z.u.shape == (2,) and z.v.shape == (3,)
+   print(P.leaf_paths)                            # ((0,), (1,)): u, then v
 
-Pass a template tree (any nested Python tree whose leaves match the optree
-deterministic order) plus the ordered tuple of leaf spaces:
+   for wrong in [(z.u, z.v),                      # right arrays, wrong container
+                 UV(z.v, z.u)]:                   # right container, swapped leaves
+       try:
+           P.check_member(wrong)
+       except sc.SpaceValidationError as err:
+           print(err)
+
+Block operators
+---------------
+
+Block operators map between tree spaces they infer from their blocks; all blocks
+must share one context and one check level.
+
+* ``BlockDiagonalLinOp(blocks)``: ``blocks`` is a tree of ``LinOp``; the domain
+  tree comes from the block domains, the codomain tree from the block codomains.
+* ``BlockMatrixLinOp(block_rows)``: a nonempty rectangular sequence of rows,
+  ``y_i = sum_j A_ij x_j`` for ``A_ij : X_j -> Y_i``. Blocks in a row share a
+  codomain and blocks in a column share a domain (``ValueError`` otherwise). A
+  side given as a one-element list or tuple is a single space, not a one-leaf
+  tree: ``[[A1], [A2]]`` maps ``x -> (A1 x, A2 x)``.
+* The adjoint transposes the layout and replaces each block by its ``.H``, so
+  ``rapply`` uses each leaf's metric adjoint.
 
 .. code-block:: python
 
-   # 0.3.x
-   space = sc.ProductSpace.from_template(
-       {"model": (X1, {"bias": X2})}, (X1, X2)
-   )
+   Y = sc.DenseCoordinateSpace((3,), ctx)
+   A = sc.DenseLinOp(ctx.asarray(np.ones((3, 2))), X, Y, ctx)
+   B = sc.DenseLinOp(ctx.asarray(np.ones((3, 1))), S, Y, ctx)
+   C = sc.DenseLinOp(ctx.asarray(np.eye(2)), X, X, ctx)
+   D = sc.DenseLinOp(ctx.asarray(np.zeros((2, 1))), S, X, ctx)
+   x0, x1 = ctx.asarray([1.0, 2.0]), ctx.asarray([3.0])
 
-   # 0.4.0
-   space = sc.TreeSpace({"model": (0, {"bias": 0})}, (X1, X2), ctx=ctx)
-
-Dictionary leaves use deterministic sorted-key order; named-tuples and
-registered optree node types are traversed in their declared order. Leaves
-must be supplied as a flat ordered tuple matching ``optree``'s left-to-right
-traversal.
-
-Operators
-~~~~~~~~~
-
-``ProductLinOp`` was renamed to ``TreeLinOp``. ``BlockDiagonalLinOp``,
-``StackedLinOp``, and ``SumToSingleLinOp`` now validate ``TreeSpace`` domains
-and codomains directly; no separate product wrapper is needed.
-
-.. code-block:: python
-
-   # 0.3.x
-   op = sc.ProductLinOp((A, B), domain=domain, codomain=codomain)
-
-   # 0.4.0
-   op = sc.TreeLinOp((A, B), domain=domain, codomain=codomain)
-
-Structure adapters and checks
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-``ProductStructure``, ``TupleStructure``, ``PytreeStructure``,
-``ProductStructureCheck``, and ``ProductComponentCheck`` were removed. Tree
-structure and leaf validation are owned by ``TreeSpace``; recursion through
-``check_level`` reaches each leaf's own membership checks.
-
-See :doc:`/release_notes` for the full list of ``0.4.0`` breaking changes
-introduced by this migration.
+   print(sc.BlockDiagonalLinOp((A, C)).apply((x0, x0)))   # (A x0, C x0)
+   y0, y1 = sc.BlockMatrixLinOp(((A, B), (C, D))).apply((x0, x1))
+   print(y0, y1)                                            # A x0 + B x1, C x0 + D x1

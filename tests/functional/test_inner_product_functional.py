@@ -45,7 +45,7 @@ class TestValue:
             to_numpy(f.value(x)), to_numpy(weighted_space.inner(c, x))
         )
 
-    def test_value_is_conjugate_linear_in_representer_for_complex(
+    def test_value_is_real_pairing_for_complex(
         self, numpy_complex_ctx
     ):
         space = sc.DenseCoordinateSpace((3,), numpy_complex_ctx)
@@ -54,7 +54,7 @@ class TestValue:
         f = sc.InnerProductFunctional(c, space, numpy_complex_ctx)
         # Euclidean Hermitian inner product conjugates the first argument.
         np.testing.assert_allclose(
-            to_numpy(f.value(x)), np.vdot(to_numpy(c), to_numpy(x))
+            to_numpy(f.value(x)), np.vdot(to_numpy(c), to_numpy(x)).real
         )
 
 

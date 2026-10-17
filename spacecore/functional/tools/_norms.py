@@ -6,30 +6,24 @@ from typing import Any, cast
 
 from .._base import Domain
 from ...contextual import Context
-from ..._check_policy import CheckLevel
-from ..._checks import checked_method
-from ._coordinate import _CoordinateFunctional, _inner_core, lp_coordinate_grad, lp_value
+from ..._checks import CheckLevel
+from ._coordinate import _CoordinateFunctional, lp_coordinate_grad, lp_value
 
 
 class SquaredL2NormFunctional(_CoordinateFunctional[Domain]):
     r"""
-    Half the squared space norm ``F(x) = 1/2 ||x||_X^2 = 1/2 <x, x>_X``.
+    Half the squared space norm ``<x, x>_X / 2``; its gradient is ``x``.
 
-    This is the smooth quadratic energy whose Riesz gradient is ``x`` and whose
-    proximal operator is the clean shrinkage ``v / (1 + t)`` (see
-    :func:`~spacecore.functional.prox_l2sq`). It is intentionally distinct from
-    ``LpNormFunctional(X, 2)``, which is the *un-squared* coordinate 2-norm
-    ``(sum_i |x_i|^2)^{1/2}``.
+    Not ``LpNormFunctional(X, 2)``, which is the unsquared coordinate norm.
 
     Parameters
     ----------
     dom : Space
-        Domain space ``X``.
+        Domain.
     ctx : Context, str, or None, optional
-        Backend context specification. Default is resolved from ``dom``.
-    check_level : {{"none", "cheap", "standard", "strict"}}, optional
-        Runtime validation policy for this object. When omitted, the ambient
-        default (see :func:`spacecore.get_check_level`) is used.
+        Backend context; resolved from ``dom`` when omitted.
+    check_level : {"none", "cheap", "standard", "strict"}, optional
+        Validation level; the ambient default when omitted.
 
     Examples
     --------
@@ -44,65 +38,39 @@ class SquaredL2NormFunctional(_CoordinateFunctional[Domain]):
     array([3., 4.])
     """
 
-    def __init__(
-        self,
-        dom: Domain,
-        ctx: Context | str | None = None,
-        check_level: CheckLevel | bool | None = None,
-    ) -> None:
-        super().__init__(dom, ctx, check_level=check_level)
+    _fields = ("dom", "ctx")
 
-    @checked_method(in_space="domain", out_scalar=True)
-    def value(self, x: Any) -> Any:
-        """Return ``1/2 <x, x>_X`` as a real scalar."""
-        return 0.5 * self.ops.real(_inner_core(self.domain, x, x))
+    def _value_core(self, x: Any) -> Any:
+        """``1/2 <x, x>_X`` as a real scalar."""
+        return 0.5 * self.domain._real_inner_core(x, x)
 
-    @checked_method(in_space="domain", out_space="domain")
-    def grad(self, x: Any) -> Any:
+    def _grad_core(self, x: Any) -> Any:
         """Return the Riesz gradient ``x``."""
         return x
 
     def _coordinate_grad(self, x: Any) -> Any:
         """Euclidean coordinate gradient ``G x`` of ``1/2 <x, x>_X``."""
-        return cast(Any, self.domain).riesz(x)
-
-    def tree_flatten(self):
-        """Flatten this functional for pytree registration."""
-        return (), (self.domain, self.ctx)
-
-    @classmethod
-    def tree_unflatten(cls, aux, children):
-        """Rebuild this functional from pytree data."""
-        domain, ctx = aux
-        return cls(domain, ctx)
-
-    def _convert(self, new_ctx: Context) -> "SquaredL2NormFunctional":
-        """Convert this functional to ``new_ctx``."""
-        return SquaredL2NormFunctional(self.domain.convert(new_ctx), new_ctx)
-
+        return cast(Any, self.domain)._riesz_core(x)
 
 class LpNormFunctional(_CoordinateFunctional[Domain]):
     r"""
-    Coordinate ``p``-norm ``F(x) = (sum_i |x_i|^p)^{1/p}`` for ``p >= 1``.
+    Coordinate ``p``-norm ``(sum_i |x_i|^p)^(1/p)`` for ``p >= 1``.
+
+    The gradient is ``sign(x_i) |x_i|^(p-1) / ||x||_p^(p-1)``, Riesz-corrected; at the
+    origin the zero subgradient is returned (Beck, *First-Order Methods in
+    Optimization*, Example 3.3). For ``p = 1``, zero coordinates also use zero
+    subgradient components (Example 3.4); elsewhere differentiate the displayed norm.
 
     Parameters
     ----------
     dom : Space
-        Domain space ``X``.
+        Domain.
     p : float
-        Norm order; must be finite and ``>= 1``.
+        Finite order, at least 1.
     ctx : Context, str, or None, optional
-        Backend context specification. Default is resolved from ``dom``.
-    check_level : {{"none", "cheap", "standard", "strict"}}, optional
-        Runtime validation policy for this object. When omitted, the ambient
-        default (see :func:`spacecore.get_check_level`) is used.
-
-    Notes
-    -----
-    The gradient at ``x != 0`` is
-    ``d/dx_i ||x||_p = sign(x_i) |x_i|^{p-1} / ||x||_p^{p-1}`` (Riesz-corrected).
-    At the origin the function is not differentiable; this returns the zero
-    subgradient there. For ``p = 1`` the gradient is ``sign(x)``.
+        Backend context; resolved from ``dom`` when omitted.
+    check_level : {"none", "cheap", "standard", "strict"}, optional
+        Validation level; the ambient default when omitted.
 
     Examples
     --------
@@ -115,64 +83,50 @@ class LpNormFunctional(_CoordinateFunctional[Domain]):
     6.0
     """
 
+    _fields = ("dom", "p", "ctx")
+
     def __init__(
         self,
         dom: Domain,
         p: Any,
         ctx: Context | str | None = None,
-        check_level: CheckLevel | bool | None = None,
+        check_level: CheckLevel | None = None,
     ) -> None:
         super().__init__(dom, ctx, check_level=check_level)
+        # p must be finite and at least 1.
         p = float(p)
         if not math.isfinite(p) or p < 1.0:
             raise ValueError(f"LpNormFunctional requires a finite p >= 1, got {p}.")
         self.p = p
 
-    @checked_method(in_space="domain", out_scalar=True)
-    def value(self, x: Any) -> Any:
-        """Return ``(sum_i |x_i|^p)^{1/p}``."""
+    def _value_core(self, x: Any) -> Any:
+        """``(sum_i |x_i|^p)^{1/p}``."""
         return lp_value(self.ops, x, self.p)
 
     def _coordinate_grad(self, x: Any) -> Any:
         """Euclidean coordinate gradient of the ``p``-norm (zero at the origin)."""
         return lp_coordinate_grad(self.ops, x, self.p)
 
-    def tree_flatten(self):
-        """Flatten this functional for pytree registration."""
-        return (), (self.domain, self.p, self.ctx)
-
-    @classmethod
-    def tree_unflatten(cls, aux, children):
-        """Rebuild this functional from pytree data."""
-        domain, p, ctx = aux
-        return cls(domain, p, ctx)
-
-    def _convert(self, new_ctx: Context) -> "LpNormFunctional":
-        """Convert this functional to ``new_ctx``."""
-        return LpNormFunctional(self.domain.convert(new_ctx), self.p, new_ctx)
-
-
 def L1NormFunctional(
     dom: Domain,
     ctx: Context | str | None = None,
-    check_level: CheckLevel | bool | None = None,
+    check_level: CheckLevel | None = None,
 ) -> "LpNormFunctional[Domain]":
     r"""
-    Coordinate 1-norm ``||x||_1`` -- a thin wrapper for ``LpNormFunctional(X, 1)``.
+    Coordinate 1-norm: ``LpNormFunctional(dom, 1)``.
 
     Parameters
     ----------
     dom : Space
-        Domain space ``X``.
+        Domain.
     ctx : Context, str, or None, optional
-        Backend context specification. Default is resolved from ``dom``.
+        Backend context; resolved from ``dom`` when omitted.
     check_level : {"none", "cheap", "standard", "strict"}, optional
-        Runtime validation policy for the returned functional. When omitted, the
-        ambient default (see :func:`spacecore.get_check_level`) is used.
+        Validation level; the ambient default when omitted.
 
     Returns
     -------
     LpNormFunctional
-        The ``p = 1`` instance of :class:`LpNormFunctional`.
+        The ``p = 1`` norm.
     """
     return LpNormFunctional(dom, 1.0, ctx, check_level=check_level)

@@ -12,7 +12,7 @@ Adjoints, gradients, norms, and solver correctness depend on the chosen inner pr
 
 `InnerProduct` is a separate geometry object with `inner`, `riesz`, `riesz_inverse`, `convert`, `validate_for`, and `is_euclidean`. `InnerProductSpace` delegates `inner`, `norm`, and Riesz maps to this geometry. Built-in geometries include Euclidean coordinate geometry and weighted diagonal geometry.
 
-Spaces own a geometry instance. The same geometry type can be reused by different coordinate spaces and converted with the space context. Metric adjoints use Riesz maps, and linalg uses space inner products and norms. Euclidean spaces use identity Riesz maps; weighted spaces use multiplication/division by validated positive finite weights.
+Spaces own a geometry instance. The same geometry type can be reused by different coordinate spaces and converted with the space context. Metric adjoints use Riesz maps, and linalg uses space inner products and norms. Euclidean spaces use identity Riesz maps; weighted spaces use multiplication/division by validated positive finite weights. With `<x,y> = x^H R y = (R x)^H y`, the stored Riesz column is `R x`; orthonormal bases reduce this to the identity (Horn & Johnson, *Matrix Analysis*, 2nd ed., Sec. 0.6.5).
 
 ## Decision
 

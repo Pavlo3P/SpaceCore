@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Sequence, Tuple, Literal, Type, cast
+from typing import TYPE_CHECKING, Any, Sequence, Tuple, Literal, Type, cast
 
 from .._family import BackendFamily
 from .._eager import EagerControlFlowMixin
@@ -8,46 +8,20 @@ from .._ops import BackendOps
 from ...types import ArrayLike, DenseArray, SparseArray, DType, Index
 
 
-class NumpyOps(EagerControlFlowMixin, BackendOps):
+if TYPE_CHECKING:
+    from numpy.typing import NDArray
+    NativeArray = NDArray[Any]
+else:
+    NativeArray = DenseArray
+
+
+class NumpyOps(EagerControlFlowMixin, BackendOps[NativeArray]):
     """
-    BackendOps implementation for the NumPy/SciPy ecosystem.
+    Backend operations on NumPy arrays, with SciPy sparse matrices and arrays.
 
-    This backend uses NumPy for dense array operations and SciPy for sparse
-    array operations.
-
-    Dense arrays
-        numpy.ndarray
-
-    Sparse arrays
-        scipy.sparse.spmatrix
-        scipy.sparse.sparray
-
-    Methods
-    -------
-        Most methods mirror the corresponding NumPy or SciPy signatures and
-        delegate directly to NumPy/SciPy implementations. Backend-specific
-        behavior, dtype promotion, broadcasting, memory layout, and error modes
-        therefore follow NumPy/SciPy semantics.
-
-    Backend handles
-      - np : module
-        NumPy module stored on the class and available through instances as
-        `ops.np`. Advanced users may use it when SpaceCore's portable API
-        does not expose a required NumPy feature.
-
-      - sp : module
-        SciPy module stored on the class and available through instances as
-        `ops.sp`. Advanced users may use it for SciPy-specific functionality.
-
-    Notes
-    -----
-        Code intended to remain backend-portable should prefer `BackendOps`
-        methods. Direct use of `ops.np` or `ops.sp` is an explicit
-        NumPy/SciPy-specific escape hatch.
-
-        NumPy's `device` keyword is present for Array API interoperability.
-        When supplied, it must be `"cpu"` or `None`; see the corresponding NumPy
-        documentation for each method.
+    Methods delegate to NumPy and SciPy and follow their semantics; a ``device``
+    argument must be ``"cpu"`` or ``None``. ``ops.np`` and ``ops.sp`` are an explicit
+    escape hatch.
     """
 
     import numpy as _np
@@ -60,23 +34,8 @@ class NumpyOps(EagerControlFlowMixin, BackendOps):
     np: Any = _np
     sp: Any = _sp
 
-    _family = BackendFamily.numpy.value.lower()
+    _family = BackendFamily.numpy.value
     _allow_sparse = True
-
-    def __init__(self) -> None:
-        super().__init__()
-
-    def free_memory_bytes(self) -> int | None:
-        """Return available system RAM in bytes.
-
-        For a CPU backend the "device" is host memory, so this reports the
-        available physical RAM via :mod:`psutil`, a required dependency. The
-        kernel dispatcher (ADR-016) uses it as the memory budget that gates a
-        materializing fast path.
-        """
-        import psutil
-
-        return int(psutil.virtual_memory().available)
 
     @property
     def dense_array(self) -> Type[Any]:
@@ -104,6 +63,7 @@ class NumpyOps(EagerControlFlowMixin, BackendOps):
         See:
             https://docs.scipy.org/doc/scipy/reference/sparse.html
         """
+        # SciPy has spmatrix (legacy) and sparray (newer); accept whichever exist.
         sparse = self.sp.sparse
         types: list[type[Any]] = []
         if hasattr(sparse, "spmatrix"):
@@ -132,69 +92,29 @@ class NumpyOps(EagerControlFlowMixin, BackendOps):
     def assparse(
         self, x: Any, *, format: Literal["csr", "csc", "coo"] = "csr", dtype: DType | None = None
     ) -> SparseArray:
-        """
-        Convert input to a sparse array using SciPy.
-
-        Input:
-            x: Dense, sparse, or array-like input plus sparse-format options.
-
-        Output:
-            Sparse backend array.
-
-        See:
-            https://docs.scipy.org/doc/scipy/reference/sparse.html
-
-        Backend-specific notes:
-            SpaceCore currently converts dense inputs to 2-D SciPy sparse matrices in the requested format.
-        """
-        sparse = self.sp.sparse
+        """Convert to a 2-D SciPy sparse matrix in the requested format."""
         self._reject_complex_to_real(x, dtype, operation="assparse")
+        if format not in ("csr", "csc", "coo"):
+            raise ValueError(f"Unknown sparse format: {format!r}")
 
+        # Already sparse: cast if needed, then convert the format.
         if self.is_sparse(x):
             if dtype is not None and self.get_dtype(x) != self.sanitize_dtype(dtype):
                 x = x.astype(self.sanitize_dtype(dtype))
-            if format == "csr":
-                return x.tocsr()
-            if format == "csc":
-                return x.tocsc()
-            if format == "coo":
-                return x.tocoo()
-            raise ValueError(f"Unknown sparse format: {format!r}")
+            return getattr(x, "to" + format)()
 
+        # Dense input: only 2-D arrays have a sparse-matrix form.
         x_arr = self.asarray(x, dtype=dtype)
-
         if x_arr.ndim != 2:
-            raise ValueError("NumPy/SciPy sparse conversion currently expects a 2D array.")
+            raise ValueError(f"{self.family} sparse conversion currently expects a 2D array.")
+        return getattr(self.sp.sparse, format + "_matrix")(x_arr)
 
-        if format == "csr":
-            return sparse.csr_matrix(x_arr)
-        if format == "csc":
-            return sparse.csc_matrix(x_arr)
-        if format == "coo":
-            return sparse.coo_matrix(x_arr)
-
-        raise ValueError(f"Unknown sparse format: {format!r}")
-
-    def sparse_matmul(self, a: SparseArray, b: DenseArray) -> DenseArray:
-        """
-        Multiply sparse and dense arrays using SciPy.
-
-        Input:
-            a: Sparse backend array; b: Dense backend array.
-
-        Output:
-            Dense backend array containing the product.
-
-        See:
-            https://docs.scipy.org/doc/scipy/reference/sparse.html
-
-        Backend-specific notes:
-            Uses SciPy sparse multiplication before returning a dense NumPy result when applicable.
-        """
+    def sparse_matmul(self, a: SparseArray, b: DenseArray) -> NativeArray:
+        """Multiply a sparse matrix by a dense array."""
         if not self.is_sparse(a):
-            raise TypeError("sparse_matmul expects `a` to be a SciPy sparse matrix/array.")
+            raise TypeError(f"sparse_matmul expects `a` to be a {self.family} sparse matrix/array.")
         if not self.is_dense(b):
-            raise TypeError("sparse_matmul expects `b` to be a Numpy dense object.")
+            raise TypeError(f"sparse_matmul expects `b` to be a {self.family} dense array.")
         return a @ b
 
     def logsumexp(
@@ -204,7 +124,7 @@ class NumpyOps(EagerControlFlowMixin, BackendOps):
         b: DenseArray | None = None,
         keepdims: bool = False,
         return_sign: bool = False,
-    ) -> DenseArray | Tuple[DenseArray, DenseArray]:
+    ) -> NativeArray | Tuple[NativeArray, NativeArray]:
         """
         Compute a stable log-sum-exp reduction using SciPy.
 
@@ -217,15 +137,21 @@ class NumpyOps(EagerControlFlowMixin, BackendOps):
         See:
             https://docs.scipy.org/doc/scipy/reference/generated/scipy.special.logsumexp.html
         """
-        return self.sp.special.logsumexp(
+        result = self.sp.special.logsumexp(
             a, axis=axis, b=b, keepdims=keepdims, return_sign=return_sign
         )
 
-    def _copy(self, x: DenseArray) -> DenseArray:
+        if return_sign:
+            return self._as_array(result[0]), self._as_array(result[1])
+        return self._as_array(result)
+
+    def _copy(self, x: DenseArray) -> NativeArray:
         """Return a NumPy copy of ``x`` (mutation primitive for index ops)."""
         return cast(Any, x).copy()
 
-    def _scatter_add_inplace(self, y: DenseArray, index: Index, values: ArrayLike) -> None:
+    def _scatter_add_inplace(
+        self, y: DenseArray, index: Index, values: ArrayLike | float | complex
+    ) -> None:
         """Accumulate ``values`` into ``y`` at ``index`` via ``numpy.add.at``."""
         self.np.add.at(y, index, values)
 
@@ -240,7 +166,7 @@ class NumpyOps(EagerControlFlowMixin, BackendOps):
             Tuple of dense backend arrays usable for open-mesh indexing.
 
         See:
-            https://numpy.org/doc/stable/reference/generated/numpy.ix\\_.html
+            `Open-mesh indexing documentation <https://numpy.org/doc/stable/reference/generated/numpy.ix_.html>`_
         """
         return self.np.ix_(*args)
 
@@ -251,23 +177,10 @@ class NumpyOps(EagerControlFlowMixin, BackendOps):
         rtol: float = 1e-5,
         atol: float = 1e-8,
     ) -> bool:
-        """
-        Compare sparse arrays elementwise within tolerances using SciPy.
-
-        Input:
-            a, b: Sparse backend arrays; rtol and atol configure comparison.
-
-        Output:
-            Boolean indicating whether sparse arrays are close.
-
-        See:
-            https://docs.scipy.org/doc/scipy/reference/sparse.html
-
-        Backend-specific notes:
-            Sparse inputs are converted to CSR and compared by logical sparse difference.
-        """
+        """Compare two SciPy sparse matrices within tolerances, via their CSR difference."""
         self._require_two_sparse(a, b)
 
+        # Compare in CSR: different shapes are never close, an empty difference always is.
         a_csr = cast(Any, a).tocsr()
         b_csr = cast(Any, b).tocsr()
 
@@ -286,6 +199,7 @@ class NumpyOps(EagerControlFlowMixin, BackendOps):
         if self.np.isnan(diff.data).any():
             return False
 
+        # Entrywise max(|a|, |b|) scales the relative tolerance.
         a_abs = abs(a_csr).tocsr()
         b_abs = abs(b_csr).tocsr()
         scale = self.sp.sparse.csr_matrix.maximum(a_abs, b_abs)
@@ -294,5 +208,6 @@ class NumpyOps(EagerControlFlowMixin, BackendOps):
         tol = scale.multiply(rtol)
         tol.data += atol
 
+        # Close iff no stored entry of |a - b| exceeds its tolerance.
         bad = abs(diff) > tol
         return bad.nnz == 0

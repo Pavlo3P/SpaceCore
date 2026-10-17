@@ -7,8 +7,8 @@ Checklist section 6 (JAX jit):
 * Decorated ``apply`` / ``rapply`` and ``LinOpQuadraticForm.value`` / ``grad``
   compile under ``jax.jit``.
 * Tensor-shaped ``DenseLinOp`` preserves codomain shape under ``jit``.
-* Product linops (``StackedLinOp`` / ``BlockDiagonalLinOp`` /
-  ``SumToSingleLinOp``) compile ``apply`` / ``rapply`` under ``jit``.
+* Product linops (one-column and one-row ``BlockMatrixLinOp`` /
+  ``BlockDiagonalLinOp``) compile ``apply`` / ``rapply`` under ``jit``.
 * ``SparseLinOp.apply`` / ``rapply`` compile under ``jit``.
 * ``TreeSpace.flatten`` / ``unflatten`` round-trip under ``jit``.
 
@@ -137,7 +137,7 @@ class TestProductLinOpsJit:
         Y2 = sc.DenseCoordinateSpace((1,), ctx)
         A1 = sc.DenseLinOp(ctx.asarray([[1.0, 2.0], [3.0, 4.0]]), X, Y1, ctx)
         A2 = sc.DenseLinOp(ctx.asarray([[5.0, 6.0]]), X, Y2, ctx)
-        stacked = sc.StackedLinOp.from_operators((A1, A2))
+        stacked = sc.BlockMatrixLinOp.stack((A1, A2))
         x = ctx.asarray([7.0, 8.0])
 
         stacked_apply = jax.jit(lambda Aop, z: Aop.apply(z))
@@ -169,7 +169,7 @@ class TestProductLinOpsJit:
         np.testing.assert_allclose(to_numpy(zr[0]), [-2.0, -2.0])
         np.testing.assert_allclose(to_numpy(zr[1]), [10.0, 12.0, 14.0])
 
-        sum_to_single = sc.SumToSingleLinOp.from_operators((A1, A1))
+        sum_to_single = sc.BlockMatrixLinOp.from_operators((A1, A1))
         sum_apply = jax.jit(lambda Aop, a, b: Aop.apply((a, b)))
         sum_rapply = jax.jit(lambda Aop, z: Aop.rapply(z))
 

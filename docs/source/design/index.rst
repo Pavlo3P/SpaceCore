@@ -1,24 +1,20 @@
 Design notes
 ============
 
-These notes document current ``0.3.x`` behavior. Planned APIs are not presented
-as current behavior.
+Rules for geometry, validation, batching, conversion, and backend behavior.
 
 .. toctree::
    :maxdepth: 1
 
-   context_ownership
-   conversion_policy
-   dtype_policy
+   extending
+   proximal_contract
+   context_dtype_conversion
    batching
-   batching_test_policy
    capability_dispatch
    checking_policy
    geometry
-   performance
-   jax_integration
+   performance_and_jit
    tree_spaces
    backend_ops_array_api
    backend_conformance
    backend_deviations
-   kernels_policy

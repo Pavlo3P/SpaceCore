@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="440" height="410" viewBox="0 0 440 410" fill="none" role="img" aria-labelledby="title desc">
+  <title id="title">SpaceCore — cartoon logo</title>
+  <desc id="desc">A subtly three-dimensional cartoon red Swiss Army knife, tilted with its larger left end closer and lower and its right end farther and higher, with a silver blade, screwdriver, and turquoise stepped descent arrow. White gradient notation, nabla f of x subscript k, decorates the handle. No wordmark.</desc>
+  <g transform="translate(-62 8) rotate(-12 280 220)" stroke="#253043" stroke-width="9" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Rounded silver tools, unfolded around the handle pivot. -->
+    <path d="M341 271 401 113Q420 71 451 57Q458 55 456 65L439 161Q437 172 431 182L377 286Z" fill="#D8E6EF"/>
+    <!-- Shading follows the outer contour; the outline is painted last. -->
+    <path d="M456 65 439 161Q437 172 431 182L377 286 366 281 420 177Q426 167 428 155Z" fill="#9BB6C9" stroke="none"/>
+    <path d="M341 271 401 113Q420 71 451 57Q458 55 456 65L439 161Q437 172 431 182L377 286Z" fill="none"/>
+    <path d="M416 116 380 221" stroke="#FFF" stroke-width="8"/>
+    <path d="M329 272 321 108 309 90 308 57Q308 50 315 50L344 49Q351 49 351 56L352 89 341 108 353 272Z" fill="#B6CEDD"/>
+    <path d="M341 50 344 49Q351 49 351 56L352 89 341 108 353 272H345L333 107 344 87Z" fill="#7F9EB5" stroke="none"/>
+    <path d="M329 272 321 108 309 90 308 57Q308 50 315 50L344 49Q351 49 351 56L352 89 341 108 353 272Z" fill="none"/>
+    <path d="M322 62 323 83" stroke="#FFF" stroke-width="6"/>
+    <!-- The descent tool connects to the shared pivot through a silver tang. -->
+    <path d="M272 233 359 281 348 298 263 249Z" fill="#B6CEDD" stroke-width="7"/>
+    <path d="M128 190H172V207H216V224H259L279 244" stroke-width="24"/>
+    <path d="M128 190H172V207H216V224H259L279 244" stroke="#61D4C5" stroke-width="11"/>
+    <path d="m260 244 23 3-3-23" stroke-width="20"/>
+    <path d="m260 244 23 3-3-23" stroke="#61D4C5" stroke-width="8"/>
+    <!-- Tapered casing: a larger near end and a smaller far end. -->
+    <!-- Offset rear shell and metal liner reveal the handle thickness. -->
+    <path d="M161 249 353 261C380 263 400 277 400 298S380 336 353 338L161 350C126 352 103 330 103 300S126 247 161 249Z" transform="translate(-5 13)" fill="#A82F45"/>
+    <path d="M161 249 353 261C380 263 400 277 400 298S380 336 353 338L161 350C126 352 103 330 103 300S126 247 161 249Z" transform="translate(-2 6)" fill="#9DB2C4" stroke-width="6"/>
+    <path d="M161 249 353 261C380 263 400 277 400 298S380 336 353 338L161 350C126 352 103 330 103 300S126 247 161 249Z" fill="#F5555D"/>
+    <path d="M122 322Q137 343 165 340L350 329Q376 328 387 313" stroke="#D93447" stroke-width="9"/>
+    <path d="M326 272 361 275" stroke="#FFB8AC" stroke-width="8"/>
+    <circle cx="355" cy="298" r="17" fill="#B6CEDD" stroke-width="7"/>
+    <path d="m350 303 10-10" stroke-width="5"/>
+    <!-- Custom vector lettering: a crisp nabla and a flowing italic f. -->
+    <g fill="#FFF9F2" stroke="none">
+      <path fill-rule="evenodd" d="M139 278H183L161 316ZM147 283 162 308 176 283Z"/>
+      <path d="M188 319C191 323 196 321 198 313L204 285C206 275 211 271 218 272C225 273 228 279 224 282C221 284 218 281 219 278C215 275 212 280 211 286L205 313C203 323 198 329 191 328C185 327 182 323 184 320C185 318 187 318 188 319Z"/>
+      <path d="M194 289H223L222 293H193Z"/>
+    </g>
+    <!-- Parentheses, italic x, and an iteration subscript, all drawn as vectors. -->
+    <g stroke="#FFF9F2" stroke-width="3.5" fill="none">
+      <path d="M242 278Q230 296 239 316"/>
+      <path d="M252 290Q256 286 260 294L268 308Q271 312 275 308M274 288 250 311"/>
+      <path d="m284 304-3 14m2-5 8-5m-7 4 5 6" stroke-width="2.6"/>
+      <path d="M301 278Q310 296 298 316"/>
+    </g>
+  </g>
+</svg>

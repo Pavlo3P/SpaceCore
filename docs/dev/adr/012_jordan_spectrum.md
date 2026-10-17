@@ -18,7 +18,7 @@ Public spectral behavior belongs to space capabilities (`spectrum` and `spectral
 
 ## Rationale
 
-Different Jordan spaces have different spectral meaning. A Hermitian matrix spectrum, an elementwise spectrum, and a product spectrum have different frames and reconstruction rules.
+Different Jordan spaces have different spectral meaning. A Hermitian matrix spectrum, an elementwise spectrum, and a product spectrum have different frames and reconstruction rules. For Hermitian matrices, `X = U diag(lambda) U^*` (Horn & Johnson, *Matrix Analysis*, 2nd ed., Thm 4.1.5), and `f(X) = U diag(f(lambda)) U^*` for scalar `f` defined on the spectrum (Higham, *Functions of Matrices*, Sec. 4.5).
 
 ## Alternatives considered
 

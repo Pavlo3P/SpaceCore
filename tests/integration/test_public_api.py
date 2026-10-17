@@ -63,8 +63,6 @@ def test_expected_names_are_exported():
         "make_composed",
         "TreeLinOp",
         "BlockDiagonalLinOp",
-        "StackedLinOp",
-        "SumToSingleLinOp",
         "Functional",
         "LinearFunctional",
         "InnerProductFunctional",
@@ -89,9 +87,8 @@ def test_expected_names_are_exported():
         "get_context",
         "resolve_context_priority",
         "register_ops",
-        "LanczosResult",
+        "LinalgResult",
         "lanczos_smallest",
-        "ExpmMultiplyResult",
         "expm_multiply",
     }
     if has_jax():
@@ -135,8 +132,7 @@ def test_top_level_objects_match_source_modules():
     assert sc.Functional is functional.Functional
     assert sc.ComposedFunctional is functional.ComposedFunctional
     assert sc.InnerProductFunctional is functional.InnerProductFunctional
-    assert sc.LanczosResult is linalg.LanczosResult
-    assert sc.ExpmMultiplyResult is linalg.ExpmMultiplyResult
+    assert sc.LinalgResult is linalg.LinalgResult
     assert sc.expm_multiply is linalg.expm_multiply
     assert sc.get_context is contextual.get_context
     assert sc.resolve_context_priority is contextual.resolve_context_priority
@@ -149,4 +145,4 @@ def test_package_version_matches_project_metadata():
     assert metadata["tool"]["setuptools"]["dynamic"]["version"]["attr"] == (
         "spacecore._version.__version__"
     )
-    assert sc.__version__ == "0.4.3"
+    assert sc.__version__ == "0.5.0"

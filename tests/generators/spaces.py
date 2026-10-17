@@ -279,13 +279,13 @@ class _CoordinateOnlySpace(sc.CoordinateSpace):
     def zeros(self) -> Any:
         return self.ops.zeros(self.shape, dtype=self.dtype)
 
-    def add(self, x: Any, y: Any) -> Any:
+    def _add_core(self, x: Any, y: Any) -> Any:
         return x + y
 
     def add_batch(self, x: Any, y: Any) -> Any:
         return x + y
 
-    def scale(self, a: Any, x: Any) -> Any:
+    def _scale_core(self, a: Any, x: Any) -> Any:
         return a * x
 
     def scale_batch(self, a: Any, x: Any) -> Any:
@@ -591,4 +591,14 @@ def vector_space_law_cases(*, seed: int | None = DEFAULT_SEED) -> tuple[SpaceCas
         for case in jordan_space_cases(check_level="standard", seed=seed)
         if case.reference["kind"] in {"elementwise", "stacked", "tree"}
     )
-    return tuple(dense) + tuple(vectors) + tuple(trees) + jordan
+    fields = tuple(
+        GeneratedCase(
+            obj=field,
+            reference={name: field.ctx.asarray(value) for name, value in
+                       zip(("x", "y", "z", "a", "b"), (1., -2., 3., .5, -1.25))},
+            capabilities=frozenset({"vector", "inner_product", field.field}),
+            id=f"field-{field.field}",
+        )
+        for field in (sc.RealField(_context(np.float64)),)
+    )
+    return tuple(dense) + tuple(vectors) + tuple(trees) + jordan + fields

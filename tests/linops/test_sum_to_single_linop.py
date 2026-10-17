@@ -1,4 +1,4 @@
-"""Tests for :class:`spacecore.SumToSingleLinOp`.
+"""Tests for a one-row :class:`spacecore.BlockMatrixLinOp`, ``(x_1, ..., x_k) -> sum_j A_j x_j``.
 
 Checklist item 18:
 
@@ -58,11 +58,11 @@ def _sum_parts(ctx):
 class TestConstruction:
     def test_from_empty_operators_raises(self):
         with pytest.raises(Exception):
-            sc.SumToSingleLinOp.from_operators(())
+            sc.BlockMatrixLinOp.from_operators(())
 
     def test_from_operators_builds_tree_domain(self, numpy_ctx):
         A1, A2 = _sum_parts(numpy_ctx)
-        op = sc.SumToSingleLinOp.from_operators((A1, A2))
+        op = sc.BlockMatrixLinOp.from_operators((A1, A2))
         assert isinstance(op.domain, sc.TreeSpace)
         assert op.domain.arity == 2
         assert op.codomain == A1.codomain
@@ -74,7 +74,7 @@ class TestConstruction:
 class TestApply:
     def test_apply_sums_components(self, numpy_ctx):
         A1, A2 = _sum_parts(numpy_ctx)
-        op = sc.SumToSingleLinOp.from_operators((A1, A2))
+        op = sc.BlockMatrixLinOp.from_operators((A1, A2))
         y = op.apply(
             (numpy_ctx.asarray([10.0, 20.0]), numpy_ctx.asarray([1.0, 2.0, 3.0]))
         )
@@ -88,7 +88,7 @@ class TestApply:
 class TestRapply:
     def test_rapply_splits_to_tree_components(self, numpy_ctx):
         A1, A2 = _sum_parts(numpy_ctx)
-        op = sc.SumToSingleLinOp.from_operators((A1, A2))
+        op = sc.BlockMatrixLinOp.from_operators((A1, A2))
         x = op.rapply(numpy_ctx.asarray([2.0, -1.0]))
         # A1^T [2, -1] = [2-3, 4-4] = [-1, 0]; A2^T [2, -1] = [10-8, 12-9, 14-10] = [2, 3, 4]
         np.testing.assert_allclose(to_numpy(x[0]), [-1.0, 0.0])
@@ -101,7 +101,7 @@ class TestRapply:
 class TestBatched:
     def test_vapply_matches_per_element_loop(self, numpy_ctx):
         A1, A2 = _sum_parts(numpy_ctx)
-        op = sc.SumToSingleLinOp.from_operators((A1, A2))
+        op = sc.BlockMatrixLinOp.from_operators((A1, A2))
         xs = (
             numpy_ctx.asarray([[10.0, 20.0], [1.0, -1.0]]),
             numpy_ctx.asarray([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]),
@@ -119,9 +119,9 @@ class TestBatched:
                 self.counter = counter
                 super().__init__(shape, ctx)
 
-            def add_batch(self, x, y):
+            def _add_batch_core(self, x, y):
                 self.counter["calls"] += 1
-                return super().add_batch(x, y)
+                return super()._add_batch_core(x, y)
 
             def _convert(self, new_ctx):
                 return CountingVectorSpace(self.shape, new_ctx, self.counter)
@@ -132,7 +132,7 @@ class TestBatched:
         dom2 = sc.DenseCoordinateSpace((1,), numpy_ctx)
         B1 = _dense(numpy_ctx, [[1.0], [2.0]], dom1, shared)
         B2 = _dense(numpy_ctx, [[3.0], [-1.0]], dom2, shared)
-        op = sc.SumToSingleLinOp.from_operators((B1, B2))
+        op = sc.BlockMatrixLinOp.from_operators((B1, B2))
         xs = (numpy_ctx.asarray([[1.0], [2.0]]), numpy_ctx.asarray([[3.0], [4.0]]))
 
         op.vapply(xs)
@@ -143,7 +143,7 @@ class TestBatched:
         # (test_tree_linop_batch_checks_reject_wrong_tuple_layout), adapted to
         # the sum-to-single domain product structure.
         A1, A2 = _sum_parts(numpy_ctx)
-        op = sc.SumToSingleLinOp.from_operators((A1, A2))
+        op = sc.BlockMatrixLinOp.from_operators((A1, A2))
         with pytest.raises(ValueError, match="structure"):
             op.vapply((numpy_ctx.asarray([[10.0, 20.0], [1.0, -1.0]]),))
         with pytest.raises(ValueError, match="trailing shape"):
@@ -162,7 +162,7 @@ class TestAdjointIdentity:
     def test_euclidean_adjoint_identity(self, numpy_ctx):
         # Folded from tests/linops/test_tree_structure.py adjoint flow.
         A1, A2 = _sum_parts(numpy_ctx)
-        op = sc.SumToSingleLinOp.from_operators((A1, A2))
+        op = sc.BlockMatrixLinOp.from_operators((A1, A2))
         x = (numpy_ctx.asarray([0.25, -1.5]), numpy_ctx.asarray([2.0, -0.5, 1.25]))
         y = numpy_ctx.asarray([1.0, -2.0])
         lhs = op.codomain.inner(op.apply(x), y)
@@ -177,7 +177,7 @@ class TestAdjointIdentity:
         cod = _weighted_space([7.0, 11.0], numpy_ctx)
         A1 = _dense(numpy_ctx, [[1.0, 2.0], [3.0, -1.0]], dom1, cod)
         A2 = _dense(numpy_ctx, [[0.5], [4.0]], dom2, cod)
-        op = sc.SumToSingleLinOp.from_operators((A1, A2))
+        op = sc.BlockMatrixLinOp.from_operators((A1, A2))
         x = (numpy_ctx.asarray([1.0, -2.0]), numpy_ctx.asarray([3.0]))
         y = numpy_ctx.asarray([0.5, 3.0])
         lhs = op.codomain.inner(op.apply(x), y)
@@ -192,7 +192,7 @@ class TestAdjointIdentity:
         cod = _weighted_space([7.0, 11.0], numpy_ctx)
         A1 = _dense(numpy_ctx, [[1.0, 2.0], [3.0, -1.0]], dom1, cod)
         A2 = _dense(numpy_ctx, [[0.5], [4.0]], dom2, cod)
-        op = sc.SumToSingleLinOp.from_operators((A1, A2))
+        op = sc.BlockMatrixLinOp.from_operators((A1, A2))
         xs = (
             numpy_ctx.asarray([[1.0, -2.0], [0.5, 4.0]]),
             numpy_ctx.asarray([[3.0], [-1.0]]),
@@ -203,19 +203,14 @@ class TestAdjointIdentity:
 
 
 # ===========================================================================
-# Structured (NamedTuple-templated) tree domain via the 4-arg constructor
+# Structured (NamedTuple) tree domain: the row container is the domain tree
 # ===========================================================================
 class TestStructuredTree:
     def test_structured_domain_round_trips_through_adjoint(self, numpy_ctx):
         # Folded from tests/linops/test_tree_structure.py
         # (test_sum_to_single_accepts_structured_domain_and_returns_it_for_adjoint).
         A1, A2 = _sum_parts(numpy_ctx)
-        dom = sc.TreeSpace.from_template(
-            _State(numpy_ctx.asarray([0.0, 0.0]), numpy_ctx.asarray([0.0, 0.0, 0.0])),
-            (A1.domain, A2.domain),
-            ctx=numpy_ctx,
-        )
-        op = sc.SumToSingleLinOp(dom, A1.codomain, (A1, A2), numpy_ctx)
+        op = sc.BlockMatrixLinOp((_State(A1, A2),))
 
         x = _State(numpy_ctx.asarray([10.0, 20.0]), numpy_ctx.asarray([1.0, 2.0, 3.0]))
         y = op.apply(x)
@@ -235,12 +230,7 @@ class TestStructuredTree:
         # Folded from tests/linops/test_tree_structure.py
         # (test_tree_linop_batch_paths_use_tree_of_batched_leaves, sum part).
         A1, A2 = _sum_parts(numpy_ctx)
-        dom = sc.TreeSpace.from_template(
-            _State(numpy_ctx.asarray([0.0, 0.0]), numpy_ctx.asarray([0.0, 0.0, 0.0])),
-            (A1.domain, A2.domain),
-            ctx=numpy_ctx,
-        )
-        op = sc.SumToSingleLinOp(dom, A1.codomain, (A1, A2), numpy_ctx)
+        op = sc.BlockMatrixLinOp((_State(A1, A2),))
 
         xb = _State(
             numpy_ctx.asarray([[10.0, 20.0], [1.0, 2.0]]),
@@ -262,9 +252,9 @@ class TestStructuredTree:
 class TestPytree:
     def test_round_trip(self, numpy_ctx):
         A1, A2 = _sum_parts(numpy_ctx)
-        op = sc.SumToSingleLinOp.from_operators((A1, A2))
+        op = sc.BlockMatrixLinOp.from_operators((A1, A2))
         children, aux = op.tree_flatten()
-        rebuilt = sc.SumToSingleLinOp.tree_unflatten(aux, children)
+        rebuilt = type(op).tree_unflatten(aux, children)
         assert rebuilt == op
 
 
@@ -279,7 +269,7 @@ class TestJit:
             X = sc.DenseCoordinateSpace((2,), ctx)
             Y = sc.DenseCoordinateSpace((2,), ctx)
             A1 = _dense(ctx, [[1.0, 2.0], [3.0, 4.0]], X, Y)
-        op = sc.SumToSingleLinOp.from_operators((A1, A1))
+        op = sc.BlockMatrixLinOp.from_operators((A1, A1))
         assert op.check_level == "none"
         x = ctx.asarray([7.0, 8.0])
 

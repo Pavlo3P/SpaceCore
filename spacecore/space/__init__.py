@@ -1,5 +1,6 @@
 """Vector space abstractions, concrete spaces, and validation checks."""
 
+from .._errors import CapabilityError
 from .checks import (
     BackendCheck,
     DTypeCheck,
@@ -11,6 +12,7 @@ from .checks import (
     SquareMatrixCheck,
 )
 from .base import (
+    RealField,
     CoordinateSpace,
     EuclideanInnerProduct,
     EuclideanJordanAlgebraSpace,
@@ -21,6 +23,7 @@ from .base import (
     StarSpace,
     VectorSpace,
     WeightedInnerProduct,
+    OperatorInnerProduct,
 )
 from .concrete import (
     DenseCoordinateSpace,
@@ -33,8 +36,12 @@ from .concrete import (
     TreeSpace,
     TreeSpectralDecomposition,
 )
+from ._element import DenseElement, Element, LowRankElement
 
 __all__ = [
+    "DenseElement",
+    "Element",
+    "LowRankElement",
     "BackendCheck",
     "DTypeCheck",
     "FieldCheck",
@@ -43,6 +50,8 @@ __all__ = [
     "InnerProduct",
     "EuclideanInnerProduct",
     "WeightedInnerProduct",
+    "OperatorInnerProduct",
+    "RealField",
     "CoordinateSpace",
     "InnerProductSpace",
     "StarSpace",
@@ -59,6 +68,7 @@ __all__ = [
     "TreeSpectralDecomposition",
     "Space",
     "SpaceCheck",
+    "CapabilityError",
     "SpaceValidationError",
     "SquareMatrixCheck",
     "VectorSpace",

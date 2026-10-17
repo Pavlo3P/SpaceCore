@@ -232,10 +232,10 @@ class TestToDenseToMatrix:
         to a per-column Python loop (folded from test_to_dense.py)."""
 
         class NoBatchVectorSpace(sc.DenseCoordinateSpace):
-            def flatten_batch(self, xs):
+            def _flatten_batch_core(self, xs):
                 raise NotImplementedError
 
-            def unflatten_batch(self, vs):
+            def _unflatten_batch_core(self, vs):
                 raise NotImplementedError
 
             def _convert(self, new_ctx):

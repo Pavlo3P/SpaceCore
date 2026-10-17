@@ -132,4 +132,6 @@ class TestConversionInvariants:
         assert rebuilt == space
 
         with pytest.raises(ValueError, match="requires a real scalar field"):
-            type(space).tree_unflatten(((2,), complex_ctx, sc.EuclideanInnerProduct()), ())
+            type(space).tree_unflatten(
+                (("shape", (2,)), ("ctx", complex_ctx), ("geometry", sc.EuclideanInnerProduct())), ()
+            )

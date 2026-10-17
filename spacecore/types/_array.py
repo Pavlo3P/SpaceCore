@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any, Protocol, Sequence, Self, TypeAlias, runtime_checkable
 
+from typing_extensions import TypeVar
+
 from ._dtype import DType
 
 Shape: TypeAlias = Sequence[int]
@@ -10,19 +12,14 @@ Shape: TypeAlias = Sequence[int]
 @runtime_checkable
 class ArrayLike(Protocol):
     """
-    Define the minimal array-like object accepted by backend helpers.
-
-    This intentionally only models common metadata. NumPy arrays, JAX arrays,
-    PyTorch tensors, sparse arrays, scalar-like backend arrays, and array
-    wrappers can satisfy this without implementing every dense-array method.
+    Minimal array-like protocol: common metadata only, satisfied by dense, sparse and scalar arrays.
 
     Parameters
     ----------
     *args : Any
-        Construction arguments accepted by concrete array implementations.
+        Construction arguments of the concrete type.
     **kwargs : Any
-        Keyword construction arguments accepted by concrete array
-        implementations.
+        Keyword construction arguments of the concrete type.
     """
 
     @property
@@ -34,21 +31,14 @@ class ArrayLike(Protocol):
 
 class SparseArray(ArrayLike, Protocol):
     """
-    Define the portable sparse-array surface used by sparse operators.
-
-    Backend-specific sparse APIs such as SciPy ``tocsr()``, JAX sparse
-    ``indices``/``data``, and Torch ``to_dense()`` are intentionally not part
-    of this protocol. Concrete backends may use those after checking that the
-    object belongs to their sparse family.
+    Portable sparse-array protocol; backend APIs such as ``tocsr()`` are deliberately excluded.
 
     Parameters
     ----------
     *args : Any
-        Construction arguments accepted by concrete sparse array
-        implementations.
+        Construction arguments of the concrete type.
     **kwargs : Any
-        Keyword construction arguments accepted by concrete sparse array
-        implementations.
+        Keyword construction arguments of the concrete type.
     """
 
     @property
@@ -56,25 +46,19 @@ class SparseArray(ArrayLike, Protocol):
 
     def conj(self) -> Self: ...
     def reshape(self, *shape: Any, **kwargs: Any) -> Self: ...
-    def __matmul__(self, other: Any) -> Any: ...
+    def __matmul__(self, other: Any, /) -> Any: ...
 
 
 class DenseArray(ArrayLike, Protocol):
     """
-    Define the portable dense-array surface used by core abstractions.
-
-    The protocol includes only operations that SpaceCore core abstractions use
-    directly on dense arrays. Backend-specific metadata such as device,
-    sharding, layout, strides, and gradient state belongs to concrete backend
-    implementations, not to this portable type.
+    Portable dense-array protocol: the operations SpaceCore uses; devices, layout and gradients excluded.
 
     Parameters
     ----------
     *args : Any
-        Construction arguments accepted by concrete dense array implementations.
+        Construction arguments of the concrete type.
     **kwargs : Any
-        Keyword construction arguments accepted by concrete dense array
-        implementations.
+        Keyword construction arguments of the concrete type.
     """
 
     @property
@@ -86,16 +70,20 @@ class DenseArray(ArrayLike, Protocol):
     def conj(self) -> Self: ...
     def reshape(self, *shape: Any, **kwargs: Any) -> Self: ...
     def __len__(self) -> int: ...
-    def __getitem__(self, key: Any) -> Any: ...
-    def __setitem__(self, key: Any, value: Any) -> None: ...
-    def __add__(self, other: Any) -> Any: ...
-    def __radd__(self, other: Any) -> Any: ...
-    def __sub__(self, other: Any) -> Any: ...
-    def __rsub__(self, other: Any) -> Any: ...
-    def __mul__(self, other: Any) -> Any: ...
-    def __rmul__(self, other: Any) -> Any: ...
-    def __truediv__(self, other: Any) -> Any: ...
-    def __rtruediv__(self, other: Any) -> Any: ...
+    def __getitem__(self, key: Any, /) -> Any: ...
+    def __setitem__(self, key: Any, value: Any, /) -> None: ...
+    def __add__(self, other: Any, /) -> Any: ...
+    def __radd__(self, other: Any, /) -> Any: ...
+    def __sub__(self, other: Any, /) -> Any: ...
+    def __rsub__(self, other: Any, /) -> Any: ...
+    def __mul__(self, other: Any, /) -> Any: ...
+    def __rmul__(self, other: Any, /) -> Any: ...
+    def __truediv__(self, other: Any, /) -> Any: ...
+    def __rtruediv__(self, other: Any, /) -> Any: ...
     def __neg__(self) -> Any: ...
-    def __matmul__(self, other: Any) -> Any: ...
-    def __rmatmul__(self, other: Any) -> Any: ...
+    def __matmul__(self, other: Any, /) -> Any: ...
+    def __rmatmul__(self, other: Any, /) -> Any: ...
+
+
+# Backend results are covariant; unspecified backends retain the portable protocol.
+DenseT = TypeVar("DenseT", bound=DenseArray, default=DenseArray, covariant=True)

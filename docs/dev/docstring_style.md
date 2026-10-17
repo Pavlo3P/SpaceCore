@@ -5,7 +5,7 @@ SpaceCore uses NumPy/numpydoc docstrings for public APIs.
 Canonical exemplars:
 
 - `spacecore/linop/_base.py::LinOp` for class-style documentation.
-- `spacecore/linalg/_cg.py::cg` and `CGResult` for solver/result documentation.
+- `spacecore/linalg/_cg.py::cg` and `LinalgResult` for solver/result documentation.
 
 ## Required section order
 
@@ -110,7 +110,7 @@ b : array-like
 
 Returns
 -------
-CGResult
+LinalgResult
     Named tuple containing the solution and convergence diagnostics.
 
 Notes

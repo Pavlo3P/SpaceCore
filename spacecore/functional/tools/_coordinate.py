@@ -1,27 +1,11 @@
-"""Shared base and helpers for coordinate-defined toolbox functionals.
+"""
+Base for coordinate-defined functionals: value plus Euclidean coordinate gradient.
 
-A coordinate functional ``F(x) = phi(x)`` is specified by its scalar value and
-its *Euclidean coordinate gradient* ``d phi / d x_i``. The metric-correct Riesz
-gradient required by [ADR-010](010_functional_contract.md) is obtained once, in
-:class:`_CoordinateFunctional`, by Riesz-correcting that coordinate gradient with
-``domain.riesz_inverse``. Centralizing the correction is the single defense
-against the [ADR-019](019_everyday_toolbox.md) trap of pairing a Euclidean
-gradient with a non-Euclidean metric.
-
-The correction is the Riesz representation theorem: the differential ``DF(x)``
-is a bounded linear functional on ``X``, so it is represented by a *unique*
-``g`` with ``DF(x)[h] = <g, h>_X`` for all ``h`` — and that ``g``, not the array
-of partials, is what ``grad`` returns. The two coincide only when ``X`` is
-Euclidean.
-
-References
-----------
-.. [Riesz] A. V. Balakrishnan, *Applied Functional Analysis*, 2nd ed.,
-   Springer, 1981, §1.7 (Riesz representation theorem) — existence and
-   uniqueness of the representer in a Hilbert space. See also Brezis,
-   *Functional Analysis, Sobolev Spaces and PDE*, Springer, 2011, Thm. 5.5.
-.. [ADR010] The library contract: ``grad`` is the metric (Riesz) gradient, an
-   element of ``X``; ``X.riesz`` maps it back to coordinates.
+:class:`_CoordinateFunctional` turns the coordinate gradient into the Riesz gradient
+``domain.riesz_inverse(d phi / d x)`` once. That is the one guard against pairing a
+Euclidean gradient with a non-Euclidean metric (ADR-010, ADR-019).
+Beck, *First-Order Methods in Optimization*, Remark 3.32; for complex real-valued
+objectives use ``DF[h] = Re(g^H R h)`` to obtain the same ``R^{-1}`` conversion.
 """
 from __future__ import annotations
 
@@ -29,13 +13,6 @@ from typing import Any, cast
 
 from .._base import Domain, Functional
 from ..._batching import _leading_batch_size, _warn_vmap_fallback_once
-from ..._checks import checked_method
-
-
-def _inner_core(space: Any, x: Any, y: Any) -> Any:
-    """Return ``<x, y>`` via the space's check-free inner product when present."""
-    inner = getattr(space, "_inner_core", space.inner)
-    return inner(x, y)
 
 
 def lp_value(ops: Any, vec: Any, p: float) -> Any:
@@ -51,6 +28,7 @@ def lp_coordinate_grad(ops: Any, vec: Any, p: float) -> Any:
     zero subgradient: there ``|v_i|^{p-1}`` already vanishes for ``p > 1`` and
     ``sign`` vanishes for ``p == 1``.
     """
+    # d/dx_i ||x||_p = sign(x_i) |x_i|^(p-1) / ||x||_p^(p-1); zero at the origin.
     r = ops.abs(vec)
     norm = ops.sum(r**p) ** (1.0 / p)
     safe = ops.where(norm > 0, norm, cast(Any, 1.0))
@@ -69,16 +47,18 @@ class _CoordinateFunctional(Functional[Domain]):
     weights on a diagonal metric, ``G^{-1}`` in general).
     """
 
-    @checked_method(in_space="domain", out_space="domain")
-    def grad(self, x: Any) -> Any:
+    def _grad_core(self, x: Any) -> Any:
         """Return the Riesz gradient under the domain geometry."""
-        return cast(Any, self.domain).riesz_inverse(self._coordinate_grad(x))
+        return cast(Any, self.domain)._riesz_inverse_core(self._coordinate_grad(x))
 
-    @checked_method(in_space="domain", out_space="domain", in_batched=True, out_batched=True)
-    def vgrad(self, xs: Any) -> Any:
-        """Evaluate :meth:`grad` independently over a leading batch axis."""
+    def _vgrad_core(self, xs: Any) -> Any:
+        """Return the gradient core evaluated independently over a leading batch axis."""
         _warn_vmap_fallback_once(self, "vgrad", _leading_batch_size(self.domain, xs))
-        return self.ops.vmap(self.grad, in_axes=0, out_axes=0)(xs)
+        return self.ops.vmap(self._grad_core, in_axes=0, out_axes=0)(xs)
+
+    def _differential_core(self, x: Any) -> Any:
+        """Return the coordinate partials directly; they are the differential covector."""
+        return self._coordinate_grad(x)
 
     def _coordinate_grad(self, x: Any) -> Any:
         """Return the Euclidean coordinate gradient ``d phi / d x_i``."""

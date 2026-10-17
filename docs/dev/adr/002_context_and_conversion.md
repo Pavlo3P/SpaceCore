@@ -10,7 +10,7 @@ Spaces, operators, and functionals need a common execution context for backend o
 
 ## Current design
 
-`Context` stores `ops`, `dtype`, and `enable_checks`. It does not own arrays, devices, sparse storage, or gradient state. Context normalization accepts a concrete `Context`, backend family/name, or `None`. Concrete contexts are copied with sanitized dtype. Backend names create a new context through the registered backend. `None` resolves to the process default.
+`Context` stores `ops` and `dtype`; the validation level belongs to each bound object (ADR-014). It does not own arrays, devices, sparse storage, or gradient state. Context normalization accepts a concrete `Context`, backend family/name, or `None`. Concrete contexts are copied with sanitized dtype. Backend names create a new context through the registered backend. `None` resolves to the process default.
 
 `Context.asarray` and `Context.assparse` convert explicit values into the context. `Context.convert` dispatches dense and sparse inputs through those constructors. `ContextBound.convert(new_ctx)` rebuilds a context-bound object in a target context through `_convert`; it returns `self` when the normalized context is equal. Constructors resolve explicit context first, then compatible inferred contexts from operands, then the default context.
 

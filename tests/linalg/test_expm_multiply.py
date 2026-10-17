@@ -48,8 +48,8 @@ class TestGroundTruth:
 
         result = sc.expm_multiply(A, v, t=0.0, max_iter=4)
 
-        np.testing.assert_allclose(result.result, v, rtol=1e-12, atol=1e-12)
-        assert isinstance(result, sc.ExpmMultiplyResult)
+        np.testing.assert_allclose(result.x, v, rtol=1e-12, atol=1e-12)
+        assert isinstance(result, sc.LinalgResult)
 
     @pytest.mark.parametrize("backend_name,dtype", backend_params(cupy=False))
     def test_matches_dense_ground_truth(self, backend_name, dtype):
@@ -61,7 +61,7 @@ class TestGroundTruth:
 
         result = sc.expm_multiply(A, v, t=-0.2, max_iter=8, tol=1e-12)
 
-        np.testing.assert_allclose(to_numpy(result.result), _ground_truth(matrix, v_np, -0.2), rtol=1e-5, atol=1e-5)
+        np.testing.assert_allclose(to_numpy(result.x), _ground_truth(matrix, v_np, -0.2), rtol=1e-5, atol=1e-5)
         assert bool(to_numpy(result.converged))
 
     @pytest.mark.parametrize("backend_name,dtype", numpy_jax_params())
@@ -74,10 +74,10 @@ class TestGroundTruth:
 
         result = sc.expm_multiply(A, ctx.asarray(v_np), t=1.0, max_iter=20, tol=1e-5)
 
-        assert int(to_numpy(result.krylov_dim)) == 3
-        assert np.all(np.isfinite(to_numpy(result.result)))
+        assert int(to_numpy(result.num_iters)) == 3
+        assert np.all(np.isfinite(to_numpy(result.x)))
         np.testing.assert_allclose(
-            to_numpy(result.result), _diagonal_expm_truth(diagonal, v_np, 1.0), rtol=1e-5, atol=1e-5
+            to_numpy(result.x), _diagonal_expm_truth(diagonal, v_np, 1.0), rtol=1e-5, atol=1e-5
         )
 
 
@@ -92,10 +92,10 @@ class TestAlgebra:
         v2 = ctx.asarray([0.5, 2.0])
         alpha, beta = 1.5, -0.25
 
-        combined = sc.expm_multiply(A, alpha * v1 + beta * v2, t=0.3, max_iter=6).result
+        combined = sc.expm_multiply(A, alpha * v1 + beta * v2, t=0.3, max_iter=6).x
         expected = (
-            alpha * sc.expm_multiply(A, v1, t=0.3, max_iter=6).result
-            + beta * sc.expm_multiply(A, v2, t=0.3, max_iter=6).result
+            alpha * sc.expm_multiply(A, v1, t=0.3, max_iter=6).x
+            + beta * sc.expm_multiply(A, v2, t=0.3, max_iter=6).x
         )
         np.testing.assert_allclose(combined, expected, rtol=1e-10, atol=1e-10)
 
@@ -105,9 +105,9 @@ class TestAlgebra:
         v = ctx.asarray([1.0, -1.0])
         t1, t2 = 0.2, -0.35
 
-        first = sc.expm_multiply(A, v, t=t1, max_iter=6).result
-        sequential = sc.expm_multiply(A, first, t=t2, max_iter=6).result
-        direct = sc.expm_multiply(A, v, t=t1 + t2, max_iter=6).result
+        first = sc.expm_multiply(A, v, t=t1, max_iter=6).x
+        sequential = sc.expm_multiply(A, first, t=t2, max_iter=6).x
+        direct = sc.expm_multiply(A, v, t=t1 + t2, max_iter=6).x
         np.testing.assert_allclose(sequential, direct, rtol=1e-10, atol=1e-10)
 
     def test_residual_estimate_decreases_with_more_iterations(self):
@@ -117,7 +117,7 @@ class TestAlgebra:
 
         low = sc.expm_multiply(A, v, t=0.4, max_iter=1, tol=1e-12)
         high = sc.expm_multiply(A, v, t=0.4, max_iter=3, tol=1e-12)
-        assert to_numpy(high.residual_estimate) <= to_numpy(low.residual_estimate)
+        assert to_numpy(high.residual_norm) <= to_numpy(low.residual_norm)
 
 
 # ===========================================================================
@@ -130,7 +130,7 @@ class TestComplexTime:
         A = _operator(ctx, matrix)
         v = ctx.asarray([1.0 + 0.5j, -0.25 + 0.75j])
 
-        result = sc.expm_multiply(A, v, t=-0.5j, max_iter=6, tol=1e-12).result
+        result = sc.expm_multiply(A, v, t=-0.5j, max_iter=6, tol=1e-12).x
 
         np.testing.assert_allclose(
             to_numpy(A.domain.norm(result)), to_numpy(A.domain.norm(v)), rtol=1e-10, atol=1e-10
@@ -145,7 +145,7 @@ class TestComplexTime:
         result = sc.expm_multiply(A, ctx.asarray(v_np), t=-0.5j, max_iter=6, tol=1e-12)
 
         np.testing.assert_allclose(
-            to_numpy(result.result), _ground_truth(matrix, v_np, -0.5j), rtol=1e-10, atol=1e-10
+            to_numpy(result.x), _ground_truth(matrix, v_np, -0.5j), rtol=1e-10, atol=1e-10
         )
 
     @pytest.mark.parametrize("backend_name,dtype", numpy_jax_params())
@@ -159,10 +159,10 @@ class TestComplexTime:
 
         result = sc.expm_multiply(A, ctx.asarray(v_np), t=t, max_iter=20, tol=1e-5)
 
-        assert int(to_numpy(result.krylov_dim)) == 3
-        assert np.all(np.isfinite(to_numpy(result.result)))
+        assert int(to_numpy(result.num_iters)) == 3
+        assert np.all(np.isfinite(to_numpy(result.x)))
         np.testing.assert_allclose(
-            to_numpy(result.result), _diagonal_expm_truth(diagonal, v_np, t), rtol=1e-5, atol=1e-5
+            to_numpy(result.x), _diagonal_expm_truth(diagonal, v_np, t), rtol=1e-5, atol=1e-5
         )
 
 
@@ -171,7 +171,7 @@ class TestComplexTime:
 # ===========================================================================
 class TestRejections:
     def test_rejects_structurally_non_hermitian_operator(self):
-        ctx = make_ctx()
+        ctx = make_ctx(check_level="standard")
         A = _operator(ctx, np.array([[1.0, 2.0], [0.0, 3.0]]))
         with pytest.raises(ValueError, match="Hermitian"):
             sc.expm_multiply(A, ctx.asarray([1.0, -2.0]), t=0.1, max_iter=4)
@@ -186,8 +186,8 @@ def test_expm_multiply_jit_matches_eager():
     A = _operator(ctx, matrix)
     v = ctx.asarray([1.0 - 0.5j, 0.25 + 0.75j])
 
-    eager = sc.expm_multiply(A, v, t=-0.5j, max_iter=6).result
-    run = jax.jit(lambda op, x: sc.expm_multiply(op, x, t=-0.5j, max_iter=6).result)
+    eager = sc.expm_multiply(A, v, t=-0.5j, max_iter=6).x
+    run = jax.jit(lambda op, x: sc.expm_multiply(op, x, t=-0.5j, max_iter=6).x)
     compiled = run(A, v)
 
     np.testing.assert_allclose(to_numpy(compiled), to_numpy(eager), rtol=1e-6, atol=1e-6)

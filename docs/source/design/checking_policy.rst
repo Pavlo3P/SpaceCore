@@ -1,16 +1,11 @@
 Checking policy
 ===============
 
-SpaceCore uses ``ContextBound.check_level`` as its public runtime-validation
-policy. The public type is ``spacecore.CheckLevel``, a literal type with four
-ordered values: ``"none"``, ``"cheap"``, ``"standard"``, and ``"strict"``. A
-literal keeps construction simple and makes invalid spellings visible to static
-type checkers without introducing a separate policy object.
-
-The level belongs to the *bound object* — space, operator, functional — and not
-to the :class:`~spacecore.Context`. A context fixes backend ops and dtype; two
-objects sharing both may still need different strictness, so the policy is set
-per object, with an ambient default for objects that do not name one.
+Each bound object (space, operator, functional) validates at its own
+``check_level``, one of ``"none"``, ``"cheap"``, ``"standard"``, ``"strict"``
+(the literal type ``spacecore.CheckLevel``). The :class:`~spacecore.Context`
+carries only backend ops and dtype; passing ``check_level=`` to it raises
+``TypeError``.
 
 .. code-block:: python
 
@@ -18,91 +13,76 @@ per object, with an ambient default for objects that do not name one.
 
    ctx = sc.Context(sc.NumpyOps(), dtype="float64")
    X = sc.DenseCoordinateSpace((3,), ctx=ctx, check_level="standard")
+   X.check_member(X.ctx.asarray([1.0, 2.0, 3.0]))
+   assert X.check_level == "standard"
 
-   x = X.ctx.asarray([1.0, 2.0, 3.0])
-   X.check_member(x)
+Checks catch errors; they never coerce inputs. A failed check raises.
 
 Levels
 ------
 
-``none``
-   Skips optional runtime membership and output checks. Constructor invariants
-   needed to keep internal storage coherent, such as an operator tensor's
-   layout, still run. Backend errors may otherwise surface later.
+Each level runs everything the levels below it run.
 
-``cheap``
-   Adds deterministic local checks: backend representation, shape/rank, scalar
-   field, exact dtype, tree structure and arity, tree leaf interface checks, and
-   domain/codomain membership at that same level. These checks are suitable for
-   performance-sensitive trusted code that still needs interface validation.
+============  ==================================================================
+Level         Adds
+============  ==================================================================
+``none``      Nothing optional. Constructor invariants that keep internal
+              storage coherent (operator layout, squareness) still run.
+``cheap``     Backend representation, shape/rank, scalar field, exact dtype,
+              tree structure and arity, per-leaf checks.
+``standard``  Hermitian membership, stored-representer membership, scalar
+              output shape, positive weights of ``WeightedInnerProduct``, the
+              Hermitian requirement of ``cg``, ``lanczos_smallest`` and
+              ``expm_multiply``. The default.
+``strict``    Numerical probes: matrix-free adjoint dot-test and declared
+              Hermitian test, ``cg`` positive-curvature probe, spectral probes
+              of ``OperatorInnerProduct``.
+============  ==================================================================
 
-``standard``
-   Adds linear or near-linear mathematical validation: stored representer
-   membership, configured Hermitian membership, and scalar functional output
-   shape. TreeSpace traversal also applies these standard checks to each
-   leaf. This is the normal choice for user-facing libraries and is the
-   compatibility target for the old enabled Boolean policy.
+Use ``"strict"`` while debugging, ``"standard"`` in user-facing code, and
+``"cheap"`` or ``"none"`` in trusted hot loops.
 
-``strict``
-   Includes all standard checks and enables expensive mathematical probes.
-   Current runtime probes include matrix-free adjoint consistency and CG
-   Hermitian/positive-curvature preconditions. Exhaustive basis, metric,
-   spectral, batched/single, and cross-backend conformance belongs in dedicated
-   development tests rather than every hot method call.
+Setting the level
+-----------------
 
-Choosing a level
-----------------
+* Per object: ``check_level=`` at construction; read it back from
+  ``obj.check_level``.
+* Ambient default for objects built without one:
+  :func:`spacecore.set_check_level` (process-wide) or
+  :func:`spacecore.use_check_level` (``with`` block, scoped to the current
+  thread or async task); read it with :func:`spacecore.get_check_level`.
+* Composites (sums, compositions, ``TreeSpace``) built without a level take the
+  least strict level of their parts: ``"strict"`` with ``"cheap"`` gives
+  ``"cheap"``.
 
-* Development and debugging: use ``"strict"`` when numerical probes are useful,
-  or ``"standard"`` for lower overhead.
-* Performance-sensitive trusted code: use ``"cheap"`` or ``"none"``.
-* User-facing libraries: usually use ``"standard"``.
+.. code-block:: python
 
-An object constructed without an explicit ``check_level`` takes the ambient
-default, read with :func:`spacecore.get_check_level`. Move that default
-process-wide with :func:`spacecore.set_check_level`, or for a block with
-:func:`spacecore.use_check_level`, which is scoped to the current thread or
-async task.
+   with sc.use_check_level("strict"):
+       Y = sc.DenseCoordinateSpace((3,), ctx=ctx)
+   assert Y.check_level == "strict"
+
+Under tracing
+-------------
+
+While a backend traces (``jax.jit``, ``jax.vmap``, ``torch.compile``), an object
+checks at the lower of its own level and
+:func:`spacecore.get_traced_check_level`, default ``"none"``. Raise the cap with
+:func:`spacecore.set_traced_check_level`: ``"cheap"`` keeps shape and dtype
+checks, which run once at trace time; ``"standard"`` and above compare values,
+which a tracer cannot do.
 
 Where checks run
 ----------------
 
-Spaces dispatch their ``SpaceCheck`` objects by minimum level. The same
-dispatch is used by ``check_member``, ``checked_method``, and batched trailing
-shape validation, so spaces, LinOps, functionals, and solver inputs share one
-policy. Tree leaf checks recurse under the converted leaf
-contexts. Linear-operator square/layout invariants that prevent incoherent
-internal state remain unconditional.
+Users implement ``_<op>_core`` methods; the public method (``apply``,
+``value``, ``inner``, ...) is a checked wrapper that validates inputs and
+outputs, then calls the core. Composites call the cores of their parts, so
+validation happens once, at the outer boundary.
 
-When a context is inferred from several source objects, SpaceCore selects the
-least expensive source level. For example, combining ``"strict"`` and
-``"cheap"`` contexts produces a ``"cheap"`` inferred policy.
+For implementers:
 
-Migration from context-carried levels
--------------------------------------
-
-Before 0.4.3 the level rode on the ``Context``, and the long-deprecated
-``enable_checks=`` Boolean was still accepted there. Both are gone: ``Context``
-is now exactly ``(ops, dtype)``, and passing either keyword to it raises
-``TypeError``.
-
-.. code-block:: python
-
-   # 0.4.3 and later: the level is set on the object
-   ctx = sc.Context(sc.NumpyOps())
-   X = sc.DenseCoordinateSpace((3,), ctx=ctx, check_level="standard")
-
-   # ...or moved for everything constructed in a block
-   with sc.use_check_level("strict"):
-       Y = sc.DenseCoordinateSpace((3,), ctx=ctx)
-
-The level is always one of the four literals; the Boolean spelling is not
-accepted in its place. Read an object's level back from ``obj.check_level``.
-
-Implementation convention
--------------------------
-
-Plain input and output membership checks use ``@checked_method``. Individual
-``SpaceCheck`` classes declare a minimum level. Inline validation uses
-``self._checks_at_least(level)`` only for checks that are not ordinary space
-membership, such as scalar output shape or a strict numerical probe.
+* Input/output membership: decorate with ``@checked_method``.
+* A ``SpaceCheck`` subclass declares ``minimum_level``; a space runs the checks
+  its level includes.
+* Any other check (scalar output shape, a numerical probe): guard it with
+  ``self._checks_at_least(level)``, which applies the tracing cap.

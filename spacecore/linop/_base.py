@@ -1,79 +1,45 @@
 from __future__ import annotations
 
 import warnings
-from abc import abstractmethod
 from functools import cached_property
 from math import prod
-from numbers import Number
 from typing import Any, Generic, TypeVar
 
 from .._batching import _leading_batch_size, _warn_vmap_fallback_once
-from .._check_policy import CheckLevel
+from .._checks import CheckLevel
 from .._checks import checked_method
-from ..backend import PyTreeNode
-from .._repr import describe_space
-from ..space import CoordinateSpace
+from ..space._capabilities import _CAP_BATCH, _CAP_COORDINATE, require
+from ..space import VectorSpace, RealField
 from ..contextual import Context
-from ..contextual import ContextBound
+from ..mapping import Mapping
 
-Domain = TypeVar("Domain", bound=CoordinateSpace)
-Codomain = TypeVar("Codomain", bound=CoordinateSpace)
+Domain = TypeVar("Domain", bound=VectorSpace)
+Codomain = TypeVar("Codomain", bound=VectorSpace)
 
 
-class LinOp(PyTreeNode, ContextBound, Generic[Domain, Codomain]):
+class LinOp(Mapping, Generic[Domain, Codomain]):
     r"""
-    Represent a linear map between two spaces.
+    A linear map from ``dom`` to ``cod``; subclasses supply ``apply`` and ``rapply``.
 
-    This class is intentionally small. It defines no storage assumptions and
-    requires subclasses to provide forward and adjoint actions.
-
-    The adjoint :math:`A^*` satisfies
-    :math:`\langle A x, y\rangle_Y = \langle x, A^* y\rangle_X` for
-    :math:`x \in X` and :math:`y \in Y`. For complex operators this is the
-    conjugate adjoint.
-
-    This is the **Hilbert-space adjoint** [Conway]_, defined by the pairing of
-    each space's own inner product — *not* the coordinate transpose, and not the
-    Banach (dual-space) adjoint. On a non-Euclidean geometry the two differ: see
-    :func:`~spacecore.linop._metric.metric_rapply` for the
-    :math:`R_X^{-1} A^\dagger R_Y` formula that realizes it.
+    ``rapply`` is the Hilbert-space adjoint in each space's own inner product,
+    :math:`\langle A x, y\rangle_Y = \langle x, A^* y\rangle_X`, not the coordinate
+    transpose. In orthonormal bases it is the conjugate transpose (Trefethen & Bau,
+    *Numerical Linear Algebra*, Lecture 2, pp. 11-12); in general coordinates it is
+    :math:`R_X^{-1} A^\dagger R_Y`, derived in
+    :func:`~spacecore.linop._metric.metric_rapply`.
+    Adjoint products reverse order (Trefethen & Bau, *Numerical Linear Algebra*,
+    Eq. (2.4)); inserting Gram factors cancels the intermediate metric.
 
     Parameters
     ----------
     dom : Space
-        Domain space ``X``.
+        Domain ``X``.
     cod : Space
-        Codomain space ``Y``.
+        Codomain ``Y``.
     ctx : Context, str, or None, optional
-        Backend context specification. Default is resolved from ``dom`` and
-        ``cod``.
+        Backend context; resolved from ``dom`` and ``cod`` when omitted.
     check_level : {"none", "cheap", "standard", "strict"}, optional
-        Runtime validation policy for this object. When omitted, the ambient
-        default (see :func:`spacecore.get_check_level`) is used. Unlike the
-        backend/dtype context, the validation policy is a property of the bound
-        object, not of the :class:`Context`.
-
-    Attributes
-    ----------
-    dom : Space
-        Domain space converted to ``ctx``.
-    cod : Space
-        Codomain space converted to ``ctx``.
-    ctx : Context
-        Resolved backend context.
-
-    References
-    ----------
-    .. [Conway] J. B. Conway, *A Course in Functional Analysis*, 2nd ed.,
-       Springer, 1990, II.2.4: for ``A`` in ``B(H,K)`` there is a **unique**
-       ``A*`` in ``B(K,H)`` with ``<Ah,k> = <h,A*k>``; existence rests on the
-       Riesz representation theorem (I.3.4), which is why a metric-aware adjoint
-       needs the Riesz maps. Theorem II.2.6 gives the algebra this class and
-       ``linop/_algebra.py`` implement:
-       ``(aA + B)* = conj(a) A* + B*``, ``(AB)* = B* A*`` (**order reverses**),
-       ``A** = A``. II.2.2 is the uniqueness statement behind "the" adjoint.
-       Conway II.3 (``def-adjoint-banach``) is the *different*, dual-space
-       adjoint — not what SpaceCore means by ``rapply``.
+        Validation level; the ambient default when omitted.
 
     Examples
     --------
@@ -93,9 +59,19 @@ class LinOp(PyTreeNode, ContextBound, Generic[Domain, Codomain]):
         dom: Domain,
         cod: Codomain,
         ctx: Context | str | None = None,
-        check_level: CheckLevel | bool | None = None,
+        check_level: CheckLevel | None = None,
     ):
+        # Scalar-valued maps are Functionals, not LinOps (ADR-010).
+        if isinstance(cod, RealField):
+            raise TypeError(
+                "LinOp codomain cannot be a RealField (ADR-010); use Functional "
+                "for scalar-valued maps and Riesz gradients."
+            )
         self.dom, self.cod = self._bind_context(ctx, dom, cod, check_level=check_level)
+
+    def _init_map(self, domain: Any, codomain: Any, ctx: Any, check_level: Any) -> None:
+        """Bind a node of this family (the hook the shared lazy nodes in ``mapping`` call)."""
+        LinOp.__init__(self, domain, codomain, ctx, check_level=check_level)
 
     @property
     def domain(self) -> Domain:
@@ -123,38 +99,47 @@ class LinOp(PyTreeNode, ContextBound, Generic[Domain, Codomain]):
             f"{type(self).__name__} does not define a native numerical representation."
         )
 
-    @abstractmethod
+    @checked_method(in_space="domain", out_space="codomain")
     def apply(self, x: Any) -> Any:
         """Apply the forward map to an element of ``self.domain``."""
+        return self._apply_core(x)
 
-    @abstractmethod
+    @checked_method(in_space="codomain", out_space="domain")
     def rapply(self, y: Any) -> Any:
         r"""Apply the adjoint map to an element of ``self.codomain``.
 
         This is the **Hilbert-space adjoint** ``A^#``, defined by
-        ``<Ax, y>_Y = <x, A^# y>_X`` (Dunford-Schwartz, *Linear Operators I*,
-        Definition VI.2.9) -- *not* the Banach adjoint of Definition VI.2.1,
-        which maps ``Y^* -> X^*`` and is the coordinate transpose. The two
-        coincide only when both spaces are Euclidean. See
-        :func:`spacecore.linop._metric.metric_rapply` for the derivation and
-        the full reference block.
+        ``<Ax, y>_Y = <x, A^# y>_X``. Trefethen & Bau, *Numerical Linear Algebra*,
+        Lecture 2, pp. 11-12, gives the conjugate transpose in orthonormal coordinates;
+        :func:`spacecore.linop._metric.metric_rapply` derives the Gram-matrix form.
+        The dual map sends a linear functional ``phi`` to ``phi o A``; writing
+        ``phi(y) = b^T y`` gives dual coordinates ``A^T b``, even over the complex field.
         """
+        return self._rapply_core(y)
 
+    def _require(self, capability: Any, name: str) -> None:
+        """Raise unless both endpoint spaces provide ``capability``."""
+        require(self.domain, capability, name)
+        require(self.codomain, capability, name)
+
+    # Subclasses implement the check-free cores, which the checked public methods
+    # call (an undecorated public override becomes the core; see install_public_checks).
     def _apply_core(self, x: Any) -> Any:
-        """Apply without adding validation beyond the concrete implementation."""
-        return self.apply(x)
+        raise NotImplementedError(f"{type(self).__name__} defines neither apply nor _apply_core.")
 
     def _rapply_core(self, y: Any) -> Any:
-        """Apply the adjoint without adding validation beyond the implementation."""
-        return self.rapply(y)
+        raise NotImplementedError(f"{type(self).__name__} defines neither rapply nor _rapply_core.")
 
     def _vapply_core(self, xs: Any) -> Any:
-        """Apply to a batch without adding validation beyond the implementation."""
-        return self.vapply(xs)
+        # Generic batching: vmap the single-element apply over the leading axis.
+        self._require(_CAP_BATCH, "LinOp.vapply")
+        _warn_vmap_fallback_once(self, "vapply", _leading_batch_size(self.domain, xs))
+        return self.ops.vmap(self.apply, in_axes=0, out_axes=0)(xs)
 
     def _rvapply_core(self, ys: Any) -> Any:
-        """Apply the adjoint to a batch without adding validation beyond the implementation."""
-        return self.rvapply(ys)
+        self._require(_CAP_BATCH, "LinOp.rvapply")
+        _warn_vmap_fallback_once(self, "rvapply", _leading_batch_size(self.codomain, ys))
+        return self.ops.vmap(self.rapply, in_axes=0, out_axes=0)(ys)
 
     def __call__(self, x: Any) -> Any:
         """Apply this linear operator to ``x``."""
@@ -163,8 +148,7 @@ class LinOp(PyTreeNode, ContextBound, Generic[Domain, Codomain]):
     def adjoint_apply(self, y: Any) -> Any:
         """Apply the adjoint of this linear operator to ``y``.
 
-        Spelled-out alias for :meth:`rapply`; the same Definition VI.2.9
-        adjoint, not a second notion.
+        Spelled-out alias for the inner-product adjoint :meth:`rapply`.
         """
         return self.rapply(y)
 
@@ -183,14 +167,12 @@ class LinOp(PyTreeNode, ContextBound, Generic[Domain, Codomain]):
     @checked_method(in_space="domain", in_batched=True)
     def vapply(self, xs: Any) -> Any:
         """Apply over a leading batch axis. Input must have shape ``(N,) + domain.shape``; use ``moveaxis`` for other layouts."""
-        _warn_vmap_fallback_once(self, "vapply", _leading_batch_size(self.domain, xs))
-        return self.ops.vmap(self.apply, in_axes=0, out_axes=0)(xs)
+        return self._vapply_core(xs)
 
     @checked_method(in_space="codomain", in_batched=True)
     def rvapply(self, ys: Any) -> Any:
         """Apply the adjoint over a leading batch axis. Input must have shape ``(N,) + codomain.shape``; use ``moveaxis`` for other layouts."""
-        _warn_vmap_fallback_once(self, "rvapply", _leading_batch_size(self.codomain, ys))
-        return self.ops.vmap(self.rapply, in_axes=0, out_axes=0)(ys)
+        return self._rvapply_core(ys)
 
     @property
     def H(self) -> LinOp:
@@ -202,79 +184,14 @@ class LinOp(PyTreeNode, ContextBound, Generic[Domain, Codomain]):
             Adjoint view satisfying
             :math:`\langle A x, y\rangle_Y = \langle x, A^* y\rangle_X`.
         """
-        from ._algebra import _AdjointViewLinOp
+        from ._matrix_free import _AdjointViewLinOp
 
+        # Build the adjoint view once and cache it, so A.H is A.H.
         view = getattr(self, "_adjoint_view", None)
         if view is None:
             view = _AdjointViewLinOp(self)
             self._adjoint_view = view
         return view
-
-    def __add__(self, other: Any) -> LinOp:
-        """Return the lazy sum ``self + other`` of two compatible operators."""
-        from ._algebra import make_sum
-
-        if not isinstance(other, LinOp):
-            return NotImplemented
-        return make_sum((self, other))
-
-    def __radd__(self, other: Any) -> LinOp:
-        """Return the lazy sum ``other + self`` of two compatible operators."""
-        from ._algebra import make_sum
-
-        if isinstance(other, Number) and other == 0:
-            return self
-        if not isinstance(other, LinOp):
-            return NotImplemented
-        return make_sum((other, self))
-
-    def __neg__(self) -> LinOp:
-        """Return the lazy negation ``-self``."""
-        from ._algebra import make_scaled
-
-        return make_scaled(-1, self)
-
-    def __sub__(self, other: Any) -> LinOp:
-        """Return the lazy difference ``self - other`` of two compatible operators."""
-        from ._algebra import make_scaled, make_sum
-
-        if not isinstance(other, LinOp):
-            return NotImplemented
-        return make_sum((self, make_scaled(-1, other)))
-
-    def __rsub__(self, other: Any) -> LinOp:
-        """Return the lazy difference ``other - self`` of two compatible operators."""
-        from ._algebra import make_scaled, make_sum
-
-        if isinstance(other, Number) and other == 0:
-            return make_scaled(-1, self)
-        if not isinstance(other, LinOp):
-            return NotImplemented
-        return make_sum((other, make_scaled(-1, self)))
-
-    def __mul__(self, scalar: Any) -> LinOp:
-        """Return the lazy right scalar multiple ``self * scalar``."""
-        from ._algebra import is_scalar_like, make_scaled
-
-        if not is_scalar_like(scalar):
-            return NotImplemented
-        return make_scaled(scalar, self)
-
-    def __rmul__(self, scalar: Any) -> LinOp:
-        """Return the lazy left scalar multiple ``scalar * self``."""
-        from ._algebra import is_scalar_like, make_scaled
-
-        if not is_scalar_like(scalar):
-            return NotImplemented
-        return make_scaled(scalar, self)
-
-    def __matmul__(self, other: Any) -> LinOp:
-        """Return the lazy composition ``self @ other`` of two compatible operators."""
-        from ._algebra import make_composed
-
-        if not isinstance(other, LinOp):
-            return NotImplemented
-        return make_composed(self, other)
 
     def adjoint(self) -> LinOp:
         """Return the Hermitian-adjoint view of this linear operator."""
@@ -282,38 +199,20 @@ class LinOp(PyTreeNode, ContextBound, Generic[Domain, Codomain]):
 
     def fuse(self, *, materialize: bool = False) -> LinOp:
         r"""
-        Return an equivalent operator with fusible sub-expressions multiplied out.
+        Return an equivalent operator with dense sub-expressions multiplied out (ADR-021).
 
-        Tier-2 lazy-algebra simplification ([ADR-021](021_lazy_operator_algebra_and_simplification.md)):
-        collapse each maximal subtree of densely-fusible operators into a single
-        materialized operator — for example, a composition of dense operators
-        becomes one :class:`DenseLinOp` holding the matrix product
-        :math:`M_A M_B` — while leaving matrix-free and other
-        non-materializable leaves intact.
-
-        This is an **explicit, opt-in materialization**. The result is
-        mathematically equal to ``self`` but only *within floating-point
-        rounding*: fusing reassociates the arithmetic (multiplying matrices then
-        applying differs from applying in sequence at the ulp level), so equality
-        holds up to tolerance, not bit-for-bit. The fused operator preserves the
-        domain, codomain, context, and scalar-field/dtype identity. A leaf
-        operator returns itself.
+        Each maximal run of dense operators becomes one :class:`DenseLinOp`; other leaves
+        stay lazy. The result equals ``self`` up to rounding. A leaf returns itself.
 
         Parameters
         ----------
         materialize : bool, optional
-            With the default ``False``, a matrix-free operand
-            ([ADR-008](008_linop_subclasses.md)) is **never** densified: it
-            remains a lazy leaf and only breaks a fusible run. With ``True`` the
-            caller explicitly accepts giving up the matrix-free contract: a
-            matrix-free operand is densified into a :class:`DenseLinOp` (via its
-            ``to_dense`` basis probe, which may be expensive), allowing the
-            enclosing expression to collapse to a single dense operator.
+            Also densify matrix-free operands, which may be costly; by default they stay lazy.
 
         Returns
         -------
         LinOp
-            A fused operator with the same action as ``self`` (up to rounding).
+            The fused operator.
         """
         return self
 
@@ -327,6 +226,7 @@ class LinOp(PyTreeNode, ContextBound, Generic[Domain, Codomain]):
         that already store a dense or sparse matrix should override this method
         for efficiency.
         """
+        self._require(_CAP_COORDINATE, "LinOp.to_dense")
         return self.ops.reshape(
             self.to_matrix(), tuple(self.codomain.shape) + tuple(self.domain.shape)
         )
@@ -346,14 +246,17 @@ class LinOp(PyTreeNode, ContextBound, Generic[Domain, Codomain]):
         for small/testing use; concrete storage-backed subclasses should
         override it when they can expose a matrix directly.
         """
+        self._require(_CAP_COORDINATE, "LinOp.to_matrix")
+        # Apply the operator to every basis vector: its images are the matrix columns.
         domain_size = prod(self.domain.shape)
         codomain_size = prod(self.codomain.shape)
         eye = self.ops.eye(domain_size, dtype=self.dtype)
 
+        # Fast path: one batched apply over the whole identity.
         try:
-            xs = self.domain.unflatten_batch(eye)
+            xs = self.domain._unflatten_batch_core(eye)
             ys = self.vapply(xs)
-            ys_flat = self.codomain.flatten_batch(ys)
+            ys_flat = self.codomain._flatten_batch_core(ys)
             matrix = self.ops.transpose(ys_flat, (1, 0))
             return self.ops.reshape(matrix, (codomain_size, domain_size))
         except (AttributeError, NotImplementedError, TypeError) as exc:
@@ -368,12 +271,13 @@ class LinOp(PyTreeNode, ContextBound, Generic[Domain, Codomain]):
                 stacklevel=2,
             )
 
+        # Fallback: one apply per basis vector.
         columns = []
         for i in range(domain_size):
             basis_vector = eye[:, i]
-            x = self.domain.unflatten(basis_vector)
+            x = self.domain._unflatten_core(basis_vector)
             y = self.apply(x)
-            columns.append(self.codomain.flatten(y))
+            columns.append(self.codomain._flatten_core(y))
         return self.ops.stack(tuple(columns), axis=1)
 
     def assert_domain(self, x: Any) -> None:
@@ -384,27 +288,28 @@ class LinOp(PyTreeNode, ContextBound, Generic[Domain, Codomain]):
         """Raise if ``y`` is not in the codomain."""
         self.cod.check_member(y)
 
-    def __eq__(self, other: Any) -> bool:
-        """Return structural equality when implemented by a subclass."""
-        return NotImplemented
-
-    def _arrow(self) -> str:
-        """Return the ``domain → codomain`` descriptor for this operator."""
-        return f"{describe_space(self.dom)} → {describe_space(self.cod)}"
-
-    def _repr_body(self) -> str:
-        return self._arrow()
-
-    def _short_repr(self) -> str:
-        """Return a bounded ``ClassName(domain → codomain)`` form for nesting.
-
-        Algebra operators show their operands in the full :meth:`__repr__` but
-        collapse to this arrow form when nested, so deep trees never explode.
-        """
-        return f"{type(self).__name__}({self._arrow()})"
-
     # tree_flatten / tree_unflatten are inherited from PyTreeNode, which owns the
     # flatten contract for every SpaceCore container and auto-registers concrete
     # subclasses with each backend's tree protocol. Every concrete LinOp is a
     # container, so the capability belongs on this base rather than being
     # re-declared (and separately registered) per operator.
+
+
+LinOp._family = LinOp
+
+
+def _require_linop(op: Any, name: str) -> LinOp:
+    """Return ``op`` as a linear operator or raise a typed error."""
+    if not isinstance(op, LinOp):
+        raise TypeError(f"{name} must be a LinOp, got {type(op).__name__}.")
+    return op
+
+
+@checked_method(in_space="codomain", out_space="domain", in_batched=True, out_batched=True)
+def _output_checked_rvapply(self: LinOp, ys: Any) -> Any:
+    """Apply the adjoint over a leading batch axis. Input must have shape ``(N,) + codomain.shape``; use ``moveaxis`` for other layouts."""
+    return self._rvapply_core(ys)
+
+
+# Assigned as ``rvapply`` by operators that also check the batched output.
+_output_checked_rvapply.__name__ = _output_checked_rvapply.__qualname__ = "rvapply"

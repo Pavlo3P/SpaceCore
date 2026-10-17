@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from contextvars import ContextVar
-from typing import Any, Iterable, Iterator, Tuple
+from typing import Any, ContextManager, Iterable, Iterator, Tuple, TypeVar
 from warnings import warn
 
-from .._check_policy import CheckLevel, normalize_check_level
+from .._checks import CheckLevel, normalize_check_level
 from ..types import DType
 from ..backend import BackendFamily, BackendOps, NumpyOps, OpsRegistry
 from ..backend import ops_registry as _default_ops_registry
@@ -31,24 +31,30 @@ _check_override: ContextVar[CheckLevel | None] = ContextVar(
 )
 
 
+_V = TypeVar("_V")
+
+
+@contextmanager
+def _override(var: ContextVar[Any], value: _V) -> Iterator[_V]:
+    """Set ``var`` to ``value`` for the block; the Token unwinds exactly this override."""
+    token = var.set(value)
+    try:
+        yield value
+    finally:
+        var.reset(token)
+
+
 class Contextual:
-    """Resolve which context and validation level are currently in effect.
+    """
+    The ambient context and check level: a process-wide baseline, overridable per thread/task.
 
-    Holds **ambient policy only** — the process-wide baseline context and check
-    level, each read through a scoped :class:`~contextvars.ContextVar` override
-    before falling back to the baseline stored here.
-
-    *Which backends exist* is a different kind of state and lives in
-    :class:`~spacecore.backend.OpsRegistry`: a registry is shared by every thread
-    and must never be scoped (a backend registered inside a ``with`` block that
-    vanished on exit would be a bug), whereas ambient policy is swappable by
-    design. This object consults the registry; it does not own it.
+    Which backends exist is separate state in :class:`~spacecore.backend.OpsRegistry`,
+    which is never scoped; this object only consults it.
 
     Parameters
     ----------
     ops_registry : OpsRegistry, optional
-        Backend registry to resolve names against. Defaults to the process-wide
-        instance; injectable so tests can resolve against their own.
+        Registry used to resolve backend names; the process-wide one by default.
     """
 
     _baseline_ctx: Context
@@ -58,9 +64,9 @@ class Contextual:
     _baseline_check_level: CheckLevel = "standard"
 
     def __init__(self, ops_registry: OpsRegistry | None = None) -> None:
+        # Baseline: NumPy at the default dtype and check level.
         ops = NumpyOps()
         self._baseline_ctx = Context(ops=ops, dtype=ops.sanitize_dtype(self._default_dtype))
-        self._baseline_check_level = type(self)._baseline_check_level
         self._ops_registry = ops_registry if ops_registry is not None else _default_ops_registry
 
     @property
@@ -77,7 +83,7 @@ class Contextual:
         level = _check_override.get()
         return level if level is not None else self._baseline_check_level
 
-    def set_check_level(self, level: CheckLevel | bool | None) -> None:
+    def set_check_level(self, level: CheckLevel | None) -> None:
         """Set the process-wide *baseline* validation level for new bound objects.
 
         Deliberately does not disturb scoped overrides: a ``scoped_check_level``
@@ -85,26 +91,21 @@ class Contextual:
         """
         self._baseline_check_level = normalize_check_level(level)
 
-    @contextmanager
-    def scoped_check_level(self, level: CheckLevel | bool | None) -> Iterator[CheckLevel]:
+    def scoped_check_level(self, level: CheckLevel | None) -> ContextManager[CheckLevel]:
         """Override the ambient validation level for the duration of the block.
 
         The override is visible only to the current thread / async task. The
         :class:`~contextvars.Token` returned by ``set`` unwinds exactly this
         override, so nesting and concurrent scopes cannot clobber one another.
         """
-        resolved = normalize_check_level(level)
-        token = _check_override.set(resolved)
-        try:
-            yield resolved
-        finally:
-            _check_override.reset(token)
+        return _override(_check_override, normalize_check_level(level))
 
     def normalize_context(
         self,
         ctx: Context | BackendFamily | str | None = None,
         dtype: Any = None,
     ) -> Context:
+        # None: the ambient context. Context: re-sanitized. Name: looked up in the registry.
         if ctx is None:
             if dtype is not None:
                 warn("Provided context is None; dtype is ignored.", UserWarning)
@@ -142,23 +143,17 @@ class Contextual:
         """Set the process-wide *baseline* context; scoped overrides still win."""
         self._baseline_ctx = self.normalize_context(ctx)
 
-    @contextmanager
     def scoped_ctx(
         self,
         ctx: Context | BackendFamily | str | None = None,
         dtype: Any = None,
-    ) -> Iterator[Context]:
+    ) -> ContextManager[Context]:
         """Override the default context for the duration of the block.
 
         The override is visible only to the current thread / async task; see
         :meth:`scoped_check_level` for the Token-unwind rationale.
         """
-        resolved = self.normalize_context(ctx, dtype=dtype)
-        token = _ctx_override.set(resolved)
-        try:
-            yield resolved
-        finally:
-            _ctx_override.reset(token)
+        return _override(_ctx_override, self.normalize_context(ctx, dtype=dtype))
 
     def infer_context(self, x: Any) -> Context | None:
         """Infer context from `.ctx` first, then registered backend arrays.
@@ -167,6 +162,7 @@ class Contextual:
         registry's job (:meth:`~spacecore.backend.OpsRegistry.match`); turning the
         match into a :class:`Context` is this object's.
         """
+        # A Context, then anything with a .ctx, then a raw array matched to one backend.
         if isinstance(x, Context):
             return x
 
@@ -192,35 +188,17 @@ class Contextual:
         return self.ctx_from_ops(ops, dtype)
 
     def infer_contexts(self, values: Iterable[Any]) -> Tuple[Context, ...]:
-        out: list[Context] = []
-        for x in values:
-            ctx = self.infer_context(x)
-            if ctx is not None:
-                out.append(ctx)
-        return tuple(out)
+        return tuple(c for c in map(self.infer_context, values) if c is not None)
 
     def are_compatible_contexts(self, *ctxs: Context) -> bool:
-        if len(ctxs) < 2:
-            return True
-        first = ctxs[0]
-        return all(ctx.same_backend(first) for ctx in ctxs[1:])
+        # Compatible means same backend; dtypes are reconciled later.
+        return all(ctx.same_backend(ctxs[0]) for ctx in ctxs[1:])
 
     def are_compatible_values(self, *values: Any) -> bool:
         return self.are_compatible_contexts(*self.infer_contexts(values))
 
     def are_compatible_ops(self, *ops: BackendOps) -> bool:
-        if not ops:
-            return True
-        first = ops[0]
-        return all(op == first for op in ops)
-
-    def enforce_convert_policy(
-        self, x: Any, to: Context | BackendFamily | str | None = None
-    ) -> Tuple[Any, Context]:
-        """Resolve the target context for ``x``."""
-        self.infer_context(x)
-        ctx = self.normalize_context(to)
-        return x, ctx
+        return all(op == ops[0] for op in ops)
 
     def resolve_context_priority(
         self,
@@ -228,6 +206,7 @@ class Contextual:
         *other_ctx: object,
     ) -> Context:
         """Resolve explicit context first, then compatible inferred contexts."""
+        # An explicit context wins; otherwise infer from the operands and join their dtypes.
         if priority_ctx is not None:
             return self.normalize_context(priority_ctx)
 
@@ -246,6 +225,7 @@ class Contextual:
         return self.ctx_from_ops(ops=ops, dtype=dtype)
 
     def _join_dtypes(self, ops: BackendOps, *dtypes: DType | None) -> DType | None:
+        # Promote the dtypes with the operands' own backend.
         clean = [ops.sanitize_dtype(dt) for dt in dtypes if dt is not None]
         if not clean:
             return ops.sanitize_dtype(None)

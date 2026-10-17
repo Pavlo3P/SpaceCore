@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 from math import prod
-from typing import Any, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Tuple
 
 from ..base import CoordinateSpace, EuclideanInnerProduct, InnerProduct, InnerProductSpace
 from ..checks import BackendCheck, DTypeCheck, FieldCheck, ShapeCheck, SpaceCheck
-from ..._check_policy import CheckLevel
-from ..._checks import checked_method
+from ..._checks import CheckLevel
 from ...contextual import Context
 from ...types import DenseArray
 
@@ -25,28 +24,37 @@ class DenseCoordinateSpace(CoordinateSpace, InnerProductSpace):
         Inner-product geometry. If omitted, Euclidean coordinate geometry is
         used.
     check_level : {"none", "cheap", "standard", "strict"}, optional
-        Runtime validation policy for this object. When omitted, the ambient
-        default (see :func:`spacecore.get_check_level`) is used. Unlike the
-        backend/dtype context, the validation policy is a property of the bound
-        object, not of the :class:`Context`.
+        Validation level; the ambient default when omitted.
     """
+
+    if TYPE_CHECKING:
+        # Typing only: the checked public methods are inherited; these narrow their results.
+        def add(self, x: DenseArray, y: DenseArray) -> DenseArray: ...
+        def scale(self, a: Any, x: DenseArray) -> DenseArray: ...
+        def axpy(self, a: Any, x: DenseArray, y: DenseArray) -> DenseArray: ...
+
+
+    _fields = ("shape", "ctx", "geometry")
 
     def __init__(
         self,
         shape: Tuple[int, ...],
         ctx: Context | str | None = None,
         geometry: InnerProduct | None = None,
-        check_level: CheckLevel | bool | None = None,
+        check_level: CheckLevel | None = None,
     ) -> None:
         super().__init__(tuple(shape), ctx, check_level=check_level)
+        # Euclidean geometry unless one is given; validate it against this space.
         self.geometry: InnerProduct = geometry if geometry is not None else EuclideanInnerProduct()
         self.geometry.validate_for(self)
+        # Cache the flat size and whether the shape is already flat.
         self._size = prod(self.shape)
         self._is_flat_shape = self.shape == (self._size,)
 
     def _eq_algebra(self, other: Any) -> bool:
         # Tier 2: geometry kind (structural, also shields the geometry's own
         # allclose). Tier 3: geometry value comparison (weights for weighted).
+        # Equal spaces also need equal geometry.
         return (
             super()._eq_algebra(other)
             and type(self.geometry) is type(other.geometry)
@@ -71,59 +79,39 @@ class DenseCoordinateSpace(CoordinateSpace, InnerProductSpace):
         """Return the zero vector in this space."""
         return self.ops.zeros(self.shape, dtype=self.dtype)
 
-    @checked_method(in_space="self", arg_positions=(0, 1))
-    def add(self, x: Any, y: Any) -> DenseArray:
-        """Return the vector-space sum ``x + y``."""
-        return self._add_core(x, y)
-
     def _add_core(self, x: Any, y: Any) -> DenseArray:
         """Return ``x + y`` without membership checks."""
         result = x + y
         return self.ctx.asarray(result) if self.shape == () else result
 
-    def add_batch(self, x: Any, y: Any) -> DenseArray:
+    def _add_batch_core(self, x: Any, y: Any) -> DenseArray:
         """Return the leading-axis batch sum ``x + y``."""
         return x + y
-
-    @checked_method(in_space="self", arg_positions=(1,))
-    def scale(self, a: Any, x: Any) -> DenseArray:
-        """Return the scalar product ``a * x``."""
-        return self._scale_core(a, x)
 
     def _scale_core(self, a: Any, x: Any) -> DenseArray:
         """Return ``a * x`` without membership checks."""
         result = a * x
         return self.ctx.asarray(result) if self.shape == () else result
 
-    def scale_batch(self, a: Any, x: Any) -> DenseArray:
+    def _scale_batch_core(self, a: Any, x: Any) -> DenseArray:
         """Return the leading-axis batch scalar product ``a * x``."""
         return a * x
 
-    @checked_method(in_space="self", arg_positions=(0, 1))
-    def inner(self, x: Any, y: Any) -> Any:
-        r"""Return :math:`\langle x, y\rangle_X` using this space's geometry."""
-        return self._inner_core(x, y)
-
-    def _inner_core(self, x: Any, y: Any) -> Any:
-        """Return the configured inner product without membership checks."""
-        return self.geometry.inner(self.ops, x, y)
-
-    @checked_method(in_space="self")
-    def flatten(self, X: DenseArray) -> DenseArray:
+    def _flatten_core(self, X: DenseArray) -> DenseArray:
         """Return ``X`` as a dense one-dimensional coordinate vector."""
         return X if self._is_flat_shape else X.reshape((-1,))
 
-    def unflatten(self, v: DenseArray) -> DenseArray:
+    def _unflatten_core(self, v: DenseArray) -> DenseArray:
         """Reshape a flat coordinate vector into this space's canonical shape."""
         V = self._coerce_dense(v)
         return V if self._is_flat_shape else V.reshape(self.shape)
 
-    def flatten_batch(self, xs: DenseArray) -> DenseArray:
+    def _flatten_batch_core(self, xs: DenseArray) -> DenseArray:
         """Flatten a leading-axis batch of dense elements to ``(N, size)``."""
         xs = self._coerce_dense(xs)
         return xs if self._is_flat_shape else xs.reshape((xs.shape[0], -1))
 
-    def unflatten_batch(self, vs: DenseArray) -> DenseArray:
+    def _unflatten_batch_core(self, vs: DenseArray) -> DenseArray:
         """Unflatten rows of shape ``(N, size)`` into dense space elements."""
         vs = self._coerce_dense(vs)
         return vs if self._is_flat_shape else vs.reshape((vs.shape[0],) + self.shape)
@@ -138,6 +126,13 @@ class DenseCoordinateSpace(CoordinateSpace, InnerProductSpace):
         if self.check_level != "none" and tuple(getattr(x, "shape", ())) == self.shape:
             self._check_member(x)
 
-    def _convert(self, new_ctx: Context) -> DenseCoordinateSpace:
-        """Convert this dense coordinate space to ``new_ctx`` without changing shape."""
-        return DenseCoordinateSpace(self.shape, new_ctx, geometry=self.geometry.convert(new_ctx))
+    def _apply_entrywise(self, x: DenseArray, f: Callable[[DenseArray], DenseArray]) -> DenseArray:
+        """Apply ``f`` entrywise and verify that shape is preserved."""
+        # Apply f to the whole array, else elementwise; the shape must not change.
+        try:
+            y = f(x)
+        except Exception:
+            y = self.ops.vectorize(f)(x)
+        if self._checks_at_least("cheap") and y.shape != x.shape:
+            raise ValueError("Function application changed shape.")
+        return y

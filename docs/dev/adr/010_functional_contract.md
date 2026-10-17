@@ -6,15 +6,26 @@ Accepted
 
 ## Context
 
-Functionals are scalar-valued maps on spaces. They share context and validation mechanics with LinOps but have different mathematical contracts.
+From 0.5.0a, Functionals are real-valued scalar maps on spaces, including complex domains. They share context and validation mechanics with LinOps but have different mathematical contracts.
 
 ## Current design
 
-`Functional` owns one domain space and a context. Subclasses implement `value(x)`. `vvalue(xs)` evaluates over a leading batch axis through backend `vmap` unless overridden. `LinearFunctional` adds a Riesz-gradient contract through `representer`, `grad`, and `vgrad`. `InnerProductFunctional` stores a representer and evaluates `<c, x>`. `MatrixFreeLinearFunctional` trusts user evaluation callables and has no stored representer. `QuadraticForm` defines optional `grad`, `vgrad`, and `hess_apply`; `LinOpQuadraticForm` stores a Hermitian operator, optional linear term, and scalar offset. Pull-backs are built by composing with a LinOp and have specializations for inner-product and quadratic functionals.
+`Functional` owns a domain space, a `RealField` codomain, and a context. Subclasses implement `value(x)`. `vvalue(xs)` evaluates over a leading batch axis through backend `vmap` unless overridden. `LinearFunctional` adds a Riesz-gradient contract through `representer`, `grad`, and `vgrad`. `InnerProductFunctional` stores a representer and evaluates `Re<c, x>`. `MatrixFreeLinearFunctional` requires real outputs from user evaluation callables and has no stored representer. `QuadraticForm` defines optional `grad`, `vgrad`, and `hess_apply`; `LinOpQuadraticForm` stores a Hermitian operator, optional linear term, and scalar offset. Pull-backs are built by composing with a LinOp and have specializations for inner-product and quadratic functionals.
 
 ## Decision
 
-A functional is not a LinOp with a one-dimensional codomain. It owns a domain and scalar-valued evaluation, and gradients are space elements with respect to the domain geometry when implemented.
+A functional is not a LinOp with a one-dimensional codomain. It owns a domain, a `RealField` codomain and real scalar-valued evaluation, and gradients are space elements with respect to the domain geometry when implemented.
+
+`RealField` inherits `InnerProductSpace` (and therefore `VectorSpace`), but not
+`CoordinateSpace`. Since `LinOp` now accepts `VectorSpace` endpoints, the type
+bound alone cannot maintain this separation. `LinOp.__init__` explicitly rejects
+a `RealField` codomain with an error citing ADR-010. Use a `Functional` for that map.
+
+Scalar output validation uses `out_space="codomain"` and the field's
+`ScalarShapeCheck`, active only at `standard` and `strict`. Exact batch output
+validation deliberately retains `out_batched_scalar`: ordinary batched space
+membership cannot require exactly `(N,)`. The matrix-free explicit batch
+callback retains its existing check of all leading axes (ADR-006).
 
 ## Rationale
 
@@ -26,11 +37,14 @@ Representing all functionals as LinOps into a scalar space was rejected because 
 
 ## Consequences
 
-New functionals must validate domain inputs and scalar output shape when checks are enabled. Gradients must be Riesz gradients satisfying the domain inner-product convention. Pull-back specializations may use `A.H` and therefore depend on [ADR-009](009_metric_adjoint.md).
+New functionals must validate domain inputs and scalar output shape when checks are enabled. Real-valued objectives use `DF(x)[h] = Re<grad F(x),h>`; all linear functionals and differentials are linear over the real scalars. Beck, *First-Order Methods in Optimization*, Thm 3.29 and Remark 3.32, supplies the real case; expanding the real part supplies the complex real-valued case. Pull-back specializations may use `A.H` and therefore depend on [ADR-009](009_metric_adjoint.md).
 
 ## Contributor invariants
 
-- `value` returns a scalar-like backend value, not an element of a codomain space.
+- `value` returns a real scalar-like backend value; batch and fused evaluators obey the same rule.
+- With checks on (`cheap` and above), complex dtypes (even with zero imaginary part), coefficients, and offsets raise `TypeError` through `RealField` membership; overriding public evaluators are checked the same way. At `none` nothing is checked. The check uses dtype metadata and is compatible with tracing.
+- Functionals pair through the domain's real inner product `real_inner(x, y) = Re<x, y>` and apply no real part of their own; user callbacks are not projected. Extended-real indicator values remain supported.
+- Conversion and pytree reconstruction preserve the real codomain independently of domain storage.
 - `grad` returns a domain element when implemented.
 - Matrix-free functionals do not imply a stored representer.
 - Functional composition requires `A.codomain == F.domain`.

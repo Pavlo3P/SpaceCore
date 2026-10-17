@@ -41,7 +41,7 @@ def test_torch_from_operators_joins_dtypes_through_backend():
     """Regression: inferring a context by joining leaf dtypes must use the
     operand backend's own ``result_type``, not NumPy's.
 
-    ``BlockDiagonalLinOp.from_operators`` / ``StackedLinOp.from_operators`` infer
+    ``BlockDiagonalLinOp.from_operators`` / ``BlockMatrixLinOp.stack`` infer
     a ``TreeSpace`` and join its leaves' dtypes. Routing that join through
     ``numpy.result_type`` raised ``TypeError: Cannot interpret 'torch.float64' as
     a data type`` on the torch backend.
@@ -57,8 +57,8 @@ def test_torch_from_operators_joins_dtypes_through_backend():
 
     bd = sc.BlockDiagonalLinOp.from_operators((A, B))   # previously raised
     assert bd.ctx.dtype == dt
-    sc.StackedLinOp.from_operators((A, B))               # same inference path
-    sc.SumToSingleLinOp.from_operators((A, B))
+    sc.BlockMatrixLinOp.stack((A, B))               # same inference path
+    sc.BlockMatrixLinOp.from_operators((A, B))
 
     # ADR-021 fuse() goes through the same construction and must work on torch.
     fused = (A @ B).fuse()

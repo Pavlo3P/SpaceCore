@@ -21,7 +21,7 @@ import pytest
 
 import spacecore as sc
 
-from spacecore.functional._base import _VMAP_FALLBACK_WARNED
+from spacecore._batching import _VMAP_FALLBACK_WARNED
 from tests._helpers import to_numpy
 
 

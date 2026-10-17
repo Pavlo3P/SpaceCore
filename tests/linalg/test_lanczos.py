@@ -4,7 +4,7 @@ Checklist section 8, ``lanczos_smallest`` + internal ``_LanczosBasisResult``:
 
 * Approximates the smallest eigenpair (real, complex Hermitian, large-scale).
 * Geometry awareness: weighted / custom inner products give the metric pair.
-* Zero initial vector falls back to a deterministic coordinate vector.
+* Zero initial vector is rejected eagerly.
 * Rejects invalid ``max_iter``, structurally non-Hermitian, and rectangular
   operators.
 * ``krylov_dim`` reflects true breakdown; the basis is orthonormal and the
@@ -36,17 +36,17 @@ class TestSmallestEigenpair:
         result = sc.lanczos_smallest(op, ctx.asarray([1.0, 1.0]), max_iter=2, tol=1e-8)
 
         np.testing.assert_allclose(to_numpy(result.eigenvalue), 2.0, rtol=1e-5, atol=1e-5)
-        np.testing.assert_allclose(np.abs(to_numpy(result.eigenvector)), [1.0, 0.0], rtol=1e-5, atol=1e-5)
+        np.testing.assert_allclose(np.abs(to_numpy(result.x)), [1.0, 0.0], rtol=1e-5, atol=1e-5)
         assert bool(to_numpy(result.converged))
         np.testing.assert_allclose(to_numpy(result.residual_norm), 0.0, atol=1e-5)
-        assert int(to_numpy(result.krylov_dim)) == 2
+        assert int(to_numpy(result.num_iters)) == 2
 
     def test_returns_result_object(self):
         ctx = make_ctx()
         space = sc.DenseCoordinateSpace((2,), ctx)
         op = sc.DenseLinOp(ctx.asarray([[2.0, 0.0], [0.0, 5.0]]), space, space, ctx)
         result = sc.lanczos_smallest(op, ctx.asarray([1.0, 1.0]), max_iter=2, tol=1e-8)
-        assert isinstance(result, sc.LanczosResult)
+        assert isinstance(result, sc.LinalgResult)
         np.testing.assert_allclose(result.eigenvalue, 2.0)
 
     def test_handles_complex_hermitian_operator(self):
@@ -60,8 +60,8 @@ class TestSmallestEigenpair:
         expected = np.linalg.eigvalsh(matrix)[0]
         np.testing.assert_allclose(to_numpy(result.eigenvalue), expected, rtol=1e-7, atol=1e-7)
         np.testing.assert_allclose(
-            to_numpy(op.apply(result.eigenvector)),
-            to_numpy(result.eigenvalue) * to_numpy(result.eigenvector),
+            to_numpy(op.apply(result.x)),
+            to_numpy(result.eigenvalue) * to_numpy(result.x),
             rtol=1e-6,
             atol=1e-6,
         )
@@ -74,7 +74,7 @@ class TestSmallestEigenpair:
         result = sc.lanczos_smallest(op, ctx.asarray([1.0, 1.0]), max_iter=4, tol=1e-8)
 
         np.testing.assert_allclose(to_numpy(result.eigenvalue), 2.0e12, rtol=1e-6)
-        np.testing.assert_allclose(np.abs(to_numpy(result.eigenvector)), [1.0, 0.0], atol=1e-5)
+        np.testing.assert_allclose(np.abs(to_numpy(result.x)), [1.0, 0.0], atol=1e-5)
 
     def test_matrix_free_reference_has_normalized_ritz_vector(self):
         ctx = make_ctx(check_level="standard")
@@ -87,13 +87,13 @@ class TestSmallestEigenpair:
             operator, ctx.asarray([1.0, -0.5, 0.75]), max_iter=3, tol=1e-12, check_every=1
         )
         expected = np.linalg.eigvalsh(matrix)[0]
-        residual = operator.apply(result.eigenvector) - result.eigenvalue * result.eigenvector
+        residual = operator.apply(result.x) - result.eigenvalue * result.x
 
         np.testing.assert_allclose(to_numpy(result.eigenvalue), expected, rtol=1e-10, atol=1e-10)
-        np.testing.assert_allclose(to_numpy(space.norm(result.eigenvector)), 1.0, atol=1e-12)
+        np.testing.assert_allclose(to_numpy(space.norm(result.x)), 1.0, atol=1e-12)
         np.testing.assert_allclose(to_numpy(space.norm(residual)), 0.0, atol=1e-10)
-        assert tuple(result.eigenvector.shape) == space.shape
-        assert int(to_numpy(result.krylov_dim)) == 3
+        assert tuple(result.x.shape) == space.shape
+        assert int(to_numpy(result.num_iters)) == 3
 
 
 # ===========================================================================
@@ -109,8 +109,8 @@ class TestGeometryAndFallback:
                 super().__init__(tuple(weights.shape), ctx)
                 self.weights = weights
 
-            def inner(self, x, y):
-                if self._enable_checks:
+            def _inner_core(self, x, y):
+                if self.check_level != "none":
                     self._check_member(x)
                     self._check_member(y)
                 return self.ops.vdot(x, self.weights * y)
@@ -128,21 +128,19 @@ class TestGeometryAndFallback:
         expected = np.min(np.linalg.eigvals(to_numpy(matrix)).real)
         np.testing.assert_allclose(to_numpy(result.eigenvalue), expected, rtol=1e-7, atol=1e-7)
         np.testing.assert_allclose(
-            to_numpy(op.apply(result.eigenvector)),
-            to_numpy(result.eigenvalue) * to_numpy(result.eigenvector),
+            to_numpy(op.apply(result.x)),
+            to_numpy(result.eigenvalue) * to_numpy(result.x),
             rtol=1e-6,
             atol=1e-6,
         )
 
-    def test_uses_e0_for_zero_initial_vector(self):
+    def test_rejects_zero_initial_vector(self):
         ctx = make_ctx()
         space = sc.DenseCoordinateSpace((2,), ctx)
         op = sc.DenseLinOp(ctx.asarray([[2.0, 0.0], [0.0, 5.0]]), space, space, ctx)
 
-        result = sc.lanczos_smallest(op, ctx.asarray([0.0, 0.0]), max_iter=2, tol=1e-8)
-
-        np.testing.assert_allclose(result.eigenvalue, 2.0, rtol=1e-6, atol=1e-6)
-        np.testing.assert_allclose(result.eigenvector, [1.0, 0.0], rtol=1e-6, atol=1e-6)
+        with pytest.raises(ValueError, match="nonzero"):
+            sc.lanczos_smallest(op, ctx.asarray([0.0, 0.0]), max_iter=2, tol=1e-8)
 
 
 # ===========================================================================
@@ -157,7 +155,7 @@ class TestRejections:
             sc.lanczos_smallest(op, ctx.asarray([1.0]), max_iter=0)
 
     def test_rejects_structurally_non_hermitian_operator(self):
-        ctx = make_ctx()
+        ctx = make_ctx(check_level="standard")
         space = sc.DenseCoordinateSpace((2,), ctx)
         op = sc.DenseLinOp(ctx.asarray([[1.0, 2.0], [0.0, 3.0]]), space, space, ctx)
         with pytest.raises(ValueError, match="Hermitian"):
@@ -186,7 +184,7 @@ class TestKrylovDimension:
             op, ctx.asarray([1.0, 1.0, 1.0]), max_iter=20, tol=1e-5, check_every=10
         )
 
-        assert int(to_numpy(result.krylov_dim)) <= 3
+        assert int(to_numpy(result.num_iters)) <= 3
         np.testing.assert_allclose(to_numpy(result.eigenvalue), 1.5, rtol=1e-5, atol=1e-5)
 
 
@@ -252,7 +250,7 @@ def test_lanczos_smallest_jit_compiles_with_operator_argument():
 
     def run(A, initial):
         result = sc.lanczos_smallest(A, initial, max_iter=2, tol=1e-8)
-        return result.eigenvalue, result.eigenvector
+        return result.eigenvalue, result.x
 
     eigenvalue, eigenvector = jax.jit(run)(op, ctx.asarray([1.0, 1.0]))
 

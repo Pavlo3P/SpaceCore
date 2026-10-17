@@ -1,54 +1,21 @@
-"""Backend-neutral container protocol and the registry that wires it to backends.
+"""
+Registry wiring SpaceCore's pytree containers into each backend's tree protocol.
 
-A SpaceCore ``LinOp``/``Functional``/``Space`` is a *structured container*: it
-decomposes into ``(children, aux)`` — dynamic array-bearing children plus static
-metadata — and rebuilds from that pair. Every backend with function-transform
-machinery needs to know that structure in order to see inside our objects:
-``jax.jit``/``grad``/``vmap`` and ``lax.while_loop`` consult ``jax.tree_util``'s
-pytree registry, ``torch.compile``/``torch.func`` consult Torch's. There is **no
-shared cross-framework registry** — registering with one does nothing for the
-other — so supporting N backends means N registration calls per class.
-
-That is the bookkeeping no pytree library hands you, and it is all this module
-does. Two sets grow independently and in an order nobody controls:
-
-* **container classes**, as ``linop``/``functional``/``space`` modules import;
-* **backends with a tree protocol**, as each ``BackendOps`` is loaded.
-
-:class:`PyTreeRegistry` keeps both and, whenever either side gains a member,
-wires it against everything currently on the other side (*two-axis back-fill*).
-Registration therefore does not depend on import order, which is what lets a
-backend loaded late still pick up classes defined early, and vice versa.
-
-The flatten protocol itself lives on :class:`PyTreeNode`, the capability mixin
-concrete containers inherit; the per-backend translation lives in each backend's
-adapter.
-
-This module sits in :mod:`spacecore.backend` — the backend-*neutral* abstraction
-layer, beside the :class:`~spacecore.backend.BackendOps` contract whose
-``install_pytree_protocol`` feeds the registry — and imports **nothing**, not even
-from its own package. No individual backend is named here; each one reaches in
-from its own adapter. So the concept stays backend-agnostic while living next to
-the layer it serves, and the module is safe to import from anywhere without
-risking a cycle.
-
-Note on global state: ``registry`` is a process-wide singleton, but a *monotonic*
-one — classes and backends are only ever added, wiring is idempotent, and the
-final state is a function of what got imported rather than of the order it got
-imported in. That grow-only property is what makes a shared instance safe here;
-do not add removal or reset to it (tests construct their own instance instead).
+JAX and torch keep separate pytree registries, so every container class must be
+registered with every backend. :class:`PyTreeRegistry` records both sides and wires
+each new class or backend against the other, whatever the import order. It only
+grows, and this module imports nothing, so it cannot form an import cycle.
 """
 from __future__ import annotations
 
-import threading
 import warnings
-from abc import ABC, abstractmethod
+from abc import ABC
 from typing import Any, Callable, Self
 
 #: Registers one class with one backend's pytree system. Supplied by that
 #: backend's adapter, which owns the translation from our ``tree_flatten`` /
 #: ``tree_unflatten`` pair into whatever shape the backend expects.
-TreeRegistrar = Callable[[type], None]
+TreeRegistrar = Callable[[type], object]
 
 
 class PyTreeRegistry:
@@ -63,14 +30,10 @@ class PyTreeRegistry:
     """
 
     def __init__(self) -> None:
-        self._classes: list[type] = []
-        self._seen: set[type] = set()
+        # Registration happens while modules import, which the import lock serializes.
+        self._classes: dict[type, None] = {}  # ordered set
         self._backends: dict[str, TreeRegistrar] = {}
         self._done: set[tuple[str, type]] = set()
-        # Registration normally happens during imports (already serialized), but
-        # a backend may install its protocol lazily at runtime; an RLock keeps
-        # the check-then-wire in _wire atomic without costing anything at import.
-        self._lock = threading.RLock()
 
     def register_class(self, cls: type) -> None:
         """Record a container class and wire it into every backend known so far.
@@ -80,12 +43,10 @@ class PyTreeRegistry:
         cls : type
             Concrete container class providing ``tree_flatten``/``tree_unflatten``.
         """
-        with self._lock:
-            if cls not in self._seen:
-                self._seen.add(cls)
-                self._classes.append(cls)
-            for name, registrar in self._backends.items():
-                self._wire(name, registrar, cls)
+        # Remember the class once, then wire it into every backend seen so far.
+        self._classes.setdefault(cls)
+        for name, registrar in self._backends.items():
+            self._wire(name, registrar, cls)
 
     def register_backend(self, name: str, registrar: TreeRegistrar) -> None:
         """Record a backend's tree protocol and back-fill every class known so far.
@@ -97,25 +58,22 @@ class PyTreeRegistry:
         registrar : callable
             Registers a single class with that backend's pytree system.
         """
-        with self._lock:
-            self._backends[name] = registrar
-            for cls in self._classes:
-                self._wire(name, registrar, cls)
+        # Wire the new backend into every class seen so far.
+        self._backends[name] = registrar
+        for cls in self._classes:
+            self._wire(name, registrar, cls)
 
     def registered_classes(self) -> tuple[type, ...]:
         """Return the container classes recorded so far, in registration order."""
-        with self._lock:
-            return tuple(self._classes)
+        return tuple(self._classes)
 
     def backends(self) -> tuple[str, ...]:
         """Return the names of the backends whose tree protocol is installed."""
-        with self._lock:
-            return tuple(self._backends)
+        return tuple(self._backends)
 
     def is_wired(self, name: str, cls: type) -> bool:
         """Return whether ``cls`` has been wired into backend ``name``."""
-        with self._lock:
-            return (name, cls) in self._done
+        return (name, cls) in self._done
 
     def _wire(self, name: str, registrar: TreeRegistrar, cls: type) -> None:
         """Register ``cls`` with backend ``name`` at most once.
@@ -128,10 +86,12 @@ class PyTreeRegistry:
         means, which several backends report by raising) cannot produce repeated
         attempts or warning spam.
         """
+        # Each (backend, class) pair is wired at most once.
         key = (name, cls)
         if key in self._done:
             return
         self._done.add(key)
+        # A failing registrar must not break import; the class then stays an opaque leaf.
         try:
             registrar(cls)
         except Exception as exc:  # noqa: BLE001 - see docstring: import must survive
@@ -146,6 +106,29 @@ class PyTreeRegistry:
 
 #: Process-wide registry used by :class:`PyTreeNode` and the backend adapters.
 registry = PyTreeRegistry()
+
+
+def field_values(obj: Any) -> dict[str, Any]:
+    """Map each constructor field ``obj`` declares in ``_fields`` to its current value."""
+    values = {}
+    for spec in type(obj)._fields:
+        param, _, attr = spec.partition(":")
+        values[param] = getattr(obj, attr or param)
+    return values
+
+
+def rebuild_class(cls: type) -> type:
+    """Return the class a conversion rebuilds ``cls`` through: the nearest one whose ``__new__`` picks the subclass.
+
+    Unflattening keeps the exact class, so a traced rebuild re-validates its invariants;
+    converting may change them (a real space becoming complex), so it goes through the factory.
+    """
+    for base in cls.__mro__:
+        if base is PyTreeNode or base is object:
+            break
+        if "__new__" in vars(base):
+            return base
+    return cls
 
 
 class PyTreeNode(ABC):
@@ -166,7 +149,13 @@ class PyTreeNode(ABC):
 
     __slots__ = ()
 
-    @abstractmethod
+    # A subclass may declare ``_fields``, the constructor keywords that rebuild it
+    # (``"param:attr"`` reads ``attr`` when the attribute is named differently), and
+    # ``_dynamic``, the subset that are children rather than aux. That gives the
+    # generic flatten/unflatten here and the generic convert and equality of the
+    # context-bound bases; classes with derived or cached state override instead.
+    # No defaults live here, so a declaration on any base in the MRO is found.
+
     def tree_flatten(self) -> tuple[tuple[Any, ...], Any]:
         """Return ``(children, aux)`` for this container.
 
@@ -176,9 +165,11 @@ class PyTreeNode(ABC):
             ``children`` — dynamic, array-bearing members, in a stable order;
             ``aux`` — static metadata sufficient, with ``children``, to rebuild.
         """
+        values = field_values(self)
+        children = tuple(values.pop(name) for name in getattr(self, "_dynamic", ()))
+        return children, tuple(values.items())
 
     @classmethod
-    @abstractmethod
     def tree_unflatten(cls, aux: Any, children: tuple[Any, ...]) -> Self:
         """Rebuild an instance from ``aux`` and ``children``.
 
@@ -189,27 +180,30 @@ class PyTreeNode(ABC):
         children : tuple
             The dynamic members, possibly transformed or traced.
         """
+        return cls(**dict(aux), **dict(zip(getattr(cls, "_dynamic", ()), children)))
+
+    def __new__(cls, *args: Any, **kwargs: Any) -> Self:
+        # A container that cannot flatten is abstract: refuse to build it.
+        if cls.tree_flatten is PyTreeNode.tree_flatten and not getattr(cls, "_fields", ()):
+            raise TypeError(
+                f"Can't instantiate {cls.__name__}: it declares no _fields and does not implement tree_flatten."
+            )
+        return super().__new__(cls)
+
+    def __getnewargs_ex__(self) -> tuple[tuple[Any, ...], dict[str, Any]]:
+        # Unpickling calls ``cls.__new__`` with these; a ``__new__`` that dispatches on its
+        # arguments needs them, and the instance state is restored afterwards as usual.
+        return (), field_values(self) if getattr(type(self), "_fields", ()) else {}
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
-        """Register subclasses that provide the flatten protocol.
+        """
+        Register each subclass that implements ``tree_flatten``, even if abstract otherwise.
 
-        Gates on the *protocol method* rather than on :func:`inspect.isabstract`
-        because the two ask different questions. ``isabstract`` asks "is anything
-        still unimplemented?"; the registry only needs "is this class flattenable
-        yet?". They disagree for a class that supplies ``tree_flatten`` but stays
-        abstract for an unrelated reason — say a ``LinOp`` subclass that factors
-        out flattening while leaving ``apply`` to its own subclasses. Such a class
-        is perfectly registrable: a registrar records the type and consults the
-        two protocol methods, nothing else. Registering it is also harmless, since
-        it is never instantiated.
-
-        (``inspect.isabstract`` *does* report correctly from inside
-        ``__init_subclass__``. ``__abstractmethods__`` is not populated until
-        ``ABCMeta.__new__`` returns, but CPython detects that and falls back to
-        scanning for abstract methods manually. The choice here is about which
-        question to ask, not a workaround for a broken one.)
+        The test is whether the class can flatten, not ``inspect.isabstract``; registering a
+        class that is never instantiated is harmless.
         """
         super().__init_subclass__(**kwargs)
-        if getattr(cls.tree_flatten, "__isabstractmethod__", False):
+        # Classes that neither declare fields nor flatten themselves are skipped.
+        if cls.tree_flatten is PyTreeNode.tree_flatten and not getattr(cls, "_fields", ()):
             return
         registry.register_class(cls)

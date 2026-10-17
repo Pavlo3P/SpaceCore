@@ -4,24 +4,42 @@ from abc import ABC, abstractmethod
 import numpy as _np
 from typing import Any
 
+from ..._checks import checked_method
 from ._coordinate import CoordinateSpace
 from ._vector import VectorSpace
 
 
+# Strict-level tolerances: positivity relative to the largest eigenvalue, and how
+# closely a supplied M_inverse must invert M.
+_STRICT_RTOL = 1e-12
+_STRICT_RTOL_INVERSE = 1e-6
+
+
 class InnerProduct(ABC):
-    """Geometry of a space: inner product plus Riesz maps."""
+    """
+    Geometry of a space: inner product plus Riesz maps.
+
+    An orthonormal basis gives a representer for each linear functional
+    (Horn & Johnson, *Matrix Analysis*, 2nd ed., Sec. 0.6.5).
+    In coordinates, ``<x, y> = x^H R y`` with positive-definite Gram matrix ``R``;
+    ``riesz(x) = R x`` stores the column in ``<x, y> = (R x)^H y``.
+    """
 
     @abstractmethod
     def inner(self, ops, x, y):
         """Return the inner product of ``x`` and ``y``."""
 
     def riesz(self, ops, x):
-        """Map a coordinate element to its dual. Euclidean default: identity."""
-        return x
+        """Map an element to its dual; non-Euclidean geometry must implement this."""
+        from ..._errors import CapabilityError
+
+        raise CapabilityError(f"{type(self).__name__} does not implement riesz.")
 
     def riesz_inverse(self, ops, x):
-        """Map a dual element back to coordinates. Euclidean default: identity."""
-        return x
+        """Invert the Riesz map; non-Euclidean geometry must implement this."""
+        from ..._errors import CapabilityError
+
+        raise CapabilityError(f"{type(self).__name__} does not implement riesz_inverse.")
 
     def convert(self, ctx):
         """Return this geometry represented in ``ctx`` when conversion is needed."""
@@ -30,14 +48,20 @@ class InnerProduct(ABC):
     def validate_for(self, space: InnerProductSpace) -> None:
         """Raise if this inner product is invalid for ``space``."""
 
+    #: Whether this geometry is the Euclidean coordinate inner product.
+    is_euclidean = False
+
     @property
-    def is_euclidean(self) -> bool:
-        """Whether this geometry is the Euclidean coordinate inner product."""
-        return False
+    def has_riesz_maps(self) -> bool:
+        """Whether both Riesz maps are available, so metric adjoints can be formed."""
+        cls = type(self)
+        return cls.riesz is not InnerProduct.riesz and cls.riesz_inverse is not InnerProduct.riesz_inverse
 
 
 class EuclideanInnerProduct(InnerProduct):
     """Standard coordinate inner product ``vdot(x, y)`` with identity Riesz maps."""
+
+    is_euclidean = True
 
     def __eq__(self, other):
         return type(other) is type(self)
@@ -48,9 +72,13 @@ class EuclideanInnerProduct(InnerProduct):
     def inner(self, ops, x, y):
         return ops.vdot(x, y)
 
-    @property
-    def is_euclidean(self) -> bool:
-        return True
+    def riesz(self, ops, x):
+        """Return the Euclidean representer unchanged."""
+        return x
+
+    def riesz_inverse(self, ops, x):
+        """Return the Euclidean covector unchanged."""
+        return x
 
 
 class WeightedInnerProduct(InnerProduct):
@@ -60,27 +88,21 @@ class WeightedInnerProduct(InnerProduct):
     Parameters
     ----------
     weights : array-like
-        Positive, finite diagonal weights with exactly the coordinate-space
-        shape and context dtype.
+        Positive, finite diagonal weights in the context dtype, with a shape that
+        broadcasts to the coordinate-space shape (a 0-d array gives a scaled
+        Euclidean metric). Values are checked from ``standard`` checks upward.
     """
 
     def __init__(self, weights):
         self.weights = weights
 
     def __eq__(self, other):
+        # The same metric may be stored at different broadcast shapes; anything that
+        # cannot be compared (traced, incompatible shapes) is unequal.
         if type(other) is not type(self):
             return False
         try:
-            lhs = _np.asarray(self.weights)
-            rhs = _np.asarray(other.weights)
-        except Exception:
-            return False
-        # Structural before numerical: guard against allclose broadcasting two
-        # mismatched-shape weight vectors into a spurious True.
-        if lhs.shape != rhs.shape:
-            return False
-        try:
-            return bool(_np.allclose(lhs, rhs))
+            return bool(_np.allclose(*_np.broadcast_arrays(_np.asarray(self.weights), _np.asarray(other.weights))))
         except Exception:
             return False
 
@@ -103,6 +125,7 @@ class WeightedInnerProduct(InnerProduct):
 
     def validate_for(self, space: InnerProductSpace) -> None:
         """Validate diagonal weights against a coordinate space."""
+        # Structure first: dense, exact shape, same dtype as the space.
         if not isinstance(space, CoordinateSpace):
             raise TypeError("WeightedInnerProduct requires a CoordinateSpace.")
 
@@ -112,10 +135,15 @@ class WeightedInnerProduct(InnerProduct):
                 "WeightedInnerProduct weights must be dense arrays for the space backend "
                 f"{space.ops.family}."
             )
-        if tuple(getattr(weights, "shape", ())) != tuple(space.shape):
+        shape = tuple(getattr(weights, "shape", ()))
+        try:
+            broadcasts = _np.broadcast_shapes(shape, tuple(space.shape)) == tuple(space.shape)
+        except ValueError:
+            broadcasts = False
+        if not broadcasts:
             raise ValueError(
-                "WeightedInnerProduct weights must have exactly the coordinate shape "
-                f"{space.shape}; got {tuple(getattr(weights, 'shape', ()))}."
+                "WeightedInnerProduct weights must broadcast to the coordinate shape "
+                f"{space.shape}; got {shape}."
             )
         dtype = space.ops.get_dtype(weights)
         if dtype != space.dtype:
@@ -123,6 +151,9 @@ class WeightedInnerProduct(InnerProduct):
                 "WeightedInnerProduct weights must use the same context dtype as the space; "
                 f"got {dtype}, expected {space.dtype}."
             )
+        # Then values, on the host: real, finite, strictly positive.
+        if not space._checks_at_least("standard"):
+            return
         try:
             weights_np = _np.asarray(weights)
         except Exception as exc:
@@ -138,9 +169,111 @@ class WeightedInnerProduct(InnerProduct):
         if not _np.all(weights_np > 0):
             raise ValueError("WeightedInnerProduct weights must be strictly positive.")
 
+
+class OperatorInnerProduct(InnerProduct):
+    r"""
+    Operator-metric geometry :math:`\langle x, y\rangle = \langle x, M y\rangle_E`.
+
+    ``M`` is a self-adjoint, positive-definite linear operator on the space's
+    Euclidean coordinates: block, Kronecker, low-rank-plus-diagonal or any
+    matrix-free metric. The Riesz map is ``M``; its inverse is ``M_inverse``, which
+    may be any operator approximating it, such as one that runs ``sc.cg`` to a
+    tolerance. Without ``M_inverse``, ``riesz_inverse`` raises ``CapabilityError``.
+
+    From ``standard`` checks upward, an ``M`` known to be non-self-adjoint, or with
+    non-positive curvature on a fixed probe vector, is rejected; at ``strict``, its
+    Lanczos estimate of the smallest eigenvalue must also be positive.
+
+    Parameters
+    ----------
+    M : LinOp
+        Self-adjoint positive-definite operator from the Euclidean coordinate space
+        of the target space to itself.
+    M_inverse : LinOp or None, optional
+        Operator applying (an approximation of) the inverse of ``M``.
+    """
+
+    def __init__(self, M, M_inverse=None):
+        self.M = M
+        self.M_inverse = M_inverse
+
+    def __eq__(self, other):
+        return type(other) is type(self) and self.M == other.M and self.M_inverse == other.M_inverse
+
+    def __repr__(self) -> str:
+        return f"OperatorInnerProduct(M={self.M._short_repr()})"
+
+    @staticmethod
+    def _missing(what):
+        from ..._errors import CapabilityError
+
+        return CapabilityError(f"OperatorInnerProduct needs {what}.")
+
+    @staticmethod
+    def _act(op, x):
+        # Fold any leading batch axes (none for a single element) into one.
+        return op._vapply_core(x.reshape((-1,) + tuple(op.domain.shape))).reshape(x.shape)
+
+    def inner(self, ops, x, y):
+        return ops.vdot(x, self._act(self.M, y))
+
+    def riesz(self, ops, x):
+        return self._act(self.M, x)
+
     @property
-    def is_euclidean(self) -> bool:
-        return False
+    def has_riesz_maps(self) -> bool:
+        return self.M_inverse is not None
+
+    def riesz_inverse(self, ops, x):
+        if self.M_inverse is None:
+            raise self._missing("M_inverse to invert its Riesz map")
+        return self._act(self.M_inverse, x)
+
+    def convert(self, ctx):
+        return OperatorInnerProduct(self.M.convert(ctx), None if self.M_inverse is None else self.M_inverse.convert(ctx))
+
+    def validate_for(self, space: InnerProductSpace) -> None:
+        """Check that ``M`` (and ``M_inverse``) act on the space's Euclidean coordinates."""
+        if not isinstance(space, CoordinateSpace):
+            raise TypeError("OperatorInnerProduct requires a CoordinateSpace.")
+        for name, op in (("M", self.M), ("M_inverse", self.M_inverse)):
+            if op is None:
+                continue
+            for end in (op.domain, op.codomain):
+                if tuple(end.shape) != tuple(space.shape) or not end.is_euclidean:
+                    raise ValueError(
+                        f"OperatorInnerProduct {name} must map the Euclidean coordinate space "
+                        f"of shape {space.shape} to itself."
+                    )
+            if op.ops.family != space.ops.family or op.dtype != space.dtype:
+                raise TypeError(
+                    f"OperatorInnerProduct {name} must use the space backend and dtype "
+                    f"({space.ops.family}, {space.dtype})."
+                )
+        if not space._checks_at_least("standard"):
+            return
+        if self.M.is_hermitian() is False:
+            raise ValueError("OperatorInnerProduct M must be self-adjoint.")
+        # A deterministic probe: positive curvature is necessary for positive definiteness.
+        probe = space.ctx.asarray(_np.random.default_rng(0).standard_normal(tuple(space.shape)))
+        if not float(space.ops.real(space.ops.vdot(probe, self.M._apply_core(probe)))) > 0:
+            raise ValueError("OperatorInnerProduct M must be positive definite; "
+                             "its quadratic form is not positive on a probe vector.")
+        if not space._checks_at_least("strict"):
+            return
+        from ...linalg import lanczos_smallest, power_iteration
+
+        iters = min(space.size, 100)
+        smallest = float(space.ops.real(lanczos_smallest(self.M, probe, max_iter=iters).eigenvalue))
+        largest = float(space.ops.real(power_iteration(self.M, x0=probe, maxiter=iters).eigenvalue))
+        if not smallest > _STRICT_RTOL * largest:
+            raise ValueError("OperatorInnerProduct M must be positive definite; its eigenvalue estimates "
+                             f"are {smallest:.3g} (smallest) and {largest:.3g} (largest).")
+        if self.M_inverse is not None:
+            # M_inverse may be an inexact solve, but at strict it must invert M to this tolerance.
+            defect = self.M_inverse._apply_core(self.M._apply_core(probe)) - probe
+            if not float(space.ops.norm(defect)) <= _STRICT_RTOL_INVERSE * float(space.ops.norm(probe)):
+                raise ValueError("OperatorInnerProduct M_inverse does not invert M on a probe vector.")
 
 
 class InnerProductSpace(VectorSpace):
@@ -151,25 +284,64 @@ class InnerProductSpace(VectorSpace):
     ----------
     ctx : Context, str, or None, optional
         Context specification used for elements and validation checks.
-    check_level : {{"none", "cheap", "standard", "strict"}}, optional
-        Runtime validation policy for this object. When omitted, the ambient
-        default (see :func:`spacecore.get_check_level`) is used.
+    check_level : {"none", "cheap", "standard", "strict"}, optional
+        Validation level; the ambient default when omitted.
     """
 
-    geometry: InnerProduct
+    #: The space's inner product; Euclidean unless a family sets another.
+    geometry: InnerProduct = EuclideanInnerProduct()
 
-    def inner(self, x: Any, y: Any) -> Any:
+    def _inner_core(self, x: Any, y: Any) -> Any:
+        """Return the inner product without membership checks."""
         return self.geometry.inner(self.ops, x, y)
 
+    @checked_method(in_space="self", arg_positions=(0, 1))
+    def inner(self, x: Any, y: Any) -> Any:
+        r"""Return :math:`\langle x, y\rangle_X`."""
+        return self._inner_core(x, y)
+
+    @checked_method(in_space="self", arg_positions=(0, 1))
+    def real_inner(self, x: Any, y: Any) -> Any:
+        r"""Return the real inner product :math:`\operatorname{Re}\langle x, y\rangle_X`."""
+        return self._real_inner_core(x, y)
+
+    def _real_inner_core(self, x: Any, y: Any) -> Any:
+        """Return :meth:`real_inner` without membership checks."""
+        return self.ops.real(self._inner_core(x, y))
+
+    @checked_method(in_space="self", in_batched=True)
     def riesz(self, x: Any) -> Any:
+        """Return the covector ``R x`` of an element, or of each element of a leading-axis batch."""
+        return self._riesz_core(x)
+
+    def _riesz_core(self, x: Any) -> Any:
         return self.geometry.riesz(self.ops, x)
 
-    def riesz_inverse(self, x: Any) -> Any:
-        return self.geometry.riesz_inverse(self.ops, x)
+    @checked_method(in_space="self", out_space="self", in_batched=True, out_batched=True)
+    def riesz_inverse(self, xi: Any) -> Any:
+        """Return the element ``R^{-1} xi`` of a covector, or of each covector in a batch.
 
+        A covector has the element's coordinate shape, so the input check is that shape check.
+        """
+        return self._riesz_inverse_core(xi)
+
+    def _riesz_inverse_core(self, xi: Any) -> Any:
+        return self.geometry.riesz_inverse(self.ops, xi)
+
+    @checked_method(in_space="self")
     def norm(self, x: Any) -> Any:
-        value = self.ops.real(self.inner(x, x))
-        return self.ops.sqrt(value)
+        r"""Return :math:`\|x\|_X = \sqrt{\operatorname{Re}\langle x, x\rangle_X}`."""
+        return self._norm_core(x)
+
+    def _norm_core(self, x: Any) -> Any:
+        return self.ops.sqrt(self._real_inner_core(x, x))
+
+    def dual_norm(self, xi: Any) -> Any:
+        r"""Return the dual norm of a covector, :math:`\|\xi\|_* = \|R^{-1}\xi\|`.
+
+        A covector is not an element, so there is no membership check to run.
+        """
+        return self._norm_core(self._riesz_inverse_core(xi))
 
     @property
     def is_euclidean(self) -> bool:

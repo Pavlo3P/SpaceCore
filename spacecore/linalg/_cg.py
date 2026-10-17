@@ -1,52 +1,18 @@
 from __future__ import annotations
 
-from typing import Any, NamedTuple
+from typing import Any
 
 from ..linop import LinOp
 from ._utils import DEFAULT_CONVERGENCE_CHECK_INTERVAL, check_interval, check_maxiter
-from ._utils import SpaceCoreOps, is_converged, resolve_apply
-from ._utils import require_linop, require_square
+from ._utils import LinalgResult
+from ._utils import require_hermitian_square
+from ._utils import is_converged
 from ._utils import (
     require_strict_cg_preconditions,
-    result_repr,
     safe_inverse_nonneg,
     should_check_iteration,
     threshold,
 )
-
-
-class CGResult(NamedTuple):
-    """
-    Store the result returned by :func:`cg`.
-
-    Parameters
-    ----------
-    x : array-like
-        Approximate solution in ``A.domain``.
-    converged : bool-like
-        Whether the final residual norm satisfied the requested tolerance.
-    num_iters : int-like
-        Number of conjugate-gradient iterations executed.
-    residual_norm : scalar
-        Norm of the final residual in ``A.codomain``.
-    """
-
-    x: Any
-    converged: Any
-    num_iters: Any
-    residual_norm: Any
-
-    def __repr__(self) -> str:
-        """Return a compact summary without printing the full solution array."""
-        return result_repr(
-            "CGResult",
-            {
-                "converged": self.converged,
-                "num_iters": self.num_iters,
-                "residual_norm": self.residual_norm,
-                "x": self.x,
-            },
-        )
 
 
 def cg(
@@ -58,97 +24,59 @@ def cg(
     atol: float = 0.0,
     maxiter: int | None = None,
     check_every: int = DEFAULT_CONVERGENCE_CHECK_INTERVAL,
-) -> CGResult:
+    preconditioner: LinOp | None = None,
+) -> LinalgResult:
     r"""
     Solve :math:`A x = b` by conjugate gradients.
 
-    Require ``A`` to be square in the SpaceCore sense
-    (``A.domain == A.codomain``), Hermitian, and positive-definite with respect
-    to ``A.domain.inner``. The implementation uses only :meth:`LinOp.apply` and
-    the domain-space inner product; it never materializes a dense matrix.
+    ``A`` must be square (``A.domain == A.codomain``), Hermitian and positive-definite
+    in the domain's inner product. Only ``A.apply`` and that inner product are used.
 
     Parameters
     ----------
     A : LinOp
-        Linear operator that must be Hermitian positive-definite with respect
-        to ``A.domain.inner``. ``A.domain`` must equal ``A.codomain``,
-        including the underlying space type and inner-product geometry. An
-        operator that is *provably* non-self-adjoint in this geometry
-        (``A.is_hermitian() is False``) is rejected at entry with a
-        ``ValueError``. Operators whose Hermiticity is unknown
-        (``A.is_hermitian() is None``, e.g. matrix-free operators) are accepted
-        unchecked; positive-definiteness is likewise not validated, so
-        indefinite or otherwise unsuitable operators can still diverge or
-        produce NaN outputs without an explicit error.
+        Hermitian positive-definite operator. One that is provably not Hermitian is
+        rejected; definiteness is not checked.
     b : array-like
         Right-hand side in ``A.codomain``.
     x0 : array-like or None, optional
-        Initial guess in ``A.domain``. Default is the zero vector.
+        Initial guess; zero by default.
     tol : float, optional
-        Relative tolerance on the linear-system residual. ``result.converged``
-        is ``True`` when the residual norm is below
-        ``atol + tol * norm(b)``. Default is 1e-6.
+        Converged when the residual norm is below ``atol + tol * norm(b)``.
     atol : float, optional
-        Absolute residual tolerance. Default is 0.0.
+        Absolute residual tolerance.
     maxiter : int or None, optional
-        Maximum number of iterations. Default is ``prod(A.domain.shape)``.
+        Iteration cap; ``prod(A.domain.shape)`` by default.
     check_every : int, optional
-        Refresh convergence diagnostics every this many iterations and always
-        on the final iteration. Default is
-        ``DEFAULT_CONVERGENCE_CHECK_INTERVAL``.
+        Test convergence every this many iterations, and on the last one.
+    preconditioner : LinOp or None, optional
+        Operator ``K`` on ``A.domain`` approximating the inverse of ``A``, self-adjoint
+        and positive definite in ``A.domain``; each residual ``r`` is preconditioned to
+        ``K r``. The residual is still measured in ``A.domain``'s norm.
 
     Returns
     -------
-    CGResult
-        Named tuple with fields:
-
-        - ``x``: approximate solution in ``A.domain``
-        - ``converged``: whether the requested tolerance was met
-        - ``num_iters``: number of iterations executed
-        - ``residual_norm``: final residual norm
+    LinalgResult
+        ``(x, converged, num_iters, residual_norm)``.
 
     Raises
     ------
     TypeError
         If ``A`` is not a :class:`LinOp`.
     ValueError
-        If ``A`` is not square or if iteration parameters are invalid.
+        If ``A`` is not square or an iteration parameter is invalid.
 
     See Also
     --------
-    lsqr : Solve least-squares systems for rectangular operators.
-    lanczos_smallest : Approximate the smallest eigenpair of a Hermitian
-        operator.
+    lsqr : Least squares for rectangular operators.
 
     Notes
     -----
-    The residual norm is compared with
-    :math:`\text{atol} + \text{tol} \| b \|` only every ``check_every``
-    iterations, and always on the final iteration. This keeps convergence
-    checks out of the hot loop while remaining compatible with JAX JIT control
-    flow. ``maxiter`` and ``check_every`` should be treated as static JAX
-    arguments.
-
-    Iteration also stops when no numerically useful CG update remains: either
-    the squared residual is at machine-precision scale or the curvature
-    ``inner(p, A p)`` is nonpositive/tiny relative to the residual scale. The
-    residual is refreshed before this early exit, so ``converged`` still
-    reflects the returned iterate.
-
-    For complex operators, residual norms and step sizes are computed from the
-    real part of ``A.domain.inner(x, y)``. SpaceCore's complex inner-product
-    convention conjugates the first argument; custom :class:`Space` subclasses
-    must follow that convention for CG to converge correctly.
-
-    Inner products and norms use ``A.domain.inner`` and ``A.domain.norm``.
-    The method is correct on non-Euclidean geometries when the space supplies
-    Riesz maps and ``A`` is Hermitian positive-definite in that geometry.
-
-    References
-    ----------
-    Hestenes, M. R. and Stiefel, E., "Methods of Conjugate Gradients
-    for Solving Linear Systems," J. Res. Natl. Bur. Stand., 49 (1952),
-    409-436.
+    JIT-compatible on JAX with ``maxiter`` and ``check_every`` static. Stops early when
+    no useful update remains (residual at machine precision, or non-positive
+    curvature). Trefethen & Bau, *Numerical Linear Algebra*, Algorithm 38.1.
+    In an orthonormal basis the metric recurrence is ordinary CG; complex spaces
+    use conjugate inner products, and a nonzero ``x0`` starts from ``b - A x0``.
 
     Examples
     --------
@@ -167,20 +95,20 @@ def cg(
     >>> np.allclose(A.apply(result.x), b)
     True
     """
-    A = require_linop(A)
-    require_square(A, "cg")
-    if A.is_hermitian() is False:
-        raise ValueError(
-            "cg requires A to be Hermitian/self-adjoint with respect to "
-            "A.domain.inner, but A was determined to be provably "
-            "non-self-adjoint in this geometry. For example, a symmetric "
-            "matrix wrapped as a DenseLinOp on a weighted (non-Euclidean) "
-            "inner-product space is not self-adjoint under the weighted inner "
-            "product. Build a valid operator instead, e.g. a normal operator "
-            "A.H @ A + lam * Identity (which is self-adjoint in any geometry), "
-            "or use a Euclidean space where the symmetric matrix is "
-            "self-adjoint."
-        )
+    # Validate once, up front: square, not provably non-Hermitian, valid b and parameters.
+    A = require_hermitian_square(
+        A,
+        "cg",
+        "cg requires A to be Hermitian/self-adjoint with respect to "
+        "A.domain.inner, but A was determined to be provably "
+        "non-self-adjoint in this geometry. For example, a symmetric "
+        "matrix wrapped as a DenseLinOp on a weighted (non-Euclidean) "
+        "inner-product space is not self-adjoint under the weighted inner "
+        "product. Build a valid operator instead, e.g. a normal operator "
+        "A.H @ A + lam * Identity (which is self-adjoint in any geometry), "
+        "or use a Euclidean space where the symmetric matrix is "
+        "self-adjoint."
+    )
     require_strict_cg_preconditions(A)
     A.codomain.check_member(b)
     maxiter = check_maxiter(maxiter, A)
@@ -188,52 +116,72 @@ def cg(
 
     # Resolve check-free cores once; the hot loop then skips per-iteration
     # validation while honoring any custom geometry the spaces define.
-    apply = resolve_apply(A)
-    dom = SpaceCoreOps(A.domain)
-    cod = SpaceCoreOps(A.codomain)
+    apply = A._apply_core
+    dom = A.domain
+    cod = A.codomain
 
+    # Preconditioning z = K r; without K, z = r and this is plain CG.
+    if preconditioner is None:
+        def precond(r: Any) -> Any:
+            return r
+    else:
+        if preconditioner.domain != A.domain or preconditioner.codomain != A.domain:
+            raise ValueError("cg: the preconditioner must map A.domain to itself.")
+        precond = preconditioner._apply_core
+
+    # Initial residual r = b - A x; the first search direction is z = K r.
     x = A.domain.zeros() if x0 is None else x0
     A.domain.check_member(x)
-    r = cod.add(b, cod.scale(-1.0, apply(x)))
-    p = r
-    rs = dom.real_inner(r, r)
-    residual_norm = dom.norm(r)
-    threshold_value = threshold(cod.norm(b), tol, atol)
-    eps = A.ops.asarray(A.ops.eps(A.dtype), dtype=A.dtype)
+    r = cod._add_core(b, cod._scale_core(-1.0, apply(x)))
+    p = precond(r)
+    rs = dom._real_inner_core(r, p)
+    residual_norm = dom._norm_core(r)
+    # Stop when ||r|| <= atol + tol ||b||; eps guards the divisions below.
+    threshold_value = threshold(cod._norm_core(b), tol, atol)
+    # Scalar diagnostics are real even for a complex operator (ADR-015).
+    real_dtype = A.ops.real_dtype(A.dtype)
+    eps = A.ops.asarray(A.ops.eps(A.dtype), dtype=real_dtype)
     eps2 = eps * eps
 
     def cond_fun(carry: tuple[Any, Any, Any, Any, Any, int, Any]) -> Any:
         _x, _r, _p, _rs, res_norm, k, active = carry
+        # Continue while under the cap, not converged, and still making progress.
         return (k < maxiter) & (res_norm > threshold_value) & active
 
     def body_fun(
         carry: tuple[Any, Any, Any, Any, Any, int, Any],
     ) -> tuple[Any, Any, Any, Any, Any, int, Any]:
         x, r, p, rs, _residual_norm, k, _active = carry
+        # Step length alpha = <r, z> / <p, A p>; freeze once curvature or residual vanishes.
         Ap = apply(p)
-        pAp = dom.real_inner(p, Ap)
+        pAp = dom._real_inner_core(p, Ap)
         active = (rs > eps2) & (pAp > eps * rs)
         alpha = A.ops.where(active, rs * safe_inverse_nonneg(A.ops, pAp), A.ops.zeros_like(rs))
-        x_next = dom.axpy(alpha, p, x)
-        r_next = cod.axpy(-alpha, Ap, r)
-        rs_next = dom.real_inner(r_next, r_next)
+        # Move x along p and update the residual without another apply.
+        x_next = dom._axpy_core(alpha, p, x)
+        r_next = cod._axpy_core(-alpha, Ap, r)
+        z_next = precond(r_next)
+        rs_next = dom._real_inner_core(r_next, z_next)
+        # New direction p = z + beta p, with beta = <r_new, z_new> / <r, z>.
         beta = A.ops.where(
             active, rs_next * safe_inverse_nonneg(A.ops, rs), A.ops.zeros_like(rs_next)
         )
-        p_next = dom.axpy(beta, p, r_next)
+        p_next = dom._axpy_core(beta, p, z_next)
         k_next = k + 1
+        # Refresh the reported residual norm only on check iterations.
         should_refresh_residual = should_check_iteration(k_next, maxiter, check_every) | (~active)
         residual_norm_next = A.ops.cond(
             should_refresh_residual,
-            lambda _: A.ops.sqrt(rs_next),
+            (lambda _: A.ops.sqrt(rs_next)) if preconditioner is None else (lambda _: dom._norm_core(r_next)),
             lambda _: _residual_norm,
-            A.ops.asarray(0.0, dtype=A.dtype),
+            A.ops.asarray(0.0, dtype=real_dtype),
         )
         return x_next, r_next, p_next, rs_next, residual_norm_next, k_next, active
 
+    # One backend while-loop, so the whole solve can be jitted.
     x, _r, _p, _rs, residual_norm, num_iters, _active = A.ops.while_loop(
         cond_fun,
         body_fun,
         (x, r, p, rs, residual_norm, 0, A.ops.asarray(True)),
     )
-    return CGResult(x, is_converged(residual_norm, threshold_value), num_iters, residual_norm)
+    return LinalgResult(x, is_converged(residual_norm, threshold_value), num_iters, residual_norm)

@@ -1,24 +1,21 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+from functools import cache
 from typing import Any
 
 from ._context import Context
 from ._contextual import Contextual
-from .._check_policy import CheckLevel
+from .._checks import CheckLevel
 from ..backend import BackendFamily, BackendOps
 from ..backend import ops_registry as _ops_registry
 
 
-_contextual: Contextual | None = None
-
-
+@cache
 def _state() -> Contextual:
     """Return the process-wide contextual singleton."""
-    global _contextual
-    if _contextual is None:
-        _contextual = Contextual()
-    return _contextual
+    # Create the process-wide state lazily, on first use.
+    return Contextual()
 
 
 def set_context(
@@ -56,7 +53,7 @@ def get_check_level() -> CheckLevel:
     return _state().get_check_level()
 
 
-def set_check_level(level: CheckLevel | bool | None) -> None:
+def set_check_level(level: CheckLevel | None) -> None:
     """
     Set the ambient default validation level applied to new bound objects.
 
@@ -73,23 +70,19 @@ def set_check_level(level: CheckLevel | bool | None) -> None:
 
 
 @contextmanager
-def use_check_level(level: CheckLevel | bool | None):
+def use_check_level(level: CheckLevel | None):
     """
-    Temporarily override the ambient default validation level within a ``with`` block.
-
-    Scoped to the current thread / async task; see :func:`use_context` for the
-    scoping rules and the thread-pool caveat.
+    Override the ambient validation level inside a ``with`` block (thread/task-scoped, like :func:`use_context`).
 
     Parameters
     ----------
     level : {"none", "cheap", "standard", "strict"} or None
-        Level to install for the duration of the block. ``None`` leaves the
-        ambient default in place.
+        Level for the block; ``None`` keeps the ambient one.
 
     Yields
     ------
     CheckLevel
-        The resolved level in effect inside the block.
+        The level in effect inside the block.
     """
     with _state().scoped_check_level(level) as resolved:
         yield resolved
@@ -101,51 +94,24 @@ def use_context(
     dtype: Any = None,
 ):
     """
-    Temporarily override the default context within a ``with`` block.
+    Override the default context inside a ``with`` block.
 
-    Yields the resolved :class:`Context` and unwinds on exit, so the override is
-    exception-safe and never leaks — the dependency-injection-friendly counterpart
-    to :func:`set_context`.
-
-    Unlike :func:`set_context`, which moves the process-wide baseline seen by every
-    thread, this override is stored in a :class:`~contextvars.ContextVar` and is
-    visible only to the **current thread and async task**. Each ``asyncio`` task
-    receives its own copy of the ambient context at creation, so interleaved
-    coroutines cannot clobber one another's override.
+    The override lives in a :class:`~contextvars.ContextVar`: it is seen by the current
+    thread and asyncio task only, and is undone on exit. Threads started inside the block
+    see the baseline; run them under ``contextvars.copy_context()`` to pass it on.
 
     Parameters
     ----------
     ctx : Context, BackendFamily, str, or None, optional
-        Context to install for the duration of the block, or a backend family
-        name (for example ``"numpy"`` or ``"jax"``) to resolve into one. ``None``
-        keeps the active context and only applies ``dtype``.
+        Context, or a backend family name such as ``"jax"``. ``None`` keeps the active
+        context and applies only ``dtype``.
     dtype : dtype-like, optional
-        Representation dtype for the scoped context. ``None`` keeps the dtype of
-        the context being overridden.
+        Dtype for the scoped context; ``None`` keeps the current one.
 
     Yields
     ------
     Context
-        The resolved context in effect inside the block.
-
-    Notes
-    -----
-    ``ContextVar`` values are deliberately *not* inherited by threads started with
-    :class:`threading.Thread`, so a scoped override does not silently leak into
-    workers you spawn::
-
-        with use_context("jax"):
-            list(executor.map(solve, problems))   # workers see the BASELINE
-
-    To propagate it on purpose, snapshot the context and run the worker inside it::
-
-        from contextvars import copy_context
-
-        with use_context("jax"):
-            snapshot = copy_context()
-            list(executor.map(lambda p: snapshot.run(solve, p), problems))
-
-    ``asyncio.create_task`` needs no such handling.
+        The context in effect inside the block.
     """
     with _state().scoped_ctx(ctx, dtype=dtype) as resolved:
         yield resolved
@@ -190,21 +156,17 @@ def resolve_context_priority(
 
 def register_ops(ops: type[BackendOps]) -> type[BackendOps]:
     """
-    Register a backend operations implementation.
-
-    Writes to the process-wide backend registry
-    (:data:`spacecore.backend.ops_registry`), not to the ambient context state:
-    a registration is shared by every thread and is never scoped.
+    Register a backend in the process-wide registry; registrations are never scoped.
 
     Parameters
     ----------
     ops : type of BackendOps
-        Backend operations class to register.
+        Backend class to register.
 
     Returns
     -------
     type of BackendOps
-        Registered backend operations class.
+        The registered class.
 
     Raises
     ------
@@ -253,11 +215,3 @@ def normalize_ops(ops: str | BackendFamily | BackendOps | type[BackendOps] | Con
     if isinstance(ops, BackendOps):
         return ops
     return _ops_registry.get(ops)
-
-
-def enforce_convert_policy(
-    x: Any,
-    to: Context | BackendFamily | str | None = None,
-) -> tuple[Any, Context]:
-    """Resolve a conversion target context."""
-    return _state().enforce_convert_policy(x, to)

@@ -19,10 +19,10 @@ flags.
 | `ScaledLinOp` | `sc.ScaledLinOp(alpha, A)` | same as `A` | yes | yes | `alpha A` and `conj(alpha) A^sharp` |
 | `SumLinOp` | `sc.SumLinOp((A, B))` | common `X -> Y` | yes | yes | sum of direct references |
 | `ComposedLinOp` | `sc.ComposedLinOp(B, A)` | `X -> Z` through `Y` | yes | yes | composed matrices/functions |
-| `StackedLinOp` | `sc.StackedLinOp.from_operators(parts)` | `X -> TreeSpace[Y_i]` | yes | yes | leafwise forward, summed adjoints |
-| `SumToSingleLinOp` | `sc.SumToSingleLinOp.from_operators(parts)` | `TreeSpace[X_i] -> Y` | yes | yes | summed forwards, leafwise adjoints |
 | `BlockDiagonalLinOp` | `sc.BlockDiagonalLinOp(block_tree)` | `TreeSpace[X_i] -> TreeSpace[Y_i]` | yes | yes | leafwise application |
 | `BlockMatrixLinOp` | `sc.BlockMatrixLinOp(rows)` | `TreeSpace[X_j] -> TreeSpace[Y_i]` | yes | yes | row sums and adjoint column sums |
+| one-column `BlockMatrixLinOp` | `sc.BlockMatrixLinOp.stack(parts)` | `X -> TreeSpace[Y_i]` | yes | yes | leafwise forward, summed adjoints |
+| one-row `BlockMatrixLinOp` | `sc.BlockMatrixLinOp.from_operators(parts)` | `TreeSpace[X_i] -> Y` | yes | yes | summed forwards, leafwise adjoints |
 | `TreeLinOp` | abstract base | structured endpoints | inherited | inherited | no direct case; cover every concrete subclass |
 
 ## Adding a case

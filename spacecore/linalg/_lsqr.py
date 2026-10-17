@@ -1,51 +1,12 @@
 from __future__ import annotations
 
-from typing import Any, NamedTuple
+from typing import Any
 
 from ..linop import LinOp
-from ._utils import DEFAULT_CONVERGENCE_CHECK_INTERVAL, SpaceCoreOps, check_interval
-from ._utils import check_maxiter, is_converged, require_linop, resolve_apply, resolve_rapply
-from ._utils import safe_inverse_nonneg, should_check_iteration, result_repr, threshold
-
-
-class LSQRResult(NamedTuple):
-    """
-    Store the result returned by :func:`lsqr`.
-
-    Parameters
-    ----------
-    x : array-like
-        Approximate least-squares solution in ``A.domain``.
-    converged : bool-like
-        Whether the normal-equation residual satisfied the requested tolerance.
-    num_iters : int-like
-        Number of LSQR iterations executed.
-    residual_norm : scalar
-        Norm of ``A x - b`` in ``A.codomain`` in exact mode, or the LSQR
-        recurrence estimate in recurrence mode.
-    normal_residual_norm : scalar
-        Norm of ``A.H @ (A x - b)`` in ``A.domain`` in exact mode, or the LSQR
-        recurrence estimate in recurrence mode.
-    """
-
-    x: Any
-    converged: Any
-    num_iters: Any
-    residual_norm: Any
-    normal_residual_norm: Any
-
-    def __repr__(self) -> str:
-        """Return a compact summary without printing the full solution array."""
-        return result_repr(
-            "LSQRResult",
-            {
-                "converged": self.converged,
-                "num_iters": self.num_iters,
-                "residual_norm": self.residual_norm,
-                "normal_residual_norm": self.normal_residual_norm,
-                "x": self.x,
-            },
-        )
+from ._utils import DEFAULT_CONVERGENCE_CHECK_INTERVAL, check_interval
+from ._utils import LinalgResult
+from ._utils import check_maxiter, is_converged, require_linop
+from ._utils import safe_inverse_nonneg, should_check_iteration, threshold
 
 
 def lsqr(
@@ -58,107 +19,57 @@ def lsqr(
     maxiter: int | None = None,
     check_every: int = DEFAULT_CONVERGENCE_CHECK_INTERVAL,
     residual_mode: str = "exact",
-) -> LSQRResult:
+) -> LinalgResult:
     r"""
     Solve :math:`\min_x \|A x - b\|` by LSQR.
 
-    Allow ``A`` to map between distinct ``domain`` and ``codomain`` spaces.
-    The method uses :meth:`LinOp.apply` for forward products and ``A.H.apply``
-    for adjoint products, so the normal equations are represented implicitly
-    and no dense matrix is formed.
+    ``A`` may map between different spaces. Only ``A.apply`` and ``A.H.apply`` are
+    used; the normal equations are never formed.
 
     Parameters
     ----------
     A : LinOp
-        Linear operator with possibly distinct ``domain`` and ``codomain``.
-        For square ``A`` (``A.domain == A.codomain``), :func:`cg` is usually
-        preferred when ``A`` is also Hermitian positive-definite.
+        Operator from ``A.domain`` to ``A.codomain``.
     b : array-like
         Right-hand side in ``A.codomain``.
     x0 : array-like or None, optional
-        Initial guess in ``A.domain``. Default is the zero vector.
+        Initial guess; zero by default.
     tol : float, optional
-        Relative tolerance for the normal-equation residual
-        ``norm(A.H @ (A @ x - b))``. ``result.converged`` is ``True`` when that
-        residual is below ``atol + tol * norm(b)``. Default is 1e-6.
+        Converged when ``norm(A.H @ (A @ x - b))`` is below ``atol + tol * norm(b)``.
     atol : float, optional
-        Absolute tolerance for the normal-equation residual. Default is 0.0.
+        Absolute tolerance on that normal-equation residual.
     maxiter : int or None, optional
-        Maximum number of iterations. Default is ``prod(A.domain.shape)``.
+        Iteration cap; ``prod(A.domain.shape)`` by default.
     check_every : int, optional
-        Refresh residual diagnostics every this many iterations and always on
-        the final iteration. Default is
-        ``DEFAULT_CONVERGENCE_CHECK_INTERVAL``.
+        Refresh residual diagnostics every this many iterations, and on the last one.
     residual_mode : {"exact", "recurrence"}, optional
-        Residual diagnostic mode. ``"exact"`` preserves the historical
-        behavior: every diagnostic refresh recomputes ``A @ x - b`` and
-        ``A.H @ (A @ x - b)``. This costs one additional forward application
-        and one additional adjoint application on each check iteration, so
-        small ``check_every`` values, especially ``check_every=1``, can
-        substantially increase runtime for expensive operators. Use larger
-        values such as ``check_every=10`` or ``check_every=20`` when exact
-        diagnostics are needed for matrix-free, PDE, neural-network, GPU, or
-        JAX workloads. ``"recurrence"`` uses LSQR scalar recurrences for both
-        returned residual diagnostics and avoids those extra applications.
+        ``"exact"`` recomputes both residuals at each check, costing one extra forward
+        and adjoint apply; ``"recurrence"`` uses LSQR's scalar estimates for free.
 
     Returns
     -------
-    LSQRResult
-        Named tuple with fields:
-
-        - ``x``: approximate least-squares solution in ``A.domain``
-        - ``converged``: whether the requested tolerance was met
-        - ``num_iters``: number of iterations executed
-        - ``residual_norm``: final residual norm or recurrence estimate
-        - ``normal_residual_norm``: final normal-equation residual norm or
-          recurrence estimate
+    LinalgResult
+        With ``normal_residual_norm`` set.
 
     Raises
     ------
     TypeError
         If ``A`` is not a :class:`LinOp`.
     ValueError
-        If iteration parameters are invalid or ``residual_mode`` is unknown.
+        If an iteration parameter or ``residual_mode`` is invalid.
 
     See Also
     --------
-    cg : Solve square Hermitian positive-definite systems.
-    power_iteration : Estimate a dominant eigenpair.
+    cg : Square Hermitian positive-definite systems.
 
     Notes
     -----
-    Convergence is tested using
-    :math:`\|A^*(A x - b)\| < \text{atol} + \text{tol}\|b\|`.
-    In ``residual_mode="exact"``, exact residual diagnostics are refreshed only
-    every ``check_every`` iterations, and always on the final iteration. Each
-    refresh performs one additional forward product and one additional adjoint
-    product beyond the LSQR recurrence itself.
-
-    In ``residual_mode="recurrence"``, ``residual_norm`` is the standard LSQR
-    estimate ``abs(phi_bar)`` and ``normal_residual_norm`` is the LSQR scalar
-    estimate ``alpha * abs(tau)`` with ``tau = s * phi``. These estimates avoid
-    extra operator applications during checks, including the final check. This
-    function is JIT-compatible on the JAX backend when ``maxiter``,
-    ``check_every``, and ``residual_mode`` are static arguments.
-
-    The normal-equation residual can be much smaller than the solution error
-    for ill-conditioned ``A``. For ill-conditioned problems, use a tighter
-    ``tol`` or check the residual and solution quality directly.
-
-    Works on real and complex operators. For complex operators, ``A.H`` uses
-    the conjugate adjoint.
-
-    Inner products and norms use ``A.domain.inner`` / ``A.domain.norm`` for
-    domain-space quantities and ``A.codomain.norm`` for least-squares
-    residuals. The method is therefore correct on non-Euclidean geometries
-    when the spaces provide Riesz maps and ``A.rapply`` is the true metric
-    adjoint.
-
-    References
-    ----------
-    Paige, C. C. and Saunders, M. A., "LSQR: An Algorithm for Sparse
-    Linear Equations and Sparse Least Squares," ACM Trans. Math. Soft.,
-    8 (1982), 43-71.
+    JIT-compatible on JAX with ``maxiter``, ``check_every`` and ``residual_mode``
+    static. A small normal-equation residual does not imply a small error when ``A`` is
+    ill-conditioned: the error solves ``A.H A e = A.H (A x - b)``.
+    Golub & Van Loan, *Matrix Computations*, 4th ed., Sec. 11.4.2.
+    Orthonormal bases in both spaces give ordinary LSQR; complex spaces replace
+    transposes by conjugate transposes in the bidiagonalization.
 
     Examples
     --------
@@ -176,6 +87,7 @@ def lsqr(
     >>> np.allclose(result.x, [1.0, 2.0])
     True
     """
+    # Validate once, up front.
     A = require_linop(A)
     A.codomain.check_member(b)
     maxiter = check_maxiter(maxiter, A)
@@ -185,24 +97,26 @@ def lsqr(
 
     # Resolve check-free cores once; the hot loop then skips per-iteration
     # validation while honoring any custom geometry the spaces define.
-    apply = resolve_apply(A)
-    radj = resolve_rapply(A)
-    dom = SpaceCoreOps(A.domain)
-    cod = SpaceCoreOps(A.codomain)
+    apply = A._apply_core
+    radj = A._rapply_core
+    dom = A.domain
+    cod = A.codomain
 
+    # Golub-Kahan start: beta u = b - A x and alpha v = A.H u.
     x = A.domain.zeros() if x0 is None else x0
     A.domain.check_member(x)
-    residual = cod.add(b, cod.scale(-1.0, apply(x)))
-    beta = cod.norm(residual)
-    u = residual
-    u = cod.scale(safe_inverse_nonneg(A.ops, beta), u)
+    residual = cod._add_core(b, cod._scale_core(-1.0, apply(x)))
+    beta = cod._norm_core(residual)
+    u = cod._scale_core(safe_inverse_nonneg(A.ops, beta), residual)
     v = radj(u)
-    alpha = dom.norm(v)
+    alpha = dom._norm_core(v)
+    # Initial normal-equation residual ||A.H r||, exact or from the recurrence.
     if residual_mode == "exact":
-        normal_residual_norm = dom.norm(radj(residual))
+        normal_residual_norm = dom._norm_core(radj(residual))
     else:
         normal_residual_norm = beta * alpha
-    v = dom.scale(safe_inverse_nonneg(A.ops, alpha), v)
+    v = dom._scale_core(safe_inverse_nonneg(A.ops, alpha), v)
+    # LSQR state: search direction w and the scalar recurrences phi_bar, rho_bar.
     w = v
     phi_bar = beta
     rho_bar = alpha
@@ -215,14 +129,16 @@ def lsqr(
 
     def body_fun(carry: tuple[Any, ...]) -> tuple[Any, ...]:
         x, u, v, w, alpha, _beta, rho_bar, phi_bar, _residual_norm, _normal_residual, k = carry
-        u_next = cod.axpy(-alpha, u, apply(v))
-        beta_next = cod.norm(u_next)
-        u_next = cod.scale(safe_inverse_nonneg(A.ops, beta_next), u_next)
+        # Bidiagonalization step: next unit vectors u and v.
+        u_next = cod._axpy_core(-alpha, u, apply(v))
+        beta_next = cod._norm_core(u_next)
+        u_next = cod._scale_core(safe_inverse_nonneg(A.ops, beta_next), u_next)
 
-        v_next = dom.axpy(-beta_next, v, radj(u_next))
-        alpha_next = dom.norm(v_next)
-        v_next = dom.scale(safe_inverse_nonneg(A.ops, alpha_next), v_next)
+        v_next = dom._axpy_core(-beta_next, v, radj(u_next))
+        alpha_next = dom._norm_core(v_next)
+        v_next = dom._scale_core(safe_inverse_nonneg(A.ops, alpha_next), v_next)
 
+        # Givens rotation (c, s) that eliminates the new subdiagonal entry.
         rho = A.ops.sqrt(rho_bar * rho_bar + beta_next * beta_next)
         inv_rho = safe_inverse_nonneg(A.ops, rho)
         c = rho_bar * inv_rho
@@ -231,19 +147,22 @@ def lsqr(
         rho_bar_next = -c * alpha_next
         phi = c * phi_bar
         phi_bar_next = s * phi_bar
+        # Free residual estimates from the recurrence.
         recurrence_residual_norm = A.ops.abs(phi_bar_next)
         recurrence_normal_residual_norm = alpha_next * A.ops.abs(s * phi)
 
-        x_next = dom.axpy(phi * inv_rho, w, x)
-        w_next = dom.axpy(-(theta * inv_rho), w, v_next)
+        # Update the solution and the search direction.
+        x_next = dom._axpy_core(phi * inv_rho, w, x)
+        w_next = dom._axpy_core(-(theta * inv_rho), w, v_next)
         k_next = k + 1
 
+        # Exact mode recomputes the residuals (one forward and one adjoint apply).
         if residual_mode == "exact":
 
             def refresh_residuals(payload: tuple[Any, Any, Any]) -> tuple[Any, Any]:
                 x_candidate, _old_residual_norm, _old_normal_residual = payload
-                residual_next = cod.add(apply(x_candidate), cod.scale(-1.0, b))
-                return cod.norm(residual_next), dom.norm(radj(residual_next))
+                residual_next = cod._add_core(apply(x_candidate), cod._scale_core(-1.0, b))
+                return cod._norm_core(residual_next), dom._norm_core(radj(residual_next))
         else:
 
             def refresh_residuals(payload: tuple[Any, Any, Any]) -> tuple[Any, Any]:
@@ -254,6 +173,7 @@ def lsqr(
             _x_candidate, old_residual_norm, old_normal_residual = payload
             return old_residual_norm, old_normal_residual
 
+        # Refresh the reported residuals only on check iterations.
         residual_norm_next, normal_residual_norm_next = A.ops.cond(
             should_check_iteration(k_next, maxiter, check_every),
             refresh_residuals,
@@ -279,10 +199,10 @@ def lsqr(
         body_fun,
         (x, u, v, w, alpha, beta, rho_bar, phi_bar, residual_norm, normal_residual_norm, 0),
     )
-    return LSQRResult(
+    return LinalgResult(
         x,
         is_converged(normal_residual_norm, threshold_value),
         num_iters,
         residual_norm,
-        normal_residual_norm,
+        normal_residual_norm=normal_residual_norm,
     )

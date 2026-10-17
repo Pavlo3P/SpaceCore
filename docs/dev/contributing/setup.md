@@ -22,28 +22,12 @@ The `[jax,torch,dev]` install is for contributors changing JAX or Torch paths. O
 
 ## Verify the environment
 
-Start with collection. It is faster than the full suite and catches collection-time import errors before running tests:
-
-```bash
-pytest --co -q
-```
-
-Run the normal test gate:
-
-```bash
-pytest tests/ -x -q
-```
-
-Run a focused space-layer check when working on spaces, geometry, checks, or batching:
+The collection, test and lint commands are in [CONTRIBUTING.md](../../../CONTRIBUTING.md);
+collection (`pytest --co -q`) is the fastest check and catches import errors first. When
+working on spaces, geometry, checks or batching, run the focused suite first:
 
 ```bash
 pytest tests/spaces/ -v
-```
-
-Run linting:
-
-```bash
-ruff check .
 ```
 
 The minimal `.[dev]` install should run the NumPy-backed test suite. Tests for optional backends should either run when their packages are installed or skip without causing the NumPy contributor workflow to fail.

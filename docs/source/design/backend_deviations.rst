@@ -1,138 +1,66 @@
 Backend deviations
 ==================
 
-This page lists accepted differences between backends and the NumPy
-reference defined in :doc:`backend_conformance`. A deviation is a backend
-result that is numerically valid but disagrees with NumPy in a way that
-matters to users — typically a dtype-promotion choice or a default
-precision. Tolerance-only differences (eigenvector sign, complex sqrt
-branch within the per-op tolerance) are *not* deviations.
-
-Each row gives the op, the affected backend(s), what NumPy does, what the
-backend does, the workaround, and a link to the test that pins the current
-behavior. When a deviation is removed, the entry stays as a historical
-note for one minor release.
-
-Accepted deviations
--------------------
+These are the places where a backend passes :doc:`backend_conformance` but
+behaves differently from NumPy in a way your code can notice; each row gives
+the workaround. Differences inside the per-op tolerance (eigenvector sign,
+float32 round-off) are not listed.
 
 .. list-table::
    :header-rows: 1
-   :widths: 14 16 22 22 26
+   :widths: 18 14 34 34
 
    * - Op
-     - Backend(s)
-     - NumPy behavior
-     - Backend behavior
-     - Workaround / test
-   * - ``asarray`` default dtype
-     - JAX (default)
-     - Python floats → ``float64``.
-     - Python floats → ``float32`` when ``jax_enable_x64`` is unset
-       (JAX's documented default).
-     - Set ``jax_enable_x64=True`` for ``float64`` parity, or pass
-       ``dtype=...`` explicitly. Pinned in
-       ``test_backend_dtype_promotion.py``.
+     - Backend
+     - Behavior (NumPy: ``float64`` default, NEP 50 promotion)
+     - Workaround
+   * - ``asarray`` default dtype; any ``float64`` input
+     - JAX
+     - With ``jax_enable_x64`` unset, Python floats become ``float32`` and
+       ``float64`` inputs are cast to ``float32`` (so ``float32 @ float64``
+       is ``float32``).
+     - Set ``jax.config.update("jax_enable_x64", True)`` before creating
+       arrays.
    * - ``asarray`` default dtype
      - Torch
-     - Python floats → ``float64``.
-     - Python floats → ``torch.get_default_dtype()`` (``float32`` by
-       default).
-     - Call ``torch.set_default_dtype(torch.float64)`` for parity, or pass
-       ``dtype=...``. Pinned in
-       ``test_backend_dtype_promotion.py``.
-   * - ``matmul`` promotion (``float32 @ float64``)
-     - JAX (default)
-     - NEP 50: promote to ``float64``.
-     - Keep ``float32`` in default mode (JAX weak-type promotion).
-     - Pre-promote operands with ``ops.astype(..., float64)`` if you
-       want NumPy-style promotion. Pinned in
-       ``test_backend_dtype_promotion.py``.
-   * - ``matmul`` (real × complex)
+     - Python floats become ``torch.get_default_dtype()`` (``float32`` unless
+       changed).
+     - Pass ``dtype=`` or call ``torch.set_default_dtype(torch.float64)``.
+   * - ``matmul`` with mixed dtypes
      - Torch
-     - Auto-promotes the real operand to complex; produces a complex
-       result.
-     - Raises ``RuntimeError`` ("expected m1 and m2 to have the same
-       dtype") rather than promoting.
-     - Pre-promote the real operand with
-       ``ops.astype(x, complex_dtype)`` before calling ``matmul``.
-       Pinned in ``test_backend_dtype_promotion.py``.
-   * - ``imag`` on a real tensor
+     - ``float32 @ float64`` and real ``@`` complex raise ``RuntimeError``
+       instead of promoting.
+     - Cast first: ``ops.astype(a, ops.get_dtype(b))``.
+   * - ``imag`` of a real array
      - Torch
-     - Returns a zero array of the matching real dtype.
-     - Raises ``RuntimeError`` ("imag is not implemented for tensors
-       with non-complex dtypes").
-     - Guard with ``ops.is_complex_dtype(ops.get_dtype(x))`` or convert
-       to complex before calling ``imag``. Pinned in
-       ``test_backend_field_consistency.py``.
-   * - ``eigh`` eigenvalue order
-     - All backends (within tolerance)
-     - Ascending by eigenvalue.
-     - Ascending by eigenvalue across NumPy/JAX/Torch/CuPy, but
-       eigenvector signs and complex phases differ.
-     - Tests compare via the eigenvalue identity ``A v = λ v`` rather
-       than direct vector equality. Pinned in
-       ``test_conformance_numpy.py`` and
-       ``test_conformance_cross_backend.py``.
-   * - ``sqrt`` complex branch
-     - All backends (within tolerance)
-     - Principal branch.
-     - Same principal branch; output may differ by ULPs near the
-       branch cut.
-     - Per-op tolerance loosened to ``rtol=1e-5, atol=1e-6`` for
-       complex ``sqrt``. Pinned in ``test_conformance_numpy.py``.
-   * - ``logsumexp`` (float32)
-     - JAX, Torch
-     - SciPy ``logsumexp`` in ``float32``.
-     - Numerically valid result; small drift near extreme dynamic
-       ranges.
-     - Per-op tolerance ``rtol=1e-4, atol=1e-5`` for float32
-       ``logsumexp``. Pinned in ``test_conformance_numpy.py``.
-   * - ``sparse_matmul`` / ``assparse``
-     - JAX, Torch
-     - SciPy CSR/CSC/COO; full support.
-     - Best-effort or unsupported; ``BackendOps.allow_sparse`` reports
-       ``False`` and the op raises ``NotImplementedError``.
-     - Convert to a dense path or do sparse work in NumPy. Pinned in
-       ``test_backend_conversion.py``.
+     - Raises ``RuntimeError`` instead of returning zeros.
+     - Check ``ops.is_complex_dtype(ops.get_dtype(x))`` first.
    * - ``vmap``
+     - NumPy, CuPy
+     - Python-loop fallback (``has_native_vmap`` is ``False``). It maps and
+       stacks through nested tuples only; dicts and lists are not walked.
+     - Return tuples from the mapped function, or use JAX/Torch native
+       ``vmap``.
+   * - ``jax.jit``
      - NumPy, Torch, CuPy
-     - n/a (not native).
-     - Fallback Python loop; semantics match JAX's ``vmap``.
-     - Parity vs JAX's native ``vmap`` is pinned in
-       ``test_backend_vmap.py``. The fallback respects
-       ``in_axes=None`` and structured outputs.
-   * - ``jit``
-     - NumPy, Torch, CuPy
-     - n/a.
-     - ``BackendOps`` does not expose a JIT — ``jax.jit`` over a
-       ``NumpyOps`` callable raises ``TracerArrayConversionError``.
-     - Use ``JaxOps`` for JIT-compiled paths. Pinned in
-       ``test_backend_jit.py``.
+     - Tracing a function built on these backends fails (NumPy:
+       ``TracerArrayConversionError``).
+     - JIT only ``JaxOps`` code.
 
-Closed deviations
------------------
+The Torch workarounds together:
 
-None for ``0.4.0``.
+.. code-block:: python
 
-Reading the workaround column
------------------------------
+   import numpy as np
+   from spacecore import TorchOps
 
-The workaround is a code change inside SpaceCore or in user code that
-restores NumPy-equivalent behavior. It is not an apology for the
-deviation: each row's deviation is a documented backend choice, and
-removing it would require changing the backend, not SpaceCore. If a
-deviation surprises you, file an issue with the failing test so the
-matrix entry in :doc:`backend_conformance` can be tightened or a
-new row added.
+   ops = TorchOps()
+   a = ops.asarray([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64)  # not float32
+   z = ops.asarray(np.eye(2), dtype=np.complex128)
 
-Cross-references
-----------------
+   out = ops.matmul(ops.astype(a, ops.get_dtype(z)), z)  # promote before mixing
+   im = ops.imag(a) if ops.is_complex_dtype(ops.get_dtype(a)) else ops.zeros_like(a)
+   assert ops.get_dtype(out) == ops.get_dtype(z) and float(ops.sum(im)) == 0.0
 
-* :doc:`backend_conformance` — the normative matrix every deviation
-  refers back to.
-* :doc:`dtype_policy` — dtype promotion contract.
-* :doc:`conversion_policy` — cross-backend conversion rules and the
-  complex-to-real refusal.
-* ``docs/dev/0.4.0-phase-a-inventory.md`` section A6 — the gap inventory
-  this page closes.
+See :doc:`context_dtype_conversion` for dtype promotion and cross-backend
+conversion.

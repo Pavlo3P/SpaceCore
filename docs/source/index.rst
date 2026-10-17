@@ -1,63 +1,27 @@
 SpaceCore
 =========
 
-SpaceCore provides typed vector spaces, structured elements, linear operators,
-functionals, and small linear-algebra utilities for backend-aware numerical
-code.
+Building blocks for first-order optimization: spaces, geometry, linear operators,
+functionals and proximal maps, on NumPy, JAX, Torch and CuPy.
 
-A SpaceCore operator is a typed map :math:`A : X \to Y` between spaces
-:math:`X` and :math:`Y`. The spaces carry the rules needed to validate elements,
-compute inner products, flatten structured values, and interpret adjoints.
-``rapply`` is the metric adjoint with respect to the domain and codomain inner
-products; it is the coordinate conjugate transpose only in Euclidean geometry.
+The geometry lives in the space. Gradients, adjoints and proxes are taken in the
+space's inner product, so an algorithm written once stays correct in a weighted or
+operator metric, on matrices, Jordan algebras or nested trees. SpaceCore ships no
+optimization loops: you write them in a few lines, or use
+`spacecore-optimize <https://github.com/Pavlo3P/spacecore-optimize>`_.
 
-Core navigation
----------------
-
-* :doc:`api/spaces` - spaces, geometries, structure, and validation.
-* :doc:`api/linops` - linear operators and algebraic compositions.
-* :doc:`api/functionals` - scalar-valued maps and gradients.
-* :doc:`api/linalg` - CG, LSQR, Lanczos, power iteration, and exponential action.
-* :doc:`api/backend` and :doc:`api/context` - backend operations and contexts.
-* :doc:`tutorials/index` - step-by-step learning path.
-* :doc:`design/index` - conversion, dtype, batching, capability, and geometry notes.
-* :doc:`dev/index` - contributor-facing architecture decision records.
-* :doc:`release_notes` - migration and release information.
-
-Where do I start?
------------------
-
-First-time users should start with :doc:`tutorials/01_backend_and_context`, then
-work through :doc:`tutorials/02_linear_algebra` and :doc:`tutorials/03_functionals`.
-For structured unknowns continue with :doc:`tutorials/04_tree_spaces`. The worked
-examples — a :doc:`Tikhonov inverse problem <tutorials/05_weighted_tikhonov>`,
-:doc:`optimal transport <tutorials/06_optimal_transport>`,
-:doc:`manifold descent <tutorials/07_manifold_descent>`, and
-:doc:`conic optimisation <tutorials/08_pdhg_conic_program>` — apply these pieces to
-real problems. If your problem uses non-Euclidean geometry, read
-:doc:`design/geometry` before relying on adjoints or solver preconditions.
-
-What SpaceCore is not
----------------------
-
-SpaceCore is not a full solver suite and not a replacement for NumPy, SciPy,
-JAX, Torch, CuPy, PETSc, Krylov.jl, or PyLops. Its native solvers are a small
-correctness baseline and substrate layer for space-aware algorithms. External
-adapters and backend-specific fast paths can be added where a project needs
-solver breadth or production performance.
-
-Installation
-------------
+Install
+-------
 
 .. code-block:: bash
 
-   pip install spacecore
-   pip install "spacecore[jax]"
-   pip install "spacecore[torch]"
-   pip install "spacecore[cupy]"
+   pip install spacecore            # NumPy backend
+   pip install "spacecore[jax]"     # or [torch], [cupy]
 
-Minimal example
----------------
+Python 3.11+.
+
+Example
+-------
 
 .. code-block:: python
 
@@ -65,20 +29,66 @@ Minimal example
    import spacecore as sc
 
    ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
-   X = sc.DenseCoordinateSpace((2,), ctx)
-   A = sc.DenseLinOp(ctx.asarray([[2.0, 0.0], [0.0, 3.0]]), X, X, ctx)
-   b = ctx.asarray([4.0, 9.0])
+   X = sc.DenseCoordinateSpace((2,), ctx, geometry=sc.WeightedInnerProduct(ctx.asarray([2.0, 5.0])))
+   A = sc.DenseLinOp(ctx.asarray([[1.0, 2.0], [0.0, 1.0]]), X, X, ctx)
+   b = ctx.asarray([1.0, 2.0])
 
-   result = sc.cg(A, b, tol=1e-12, maxiter=10)
-   print(result.x)
-   print(result.converged)
+   print(X.inner(b, b))   # 22.0: the weighted inner product 2*1 + 5*4
+   print(A.rapply(b))     # [1.  2.8]: the adjoint in this geometry, not A.T @ b = [1. 4.]
 
-Expected output:
+   # Weighted lasso, minimize 1/2 ||A x - b||^2 + 0.1 ||x||_1, by proximal gradient.
+   f = sc.SquaredL2NormFunctional(X) @ A - sc.InnerProductFunctional(A.rapply(b), X, ctx)
+   g = 0.1 * sc.L1NormFunctional(X)
+   x, t = X.zeros(), 0.05
+   for _ in range(500):
+       x = g.prox(X.axpy(-t, f.grad(x), x), t)
+   print(x)               # about [-2.83  1.94]
 
-.. code-block:: text
+The loop is the algorithm; the space supplies the geometry it runs in.
 
-   [2. 3.]
-   True
+What is in it
+-------------
+
+* **Spaces:** dense vectors and matrices, Hermitian matrices and Jordan algebras,
+  stacks, and trees of any of these; Euclidean, weighted and operator metrics.
+* **Operators:** dense, sparse, diagonal, matrix-free and block operators, with
+  lazy sums, scaling and composition; ``rapply`` is always the metric adjoint.
+* **Functionals:** linear, quadratic and norm functionals, sums, products and
+  pull-backs; gradients in the space's geometry; ``prox`` and ``conjugate_prox``;
+  sets and indicators.
+* **Sub-step solvers:** CG, LSQR, Lanczos, power iteration, ``expm_multiply``.
+* **Backends:** NumPy, JAX, Torch, CuPy; the objects run inside ``jax.jit`` and
+  ``torch.compile``.
+
+Extending
+---------
+
+A new space, operator or functional implements check-free cores (``_add_core``,
+``_inner_core``, ``_apply_core``, ``_grad_core``, ...). The public methods (``add``,
+``inner``, ``apply``, ``grad``, ...) are inherited wrappers that run the checks and
+call the cores, and composites call cores, so each object checks once. See
+:doc:`design/extending`.
+
+Checks
+------
+
+Every object has a ``check_level``: ``"none"``, ``"cheap"`` (shape, dtype),
+``"standard"`` (membership, e.g. Hermiticity) or ``"strict"`` (+ probes). Set it per
+object, or once with ``sc.set_check_level`` / ``sc.use_check_level``. Failures raise
+``sc.SpaceValidationError``. Inside ``jax.jit`` / ``torch.compile`` checks are
+capped by ``sc.set_traced_check_level`` (default ``"none"``). See
+:doc:`design/checking_policy`.
+
+Where to go next
+----------------
+
+* **Learn by building:** :doc:`tutorials/index`.
+* **Understand the rules:** :doc:`design/index`.
+* **Look up an object:** :doc:`api/index`.
+* **Upgrade:** :doc:`release_notes`.
+* **Contribute:** :doc:`dev/index`.
+
+Experimental (0.x): the API may change before 1.0. Apache 2.0.
 
 .. toctree::
    :maxdepth: 2

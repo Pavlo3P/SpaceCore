@@ -9,8 +9,7 @@ from ..base import (
     JordanAlgebraSpace,
     StarSpace,
 )
-from ..._check_policy import CheckLevel, require_mutually_exclusive
-from ..._checks import checked_method
+from ..._checks import CheckLevel, require_mutually_exclusive
 from ...contextual import normalize_context
 from ...contextual import Context
 from ...backend import PyTreeNode
@@ -23,6 +22,7 @@ def _resolve_elementwise_geometry(
     inner_product: InnerProduct | None = None,
 ) -> InnerProduct:
     """Resolve the public geometry aliases for elementwise coordinate spaces."""
+    # geometry and inner_product are aliases; default Euclidean.
     require_mutually_exclusive(
         "geometry", geometry, "inner_product", inner_product, verb="Specify"
     )
@@ -38,6 +38,7 @@ def _euclidean_elementwise_jordan_incompatibility(
     geometry: InnerProduct,
 ) -> str | None:
     """Return the violated Euclidean-elementwise invariant, if any."""
+    # The Euclidean Jordan variant needs a real field and Euclidean geometry.
     if field != "real":
         return "field"
     if type(geometry) is not EuclideanInnerProduct:
@@ -65,22 +66,18 @@ def _validate_euclidean_elementwise_jordan(
 
 class DenseVectorSpace(DenseCoordinateSpace, StarSpace):
     """
-    Plain one-dimensional dense vectors with no Jordan capability by default.
+    One-dimensional dense vectors, without Jordan structure by default.
 
     Parameters
     ----------
     shape : tuple of int
-        One-dimensional dense vector shape.
+        One-dimensional shape.
     ctx : Context, str, or None, optional
-        Context specification used for dense arrays.
+        Backend context.
     geometry : InnerProduct or None, optional
-        Inner-product geometry. If omitted, Euclidean coordinate geometry is
-        used.
+        Inner product; Euclidean when omitted.
     check_level : {"none", "cheap", "standard", "strict"}, optional
-        Runtime validation policy for this object. When omitted, the ambient
-        default (see :func:`spacecore.get_check_level`) is used. Unlike the
-        backend/dtype context, the validation policy is a property of the bound
-        object, not of the :class:`Context`.
+        Validation level; the ambient default when omitted.
     """
 
     def __init__(
@@ -88,40 +85,32 @@ class DenseVectorSpace(DenseCoordinateSpace, StarSpace):
         shape: Tuple[int, ...],
         ctx: Context | str | None = None,
         geometry: InnerProduct | None = None,
-        check_level: CheckLevel | bool | None = None,
+        check_level: CheckLevel | None = None,
     ) -> None:
         shape = tuple(shape)
+        # Only one-dimensional shapes.
         if len(shape) != 1:
             raise ValueError(f"DenseVectorSpace requires one-dimensional shape, got {shape}.")
         super().__init__(shape, ctx, geometry=geometry, check_level=check_level)
 
-    @checked_method(in_space="self")
-    def star(self, x: DenseArray) -> DenseArray:
-        """Return elementwise conjugation."""
+    def _star_core(self, x: DenseArray) -> DenseArray:
+        """Elementwise conjugation."""
         return self.ops.conj(x)
-
-    def _convert(self, new_ctx: Context) -> DenseVectorSpace:
-        return DenseVectorSpace(self.shape, new_ctx, geometry=self.geometry.convert(new_ctx))
-
 
 class ElementwiseJordanSpace(PyTreeNode, JordanAlgebraSpace, DenseCoordinateSpace, StarSpace):
     """
-    Elementwise Jordan algebra for real or complex dense coordinates.
+    Dense coordinates with the elementwise Jordan product, real or complex.
 
     Parameters
     ----------
     shape : tuple of int
-        Canonical dense array shape for one element.
+        Element shape.
     ctx : Context, str, or None, optional
-        Context specification used for dense arrays.
+        Backend context.
     geometry : InnerProduct or None, optional
-        Inner-product geometry. If omitted, Euclidean coordinate geometry is
-        used.
+        Inner product; Euclidean when omitted.
     check_level : {"none", "cheap", "standard", "strict"}, optional
-        Runtime validation policy for this object. When omitted, the ambient
-        default (see :func:`spacecore.get_check_level`) is used. Unlike the
-        backend/dtype context, the validation policy is a property of the bound
-        object, not of the :class:`Context`.
+        Validation level; the ambient default when omitted.
     inner_product : InnerProduct or None, optional
         Alias for ``geometry``.
     """
@@ -131,10 +120,11 @@ class ElementwiseJordanSpace(PyTreeNode, JordanAlgebraSpace, DenseCoordinateSpac
         shape: Tuple[int, ...],
         ctx: Context | str | None = None,
         geometry: InnerProduct | None = None,
-        check_level: CheckLevel | bool | None = None,
+        check_level: CheckLevel | None = None,
         *,
         inner_product: InnerProduct | None = None,
     ):
+        # Real Euclidean contexts construct the Euclidean Jordan subclass instead.
         geometry = _resolve_elementwise_geometry(geometry, inner_product)
         if cls is ElementwiseJordanSpace:
             resolved_ctx = normalize_context(ctx)
@@ -147,46 +137,45 @@ class ElementwiseJordanSpace(PyTreeNode, JordanAlgebraSpace, DenseCoordinateSpac
         shape: Tuple[int, ...],
         ctx: Context | str | None = None,
         geometry: InnerProduct | None = None,
-        check_level: CheckLevel | bool | None = None,
+        check_level: CheckLevel | None = None,
         *,
         inner_product: InnerProduct | None = None,
     ) -> None:
         geometry = _resolve_elementwise_geometry(geometry, inner_product)
         DenseCoordinateSpace.__init__(self, shape, ctx, geometry=geometry, check_level=check_level)
 
-    @checked_method(in_space="self")
-    def star(self, x: DenseArray) -> DenseArray:
-        """Return elementwise conjugation."""
+    def _star_core(self, x: DenseArray) -> DenseArray:
+        """Elementwise conjugation."""
         return self.ops.conj(x)
 
-    @checked_method(in_space="self", arg_positions=(0, 1))
-    def jordan(self, x: DenseArray, y: DenseArray) -> DenseArray:
+    def _jordan_core(self, x: DenseArray, y: DenseArray) -> DenseArray:
         """Return the elementwise Jordan product."""
         return x * y
 
-    def spectrum(self, x: DenseArray) -> DenseArray:
+    def _spectrum_core(self, x: DenseArray) -> DenseArray:
         """Return ``x`` as its Jordan spectrum under elementwise product."""
         self._check_unbatched_member(x)
         return x
 
-    def spectral_decompose(self, x: DenseArray) -> tuple[DenseArray, None]:
+    def _spectral_decompose_core(self, x: DenseArray) -> tuple[DenseArray, None]:
         """Return the trivial spectral decomposition ``(x, None)``."""
         self._check_unbatched_member(x)
         return x, None
 
-    def from_spectrum(self, eigvals: DenseArray, frame: Any = None) -> DenseArray:
+    def _from_spectrum_core(self, eigvals: DenseArray, frame: Any = None) -> DenseArray:
         """Reconstruct an elementwise Jordan element from its spectrum."""
+        # Elementwise: the spectrum is the element itself, so there is no frame.
         if frame is not None:
             raise ValueError(f"{type(self).__name__}.from_spectrum expects frame=None.")
         self._check_unbatched_member(eigvals)
         return eigvals
 
-    def trace(self, x: DenseArray) -> DenseArray:
+    def _trace_core(self, x: DenseArray) -> DenseArray:
         """Return the Jordan trace as the sum over the element's own coordinates."""
         self._check_unbatched_member(x)
         return self.ops.sum(x, axis=tuple(range(-len(self.shape), 0)))
 
-    def determinant(self, x: DenseArray) -> DenseArray:
+    def _determinant_core(self, x: DenseArray) -> DenseArray:
         """Return the Jordan determinant as the product over the coordinates."""
         self._check_unbatched_member(x)
         return self.ops.prod(x, axis=tuple(range(-len(self.shape), 0)))
@@ -195,53 +184,24 @@ class ElementwiseJordanSpace(PyTreeNode, JordanAlgebraSpace, DenseCoordinateSpac
         """Return the Jordan identity: the all-ones element in the space dtype."""
         return self.ops.ones(self.shape, dtype=self.dtype)
 
-    def _apply_entrywise(self, x: DenseArray, f: Callable[[DenseArray], DenseArray]) -> DenseArray:
-        """Apply ``f`` entrywise and verify that shape is preserved."""
-        try:
-            y = f(x)
-        except Exception:
-            y = self.ops.vectorize(f)(x)
-        if self._checks_at_least("cheap") and y.shape != x.shape:
-            raise ValueError("Function application changed shape.")
-        return y
-
-    @checked_method(in_space="self", out_space="self")
-    def spectral_apply(self, x: DenseArray, f: Callable[[DenseArray], DenseArray]) -> DenseArray:
+    def _spectral_apply_core(self, x: DenseArray, f: Callable[[DenseArray], DenseArray]) -> DenseArray:
         """Apply a scalar function coordinatewise."""
         return self._apply_entrywise(x, f)
 
-    def _convert(self, new_ctx: Context) -> ElementwiseJordanSpace:
-        return ElementwiseJordanSpace(self.shape, new_ctx, geometry=self.geometry.convert(new_ctx))
-
-    def tree_flatten(self):
-        """Flatten this space for JAX pytree registration."""
-        return (), (self.shape, self.ctx, self.geometry)
-
-    @classmethod
-    def tree_unflatten(cls, aux, children):
-        """Rebuild this space from pytree aux data."""
-        shape, ctx, geometry = aux
-        return cls(shape, ctx, geometry=geometry)
-
-
 class EuclideanElementwiseJordanSpace(ElementwiseJordanSpace, EuclideanJordanAlgebraSpace):
     """
-    Real elementwise Euclidean Jordan algebra.
+    Real elementwise Jordan algebra with Euclidean geometry, selected automatically for that case.
 
     Parameters
     ----------
     shape : tuple of int
-        Canonical dense array shape for one element.
+        Element shape.
     ctx : Context, str, or None, optional
-        Context specification used for dense arrays.
+        Backend context.
     geometry : InnerProduct or None, optional
-        Inner-product geometry. This class is selected only for real contexts
-        with Euclidean coordinate geometry.
+        Inner product; Euclidean when omitted.
     check_level : {"none", "cheap", "standard", "strict"}, optional
-        Runtime validation policy for this object. When omitted, the ambient
-        default (see :func:`spacecore.get_check_level`) is used. Unlike the
-        backend/dtype context, the validation policy is a property of the bound
-        object, not of the :class:`Context`.
+        Validation level; the ambient default when omitted.
     inner_product : InnerProduct or None, optional
         Alias for ``geometry``.
     """
@@ -251,10 +211,11 @@ class EuclideanElementwiseJordanSpace(ElementwiseJordanSpace, EuclideanJordanAlg
         shape: Tuple[int, ...],
         ctx: Context | str | None = None,
         geometry: InnerProduct | None = None,
-        check_level: CheckLevel | bool | None = None,
+        check_level: CheckLevel | None = None,
         *,
         inner_product: InnerProduct | None = None,
     ) -> None:
+        # Initialize as a plain coordinate space, then confirm real field and Euclidean geometry.
         resolved_ctx = normalize_context(ctx)
         geometry = _resolve_elementwise_geometry(geometry, inner_product)
         DenseCoordinateSpace.__init__(

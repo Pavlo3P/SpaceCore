@@ -1,8 +1,7 @@
 API reference
 =============
 
-The API reference is split by abstraction. Pages use explicit autodoc
-directives for public objects instead of dumping entire modules.
+Look up classes and functions by topic.
 
 .. toctree::
    :maxdepth: 1
@@ -13,4 +12,3 @@ directives for public objects instead of dumping entire modules.
    linops
    functionals
    linalg
-   optimize

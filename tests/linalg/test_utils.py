@@ -102,7 +102,7 @@ class TestNumerics:
         space = sc.DenseCoordinateSpace((2,), numpy_complex_ctx)
         x = numpy_complex_ctx.asarray([1.0 + 1.0j, 2.0 - 1.0j])
         y = numpy_complex_ctx.asarray([1.0 - 1.0j, 0.0 + 2.0j])
-        out = _utils.real_inner(space, x, y)
+        out = space.real_inner(x, y)
         assert np.isreal(to_numpy(out))
         np.testing.assert_allclose(to_numpy(out), np.real(to_numpy(space.inner(x, y))))
 

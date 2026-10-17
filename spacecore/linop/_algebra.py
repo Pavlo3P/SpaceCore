@@ -1,280 +1,189 @@
 from __future__ import annotations
 
-import warnings
-from math import prod
-from typing import Any, Callable, Sequence, cast
+from functools import reduce
+from typing import Any, Sequence
 
-from ._base import LinOp, Domain, Codomain
-from ._metric import _requires_euclidean_or_riesz, metric_rapply, metric_rvapply
-from .._check_policy import CheckLevel, minimum_check_level
+from ._base import LinOp, Domain, Codomain, _require_linop
+from ..mapping import (
+    Scalar, ScaledNode, SumNode, ZeroNode, make_scaled_of, make_sum_of, register,
+    same_space_for_algebra as _same_space_for_algebra,
+)
+from ..space import DenseElement, Element
+from .._checks import CheckLevel, minimum_check_level
 from .._checks import checked_method
+from ..space._capabilities import _CAP_BATCH, _CAP_COORDINATE
 from .._repr import summarize_value
-from ..contextual import Context
-from ..kernels import core_kernels
-from ..kernels.core.algebra import (
-    batched_zeros as _batched_zeros,
-    compose_chain as _compose_chain,
-    conjugate_scalar as _conjugate_scalar,
-    leading_shape as _leading_shape,
-)
+from ..mapping._lazy_algebra import conjugate_scalar as _conjugate_scalar
+from ._matrix_free import IdentityLinOp
 
 
-from .._lazy_algebra import (
-    finalize_sum,
-    flatten_sum,
-    fold_scaled,
-    is_scalar_like as is_scalar_like,  # re-exported for linop/_base.py
-    scalar_eq,
-)
+def _compose_chain(op: Any) -> tuple:
+    """Flatten ``op`` into its leaf operators in application order.
 
-
-#: Sentinel for "the caller did not mention ``euclidean_adjoint`` at all".
-#: Passing ``False`` explicitly is an assertion that ``rapply`` already carries the
-#: geometry, so it silences the advisory; omitting it means the question was never
-#: considered, which is the only case worth warning about.
-_ADJOINT_UNSPECIFIED = object()
-
-
-def _require_same_context(ops: Sequence[LinOp]) -> Context:
-    """Return the common mathematical context for algebra operands or raise.
-
-    Operands must share a mathematical context (:meth:`Context.same_math`). The
-    surviving ``check_level`` is a property of the resulting bound object and is
-    combined (via the minimum) when the container binds its operands, not here.
+    This is the *fusion rule*: a composed operator exposes a precomputed
+    ``_apply_chain`` (its leaves, first applied first); every other operator
+    contributes itself as a single-element chain. Concatenating the chains of a
+    composition's operands fuses an arbitrarily deep ``A @ B @ C @ ...`` into one
+    flat sequence, so the composed core loops once instead of re-walking the
+    nested binary tree.
     """
-    ctx = ops[0].ctx
-    for i, op in enumerate(ops[1:], start=1):
-        if not ctx.same_math(op.ctx):
-            raise ValueError(
-                "All LinOp operands in an algebraic expression must have the same ctx; "
-                f"operand 0 has ctx {ctx!r}, operand {i} has ctx {op.ctx!r}."
-            )
-    return ctx
+    chain = getattr(op, "_apply_chain", None)
+    return chain if chain is not None else (op,)
 
 
-def _same_space_for_algebra(left: Any, right: Any) -> bool:
-    """Return whether two spaces are compatible for algebraic composition."""
-    if left == right:
-        return True
-    if type(left) is not type(right):
-        return False
-    if tuple(left.shape) != tuple(right.shape):
-        return False
-    if not left.ctx.same_math(right.ctx):
-        return False
-    try:
-        return left.convert(right.ctx) == right
-    except Exception:
-        return False
+def _leading_shape(space: Any, value: Any) -> tuple[int, ...]:
+    """Infer the leading batch dimensions of ``value`` relative to ``space``."""
+    # Product spaces: batch shape of the first component. Else strip the trailing space shape.
+    parts = getattr(space, "spaces", None)
+    if parts is not None and isinstance(value, tuple) and value:
+        return _leading_shape(parts[0], value[0])
+    shape = tuple(getattr(value, "shape", ()))
+    base = tuple(space.shape)
+    return shape if not base else shape[: len(shape) - len(base)]
 
 
-def _require_linop(op: Any, name: str) -> LinOp:
-    """Return ``op`` as a linear operator or raise a typed error."""
-    if not isinstance(op, LinOp):
-        raise TypeError(f"{name} must be a LinOp, got {type(op).__name__}.")
-    return op
+def _batched_zeros(space: Any, leading: tuple[int, ...]) -> Any:
+    """Return a batched zero element of ``space`` with leading shape ``leading``."""
+    # Product spaces get a tuple of per-component zero batches.
+    parts = getattr(space, "spaces", None)
+    if parts is not None:
+        return tuple(_batched_zeros(part, leading) for part in parts)
+    return space.ops.zeros(leading + tuple(space.shape), dtype=space.dtype)
+
 
 
 def make_sum(ops: Sequence[LinOp]) -> LinOp:
     """
-    Return a locally simplified lazy sum of linear operators.
-
-    This factory performs only local algebraic canonicalization: nested
-    ``SumLinOp`` nodes are flattened and ``ZeroLinOp`` terms are removed. It
-    does not collect like terms, reorder operands, or attempt full symbolic
-    optimization. All operands must have the same context, domain, and codomain
-    before a simplified operator is returned.
+    Return the lazy sum of operators, with nested sums flattened and zero terms dropped.
 
     Parameters
     ----------
     ops : sequence of LinOp
-        Nonempty sequence of operators with common domain and codomain.
+        Operators sharing context, domain and codomain.
 
     Returns
     -------
     LinOp
-        Simplified lazy sum, a single operand, or a zero operator.
+        The sum, the single remaining operand, or a zero operator.
     """
-    if not ops:
-        raise ValueError("make_sum requires a nonempty sequence of LinOp operands.")
-
-    terms = flatten_sum(
-        tuple(_require_linop(op, f"ops[{i}]") for i, op in enumerate(ops)),
-        is_sum=lambda t: isinstance(t, SumLinOp),
-        parts=lambda t: t.parts,
-    )
-    ctx = _require_same_context(terms)
-    domain = terms[0].domain
-    codomain = terms[0].codomain
-    for i, op in enumerate(terms[1:], start=1):
-        if not _same_space_for_algebra(op.domain, domain) or not _same_space_for_algebra(
-            op.codomain, codomain
-        ):
-            raise ValueError(
-                "All SumLinOp operands must have the same domain and codomain; "
-                f"operand 0 maps {domain!r} -> {codomain!r}, "
-                f"operand {i} maps {op.domain!r} -> {op.codomain!r}."
-            )
-
-    return finalize_sum(
-        terms,
-        is_zero=lambda t: isinstance(t, ZeroLinOp),
-        make_zero=lambda: ZeroLinOp(domain, codomain, ctx),
-        make_sum_node=SumLinOp,
-    )
+    return make_sum_of(LinOp, ops)
 
 
 def make_scaled(scalar: Any, op: LinOp) -> LinOp:
     """
-    Return a locally simplified scalar multiple of a linear operator.
-
-    This factory performs only local algebraic canonicalization: zero and unit
-    scalars are simplified, and nested ``ScaledLinOp`` nodes are folded into one
-    scalar. It does not distribute scaling over sums or perform full symbolic
-    optimization. Complex scalars retain the usual conjugated coefficient in
-    ``rapply`` through ``ScaledLinOp``.
+    Return ``scalar * op``: ``0`` gives zero, ``1`` gives ``op``, nested scalars fold.
 
     Parameters
     ----------
     scalar : scalar-like
-        Scalar coefficient multiplying ``op``.
+        Coefficient.
     op : LinOp
         Operator to scale.
 
     Returns
     -------
     LinOp
-        Simplified scalar multiple.
+        The scaled operator.
     """
-    op = _require_linop(op, "op")
-    if not is_scalar_like(scalar):
-        raise TypeError(f"scalar must be scalar-like, got {type(scalar).__name__}.")
+    return make_scaled_of(LinOp, scalar, op)
 
-    return fold_scaled(
-        scalar,
-        op,
-        is_zero=lambda o: isinstance(o, ZeroLinOp),
-        unwrap_scaled=lambda o: (o.scalar, o.op) if isinstance(o, ScaledLinOp) else None,
-        make_zero=lambda: ZeroLinOp(op.domain, op.codomain, op.ctx),
-        make_scaled_node=ScaledLinOp,
-    )
+
+def _check_composable(left: LinOp, right: LinOp) -> tuple[LinOp, LinOp]:
+    """Validate ``left @ right``: both LinOps, same context, matching middle space."""
+    left = _require_linop(left, "left")
+    right = _require_linop(right, "right")
+    if not left.ctx.same_math(right.ctx):
+        raise ValueError(
+            "All LinOp operands in an algebraic expression must have the same ctx; "
+            f"operand 0 has ctx {left.ctx!r}, operand 1 has ctx {right.ctx!r}."
+        )
+    if not _same_space_for_algebra(right.codomain, left.domain):
+        raise ValueError(
+            "ComposedLinOp requires right.codomain == left.domain; "
+            f"got {right.codomain!r} and {left.domain!r}."
+        )
+    return left, right
 
 
 def make_composed(left: LinOp, right: LinOp) -> LinOp:
     """
-    Return a locally simplified composition of two linear operators.
-
-    This factory performs only local algebraic canonicalization: identity
-    factors are removed and compositions with zero maps become zero maps. It
-    preserves the binary ``ComposedLinOp`` representation and does not flatten
-    multi-factor chains or attempt full symbolic optimization. Operands must
-    have the same context and compatible middle spaces before a simplified
-    operator is returned.
+    Return ``left @ right``, dropping identity factors and collapsing zero factors.
 
     Parameters
     ----------
     left : LinOp
         Operator applied second.
     right : LinOp
-        Operator applied first.
+        Operator applied first; ``right.codomain`` must equal ``left.domain``.
 
     Returns
     -------
     LinOp
-        Simplified lazy composition representing ``left @ right``.
+        The composition.
     """
-    left = _require_linop(left, "left")
-    right = _require_linop(right, "right")
-    _require_same_context((left, right))
-    if not _same_space_for_algebra(right.codomain, left.domain):
-        raise ValueError(
-            "ComposedLinOp requires right.codomain == left.domain; "
-            f"got {right.codomain!r} and {left.domain!r}."
-        )
+    left, right = _check_composable(left, right)
 
+    # Local rewrites: identity factors vanish, zero factors give a zero map.
     if isinstance(right, IdentityLinOp):
         return left
     if isinstance(left, IdentityLinOp):
         return right
-    if isinstance(left, ZeroLinOp):
-        return ZeroLinOp(right.domain, left.codomain, left.ctx)
-    if isinstance(right, ZeroLinOp):
+    if isinstance(left, ZeroLinOp) or isinstance(right, ZeroLinOp):
         return ZeroLinOp(right.domain, left.codomain, left.ctx)
     return ComposedLinOp(left, right)
 
 
-@core_kernels("scaled")
-class ScaledLinOp(LinOp[Domain, Codomain]):
+class ScaledLinOp(ScaledNode, LinOp[Domain, Codomain]):
     r"""
-    Lazy scalar multiple of a linear operator.
-
-    ``ScaledLinOp(alpha, A)`` represents the mathematical operator
-    ``alpha * A``. Its context is exactly ``A.ctx``; its domain is ``A.domain``
-    and its codomain is ``A.codomain``. No dense matrix representation is
-    formed.
-
-    The forward action is ``apply(x) = alpha * A.apply(x)`` for
-    ``x in A.domain``. The reverse action is
-    ``rapply(y) = conj(alpha) * A.rapply(y)`` for ``y in A.codomain``, so
-    complex scalars use the conjugated coefficient.
+    Lazy ``scalar * op``; its adjoint is ``conj(scalar) * op.H``.
 
     Parameters
     ----------
     scalar : scalar-like
-        Scalar multiplier.
+        Coefficient.
     op : LinOp
-        Operator being scaled.
+        Operator to scale.
     check_level : {"none", "cheap", "standard", "strict"}, optional
-        Runtime validation policy for this object. When omitted, the ambient
-        default (see :func:`spacecore.get_check_level`) is used. Unlike the
-        backend/dtype context, the validation policy is a property of the bound
-        object, not of the :class:`Context`.
-
-    Attributes
-    ----------
-    scalar : scalar-like
-        Stored scalar multiplier.
-    op : LinOp
-        Stored operand.
+        Validation level; the ambient default when omitted.
     """
 
-    def __init__(
-        self,
-        scalar: Any,
-        op: LinOp[Domain, Codomain],
-        check_level: CheckLevel | bool | None = None,
-    ) -> None:
-        op = _require_linop(op, "op")
-        if not is_scalar_like(scalar):
-            raise TypeError(f"scalar must be scalar-like, got {type(scalar).__name__}.")
-        # Default the policy from the OPERAND, not from its domain/codomain
-        # spaces: an algebra node inherits the least-strict operand so the
-        # result does not depend on operand order.
-        if check_level is None:
-            check_level = op.check_level
-        super().__init__(op.domain, op.codomain, op.ctx, check_level=check_level)
-        self.scalar = scalar
-        self.op = op
+    _fields = ("scalar", "op:operand")
+    _dynamic = ("scalar", "op")
 
-    @checked_method(in_space="domain", out_space="codomain")
-    def apply(self, x: Any) -> Any:
-        """Return ``scalar * op.apply(x)``."""
-        return self._apply_core(x)
+    def _apply_core(self, x: Any) -> Any:
+        y = self.op._apply_core(x)
+        scale = self.codomain._scale_core
+        return scale(self.scalar, y)
 
-    @checked_method(in_space="codomain", out_space="domain")
-    def rapply(self, y: Any) -> Any:
-        """Return ``conj(scalar) * op.rapply(y)``."""
-        return self._rapply_core(y)
+    def _rapply_core(self, y: Any) -> Any:
+        x = self.op._rapply_core(y)
+        scale = self.domain._scale_core
+        return scale(_conjugate_scalar(self.scalar), x)
+
+    def _vapply_core(self, xs: Any) -> Any:
+        ys = self.op._vapply_core(xs)
+        return self.codomain._scale_batch_core(self.scalar, ys)
+
+    def __init__(self, scalar: Any, op: LinOp[Domain, Codomain], check_level: CheckLevel | None = None) -> None:
+        super().__init__(scalar, op, check_level)
+
+    @property
+    def op(self) -> LinOp[Domain, Codomain]:
+        """The scaled operand."""
+        return self.operand
 
     @checked_method(in_space="domain", out_space="codomain", in_batched=True, out_batched=True)
     def vapply(self, xs: Any) -> Any:
         """Return ``scalar * op.vapply(xs)``."""
+        self._require(_CAP_BATCH, "ScaledLinOp.vapply")
         return self._vapply_core(xs)
 
     def rvapply(self, ys: Any) -> Any:
         """Return ``conj(scalar) * op.rvapply(ys)``."""
+        self._require(_CAP_BATCH, "ScaledLinOp.rvapply")
+        # Adjoint of s A is conj(s) A*.
         xs = self.op.rvapply(ys)
-        return self.domain.scale_batch(_conjugate_scalar(self.scalar), xs)
+        return self.domain._scale_batch_core(_conjugate_scalar(self.scalar), xs)
 
     def fuse(self, *, materialize: bool = False) -> LinOp:
         r"""Fuse the operand and fold the scalar into a dense matrix (ADR-021).
@@ -287,6 +196,7 @@ class ScaledLinOp(LinOp[Domain, Codomain]):
         """
         from ._dense import DenseLinOp
 
+        # Fuse the operand; a dense result absorbs the scalar into its matrix.
         op = self.op.fuse(materialize=materialize)
         if isinstance(op, DenseLinOp):
             matrix = self.scalar * op.to_matrix()
@@ -298,137 +208,68 @@ class ScaledLinOp(LinOp[Domain, Codomain]):
 
     def is_hermitian(self) -> bool | None:
         """
-        Return whether this scaled operator is structurally Hermitian.
-
-        For a real scalar ``s`` the adjoint satisfies ``(s A)* = s A*``, so
-        ``s A`` is self-adjoint exactly when ``A`` is; the operand's verdict is
-        propagated faithfully. For a non-real scalar the relation becomes
-        ``(s A)* = conj(s) A* != s A`` in general, so Hermiticity cannot be
-        decided cheaply and ``None`` is returned.
+        Return ``op.is_hermitian()`` for a real scalar, else ``None`` (undecided).
 
         Returns
         -------
         bool | None
-            ``self.op.is_hermitian()`` when ``self.scalar`` is real, otherwise
-            ``None`` for unknown.
+            Structural Hermiticity, or ``None`` when unknown.
         """
         if _conjugate_scalar(self.scalar) == self.scalar:
             return self.op.is_hermitian()
         return None
 
-    def __eq__(self, other: Any) -> bool:
-        """Return whether another scaled operator has the same scalar and operand."""
-        if not self.same_math(other):          # Tier 1: backend
-            return NotImplemented
-        # NaN-reflexive, returns a real Python bool (no np.bool_ leak).
-        if not scalar_eq(self.scalar, other.scalar):       # Tier 3: scalar value
-            return False
-        return self.op == other.op                          # operand (own gate)
-
     def _repr_body(self) -> str:
         return f"{summarize_value(self.scalar)} · {self.op._short_repr()}"
 
-    def tree_flatten(self):
-        """Flatten this operator for pytree registration."""
-        children = (self.scalar, self.op)
-        aux = ()
-        return children, aux
 
-    @classmethod
-    def tree_unflatten(cls, aux, children):
-        """Rebuild this operator from pytree data."""
-        scalar, op = children
-        return cls(scalar, op)
-
-    def _convert(self, new_ctx: Context) -> ScaledLinOp:
-        """Convert the operand to ``new_ctx`` while preserving the scalar."""
-        return ScaledLinOp(self.scalar, self.op.convert(new_ctx))
-
-
-@core_kernels("sum")
-class SumLinOp(LinOp[Domain, Codomain]):
+class SumLinOp(SumNode, LinOp[Domain, Codomain]):
     r"""
-    Lazy finite sum of linear operators with common spaces.
-
-    ``SumLinOp((A1, ..., Ak))`` represents ``A1 + ... + Ak`` for a nonempty
-    sequence of ``LinOp`` instances. All operands must have the same ``ctx``,
-    the same domain, and the same codomain before construction. The resulting
-    operator has that shared context, domain, and codomain.
-
-    The forward action is ``apply(x) = sum_i Ai.apply(x)`` for the shared
-    domain element ``x``. The reverse action is
-    ``rapply(y) = sum_i Ai.rapply(y)`` for the shared codomain element ``y``.
+    Lazy sum of operators sharing context, domain and codomain.
 
     Parameters
     ----------
     ops : sequence of LinOp
-        Nonempty sequence of operators with common context, domain, and
-        codomain.
+        The summands.
     check_level : {"none", "cheap", "standard", "strict"}, optional
-        Runtime validation policy for this object. When omitted, the ambient
-        default (see :func:`spacecore.get_check_level`) is used. Unlike the
-        backend/dtype context, the validation policy is a property of the bound
-        object, not of the :class:`Context`.
-
-    Attributes
-    ----------
-    parts : tuple of LinOp
-        Stored operands in the lazy sum.
+        Validation level; the ambient default when omitted.
     """
 
-    def __init__(
-        self,
-        ops: Sequence[LinOp[Domain, Codomain]],
-        check_level: CheckLevel | bool | None = None,
-    ) -> None:
-        if not ops:
-            raise ValueError("SumLinOp requires a nonempty sequence of LinOp operands.")
-        parts = tuple(_require_linop(op, f"ops[{i}]") for i, op in enumerate(ops))
-        ctx = _require_same_context(parts)
-        domain = parts[0].domain
-        codomain = parts[0].codomain
-        for i, op in enumerate(parts[1:], start=1):
-            if not _same_space_for_algebra(op.domain, domain) or not _same_space_for_algebra(
-                op.codomain, codomain
-            ):
-                raise ValueError(
-                    "All SumLinOp operands must have the same domain and codomain; "
-                    f"operand 0 maps {domain!r} -> {codomain!r}, "
-                    f"operand {i} maps {op.domain!r} -> {op.codomain!r}."
-                )
-        if check_level is None:
-            check_level = minimum_check_level(tuple(op.check_level for op in parts))
-        super().__init__(domain, codomain, ctx, check_level=check_level)
-        self.ops_tuple = parts
+    _fields = ("ops:parts",)
+    _dynamic = ("ops",)
+
+    def _apply_core(self, x: Any) -> Any:
+        # A1 x + ... + Ak x, with the codomain's unchecked add when it has one.
+        return reduce(self.codomain._add_core, (part._apply_core(x) for part in self.ops_tuple))
+
+    def _rapply_core(self, y: Any) -> Any:
+        # A1* y + ... + Ak* y, added in the domain.
+        return reduce(self.domain._add_core, (part._rapply_core(y) for part in self.ops_tuple))
+
+    def _vapply_core(self, xs: Any) -> Any:
+        # Row-wise sum of the batched applies.
+        return reduce(self.codomain._add_batch_core, (part._vapply_core(xs) for part in self.ops_tuple))
+
+    def __init__(self, ops: Sequence[LinOp[Domain, Codomain]], check_level: CheckLevel | None = None) -> None:
+        super().__init__(ops, check_level)
 
     @property
-    def parts(self) -> tuple[LinOp[Domain, Codomain], ...]:
-        """Operators in this lazy sum."""
-        return self.ops_tuple
-
-    @checked_method(in_space="domain", out_space="codomain")
-    def apply(self, x: Any) -> Any:
-        """Return ``sum_i ops[i].apply(x)``."""
-        return self._apply_core(x)
-
-    @checked_method(in_space="codomain", out_space="domain")
-    def rapply(self, y: Any) -> Any:
-        """Return ``sum_i ops[i].rapply(y)``."""
-        return self._rapply_core(y)
+    def ops_tuple(self) -> tuple[LinOp[Domain, Codomain], ...]:
+        """The summed operators (alias of ``parts``)."""
+        return self.parts
 
     @checked_method(in_space="domain", out_space="codomain", in_batched=True, out_batched=True)
     def vapply(self, xs: Any) -> Any:
         """Return ``sum_i ops[i].vapply(xs)``."""
+        self._require(_CAP_BATCH, "SumLinOp.vapply")
         return self._vapply_core(xs)
 
     @checked_method(in_space="codomain", out_space="domain", in_batched=True, out_batched=True)
     def rvapply(self, ys: Any) -> Any:
         """Return ``sum_i ops[i].rvapply(ys)``."""
-        add_batch = self.domain.add_batch
-        acc = self.ops_tuple[0].rvapply(ys)
-        for op in self.ops_tuple[1:]:
-            acc = add_batch(acc, op.rvapply(ys))
-        return acc
+        self._require(_CAP_BATCH, "SumLinOp.rvapply")
+        # Adjoint of a sum is the sum of adjoints.
+        return reduce(self.domain._add_batch_core, (op.rvapply(ys) for op in self.ops_tuple))
 
     def fuse(self, *, materialize: bool = False) -> LinOp:
         r"""Fuse each term and combine the dense terms into one ``DenseLinOp`` (ADR-021).
@@ -441,6 +282,8 @@ class SumLinOp(LinOp[Domain, Codomain]):
         """
         from ._dense import DenseLinOp
 
+        # Fuse each term, then add up the dense ones into one matrix;
+        # matrix-free terms stay as lazy summands.
         fused = [p.fuse(materialize=materialize) for p in self.parts]
         dense = [p for p in fused if isinstance(p, DenseLinOp)]
         if len(dense) < 2:
@@ -475,85 +318,52 @@ class SumLinOp(LinOp[Domain, Codomain]):
             return True
         return None
 
-    def __eq__(self, other: Any) -> bool:
-        """Return whether another sum has the same operands, in order."""
-        if not self.same_math(other):              # Tier 1: backend
-            return NotImplemented
-        if len(self.ops_tuple) != len(other.ops_tuple):         # Tier 2: operand count before zip
-            return False
-        # Ordered, structural: A + B != B + A. Commutative equivalence is a
-        # separate concern (a future equiv()), not __eq__.
-        return all(a == b for a, b in zip(self.ops_tuple, other.ops_tuple))
-
     def _repr_body(self) -> str:
         from .._repr import truncated_join
 
         return truncated_join((op._short_repr() for op in self.ops_tuple), " + ")
 
-    def tree_flatten(self):
-        """Flatten this operator for pytree registration."""
-        children = self.ops_tuple
-        aux = ()
-        return children, aux
 
-    @classmethod
-    def tree_unflatten(cls, aux, children):
-        """Rebuild this operator from pytree data."""
-        return cls(tuple(children))
-
-    def _convert(self, new_ctx: Context) -> SumLinOp:
-        """Convert all operands to ``new_ctx``."""
-        return SumLinOp(tuple(op.convert(new_ctx) for op in self.ops_tuple))
-
-
-@core_kernels("composed")
 class ComposedLinOp(LinOp[Domain, Codomain]):
     r"""
-    Lazy composition of two linear operators.
-
-    ``ComposedLinOp(A, B)`` represents ``A @ B = A circ B``. The operands must
-    have the same ``ctx`` before construction, and ``B.codomain`` must equal
-    ``A.domain``. The resulting operator has domain ``B.domain`` and codomain
-    ``A.codomain``.
-
-    The forward action is ``apply(x) = A.apply(B.apply(x))`` for
-    ``x in B.domain``. The reverse action is ``rapply(z) = B.rapply(A.rapply(z))``
-    for ``z in A.codomain``.
+    Lazy composition ``left @ right``; the adjoint is ``right.H @ left.H``.
 
     Parameters
     ----------
     left : LinOp
         Operator applied second.
     right : LinOp
-        Operator applied first.
+        Operator applied first; ``right.codomain`` must equal ``left.domain``.
     check_level : {"none", "cheap", "standard", "strict"}, optional
-        Runtime validation policy for this object. When omitted, the ambient
-        default (see :func:`spacecore.get_check_level`) is used. Unlike the
-        backend/dtype context, the validation policy is a property of the bound
-        object, not of the :class:`Context`.
-
-    Attributes
-    ----------
-    left : LinOp
-        Left operand.
-    right : LinOp
-        Right operand.
+        Validation level; the ambient default when omitted.
     """
+
+    _fields = ("left", "right")
+    _dynamic = ("left", "right")
+
+    def _apply_core(self, x: Any) -> Any:
+        for leaf in self._apply_chain:
+            x = leaf._apply_core(x)
+        return x
+
+    def _rapply_core(self, z: Any) -> Any:
+        for leaf in reversed(self._apply_chain):
+            z = leaf._rapply_core(z)
+        return z
+
+    def _vapply_core(self, xs: Any) -> Any:
+        for leaf in self._apply_chain:
+            xs = leaf._vapply_core(xs)
+        return xs
 
     def __init__(
         self,
         left: LinOp,
         right: LinOp,
-        check_level: CheckLevel | bool | None = None,
+        check_level: CheckLevel | None = None,
     ) -> None:
-        left = _require_linop(left, "left")
-        right = _require_linop(right, "right")
-        _require_same_context((left, right))
-        if not _same_space_for_algebra(right.codomain, left.domain):
-            raise ValueError(
-                "ComposedLinOp requires right.codomain == left.domain; "
-                f"got {right.codomain!r} and {left.domain!r}."
-            )
+        left, right = _check_composable(left, right)
+        # Bind with right's domain and left's codomain.
         if check_level is None:
             check_level = minimum_check_level((left.check_level, right.check_level))
         super().__init__(right.domain, left.codomain, left.ctx, check_level=check_level)
@@ -565,23 +375,15 @@ class ComposedLinOp(LinOp[Domain, Codomain]):
         # instead of re-walking the binary ComposedLinOp tree.
         self._apply_chain = _compose_chain(right) + _compose_chain(left)
 
-    @checked_method(in_space="domain", out_space="codomain")
-    def apply(self, x: Any) -> Any:
-        """Return ``left.apply(right.apply(x))``."""
-        return self._apply_core(x)
-
-    @checked_method(in_space="codomain", out_space="domain")
-    def rapply(self, z: Any) -> Any:
-        """Return ``right.rapply(left.rapply(z))``."""
-        return self._rapply_core(z)
-
     @checked_method(in_space="domain", out_space="codomain", in_batched=True, out_batched=True)
     def vapply(self, xs: Any) -> Any:
         """Return ``left.vapply(right.vapply(xs))``."""
+        self._require(_CAP_BATCH, "ComposedLinOp.vapply")
         return self._vapply_core(xs)
 
     def rvapply(self, zs: Any) -> Any:
         """Return ``right.rvapply(left.rvapply(zs))``."""
+        self._require(_CAP_BATCH, "ComposedLinOp.rvapply")
         return self.right.rvapply(self.left.rvapply(zs))
 
     def fuse(self, *, materialize: bool = False) -> LinOp:
@@ -598,6 +400,7 @@ class ComposedLinOp(LinOp[Domain, Codomain]):
         """
         from ._dense import DenseLinOp
 
+        # Two dense factors multiply into one matrix; otherwise stay lazy.
         left = self.left.fuse(materialize=materialize)
         right = self.right.fuse(materialize=materialize)
         if isinstance(left, DenseLinOp) and isinstance(right, DenseLinOp):
@@ -611,105 +414,61 @@ class ComposedLinOp(LinOp[Domain, Codomain]):
 
     def is_hermitian(self) -> bool | None:
         """
-        Return whether this composition is structurally Hermitian.
-
-        A Gram product ``R* @ R`` (equivalently ``L @ L*``) is self-adjoint in
-        any geometry, since ``<R* R x, y> = <R x, R y> = <x, R* R y>``. This is
-        detected structurally when ``self.left == self.right.H`` (the adjoint
-        view compares its wrapped operand, so this also matches ``L @ L*``).
-        Any other composition is not cheaply decidable and returns ``None``;
-        non-Hermiticity is never asserted.
+        Return ``True`` for an adjoint-palindromic chain (``R.H @ R``, ``L @ V @ L.H`` with ``V`` self-adjoint), else ``None``.
 
         Returns
         -------
         bool | None
-            ``True`` for a Gram product, otherwise ``None``.
+            ``True`` when structurally Hermitian, ``None`` when unknown.
         """
-        if self.left == self.right.H:
+        # The chain c_k ... c_0 is self-adjoint when c_i# == c_(k-i) for every i and the
+        # middle factor, if any, is self-adjoint: R# R, L V L# and their nestings.
+        chain = self._apply_chain
+        k = len(chain)
+        if all(chain[i].H == chain[k - 1 - i] for i in range(k // 2)) and (
+            k % 2 == 0 or chain[k // 2].is_hermitian() is True
+        ):
             return True
         return None
-
-    def __eq__(self, other: Any) -> bool:
-        """Return whether another composition has the same operands, in order."""
-        if not self.same_math(other):              # Tier 1: backend
-            return NotImplemented
-        return self.left == other.left and self.right == other.right
 
     def _repr_body(self) -> str:
         return f"{self.left._short_repr()} ∘ {self.right._short_repr()}"
 
-    def tree_flatten(self):
-        """Flatten this operator for pytree registration."""
-        children = (self.left, self.right)
-        aux = ()
-        return children, aux
-
-    @classmethod
-    def tree_unflatten(cls, aux, children):
-        """Rebuild this operator from pytree data."""
-        left, right = children
-        return cls(left, right)
-
-    def _convert(self, new_ctx: Context) -> ComposedLinOp:
-        """Convert both operands to ``new_ctx``."""
-        return ComposedLinOp(self.left.convert(new_ctx), self.right.convert(new_ctx))
-
-
-@core_kernels("zero")
-class ZeroLinOp(LinOp[Domain, Codomain]):
+class ZeroLinOp(ZeroNode, LinOp[Domain, Codomain]):
     r"""
-    Lazy zero map between two spaces.
-
-    ``ZeroLinOp(X, Y)`` represents the linear map ``0 : X -> Y``. The context is
-    resolved from the optional ``ctx`` argument and the two spaces, then both
-    spaces are converted to that context. Its domain is ``X`` and its codomain
-    is ``Y`` in the resolved context.
-
-    The forward action is ``apply(x) = 0_Y`` for ``x in X``. The reverse action
-    is ``rapply(y) = 0_X`` for ``y in Y``.
+    Lazy zero map from ``dom`` to ``cod``.
 
     Parameters
     ----------
     dom : Space
-        Domain space.
+        Domain.
     cod : Space
-        Codomain space.
+        Codomain.
     ctx : Context, str, or None, optional
-        Backend context specification. Default is resolved from the spaces.
+        Backend context; resolved from the spaces when omitted.
     check_level : {"none", "cheap", "standard", "strict"}, optional
-        Runtime validation policy for this object. When omitted, the ambient
-        default (see :func:`spacecore.get_check_level`) is used. Unlike the
-        backend/dtype context, the validation policy is a property of the bound
-        object, not of the :class:`Context`.
+        Validation level; the ambient default when omitted.
     """
 
-    def __init__(
-        self,
-        dom: Domain,
-        cod: Codomain,
-        ctx: Context | str | None = None,
-        check_level: CheckLevel | bool | None = None,
-    ) -> None:
-        super().__init__(dom, cod, ctx, check_level=check_level)
+    def _apply_core(self, x: Any) -> Any:
+        return self.codomain.zeros()
 
-    @checked_method(in_space="domain", out_space="codomain")
-    def apply(self, x: Any) -> Any:
-        """Return the zero element of the codomain."""
-        return self._apply_core(x)
+    def _rapply_core(self, y: Any) -> Any:
+        return self.domain.zeros()
 
-    @checked_method(in_space="codomain", out_space="domain")
-    def rapply(self, y: Any) -> Any:
-        """Return the zero element of the domain."""
-        return self._rapply_core(y)
+    def _vapply_core(self, xs: Any) -> Any:
+        return _batched_zeros(self.codomain, _leading_shape(self.domain, xs))
 
     @checked_method(in_space="domain", in_batched=True)
     def vapply(self, xs: Any) -> Any:
         """Return the batched zero element of the codomain."""
+        self._require(_CAP_BATCH, "ZeroLinOp.vapply")
         return self._vapply_core(xs)
 
     @checked_method(in_space="codomain", in_batched=True)
     def rvapply(self, ys: Any) -> Any:
         """Return the batched zero element of the domain."""
+        self._require(_CAP_BATCH, "ZeroLinOp.rvapply")
         return _batched_zeros(self.domain, _leading_shape(self.codomain, ys))
 
     def to_dense(self) -> Any:
@@ -718,6 +477,7 @@ class ZeroLinOp(LinOp[Domain, Codomain]):
 
         The returned array has shape ``self.codomain.shape + self.domain.shape``.
         """
+        self._require(_CAP_COORDINATE, "ZeroLinOp.to_dense")
         return self.ops.zeros(
             tuple(self.codomain.shape) + tuple(self.domain.shape), dtype=self.dtype
         )
@@ -733,694 +493,13 @@ class ZeroLinOp(LinOp[Domain, Codomain]):
         """
         return self.domain == self.codomain
 
-    def __eq__(self, other: Any) -> bool:
-        """Return whether another zero map has the same spaces."""
-        if not self.same_math(other):              # Tier 1: backend
-            return NotImplemented
-        return self.domain == other.domain and self.codomain == other.codomain  # Tier 2
 
-    def tree_flatten(self):
-        """Flatten this operator for pytree registration."""
-        children = ()
-        aux = (self.domain, self.codomain, self.ctx)
-        return children, aux
 
-    @classmethod
-    def tree_unflatten(cls, aux, children):
-        """Rebuild this operator from pytree data."""
-        domain, codomain, ctx = aux
-        return cls(domain, codomain, ctx)
 
-    def _convert(self, new_ctx: Context) -> ZeroLinOp:
-        """Convert domain and codomain spaces to ``new_ctx``."""
-        return ZeroLinOp(self.domain.convert(new_ctx), self.codomain.convert(new_ctx), new_ctx)
+LinOp._Sum, LinOp._Scaled, LinOp._Zero = SumLinOp, ScaledLinOp, ZeroLinOp
 
-
-@core_kernels("identity")
-class IdentityLinOp(LinOp[Domain, Domain]):
-    r"""
-    Lazy identity map on a space.
-
-    ``IdentityLinOp(X)`` represents the identity operator ``I_X : X -> X``. The
-    context is resolved from the optional ``ctx`` argument and the space, and the
-    resulting operator has domain and codomain equal to ``X`` in that context.
-
-    The forward action is ``apply(x) = x`` for ``x in X``. The reverse action is
-    ``rapply(x) = x`` for ``x in X``.
-
-    Parameters
-    ----------
-    space : Space
-        Domain and codomain space.
-    ctx : Context, str, or None, optional
-        Backend context specification. Default is resolved from ``space``.
-    check_level : {"none", "cheap", "standard", "strict"}, optional
-        Runtime validation policy for this object. When omitted, the ambient
-        default (see :func:`spacecore.get_check_level`) is used. Unlike the
-        backend/dtype context, the validation policy is a property of the bound
-        object, not of the :class:`Context`.
-    """
-
-    def __init__(
-        self,
-        space: Domain,
-        ctx: Context | str | None = None,
-        check_level: CheckLevel | bool | None = None,
-    ) -> None:
-        super().__init__(space, space, ctx, check_level=check_level)
-
-    @checked_method(in_space="domain", out_space="codomain")
-    def apply(self, x: Any) -> Any:
-        """Return ``x`` after domain validation."""
-        return self._apply_core(x)
-
-    @checked_method(in_space="codomain", out_space="domain")
-    def rapply(self, x: Any) -> Any:
-        """Return ``x`` after codomain validation."""
-        return self._rapply_core(x)
-
-    @checked_method(in_space="domain", in_batched=True)
-    def vapply(self, xs: Any) -> Any:
-        """Return ``xs`` after batched domain validation."""
-        return xs
-
-    @checked_method(in_space="codomain", in_batched=True)
-    def rvapply(self, xs: Any) -> Any:
-        """Return ``xs`` after batched codomain validation."""
-        return xs
-
-    def to_dense(self) -> Any:
-        """
-        Return the dense tensor representation of this identity map.
-
-        The returned array has shape ``self.codomain.shape + self.domain.shape``.
-        """
-        size = 1
-        for dim in self.domain.shape:
-            size *= dim
-        eye = self.ops.eye(size, dtype=self.dtype)
-        return self.ops.reshape(eye, tuple(self.codomain.shape) + tuple(self.domain.shape))
-
-    def is_hermitian(self) -> bool:
-        """
-        Return whether this identity operator is Hermitian.
-
-        Returns
-        -------
-        bool
-            Always ``True``.
-        """
-        return True
-
-    def __eq__(self, other: Any) -> bool:
-        """Return whether another identity map has the same space."""
-        if not self.same_math(other):              # Tier 1: backend
-            return NotImplemented
-        return self.domain == other.domain                      # Tier 2 (square: cod == dom)
-
-    def _repr_body(self) -> str:
-        from .._repr import describe_space
-
-        return describe_space(self.domain)
-
-    def tree_flatten(self):
-        """Flatten this operator for pytree registration."""
-        children = ()
-        aux = (self.domain, self.ctx)
-        return children, aux
-
-    @classmethod
-    def tree_unflatten(cls, aux, children):
-        """Rebuild this operator from pytree data."""
-        domain, ctx = aux
-        return cls(domain, ctx)
-
-    def _convert(self, new_ctx: Context) -> IdentityLinOp:
-        """Convert the identity space to ``new_ctx``."""
-        return IdentityLinOp(self.domain.convert(new_ctx), new_ctx)
-
-
-@core_kernels("matrixfree")
-class MatrixFreeLinOp(LinOp[Domain, Codomain]):
-    """
-    Linear operator defined by user-supplied forward and reverse callables.
-
-    ``MatrixFreeLinOp(apply, rapply, X, Y)`` represents a matrix-free map
-    ``A : X -> Y`` without storing or materializing a matrix. The context is
-    resolved from the optional ``ctx`` argument and the spaces, then the spaces
-    are converted to that context.
-
-    The forward action is ``apply(x) = apply_fn(x)`` for ``x in X``. The
-    reverse action is ``rapply(y) = rapply_fn(y)`` for ``y in Y``. The supplied
-    ``rapply`` callable must already be the true adjoint with respect to the
-    declared domain and codomain inner products:
-    ``<apply(x), y>_Y = <x, rapply(y)>_X``. It is not automatically corrected
-    with Riesz maps. If you only have a Euclidean coordinate adjoint in
-    non-Euclidean spaces, compute the metric adjoint outside SpaceCore and pass
-    that callable as ``rapply``. When checks are enabled, inputs and callable
-    outputs are validated against the corresponding domain and codomain, but
-    construction does not run adjoint dot-tests.
-
-    Parameters
-    ----------
-    apply : callable
-        Callable with signature ``apply(x: Any) -> Any`` implementing the
-        forward map from ``dom`` to ``cod``.
-    rapply : callable
-        Callable with signature ``rapply(y: Any) -> Any`` implementing the
-        true space adjoint map from ``cod`` back to ``dom``. For
-        non-Euclidean spaces this is generally not the same as the Euclidean
-        coordinate adjoint.
-    dom : Space
-        Domain space containing valid inputs for ``apply`` and outputs from
-        ``rapply``.
-    cod : Space
-        Codomain space containing outputs from ``apply`` and valid inputs for
-        ``rapply``.
-    ctx : Context, str, or None, optional
-        Optional context specification. An explicit context wins over inferred
-        contexts from ``dom`` and ``cod``.
-    vapply : callable or None, optional
-        Optional callable with signature ``vapply(xs: Any) -> Any`` for batched
-        forward application. If omitted, backend ``vmap`` fallback is used.
-    rvapply : callable or None, optional
-        Optional callable with signature ``rvapply(ys: Any) -> Any`` for
-        batched adjoint application. If omitted, backend ``vmap`` fallback is
-        used.
-    check_level : {"none", "cheap", "standard", "strict"}, optional
-        Runtime validation policy for this object. When omitted, the ambient
-        default (see :func:`spacecore.get_check_level`) is used. Unlike the
-        backend/dtype context, the validation policy is a property of the bound
-        object, not of the :class:`Context`.
-    euclidean_adjoint : bool, optional
-        How ``rapply`` is interpreted. Omitted or ``False`` (the default): the
-        callable **is** the metric adjoint and is stored verbatim -- the design
-        choice that lets a caller supply a hand-derived adjoint no wrapper could
-        produce. ``True``: the callable is the *Euclidean coordinate* adjoint
-        ``A^dagger``, wrapped once into ``R_X^-1 A^dagger R_Y``; this is exactly
-        what :meth:`from_coordinate_adjoint` does, and it requires usable Riesz
-        maps on any non-Euclidean space.
-
-        Because verbatim storage is trusted and unverifiable, *omitting* the
-        argument on a non-Euclidean geometry emits a ``UserWarning``: there a
-        coordinate adjoint is silently wrong and nothing downstream detects it.
-        Passing ``False`` **explicitly** asserts that the supplied adjoint
-        already carries the geometry and silences the advisory -- the
-        distinction drawn is between "never considered" and "considered and
-        declared".
-
-    Returns
-    -------
-    MatrixFreeLinOp
-        Operator using the supplied callables for forward, adjoint, and
-        optionally batched actions.
-
-    Notes
-    -----
-    See ``docs/dev/adr/009_metric_adjoint.md`` for the full design rationale
-    for metric adjoints and the distinction between direct matrix-free adjoints
-    and coordinate-adjoint wrapping.
-    """
-
-    def __init__(
-        self,
-        apply: Callable[[Any], Any],
-        rapply: Callable[[Any], Any],
-        dom: Domain,
-        cod: Codomain,
-        ctx: Context | str | None = None,
-        vapply: Callable[[Any], Any] | None = None,
-        rvapply: Callable[[Any], Any] | None = None,
-        check_level: CheckLevel | bool | None = None,
-        *,
-        euclidean_adjoint: bool | Any = _ADJOINT_UNSPECIFIED,
-    ) -> None:
-        """
-        Initialize a matrix-free linear operator.
-
-        Parameters
-        ----------
-        apply:
-            Callable ``apply(x)`` that accepts an element of ``dom`` and returns
-            an element of ``cod``.
-        rapply:
-            Callable ``rapply(y)`` that accepts an element of ``cod`` and
-            returns an element of ``dom``.
-        dom:
-            Domain space of the operator.
-        cod:
-            Codomain space of the operator.
-        ctx:
-            Optional context specification for the operator and converted
-            spaces.
-        vapply:
-            Optional callable for batched forward application over ``dom``
-            batches.
-        rvapply:
-            Optional callable for batched adjoint application over ``cod``
-            batches.
-        check_level:
-            Optional runtime validation policy for this operator. When omitted,
-            the ambient default is used.
-
-        Returns
-        -------
-        None
-            The initializer stores the callables and converted spaces on
-            ``self``.
-        """
-        if not callable(apply):
-            raise TypeError(f"apply must be callable, got {type(apply).__name__}.")
-        if not callable(rapply):
-            raise TypeError(f"rapply must be callable, got {type(rapply).__name__}.")
-        if vapply is not None and not callable(vapply):
-            raise TypeError(f"vapply must be callable, got {type(vapply).__name__}.")
-        if rvapply is not None and not callable(rvapply):
-            raise TypeError(f"rvapply must be callable, got {type(rvapply).__name__}.")
-        super().__init__(dom, cod, ctx, check_level=check_level)
-
-        non_euclidean = not (self.domain.is_euclidean and self.codomain.is_euclidean)
-        if euclidean_adjoint is True:
-            # The caller supplied the *coordinate* adjoint A^dagger; wrap it into
-            # the metric adjoint R_X^-1 A^dagger R_Y once, here.
-            try:
-                _requires_euclidean_or_riesz(
-                    self.domain,
-                    self.codomain,
-                    "MatrixFreeLinOp(euclidean_adjoint=True) / "
-                    "MatrixFreeLinOp.from_coordinate_adjoint",
-                )
-            except TypeError as exc:
-                raise ValueError(str(exc)) from exc
-            rapply, rvapply = self._wrap_coordinate_adjoint(rapply, rvapply)
-        elif non_euclidean and euclidean_adjoint is _ADJOINT_UNSPECIFIED:
-            # The callable is stored verbatim and *trusted* as the metric adjoint.
-            # On a non-Euclidean geometry a coordinate adjoint is simply wrong here
-            # and nothing downstream detects it, so say so once, at construction.
-            # Silent on Euclidean spaces (the two coincide) and silent when the
-            # caller passed ``euclidean_adjoint=False`` explicitly, which asserts
-            # that the supplied adjoint already carries the geometry.
-            warnings.warn(
-                "MatrixFreeLinOp stores `rapply` verbatim as the metric adjoint, but "
-                f"{'domain' if not self.domain.is_euclidean else 'codomain'} geometry is "
-                "non-Euclidean, where the metric adjoint R_X^-1 A^dagger R_Y differs from "
-                "the coordinate adjoint. Pass euclidean_adjoint=True to have the coordinate "
-                "adjoint wrapped for you, or confirm `rapply` already carries the geometry.",
-                UserWarning,
-                stacklevel=2,
-            )
-
-        self.apply_fn = apply
-        self.rapply_fn = rapply
-        self.vapply_fn = vapply
-        self.rvapply_fn = rvapply
-        if self._checks_at_least("strict"):
-            self._check_adjoint_consistency()
-
-    def _wrap_coordinate_adjoint(
-        self,
-        coordinate_rapply: Callable[[Any], Any],
-        coordinate_rvapply: Callable[[Any], Any] | None,
-    ) -> tuple[Callable[[Any], Any], Callable[[Any], Any] | None]:
-        """Return ``(rapply, rvapply)`` wrapping coordinate adjoints in Riesz maps."""
-        dom, cod, ops = self.domain, self.codomain, self.ctx.ops
-
-        def wrapped_rapply(y: Any) -> Any:
-            return metric_rapply(dom, cod, coordinate_rapply, y)
-
-        wrapped_rvapply: Callable[[Any], Any] | None = None
-        if coordinate_rvapply is not None:
-
-            def _wrapped_rvapply(ys: Any) -> Any:
-                return metric_rvapply(
-                    dom, cod, coordinate_rapply, coordinate_rvapply, ys,
-                    opname="MatrixFreeLinOp", ops=ops,
-                )
-
-            wrapped_rvapply = _wrapped_rvapply
-        return wrapped_rapply, wrapped_rvapply
-
-    def _check_adjoint_consistency(self) -> None:
-        """Probe the declared adjoint identity on deterministic space elements."""
-        if not all(hasattr(space, "inner") for space in (self.domain, self.codomain)):
-            return
-
-        def probe(space: Any) -> Any:
-            if hasattr(space, "ones"):
-                return space.ones()
-            if hasattr(space, "unflatten") and hasattr(space, "shape"):
-                flat = self.ops.ones((prod(space.shape),), dtype=self.dtype)
-                return space.unflatten(flat)
-            raise TypeError(f"{type(space).__name__} cannot build a strict probe element.")
-
-        try:
-            x = probe(self.domain)
-            y = probe(self.codomain)
-            ax = self.apply_fn(x)
-            ahy = self.rapply_fn(y)
-            self.codomain._check_member(ax)
-            self.domain._check_member(ahy)
-            lhs = cast(Any, self.codomain).inner(ax, y)
-            rhs = cast(Any, self.domain).inner(x, ahy)
-            consistent = bool(self.ops.allclose(lhs, rhs))
-        except Exception as exc:
-            raise ValueError(
-                "Strict matrix-free adjoint consistency check could not be completed."
-            ) from exc
-        if not consistent:
-            raise ValueError(
-                "Strict matrix-free adjoint consistency check failed: "
-                "<A x, y> != <x, A* y> for the deterministic probe."
-            )
-
-    @classmethod
-    def from_coordinate_adjoint(
-        cls,
-        apply: Callable[[Any], Any],
-        coordinate_rapply: Callable[[Any], Any],
-        dom: Domain,
-        cod: Codomain,
-        ctx: Context | str | None = None,
-        vapply: Callable[[Any], Any] | None = None,
-        coordinate_rvapply: Callable[[Any], Any] | None = None,
-    ) -> MatrixFreeLinOp:
-        r"""
-        Build a matrix-free operator from a Euclidean coordinate adjoint.
-
-        ``coordinate_rapply`` is interpreted as the Euclidean coordinate
-        adjoint ``A^dagger`` of ``apply``. The stored ``rapply`` callable is the
-        metric adjoint
-
-        ``A^sharp(y) = R_X^-1 A^dagger R_Y y``
-
-        for the declared domain ``X`` and codomain ``Y``. Euclidean spaces have
-        identity Riesz maps, so this degenerates to the supplied coordinate
-        adjoint. Non-Euclidean spaces must expose usable Riesz maps at
-        construction time; otherwise the constructor rejects the operator rather
-        than storing an incoherent adjoint.
-
-        When ``coordinate_rvapply`` is provided, it is treated as the batched
-        Euclidean coordinate adjoint and wrapped with batched Riesz maps. If
-        batched Riesz application is unavailable, the public metric-adjoint
-        helper falls back to vectorized scalar ``rapply`` consistently. When
-        ``coordinate_rvapply`` is omitted, ``rvapply_fn`` remains ``None`` and
-        the normal ``rvapply`` fallback vectorizes the wrapped scalar adjoint.
-
-        See ``docs/dev/adr/009_metric_adjoint.md`` for the full design
-        rationale.
-
-        Parameters
-        ----------
-        apply : callable
-            Forward coordinate action from ``dom`` to ``cod``.
-        coordinate_rapply : callable
-            Euclidean coordinate adjoint from ``cod`` coordinates to ``dom``
-            coordinates.
-        dom, cod : Space
-            Domain and codomain spaces.
-        ctx : Context, str, or None, optional
-            Optional context specification.
-        vapply : callable or None, optional
-            Optional batched forward application.
-        coordinate_rvapply : callable or None, optional
-            Optional batched Euclidean coordinate adjoint. If omitted, batched
-            adjoints use backend ``vmap`` over the wrapped scalar ``rapply``.
-        """
-        if not callable(apply):
-            raise TypeError(f"apply must be callable, got {type(apply).__name__}.")
-        if not callable(coordinate_rapply):
-            raise TypeError(
-                f"coordinate_rapply must be callable, got {type(coordinate_rapply).__name__}."
-            )
-        if coordinate_rvapply is not None:
-            if not callable(coordinate_rvapply):
-                raise TypeError(
-                    f"coordinate_rvapply must be callable, got {type(coordinate_rvapply).__name__}."
-                )
-
-        # The wrapping now lives in __init__ behind euclidean_adjoint=True, so the
-        # two entry points cannot drift apart, and this path raises no warning:
-        # passing the coordinate adjoint is exactly what it is documented to take.
-        return cls(
-            apply,
-            coordinate_rapply,
-            dom,
-            cod,
-            ctx,
-            vapply,
-            coordinate_rvapply,
-            euclidean_adjoint=True,
-        )
-
-    @checked_method(in_space="domain", out_space="codomain")
-    def apply(self, x: Any) -> Any:
-        """
-        Apply the forward callable.
-
-        Parameters
-        ----------
-        x:
-            Element of ``self.domain`` passed to ``apply_fn``.
-
-        Returns
-        -------
-        Any
-            Element of ``self.codomain`` returned by ``apply_fn``.
-        """
-        return self._apply_core(x)
-
-    @checked_method(in_space="codomain", out_space="domain")
-    def rapply(self, y: Any) -> Any:
-        """
-        Apply the adjoint callable.
-
-        Parameters
-        ----------
-        y:
-            Element of ``self.codomain`` passed to ``rapply_fn``.
-
-        Returns
-        -------
-        Any
-            Element of ``self.domain`` returned by ``rapply_fn``.
-        """
-        return self._rapply_core(y)
-
-    @checked_method(in_space="domain", out_space="codomain", in_batched=True, out_batched=True)
-    def vapply(self, xs: Any) -> Any:
-        """
-        Apply this operator to a batch of domain elements.
-
-        Parameters
-        ----------
-        xs:
-            Batched element of ``self.domain``.
-
-        Returns
-        -------
-        Any
-            Batched element of ``self.codomain`` produced by ``vapply_fn`` or
-            by the fallback batching implementation.
-        """
-        if self.vapply_fn is None:
-            return super().vapply(xs)
-        return self.vapply_fn(xs)
-
-    @checked_method(in_space="codomain", out_space="domain", in_batched=True, out_batched=True)
-    def rvapply(self, ys: Any) -> Any:
-        """
-        Apply the adjoint operator to a batch of codomain elements.
-
-        Parameters
-        ----------
-        ys:
-            Batched element of ``self.codomain``.
-
-        Returns
-        -------
-        Any
-            Batched element of ``self.domain`` produced by ``rvapply_fn`` or by
-            the fallback batching implementation.
-        """
-        if self.rvapply_fn is None:
-            return super().rvapply(ys)
-        return self.rvapply_fn(ys)
-
-    def fuse(self, *, materialize: bool = False) -> LinOp:
-        """Stay matrix-free unless ``materialize=True`` is requested (ADR-021/ADR-008).
-
-        By default a matrix-free operator is never densified, so it returns
-        itself. With ``materialize=True`` the caller explicitly opts into
-        densification: the operator is probed into a dense tensor (via
-        ``to_dense``, the basis sweep) and returned as a :class:`DenseLinOp`,
-        letting an enclosing expression collapse to a single dense operator.
-        """
-        if not materialize:
-            return self
-        from ._dense import DenseLinOp
-
-        return DenseLinOp(self.to_dense(), self.domain, self.codomain, self.ctx)
-
-    def __eq__(self, other: Any) -> bool:
-        if not self.same_math(other):              # Tier 1: backend
-            return NotImplemented
-        # Tier 2: spaces + callable identity. Extensional equality of callables
-        # is undecidable, so 'is' is the only sound comparison.
-        if self.domain != other.domain or self.codomain != other.codomain:
-            return False
-        return (
-            self.apply_fn is other.apply_fn
-            and self.vapply_fn is other.vapply_fn
-            and self.rapply_fn is other.rapply_fn
-            and self.rvapply_fn is other.rvapply_fn
-        )
-
-    def tree_flatten(self):
-        children = ()
-        aux = (
-            self.apply_fn,
-            self.rapply_fn,
-            self.domain,
-            self.codomain,
-            self.ctx,
-            self.vapply_fn,
-            self.rvapply_fn,
-        )
-        return children, aux
-
-    @classmethod
-    def tree_unflatten(cls, aux, children):
-        (
-            apply_fn,
-            rapply_fn,
-            domain,
-            codomain,
-            ctx,
-            vapply_fn,
-            rvapply_fn,
-        ) = aux
-        return cls(apply_fn, rapply_fn, domain, codomain, ctx, vapply_fn, rvapply_fn)
-
-    def _convert(self, new_ctx: Context) -> MatrixFreeLinOp:
-        """
-        Convert this matrix-free operator to ``new_ctx``.
-
-        Parameters
-        ----------
-        new_ctx:
-            Concrete target context for converted domain and codomain spaces.
-
-        Returns
-        -------
-        MatrixFreeLinOp
-            Operator with converted spaces and the same user-supplied
-            callables.
-        """
-        # ``self.rapply_fn`` is already the metric adjoint by construction -- either
-        # supplied that way, or wrapped once at __init__ under
-        # ``euclidean_adjoint=True``. Declaring ``False`` here is therefore both
-        # correct (re-wrapping would apply the Riesz maps twice) and quiet: the
-        # construction advisory belongs to the original call, not to every convert.
-        return MatrixFreeLinOp(
-            self.apply_fn,
-            self.rapply_fn,
-            self.domain.convert(new_ctx),
-            self.codomain.convert(new_ctx),
-            new_ctx,
-            self.vapply_fn,
-            self.rvapply_fn,
-            euclidean_adjoint=False,
-        )
-
-
-@core_kernels("adjoint")
-class _AdjointViewLinOp(LinOp[Codomain, Domain]):
-    """
-    Hermitian-adjoint view of a linear operator.
-
-    ``A.H`` represents the adjoint view ``A*``. Its context is exactly
-    ``A.ctx``; its domain is ``A.codomain`` and its codomain is ``A.domain``.
-    ``A.H.H`` returns ``A`` rather than constructing another wrapper.
-
-    The forward action is ``apply(y) = A.rapply(y)`` for ``y in A.codomain``.
-    The reverse action is ``rapply(x) = A.apply(x)`` for ``x in A.domain``.
-
-    Parameters
-    ----------
-    op : LinOp
-        Operator whose adjoint is viewed.
-    check_level : {"none", "cheap", "standard", "strict"}, optional
-        Runtime validation policy for this object. When omitted, the ambient
-        default (see :func:`spacecore.get_check_level`) is used. Unlike the
-        backend/dtype context, the validation policy is a property of the bound
-        object, not of the :class:`Context`.
-    """
-
-    def __init__(
-        self,
-        op: LinOp[Domain, Codomain],
-        check_level: CheckLevel | bool | None = None,
-    ) -> None:
-        op = _require_linop(op, "op")
-        if check_level is None:
-            check_level = op.check_level
-        super().__init__(op.codomain, op.domain, op.ctx, check_level=check_level)
-        self.op = op
-
-    @checked_method(in_space="domain", out_space="codomain")
-    def apply(self, y: Any) -> Any:
-        """Return ``op.rapply(y)``."""
-        return self._apply_core(y)
-
-    @checked_method(in_space="codomain", out_space="domain")
-    def rapply(self, x: Any) -> Any:
-        """Return ``op.apply(x)``."""
-        return self._rapply_core(x)
-
-    def vapply(self, ys: Any) -> Any:
-        """Return ``op.rvapply(ys)`` over a batch."""
-        return self.op.rvapply(ys)
-
-    def rvapply(self, xs: Any) -> Any:
-        """Return ``op.vapply(xs)`` over a batch."""
-        return self.op.vapply(xs)
-
-    def fuse(self, *, materialize: bool = False) -> LinOp:
-        """Fuse the wrapped operand; return the adjoint of the fused operator (ADR-021).
-
-        ``A.H.fuse()`` is ``A.fuse().H`` — the inner expression is fused (e.g. a
-        composition collapses to one dense operator) and the adjoint view wraps
-        the result, which keeps the metric adjoint correct on any geometry. A
-        matrix-free operand stays matrix-free under its adjoint (or is densified
-        when ``materialize=True``).
-        """
-        return self.op.fuse(materialize=materialize).H
-
-    @property
-    def H(self) -> LinOp[Domain, Codomain]:
-        """Original operator viewed as the adjoint of this adjoint view."""
-        return self.op
-
-    def __eq__(self, other: Any) -> bool:
-        if not self.same_math(other):              # Tier 1: backend
-            return NotImplemented
-        return self.op == other.op
-
-    def _repr_class_name(self) -> str:
-        """Present a clean public label for the private adjoint-view class."""
-        return "AdjointLinOp"
-
-    def _repr_body(self) -> str:
-        return f"{self.op._short_repr()}.H"
-
-    def tree_flatten(self):
-        children = (self.op,)
-        aux = ()
-        return children, aux
-
-    @classmethod
-    def tree_unflatten(cls, aux, children):
-        return cls(children[0])
-
-    def _convert(self, new_ctx: Context) -> _AdjointViewLinOp:
-        return _AdjointViewLinOp(self.op.convert(new_ctx))
+register("add", LinOp, LinOp, lambda a, b: make_sum((a, b)))
+register("mul", Scalar, LinOp, make_scaled)
+register("mul", LinOp, Scalar, lambda op, s: make_scaled(s, op))
+register("matmul", LinOp, LinOp, make_composed)
+register("matmul", LinOp, Element, lambda A, x: DenseElement._make(A.codomain, A.apply(x.densify())))

@@ -18,13 +18,13 @@ def tolerances(dtype: Any) -> tuple[float, float]:
     return (2e-5, 2e-6) if real_dtype == np.dtype(np.float32) else (1e-10, 1e-11)
 
 
-def assert_allclose(space: sc.CoordinateSpace, actual: Any, expected: Any) -> None:
+def assert_allclose(space: sc.VectorSpace, actual: Any, expected: Any) -> None:
     rtol, atol = tolerances(space.dtype)
     if not isinstance(space, sc.TreeSpace) and not space.ops.is_dense(expected):
         expected = space.ctx.asarray(expected)
     np.testing.assert_allclose(
-        to_numpy(space.flatten(actual)),
-        to_numpy(space.flatten(expected)),
+        to_numpy(space.flatten(actual) if isinstance(space, sc.CoordinateSpace) else actual),
+        to_numpy(space.flatten(expected) if isinstance(space, sc.CoordinateSpace) else expected),
         rtol=rtol,
         atol=atol,
     )

@@ -1,5 +1,13 @@
 """Backend-agnostic vector spaces, linear operators, and solvers."""
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .backend.jax import JaxOps as JaxOps
+    from .backend.torch import TorchOps as TorchOps
+    from .backend.cupy import CuPyOps as CuPyOps
+
+
 from ._version import __version__
 
 from .contextual import Context
@@ -17,80 +25,55 @@ from .linop import (
     TreeLinOp,
     ScaledLinOp,
     SparseLinOp,
-    StackedLinOp,
     SumLinOp,
-    SumToSingleLinOp,
     ZeroLinOp,
     make_composed,
     make_scaled,
     make_sum,
 )
 from .functional import (
-    RealifiedFunctional,
-    realify,
-    SpectralFunctional,
-    eigenvalue_space,
-    spectralize,
     ComposedFunctional,
     Functional,
     ConstantFunctional,
-    HuberFunctional,
     InnerProductFunctional,
-    KLDivergenceFunctional,
+    IndicatorFunctional,
     L1NormFunctional,
     LinearFunctional,
     LinOpQuadraticForm,
     LpNormFunctional,
     MatrixFreeLinearFunctional,
-    NegativeEntropyFunctional,
-    NuclearNormFunctional,
     ProductFunctional,
     QuadraticForm,
     ScaledFunctional,
-    ShiftedFunctional,
     SquaredL2NormFunctional,
     SumFunctional,
     ZeroFunctional,
-    generalized_shrinkage,
-    least_squares,
     make_constant_functional,
     make_functional_composed,
     make_functional_product,
     make_functional_sum,
     make_scaled_functional,
     make_shifted_functional,
-    project_nonneg,
-    prox_l1,
-    prox_l2sq,
 )
-from .opfamily import (
-    FunctionalScaledOperator,
-    OperatorFamily,
-    make_functional_scaled_operator,
-)
+from .mapping import Mapping
+from .sets import Set, NonnegativeOrthant
 from .linalg import (
-    CGResult,
-    ExpmMultiplyResult,
-    LanczosResult,
-    LSQRResult,
-    PowerIterationResult,
+    LinalgResult,
     cg,
     expm_multiply,
     lanczos_smallest,
     lsqr,
     power_iteration,
 )
-from .optimize import (
-    OptaxResult,
-    line_search_scipy,
-    minimize_optax,
-    minimize_scipy,
-)
 from .space import (
+    DenseElement,
+    Element,
+    LowRankElement,
     BackendCheck,
     DTypeCheck,
     FieldCheck,
     HermitianCheck,
+    RealField,
     CoordinateSpace,
     DenseCoordinateSpace,
     DenseVectorSpace,
@@ -107,9 +90,11 @@ from .space import (
     InnerProduct,
     EuclideanInnerProduct,
     WeightedInnerProduct,
+    OperatorInnerProduct,
     Space,
     StarSpace,
     SpaceCheck,
+    CapabilityError,
     SpaceValidationError,
     SquareMatrixCheck,
     VectorSpace,
@@ -117,7 +102,7 @@ from .space import (
 )
 from .types import DenseArray, SparseArray, ArrayLike
 
-from ._checks import checked_method
+from ._checks import checked_method, get_traced_check_level, set_traced_check_level
 from .contextual import (
     ContextBound,
     set_context,
@@ -141,6 +126,9 @@ for _cls in _optional_ops:
     globals().setdefault(_cls.__name__, _cls)
 
 __all__ = [
+    "Set",
+    "NonnegativeOrthant",
+    "IndicatorFunctional",
     "__version__",
     "Context",
     "CheckLevel",
@@ -163,10 +151,7 @@ __all__ = [
     "TreeLinOp",
     "BlockDiagonalLinOp",
     "BlockMatrixLinOp",
-    "SumToSingleLinOp",
-    "StackedLinOp",
     "ComposedFunctional",
-    "FunctionalScaledOperator",
     "Functional",
     "LinearFunctional",
     "InnerProductFunctional",
@@ -176,48 +161,27 @@ __all__ = [
     "ScaledFunctional",
     "ConstantFunctional",
     "ProductFunctional",
-    "ShiftedFunctional",
     "SumFunctional",
     "ZeroFunctional",
     "make_functional_composed",
     "make_functional_sum",
     "make_scaled_functional",
     "make_constant_functional",
-    "make_functional_scaled_operator",
     "make_functional_product",
     "make_shifted_functional",
-    "least_squares",
     "SquaredL2NormFunctional",
     "LpNormFunctional",
     "L1NormFunctional",
-    "NegativeEntropyFunctional",
-    "KLDivergenceFunctional",
-    "HuberFunctional",
-    "RealifiedFunctional",
-    "SpectralFunctional",
-    "NuclearNormFunctional",
-    "OperatorFamily",
-    "eigenvalue_space",
-    "realify",
-    "spectralize",
-    "generalized_shrinkage",
-    "prox_l1",
-    "prox_l2sq",
-    "project_nonneg",
-    "CGResult",
-    "ExpmMultiplyResult",
-    "LanczosResult",
-    "LSQRResult",
-    "PowerIterationResult",
+    "Mapping",
+    "DenseElement",
+    "Element",
+    "LowRankElement",
+    "LinalgResult",
     "cg",
     "expm_multiply",
     "lanczos_smallest",
     "lsqr",
     "power_iteration",
-    "minimize_scipy",
-    "minimize_optax",
-    "OptaxResult",
-    "line_search_scipy",
     "BackendCheck",
     "DTypeCheck",
     "FieldCheck",
@@ -226,12 +190,14 @@ __all__ = [
     "InnerProduct",
     "EuclideanInnerProduct",
     "WeightedInnerProduct",
+    "OperatorInnerProduct",
     "VectorSpace",
     "HermitianSpace",
     "StackedSpace",
     "TreeElement",
     "TreeSpace",
     "TreeSpectralDecomposition",
+    "RealField",
     "CoordinateSpace",
     "InnerProductSpace",
     "StarSpace",
@@ -243,6 +209,7 @@ __all__ = [
     "EuclideanElementwiseJordanSpace",
     "Space",
     "SpaceCheck",
+    "CapabilityError",
     "SpaceValidationError",
     "SquareMatrixCheck",
     "DenseArray",
@@ -255,6 +222,8 @@ __all__ = [
     "set_check_level",
     "get_check_level",
     "use_check_level",
+    "set_traced_check_level",
+    "get_traced_check_level",
     "use_context",
     "resolve_context_priority",
     "register_ops",
@@ -262,4 +231,7 @@ __all__ = [
     "normalize_context",
 ]
 
-__all__ += [_cls.__name__ for _cls in _optional_ops if _cls.__name__ != "NumpyOps"]
+if TYPE_CHECKING:
+    __all__ += ["JaxOps", "CuPyOps", "TorchOps"]
+else:
+    __all__ += [_cls.__name__ for _cls in _optional_ops if _cls.__name__ != "NumpyOps"]

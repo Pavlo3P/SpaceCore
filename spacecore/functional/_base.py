@@ -1,75 +1,97 @@
 from __future__ import annotations
 
-from abc import abstractmethod
-from numbers import Number
-from typing import TYPE_CHECKING, Any, Generic, TypeVar
+from functools import wraps
+from typing import TYPE_CHECKING, Any, Callable, Generic, TypeVar
 
 from .._batching import _leading_batch_size, _warn_vmap_fallback_once
 
-# Re-exported for backward compatibility; these helpers now live in
-# :mod:`spacecore._batching` and are shared with :class:`~spacecore.linop.LinOp`.
-from .._batching import (  # noqa: F401
-    _VMAP_FALLBACK_WARN_BATCH,
-    _VMAP_FALLBACK_WARNED,
-    _check_scalar_shape,
-)
-from .._checks import checked_method
-from ..backend import PyTreeNode
-from .._repr import describe_space, field_symbol
-from ..contextual import ContextBound
-from ..contextual import Context
-from .._check_policy import CheckLevel
-from ..space import CoordinateSpace
+from .._checks import checked_method, mark_checked
+from ..mapping import Mapping
+from ..contextual import Context, resolve_context_priority
+from .._checks import CheckLevel
+from ..space import Space, RealField
 
 if TYPE_CHECKING:
     from ..linop import LinOp
+    from ._linear import LinearFunctional
 
 
-Domain = TypeVar("Domain", bound=CoordinateSpace)
+Domain = TypeVar("Domain", bound=Space)
 
 
-class Functional(PyTreeNode, ContextBound, Generic[Domain]):
+_Method = TypeVar("_Method", bound=Callable[..., Any])
+
+
+def _checked_pair(method: _Method) -> _Method:
+    """Check a ``(value, second)`` evaluator: input in the domain, value in the codomain.
+
+    ``second`` is checked against the domain only for ``value_and_grad``; a derivative is
+    a functional, not an element.
+    """
+    pair_with_grad = method.__name__ == "value_and_grad"
+
+    @wraps(method)
+    def outputs_checked(self: Any, *args: Any, **kwargs: Any) -> Any:
+        value, second = method(self, *args, **kwargs)
+        if self.check_level != "none":
+            self.codomain._check_member(value)
+            if pair_with_grad:
+                self.domain._check_member(second)
+        return value, second
+
+    checked = checked_method(in_space="domain")(outputs_checked)
+    mark_checked(checked, _checked_pair, f"_{method.__name__}_core")
+    return checked
+
+
+class Functional(Mapping, Generic[Domain]):
     r"""
-    Scalar-valued map on a space.
+    A real-valued map ``F : X -> R``; subclasses implement ``value`` and optionally ``grad``.
 
-    ``Functional`` represents a map ``F : X -> K`` without assuming any storage
-    model. It mirrors the minimal ``LinOp`` contract: the domain is converted
-    into the resolved context, value checks follow this object's ``check_level``,
-    and batched evaluation is implemented by a backend ``vmap`` fallback.
+    ``grad`` is the Riesz gradient, an element of ``X``. Batched evaluation falls back
+    to ``vmap``.
 
     Parameters
     ----------
     dom : Space
-        Domain space ``X``.
+        Domain ``X``.
     ctx : Context, str, or None, optional
-        Backend context specification. Default is resolved from ``dom``.
+        Backend context; resolved from ``dom`` when omitted.
     check_level : {"none", "cheap", "standard", "strict"}, optional
-        Runtime validation policy for this functional. When omitted, the ambient
-        default (see :func:`spacecore.get_check_level`) is used. Validation
-        policy is a property of the functional, not of the ``Context``.
-
-    Attributes
-    ----------
-    dom : Space
-        Domain space converted to ``ctx``.
-    ctx : Context
-        Resolved backend context.
+        Validation level; the ambient default when omitted.
     """
 
     def __init__(
         self,
         dom: Domain,
         ctx: Context | str | None = None,
-        check_level: CheckLevel | bool | None = None,
+        check_level: CheckLevel | None = None,
     ) -> None:
-        (self.dom,) = self._bind_context(ctx, dom, check_level=check_level)
+        # Domain storage may be complex; functional values are real scalars.
+        resolved = resolve_context_priority(ctx, dom)
+        dom = dom.convert(resolved)
+        (self.dom,) = self._bind_context(resolved, dom, check_level=check_level)
+        # Output checks follow the functional's policy.
+        self.cod = RealField(self.ctx, check_level=self.check_level)
+
+    def _init_map(self, domain: Any, codomain: Any, ctx: Any, check_level: Any) -> None:
+        """Bind a node of this family (the hook the shared lazy nodes in ``mapping`` call)."""
+        Functional.__init__(self, domain, ctx, check_level=check_level)
+
+    @property
+    def codomain(self) -> RealField:
+        """The independently bound scalar field of this functional's values."""
+        return self.cod
 
     @property
     def domain(self) -> Domain:
         """Domain space of this scalar-valued map."""
         return self.dom
 
-    @abstractmethod
+    # Public evaluators: check, then call the core. Subclasses implement the cores
+    # (``_value_core``, ``_grad_core``, ...); composites call their children's cores.
+
+    @checked_method(in_space="domain", out_space="codomain")
     def value(self, x: Any, *args: Any, **kwargs: Any) -> Any:
         """Evaluate this functional at an element of ``self.domain``.
 
@@ -77,49 +99,149 @@ class Functional(PyTreeNode, ContextBound, Generic[Domain]):
         parameters such as data, temperature, or a penalty weight — that are not
         part of the domain. Overrides that take only ``x`` remain valid.
         """
+        return self._value_core(x, *args, **kwargs)
 
+    @checked_method(in_space="domain", out_space="domain")
     def grad(self, x: Any, *args: Any, **kwargs: Any) -> Any:
-        """Gradient at an element of ``self.domain``.
+        """Riesz gradient at an element of ``self.domain``.
 
-        Override in subclasses that support differentiation; the base raises
-        :class:`NotImplementedError`. Any auxiliary ``*args``/``**kwargs`` mirror
-        those accepted by :meth:`value`.
+        Implement ``_grad_core``, or ``_derivative_core`` with an available Riesz
+        representer; otherwise raises ``NotImplementedError``. Any auxiliary
+        ``*args``/``**kwargs`` mirror those accepted by :meth:`value`.
         """
-        raise NotImplementedError(f"{type(self).__name__} does not implement grad().")
+        return self._grad_core(x, *args, **kwargs)
 
+    @_checked_pair
     def value_and_grad(self, x: Any, *args: Any, **kwargs: Any) -> tuple[Any, Any]:
         """Return ``(value, gradient)`` at ``x``.
 
-        The base default evaluates :meth:`value` and :meth:`grad` separately.
-        Subclasses may override with a single-pass evaluator (e.g.
-        ``jax.value_and_grad``); an override must return the same pair as the
-        default, with the gradient in the same geometry as :meth:`grad`.
+        Implement ``_value_and_grad_core`` for a single-pass evaluator (e.g.
+        ``jax.value_and_grad``); it must return the same pair as the separate cores,
+        with the gradient in the same geometry as :meth:`grad`.
         """
-        return self.value(x, *args, **kwargs), self.grad(x, *args, **kwargs)
+        return self._value_and_grad_core(x, *args, **kwargs)
 
+    @checked_method(in_space="domain", out_space="domain", core=None)
+    def prox(self, x: Any, step: Any) -> Any:
+        r"""Minimize ``f(y) + ||y-x||_X^2 / (2 step)`` for positive ``step``.
+
+        This optional operation uses a closed-form rule registered with
+        ``register("prox", FunctionalType, GeometryType, rule)``. The rule takes
+        ``(functional, geometry, x, step)`` and returns a native domain element.
+        An unsupported functional/geometry pair raises ``CapabilityError``;
+        sums and linear pullbacks do not acquire a prox automatically.
+
+        Prox rules assert a proper, lower-semicontinuous convex real objective
+        (also on complex spaces, using the real inner product). At check level
+        ``"none"``, traced steps must be finite and positive; their values are
+        the caller's responsibility. Concrete invalid Python steps still raise.
+        """
+        from ._prox import apply_prox
+
+        return apply_prox(self, x, step)
+
+    def conjugate_prox(self, x: Any, step: Any) -> Any:
+        r"""Return the conjugate prox by Hilbert-space Moreau decomposition.
+
+        The conjugate is ``f*_X(p) = sup_z Re <p,z>_X - f(z)``: dual variables
+        are Riesz representers in the same space, not raw coordinate covectors.
+        Thus ``prox_(step f*_X)(x) = x - step prox_(f/step)(x/step)``.
+        Requires a valid convex prox and a finite, strictly positive step.
+        """
+        from ._prox import validate_step
+
+        validate_step(step, self, "conjugate_prox")
+        X = self.domain
+        return X.axpy(-step, self.prox(X.scale(1 / step, x), 1 / step), x)
+
+    @checked_method(in_space="domain")
+    def differential(self, x: Any, *args: Any, **kwargs: Any) -> Any:
+        r"""Return the covector :math:`df(x)` with :math:`Df(x)[h] = \langle df(x), h\rangle`.
+
+        The covector is a coordinate array paired with ``domain.pair`` and involves no
+        metric. The default reads it off the Riesz gradient, ``domain.riesz(grad(x))``;
+        functionals that compute coordinate partials implement ``_differential_core``.
+        """
+        return self._differential_core(x, *args, **kwargs)
+
+    @checked_method(in_space="domain", core="_derivative_core")
+    def derivative_at(self, x: Any, *args: Any, **kwargs: Any) -> "LinearFunctional":
+        """Return the differential at ``x``, acting on domain directions.
+
+        The default wraps the Riesz gradient, ``Re <grad, h>``. Implement
+        ``_derivative_core`` for a native directional evaluator. At nonsmooth points
+        a supplied subgradient is not a Frechet derivative.
+        """
+        return self._derivative_core(x, *args, **kwargs)
+
+    def _derivative_from_gradient(self, gradient: Any) -> "LinearFunctional":
+        from ._linear import InnerProductFunctional
+
+        return InnerProductFunctional(
+            gradient, self.domain, self.ctx, check_level=self.check_level,
+        )
+
+    @_checked_pair
+    def value_and_derivative(self, x: Any, *args: Any, **kwargs: Any) -> tuple[Any, "LinearFunctional"]:
+        """Return value and differential, preserving fused gradient evaluators.
+
+        Derivative-first subclasses may implement ``_value_and_derivative_core`` to
+        share work. No representer is reconstructed from a callable differential.
+        """
+        return self._value_and_derivative_core(x, *args, **kwargs)
+
+    @checked_method(in_space="domain", out_space="domain", in_batched=True, out_batched=True)
     def vgrad(self, xs: Any) -> Any:
-        """Gradient over a leading batch axis.
+        """Gradient over a leading batch axis; implement ``_vgrad_core`` to support it."""
+        return self._vgrad_core(xs)
 
-        Override in subclasses that support differentiation; the base raises
-        :class:`NotImplementedError`.
-        """
-        raise NotImplementedError(f"{type(self).__name__} does not implement vgrad().")
+    # Default cores. An undecorated public override becomes the class's core (see
+    # install_public_checks), so these defaults only derive one core from another.
+
+    def _has_native_derivative(self) -> bool:
+        return type(self)._derivative_core is not Functional._derivative_core
 
     def _value_core(self, x: Any, *args: Any, **kwargs: Any) -> Any:
-        """Check-free value core; the base falls back to the checked ``value``."""
-        return self.value(x, *args, **kwargs)
+        """Check-free value core."""
+        raise NotImplementedError(f"{type(self).__name__} defines neither value nor _value_core.")
 
     def _grad_core(self, x: Any, *args: Any, **kwargs: Any) -> Any:
-        """Check-free gradient core; the base falls back to the checked ``grad``."""
-        return self.grad(x, *args, **kwargs)
+        """Check-free gradient core; the base reads a native derivative's representer."""
+        if self._has_native_derivative():
+            return self._derivative_core(x, *args, **kwargs).representer
+        raise NotImplementedError(f"{type(self).__name__} does not implement grad().")
+
+    def _value_and_grad_core(self, x: Any, *args: Any, **kwargs: Any) -> tuple[Any, Any]:
+        """Check-free ``(value, grad)``; the base evaluates the two cores separately."""
+        return self._value_core(x, *args, **kwargs), self._grad_core(x, *args, **kwargs)
+
+    def _derivative_core(self, x: Any, *args: Any, **kwargs: Any) -> "LinearFunctional":
+        """Check-free derivative; the base wraps the gradient core."""
+        return self._derivative_from_gradient(self._grad_core(x, *args, **kwargs))
+
+    def _value_and_derivative_core(self, x: Any, *args: Any, **kwargs: Any) -> tuple[Any, "LinearFunctional"]:
+        """Check-free ``(value, derivative)``, using a native derivative when one exists."""
+        if self._has_native_derivative():
+            return self._value_core(x, *args, **kwargs), self._derivative_core(x, *args, **kwargs)
+        value, gradient = self._value_and_grad_core(x, *args, **kwargs)
+        return value, self._derivative_from_gradient(gradient)
+
+    def _differential_core(self, x: Any, *args: Any, **kwargs: Any) -> Any:
+        """Check-free covector; the base applies the domain's Riesz map to the gradient core."""
+        return self.domain._riesz_core(self._grad_core(x, *args, **kwargs))
 
     def _vvalue_core(self, xs: Any) -> Any:
-        """Check-free batched-value core; the base falls back to ``vvalue``."""
-        return self.vvalue(xs)
+        """Check-free batched-value core; the base vmaps ``value``."""
+        return self._vmap_vvalue(xs)
+
+    def _vmap_vvalue(self, xs: Any) -> Any:
+        # Generic batching: vmap the single-element value over the leading axis.
+        _warn_vmap_fallback_once(self, "vvalue", _leading_batch_size(self.domain, xs))
+        return self.ops.vmap(self.value, in_axes=0, out_axes=0)(xs)
 
     def _vgrad_core(self, xs: Any) -> Any:
-        """Check-free batched-gradient core; the base falls back to ``vgrad``."""
-        return self.vgrad(xs)
+        """Check-free batched-gradient core."""
+        raise NotImplementedError(f"{type(self).__name__} does not implement vgrad().")
 
     def __call__(self, x: Any, *args: Any, **kwargs: Any) -> Any:
         """Evaluate this functional at ``x``."""
@@ -143,131 +265,21 @@ class Functional(PyTreeNode, ContextBound, Generic[Domain]):
 
         return make_functional_composed(self, A)
 
-    def __add__(self, other: Any) -> "Functional":
-        """Return ``self + other`` — a lazy sum (functional) or affine shift (scalar)."""
-        from ._algebra import is_scalar_like, make_functional_sum, make_shifted_functional
-
-        if isinstance(other, Functional):
-            return make_functional_sum((self, other))
-        if is_scalar_like(other):
-            return make_shifted_functional(self, other)
-        return NotImplemented
-
-    def __radd__(self, other: Any) -> "Functional":
-        """Return ``other + self`` (``0 + self`` enables builtin ``sum``)."""
-        from ._algebra import is_scalar_like, make_functional_sum, make_shifted_functional
-
-        if isinstance(other, Number) and other == 0:
-            return self
-        if isinstance(other, Functional):
-            return make_functional_sum((other, self))
-        if is_scalar_like(other):
-            return make_shifted_functional(self, other)
-        return NotImplemented
-
-    def __sub__(self, other: Any) -> "Functional":
-        """Return ``self - other`` — a lazy difference (functional) or shift (scalar)."""
-        from ._algebra import is_scalar_like, make_functional_sum, make_scaled_functional
-        from ._algebra import make_shifted_functional
-
-        if isinstance(other, Functional):
-            return make_functional_sum((self, make_scaled_functional(-1, other)))
-        if is_scalar_like(other):
-            return make_shifted_functional(self, -other)
-        return NotImplemented
-
-    def __rsub__(self, other: Any) -> "Functional":
-        """Return ``other - self`` — a lazy difference (functional) or shift (scalar)."""
-        from ._algebra import is_scalar_like, make_functional_sum, make_scaled_functional
-        from ._algebra import make_shifted_functional
-
-        if isinstance(other, Number) and other == 0:
-            return make_scaled_functional(-1, self)
-        if isinstance(other, Functional):
-            return make_functional_sum((other, make_scaled_functional(-1, self)))
-        if is_scalar_like(other):
-            return make_shifted_functional(make_scaled_functional(-1, self), other)
-        return NotImplemented
-
-    def __neg__(self) -> "Functional":
-        """Return the lazy negation ``-self``."""
-        from ._algebra import make_scaled_functional
-
-        return make_scaled_functional(-1, self)
-
-    def __mul__(self, other: Any) -> Any:
-        """Return ``self * other``.
-
-        Three cases, by operand type: a scalar gives a ``ScaledFunctional``,
-        another ``Functional`` the pointwise product, and a ``LinOp`` the
-        functional-weighted map ``x -> F(x) A x``. The last is **not** a
-        ``LinOp`` — it is non-linear — so it returns an
-        :class:`~spacecore.opfamily.OperatorFamily`; see that module.
-        """
-        from ..linop import LinOp
-        from ._algebra import is_scalar_like, make_functional_product, make_scaled_functional
-
-        if isinstance(other, Functional):
-            return make_functional_product(self, other)
-        if isinstance(other, LinOp):
-            from ..opfamily import make_functional_scaled_operator
-
-            return make_functional_scaled_operator(self, other)
-        if is_scalar_like(other):
-            return make_scaled_functional(other, self)
-        return NotImplemented
-
-    def __rmul__(self, other: Any) -> Any:
-        """Return ``other * self`` — see :meth:`__mul__` for the operand cases."""
-        from ..linop import LinOp
-        from ._algebra import is_scalar_like, make_functional_product, make_scaled_functional
-
-        if isinstance(other, Functional):
-            return make_functional_product(other, self)
-        if isinstance(other, LinOp):
-            from ..opfamily import make_functional_scaled_operator
-
-            return make_functional_scaled_operator(self, other)
-        if is_scalar_like(other):
-            return make_scaled_functional(other, self)
-        return NotImplemented
-
-    @checked_method(in_space="domain", in_batched=True, out_batched_scalar=True)
+    @checked_method(in_space="domain", out_space="codomain", in_batched=True, out_batched=True,
+                    out_batched_scalar=True)
     def vvalue(self, xs: Any) -> Any:
         """Evaluate over a leading batch axis. Input must have shape ``(N,) + domain.shape``; use ``moveaxis`` for other layouts."""
-        _warn_vmap_fallback_once(self, "vvalue", _leading_batch_size(self.domain, xs))
-        return self.ops.vmap(self.value, in_axes=0, out_axes=0)(xs)
+        return self._vvalue_core(xs)
 
     def assert_domain(self, x: Any) -> None:
         """Raise if ``x`` is not in the domain."""
         self.dom.check_member(x)
-
-    def __eq__(self, other: Any) -> bool:
-        """Return structural equality when implemented by a subclass.
-
-        Mirrors :class:`~spacecore.linop.LinOp`: the base provides no algebraic
-        equality and returns ``NotImplemented`` so Python tries the reflected
-        comparison and falls back to identity symmetrically.
-        """
-        return NotImplemented
-
-    def _arrow(self) -> str:
-        """Return the ``domain → scalar-field`` descriptor for this functional."""
-        try:
-            codomain = field_symbol(self.dom.field)
-        except Exception:
-            codomain = "?"
-        return f"{describe_space(self.dom)} → {codomain}"
-
-    def _repr_body(self) -> str:
-        return self._arrow()
-
-    def _short_repr(self) -> str:
-        """Return a bounded ``ClassName(domain → field)`` form for nesting."""
-        return f"{type(self).__name__}({self._arrow()})"
 
     # tree_flatten / tree_unflatten are inherited from PyTreeNode, which owns the
     # flatten contract for every SpaceCore container and auto-registers concrete
     # subclasses with each backend's tree protocol. Every concrete Functional is a
     # container, so the capability belongs on this base rather than being
     # re-declared (and separately registered) per functional.
+
+
+Functional._family = Functional

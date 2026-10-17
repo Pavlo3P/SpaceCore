@@ -10,43 +10,9 @@ Each ADR should cover one implemented concept or one design decision. If an ADR 
 
 ## ADR format
 
-SpaceCore ADRs use this required section structure:
-
-```markdown
-# ADR-NNN: Title
-
-## Status
-
-Accepted / Proposed / Superseded / Deferred
-
-## Context
-
-What problem, concept, or architectural area this ADR records.
-
-## Current design
-
-What SpaceCore currently does, if the ADR records implemented architecture.
-
-## Decision
-
-The design commitment or rule.
-
-## Rationale
-
-Why this design exists.
-
-## Alternatives considered
-
-Other plausible designs and why they were not chosen.
-
-## Consequences
-
-What this means for future extensions.
-
-## Contributor invariants
-
-Rules contributors must preserve when touching this area.
-```
+New ADRs follow [template.md](template.md). An ADR whose subject was removed or moved out is
+kept as a short stub: status, the decision as it was, what still holds, and the git ref of
+the full original text.
 
 ## Index
 
@@ -64,14 +30,14 @@ Rules contributors must preserve when touching this area.
 | [ADR-010](010_functional_contract.md) | `010_functional_contract` | Accepted | Scalar-valued functional, gradient, and pull-back contract. |
 | [ADR-011](011_linalg_contract.md) | `011_linalg_contract` | Accepted | Iterative linalg solver contract. |
 | [ADR-012](012_jordan_spectrum.md) | `012_jordan_spectrum` | Accepted | Jordan spectral API and product spectral decomposition. |
-| [ADR-013](013_tree_structured_spaces.md) | `013_tree_structured_spaces` | Proposed | Planned tree-structured space direction. |
-| [ADR-014](014_check_policy.md) | `014_check_policy` | Proposed | Intended check levels for 0.4.0 test generation. |
+| [ADR-013](013_tree_structured_spaces.md) | `013_tree_structured_spaces` | Accepted | Tree-structured spaces (`TreeSpace`) as the direct-product representation. |
+| [ADR-014](014_check_policy.md) | `014_check_policy` | Accepted | Ordered check levels; the level lives on each bound object; traced cap. |
 | [ADR-015](015_dtype_default_vs_scalar_field.md) | `015_dtype_default_vs_scalar_field` | Accepted | Dtype defaults and scalar-field contract. |
-| [ADR-016](016_kernel_layers.md) | `016_kernel_layers` | Accepted | Two-layer kernel architecture (check-free cores + benchmarked specs) and broader structural-dispatch policy; dispatch implemented (`dispatch_key`/`priority`/`cost`, registry index, `dispatch()` with off/on/verify and memory gate), off by default. |
+| [ADR-016](016_kernel_layers.md) | `016_kernel_layers` | Superseded | Kernel dispatch layer removed in 0.5.0a; check-free cores became `_<op>_core` methods. |
 | [ADR-017](017_tensor_product_spaces.md) | `017_tensor_product_spaces` | Deferred | Direct-product vs tensor-product boundary settled; tensor-product implementation demand-gated. |
-| [ADR-018](018_external_optimizer_adapters.md) | `018_external_optimizer_adapters` | Accepted | SciPy/optax adapters taking a `Functional`, with metric→coordinate gradient handoff; implemented in `spacecore.optimize` (`minimize_scipy`, `line_search_scipy`, `minimize_optax`). |
-| [ADR-019](019_everyday_toolbox.md) | `019_everyday_toolbox` | Accepted | Battery functionals (`least_squares`, coordinate norm/entropy/KL/Huber, spectral `SpectralLpNormFunctional`/`NuclearNormFunctional`) and the closed-form, metric-aware `generalized_shrinkage` proximal primitive with `prox_l1`/`prox_l2sq`/`project_nonneg`, in the `spacecore.functional.tools` subpackage; `IndicatorFunctional`/`project_C` deferred to ADR-020. |
-| [ADR-020](020_sets_and_projection.md) | `020_sets_and_projection` | Proposed | `Set` abstraction owning an ambient space and a metric projector; typed `C` for indicators/projection. |
+| [ADR-018](018_external_optimizer_adapters.md) | `018_external_optimizer_adapters` | Moved out | SciPy/optax adapters; now in the `spacecore-optimize` package. |
+| [ADR-019](019_everyday_toolbox.md) | `019_everyday_toolbox` | Partly moved out | Coordinate norms stay; the rest of the catalogue is in `spacecore-optimize`. |
+| [ADR-020](020_sets_and_projection.md) | `020_sets_and_projection` | Accepted | `Set` with an ambient space and metric projection; `IndicatorFunctional`. |
 | [ADR-021](021_lazy_operator_algebra_and_simplification.md) | `021_lazy_operator_algebra_and_simplification` | Accepted | Tier-2 explicit `LinOp.fuse(*, materialize=False)` simplification; collapses maximal dense subtrees into one `DenseLinOp` (composition→matrix product, scalar/sum/adjoint/block/tree), adjoint-consistent on any geometry, matrix-free never densified unless `materialize=True`; implemented in `spacecore.linop`. |
-| [ADR-022](022_caching.md) | `022_caching` | Accepted | Build-time materialized-form cache for the uniform batched folds: the input-independent stacked block-matrix array is memoized once per accessor on `CachedStackParts` (excluded from identity/pytree, matrix-free never cached, dispatcher stateless); implemented for `BlockDiagonalLinOp`/`StackedLinOp`/`SumToSingleLinOp`. Dispatch-decision caching deferred. |
-| [ADR-023](023_benchmark_framework.md) | `023_benchmark_framework` | Proposed | Top-level `bench` package (`python -m bench`) measuring SpaceCore overhead vs. a **hand-optimal pure-array-library baseline** (the most efficient idiomatic `np`/`jnp`/`torch` implementation, per backend, importing nothing from `spacecore` and matching the reference value) — `speedup = bare/sc`, so `≥1` means SpaceCore matched or beat hand-written library code. Result aggregation is delivered **in the generated self-contained HTML**: the dashboard embeds the raw cells and rolls them up client-side with interactive group-by (size / module(family) / operation / backend / device / check_level / regime), summarizing speedup by geometric mean + worst-case and folding correctness as a gate. A run sweeps configuration **regimes** — `baseline` (dispatch off) / `dispatch` / `dispatch+cache` / `verify` — timing the same probe under each so the ADR-016 dispatch and ADR-022 caching wins are a measured within-run delta and their erosion is a cross-run regression. A headless comparison layer (`compare`/`track`) reuses the same grouping rules to detect per-group regressions (seed-jitter noise band, environment guard) and trend performance release-over-release. Factory probes keyed by `(seed,size)`, fixed seed quartet `(0,1,2,3)`, `check_level` capped at `none`/`cheap`. Tooling only — no `spacecore→bench` edge; `REGRESSION` requires an explicit baseline. |
+| [ADR-022](022_caching.md) | `022_caching` | Withdrawn | Stacked-block cache for the removed dispatch layer. |
+| [ADR-023](023_benchmark_framework.md) | `023_benchmark_framework` | Withdrawn | Benchmark suite; lives outside the package. |
