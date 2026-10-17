@@ -7,6 +7,17 @@ disagree, this document wins.
 
 ## Now
 
+### `0.5.0` — 2026-10-17 (release prepared, not tagged)
+
+Every public operation of spaces, operators and functionals is a checked wrapper
+over a check-free `_<op>_core` that families implement; an undecorated public
+override becomes the class's core (`install_public_checks`), composites call
+cores, and the solvers run on cores directly (`SpaceCoreOps` is gone). Spaces,
+operators and functionals are hashable. Checks inside `jax.jit` / `torch.compile`
+follow `set_traced_check_level` (default `"none"`). Not yet verified for the
+release: the CuPy backend on a GPU, SDPLab against this version, the typing gates
+(pyright/mypy) and Python 3.11/3.12, which CI runs.
+
 ### `0.5.0a` real functional contract — 2026-10-07
 
 All Functionals have a real codomain and produce real values, including on
@@ -99,23 +110,13 @@ Turn three recorded design decisions into code:
 
 ### `0.5.0` — Ergonomics, identity, dtype, and new abstractions
 
-- **Object identity.** Restore `__hash__` consistently across the abstract bases
-  (defining `__eq__` left value objects unhashable); add an optional `_repr_html_`
-  for notebooks.
-- **Ergonomics.** Small, explicit wrappers/decorators for repeated jobs —
-  check-level logic, domain/codomain compatibility, scalar-field/dtype checks,
-  context-preserving construction, bare-array→element coercion, batched
-  `vapply`/`rvapply` fallback, functional gradient/pull-back validation. The goal
-  is readability, never magical dispatch; Riesz wrappers stay honest (ADR-009:
-  matrix-free `rapply` is never wrapped).
-- **Dtype Stage 2 (ADR-015).** Dtype-preserving `ctx.asarray`; field-level
-  `DTypeCheck` as default with exact-dtype opt-in; operand-driven solver
-  workspaces.
-- **ADR-017 — tensor-product spaces.** `TensorProductSpace`, tensor-shaped
-  elements, Kronecker/tensor LinOps, and adjoint/flattening rules, kept distinct
-  from `TreeSpace` direct products.
-- **ADR-020 — sets and projection.** A `Set` abstraction owning an ambient space
-  and a metric projector, with a typed `C` for indicators/projection.
+| Item | State in 0.5.0 |
+|---|---|
+| **Object identity** | Shipped: spaces, operators and functionals hash consistently with `==`; `_repr_html_`. |
+| **Ergonomics** | Shipped as the core rule: every public operation is a checked wrapper over a `_<op>_core`, one `install_public_checks` mechanism for all objects, the traced check-level cap. |
+| **ADR-020 — sets and projection** | Shipped (minimal surface: `Set`, `NonnegativeOrthant`, `IndicatorFunctional`). |
+| **ADR-017 — tensor-product spaces** | Not in 0.5.0. Design proposed in ADR-017 (2026-10-17), awaiting acceptance and a named workload. |
+| **Dtype Stage 2 (ADR-015)** | Not in 0.5.0. Open: Stage 2 makes field-level checks the default, which ADR-015's decision keeps strict until a workload justifies it. |
 
 ### `0.6.0` — Interoperability, linalg, and performance
 

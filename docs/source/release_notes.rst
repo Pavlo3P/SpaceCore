@@ -1,18 +1,34 @@
 Release notes
 =============
 
-Version 0.5.0a
---------------
+Version 0.5.0
+-------------
 
 Functionals are real-valued: the codomain is always ``RealField`` and the
 ``cod`` and ``real_linear`` arguments are gone. With checks on (``cheap`` and
 above), complex outputs, coefficients and offsets raise. Complex domains remain
 supported through the real inner-product pairing. This is a breaking change.
 
-Unreleased pre-release. SpaceCore 0.5.0a adds the first-order proximal surface
-and removes layers that did not earn their keep, while keeping the Backend →
-Space → Mapping (``LinOp`` / ``Functional``) → Element division. The full list is
-in ``CHANGELOG.md``.
+SpaceCore 0.5.0 adds the first-order proximal surface, makes every public
+operation a checked wrapper over a check-free core, and removes layers that did
+not earn their keep, while keeping the Backend → Space → Mapping (``LinOp`` /
+``Functional``) → Element division. The full list is in ``CHANGELOG.md``.
+
+Migrating
+~~~~~~~~~
+
+* A custom space, operator or functional implements cores (``_add_core``,
+  ``_flatten_core``, ``_star_core``, ``_jordan_core``, ``_apply_core``,
+  ``_grad_core``, ...). A public method overridden without a decorator still
+  works: it becomes the class's core.
+* ``cg``, ``lsqr``, ``power_iteration``, ``lanczos_smallest`` and
+  ``expm_multiply`` return one ``LinalgResult``; ``eigenvector`` and ``result``
+  are ``x``, ``krylov_dim`` is ``num_iters``, ``residual_estimate`` is
+  ``residual_norm``.
+* Scaling a space over the reals by a non-real number raises
+  ``SpaceValidationError``.
+* Inside ``jax.jit`` / ``torch.compile`` checks are off by default;
+  ``set_traced_check_level("cheap")`` keeps shape and dtype checks.
 
 Added
 ~~~~~
@@ -26,13 +42,20 @@ Added
 * A field declaration for extensions: a class lists its constructor ``_fields``
   once and gets pytree flattening, ``convert`` and (for maps) equality from it
   (:doc:`design/extending`).
+* ``set_traced_check_level`` / ``get_traced_check_level``: the check-level cap
+  while a backend traces, ``"none"`` by default.
+* Hashable spaces, operators and functionals (consistent with ``==``) and a
+  notebook ``_repr_html_``.
 
 Changed
 ~~~~~~~
 
-* ``LinOp`` and ``Functional`` own their checked public methods; subclasses
-  implement the check-free cores ``_apply_core``, ``_rapply_core``,
-  ``_value_core``, and so on.
+* ``LinOp``, ``Functional`` and every space capability own their checked public
+  methods; subclasses implement the check-free cores (``_apply_core``,
+  ``_grad_core``, ``_riesz_core``, ``_flatten_core``, ``_star_core``,
+  ``_jordan_core``, ...). Composites call cores, so each checks once.
+* Spaces over the reals reject non-real multipliers in ``scale``, ``axpy`` and
+  ``scale_batch`` (breaking).
 * A one-column or one-row ``BlockMatrixLinOp`` has a plain endpoint rather than a
   one-leaf ``TreeSpace``, and the containers of its rows give the endpoint trees.
 * Coordinate functionals that compared by identity now compare by their fields.

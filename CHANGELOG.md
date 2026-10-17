@@ -5,10 +5,43 @@ All notable changes to SpaceCore are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.5.0] — unreleased (date set at tagging)
 
 ### Changed
 
+- **Cores are the extension point for every object** (breaking for subclasses). Each
+  public operation of spaces, operators and functionals is a checked wrapper over a
+  `_<op>_core`: `axpy`, `norm`, `riesz`, `riesz_inverse`, `flatten`, `unflatten`,
+  `flatten_batch`, `unflatten_batch`, `add_batch`, `scale_batch`, `pair`, `vpair`,
+  `star`, `jordan`, `spectrum`, `spectral_decompose`, `from_spectrum`,
+  `spectral_apply`, `trace`, `determinant` on spaces; `grad`, `value_and_grad`,
+  `derivative_at`, `value_and_derivative`, `differential`, `vgrad`, `prox` on
+  functionals (joining `add`, `scale`, `inner`, `apply`, `rapply`, `value`, ...). A
+  family implements the cores; `_star_core`, the Jordan cores and
+  `_flatten_core`/`_unflatten_core` are the abstract methods. Composites call their
+  children's cores, so a sum, product or operator checks once at its own boundary.
+  Subclasses that counted or replaced a public batch method of a concrete space now
+  override the core.
+- An undecorated public override still works: `install_public_checks` (run from
+  `ContextBound.__init_subclass__` for spaces, operators and functionals) installs
+  it as the class's core and restores the base's checked method. An override that
+  calls `super().<same name>` is re-checked in place instead.
+- **Spaces over the reals reject a provably non-real multiplier** (breaking): `scale`,
+  `axpy` and `scale_batch` raise `SpaceValidationError` on every real space, not only
+  `HermitianSpace`; traced scalars pass.
+- New checks at standard level: `unflatten` checks its output; `riesz`,
+  `riesz_inverse` and `norm` check their input (an element or a leading-axis batch);
+  `star` and the Jordan operations check inputs and outputs.
+- `checked_method` finds a checked argument passed by keyword (`f.prox(x=..., step=...)`)
+  and records the core it calls (`core=`).
+- `CuPyOps` is `NumpyOps` with the CuPy/cupyx handles and `array_api_compat.cupy`
+  (not yet run on a GPU). `TorchOps.xp` is a per-instance cached property.
+- A broken optional backend (any import error, not only `ImportError`) warns and is
+  skipped instead of breaking `import spacecore`.
+- `TreeSpace` and `StackedSpace` build their capability subclasses from one list of
+  capability sets; the classes keep their names (`TreeInnerProductSpace` is an alias
+  of `_TreeInnerProductSpace`), and `_*EuclideanJordanStarSpace` no longer subclasses
+  `_*EuclideanJordanAlgebraSpace`. Every stacked capability subclass checks its base.
 - Every linalg solver returns one `LinalgResult(x, converged, num_iters, residual_norm,
   eigenvalue=None, normal_residual_norm=None)`, replacing `CGResult`, `LSQRResult`,
   `PowerIterationResult`, `LanczosResult` and `ExpmMultiplyResult`. Renamed fields:
@@ -17,6 +50,9 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Spaces, operators and functionals are hashable, consistently with `==`: the hash
+  covers type, backend family, dtype and shape (spaces) or endpoint spaces
+  (mappings), never array values. `_repr_html_` renders the text repr in notebooks.
 - `set_traced_check_level` / `get_traced_check_level`: a process-wide cap on check
   levels while a backend traces (`jax.jit`, `jax.vmap`, `torch.compile`), default
   `"none"`, so objects built at any level compile. `"cheap"` keeps shape and dtype
@@ -47,6 +83,12 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Pickling a `TreeSpace` or `StackedSpace` (their `__new__` dispatches on arguments).
+- `StackedSpace` of a complex `ElementwiseJordanSpace` in a real context: the guard
+  now checks the converted base.
+- `torch.compile` with the traced check level at `"cheap"`: space check caches are
+  not filled while tracing.
+- The documentation build imports `spacecore` with `torch` mocked.
 - `InnerProductSpace.geometry` is never `None`: it defaults to Euclidean, and a native
   space states a non-Euclidean metric as its own `InnerProduct` (inner product and Riesz
   maps on its native elements). `MatrixFreeLinOp` no longer warns about coordinate
@@ -81,6 +123,10 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Removed
 
+- `spacecore.linalg._utils.SpaceCoreOps`, `resolve_core`, `resolve_apply` and
+  `resolve_rapply`: solvers call the operators' and spaces' cores directly, and an
+  overridden public method is already the core. `HermitianSpace.scale` and
+  `scale_batch` (the base wrappers now carry the real-scalar guard).
 - The batched-Riesz `vmap` fallbacks in `metric_rvapply` and `StackedSpace`: Riesz maps
   must broadcast over leading batch axes, as all built-in geometries do.
 - **`ComplexField`, the `Field` base class and `Space.scalars`** (breaking). Nothing
