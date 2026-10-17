@@ -73,12 +73,13 @@ the cores, and composites call cores, so each object checks once. See
 
 Every object has a `check_level`: `"none"`, `"cheap"` (shape, dtype),
 `"standard"` (membership, e.g. Hermiticity) or `"strict"` (+ probes). Set it per
-object, or with `sc.set_check_level` / `sc.use_check_level`. Failures raise
+object, or once with `sc.set_check_level` / `sc.use_check_level`. Failures raise
 `sc.SpaceValidationError`. Inside `jax.jit` / `torch.compile` checks are capped by
 `sc.set_traced_check_level` (default `"none"`).
 
 ## Docs
 
+[Tutorials](https://pavlo3p.github.io/SpaceCore/tutorials/index.html) ·
 [Design](https://pavlo3p.github.io/SpaceCore/design/index.html) ·
 [API](https://pavlo3p.github.io/SpaceCore/api/index.html) ·
 [Release notes](https://pavlo3p.github.io/SpaceCore/release_notes.html)
