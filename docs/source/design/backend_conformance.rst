@@ -40,13 +40,13 @@ only what it does not.
    array types), ``sanitize_dtype`` (``None`` means the default dtype),
    ``logsumexp``, ``ix_``, ``assparse``, ``sparse_matmul`` and
    ``allclose_sparse`` (raise ``CapabilityError`` without sparse support), and
-   ``fori_loop`` / ``while_loop`` / ``scan`` / ``cond``. An eager library mixes in
-   ``spacecore.backend.EagerControlFlowMixin`` for those four; a tracing one maps
-   them to its own primitives, as ``JaxOps`` does with ``jax.lax``.
+   ``fori_loop`` / ``while_loop`` / ``scan`` / ``cond`` (see *Control flow* below:
+   an eager library mixes in ``spacecore.backend.EagerControlFlowMixin``).
 3. **Implement** ``_copy`` and ``_scatter_add_inplace`` if ``index_set`` /
    ``index_add`` should work; override any inherited method whose ``xp`` behaviour
    differs from NumPy's (``TorchOps`` overrides ``where``, ``concatenate``, ...).
-4. **Register** with ``sc.register_ops(cls)``. A family can be registered once per
+4. **Register** by decorating the class with ``@sc.register_ops`` (or calling
+   ``sc.register_ops(cls)``). A family can be registered once per
    process (``ContextConflictError`` otherwise). ``Context("<family>")`` and
    ``Context(cls())`` then both work, and ``convert`` moves spaces, operators and
    functionals onto it.
@@ -65,6 +65,7 @@ A complete dense-only backend over NumPy:
    from spacecore.backend import EagerControlFlowMixin
 
 
+   @sc.register_ops                     # registers the class and returns it
    class DenseNumpyOps(EagerControlFlowMixin, sc.BackendOps):
        """NumPy arrays, no sparse support: the smallest complete backend."""
 
@@ -109,8 +110,6 @@ A complete dense-only backend over NumPy:
            raise sc.CapabilityError("npdense has no sparse arrays")
 
 
-   sc.register_ops(DenseNumpyOps)
-
    ctx = sc.Context("npdense", dtype=np.float64)
    X = sc.DenseCoordinateSpace((3,), ctx)
    A = sc.DenseLinOp(ctx.asarray(np.diag([1.0, 2.0, 4.0])), X, X, ctx)
@@ -121,6 +120,64 @@ A complete dense-only backend over NumPy:
 
    A_np = A.convert(sc.Context(sc.NumpyOps(), dtype=np.float64))   # move to another backend
    np.testing.assert_allclose(A_np.apply(b), A.apply(b))
+
+Control flow
+------------
+
+**Library loops go through** ``ops``, **so one solver runs eagerly and compiles under
+``jax.jit``.** ``cg``, ``power_iteration``, ``lanczos_smallest`` and
+``expm_multiply`` never write a Python ``while``; they call ``ops.while_loop``,
+``ops.fori_loop``, ``ops.cond`` and ``ops.scan``. Each backend decides what those
+mean.
+
+========================================================  =====================================================
+Method (``jax.lax`` semantics)                            Eager meaning
+========================================================  =====================================================
+``fori_loop(lower, upper, body(i, carry), init)``         ``for i in range(lower, upper): carry = body(i, carry)``
+``while_loop(cond(carry), body(carry), init)``            ``while cond(carry): carry = body(carry)``
+``cond(pred, true_fun, false_fun, *operands)``            ``true_fun(*operands) if pred else false_fun(*operands)``
+``scan(f(carry, x) -> (carry, y), init, xs)``             loop over the leading axis of ``xs``; stack the ``y``
+========================================================  =====================================================
+
+The two kinds of backend need different implementations:
+
+* **Tracing** (``JaxOps``): a Python ``while`` cannot test a traced value, a Python
+  ``if`` cannot branch on one, and a Python ``for`` unrolls into the compiled graph.
+  ``JaxOps`` maps the four methods to ``jax.lax.while_loop`` / ``fori_loop`` /
+  ``cond`` / ``scan`` and does not use the mixin.
+* **Eager** (``NumpyOps``, ``TorchOps``, ``CuPyOps`` through ``NumpyOps``): the
+  values are concrete, so plain Python loops are correct. ``EagerControlFlowMixin``
+  is that one implementation, including the tree stacking ``scan`` needs; list it
+  before ``BackendOps`` in the bases so its methods win.
+
+A new eager backend therefore mixes it in and writes no control flow. A new
+tracing backend implements the four with its own staged primitives, keeping the
+carry structure fixed across iterations and both ``cond`` branches returning the
+same structure, as ``jax.lax`` requires. Code written against ``ops`` follows the
+same rules:
+
+.. code-block:: python
+
+   def newton_sqrt(ops, a, tol=1e-12):
+       """sqrt(a) by Newton's method, written once against ops."""
+       def keep_going(carry):
+           x, step = carry
+           return step > tol
+
+       def update(carry):
+           x, _ = carry
+           x_new = 0.5 * (x + a / x)
+           return x_new, ops.abs(x_new - x)
+
+       x, _ = ops.while_loop(keep_going, update, (a, ops.asarray(1.0)))
+       return x
+
+   np_ops = sc.NumpyOps()
+   print(newton_sqrt(np_ops, np_ops.asarray(2.0)))          # eager Python loop
+
+   import jax
+   jax_ops = sc.JaxOps()
+   print(jax.jit(lambda a: newton_sqrt(jax_ops, a, tol=1e-6))(jax_ops.asarray(2.0)))  # lax.while_loop
 
 Matrix
 ------
