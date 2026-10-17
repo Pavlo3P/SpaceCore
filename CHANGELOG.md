@@ -5,7 +5,7 @@ All notable changes to SpaceCore are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
-## [0.5.0] — unreleased (date set at tagging)
+## [0.5.0] — 2026-10-17
 
 SpaceCore is now a toolbox for first-order optimization: spaces with geometry,
 operators, functionals and proxes. You extend it by writing check-free *cores*, and

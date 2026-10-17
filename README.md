@@ -1,5 +1,5 @@
 <h1>
-  <img src="docs/source/_static/spacecore-logo.svg" alt="SpaceCore logo" height="72" align="center">
+  <img src="https://raw.githubusercontent.com/Pavlo3P/SpaceCore/master/docs/source/_static/spacecore-logo.svg" alt="SpaceCore logo" height="72" align="center">
   SpaceCore
 </h1>
 
