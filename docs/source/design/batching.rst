@@ -47,5 +47,7 @@ Expected output:
 See also
 --------
 
-* :doc:`batching_test_policy` records what ``0.4.0`` tests about batching and
-  what it intentionally does not.
+* Only leading batch axes are supported, and every leaf of a ``TreeSpace``
+  batch shares one batch size.
+* The iterative solvers (``cg``, ``lsqr``, ``lanczos_smallest``,
+  ``power_iteration``, ``expm_multiply``) are unbatched; loop over the batch.

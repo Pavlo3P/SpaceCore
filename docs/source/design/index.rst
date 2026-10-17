@@ -10,7 +10,6 @@ Rules for geometry, validation, batching, conversion, and backend behavior.
    proximal_contract
    context_dtype_conversion
    batching
-   batching_test_policy
    capability_dispatch
    checking_policy
    geometry

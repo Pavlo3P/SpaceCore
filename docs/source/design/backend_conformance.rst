@@ -382,6 +382,5 @@ Cross-references
 ----------------
 
 * :doc:`backend_deviations` — user-facing list of accepted differences.
-* :doc:`batching_test_policy` — what is and isn't tested for batched paths.
 * :doc:`context_dtype_conversion` — dtype/scalar-field
   contract underlying the conformance promises.
