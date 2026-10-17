@@ -7,317 +7,139 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [0.5.0] — unreleased (date set at tagging)
 
-### Changed
+SpaceCore is now a toolbox for first-order optimization: spaces with geometry,
+operators, functionals and proxes. You extend it by writing check-free *cores*, and
+every public method checks its inputs and then calls them. Optimizer adapters and the
+functional catalogue moved to the separate
+[`spacecore-optimize`](https://github.com/Pavlo3P/spacecore-optimize) package, and
+several internal layers were removed.
 
-- **Cores are the extension point for every object** (breaking for subclasses). Each
-  public operation of spaces, operators and functionals is a checked wrapper over a
-  `_<op>_core`: `axpy`, `norm`, `riesz`, `riesz_inverse`, `flatten`, `unflatten`,
-  `flatten_batch`, `unflatten_batch`, `add_batch`, `scale_batch`, `pair`, `vpair`,
-  `star`, `jordan`, `spectrum`, `spectral_decompose`, `from_spectrum`,
-  `spectral_apply`, `trace`, `determinant` on spaces; `grad`, `value_and_grad`,
-  `derivative_at`, `value_and_derivative`, `differential`, `vgrad`, `prox` on
-  functionals (joining `add`, `scale`, `inner`, `apply`, `rapply`, `value`, ...). A
-  family implements the cores; `_star_core`, the Jordan cores and
-  `_flatten_core`/`_unflatten_core` are the abstract methods. Composites call their
-  children's cores, so a sum, product or operator checks once at its own boundary.
-  Subclasses that counted or replaced a public batch method of a concrete space now
-  override the core.
-- An undecorated public override still works: `install_public_checks` (run from
-  `ContextBound.__init_subclass__` for spaces, operators and functionals) installs
-  it as the class's core and restores the base's checked method. An override that
-  calls `super().<same name>` is re-checked in place instead.
-- **Spaces over the reals reject a provably non-real multiplier** (breaking): `scale`,
-  `axpy` and `scale_batch` raise `SpaceValidationError` on every real space, not only
-  `HermitianSpace`; traced scalars pass.
-- New checks at standard level: `unflatten` checks its output; `riesz`,
-  `riesz_inverse` and `norm` check their input (an element or a leading-axis batch);
-  `star` and the Jordan operations check inputs and outputs.
-- `checked_method` finds a checked argument passed by keyword (`f.prox(x=..., step=...)`)
-  and records the core it calls (`core=`).
-- `CuPyOps` is `NumpyOps` with the CuPy/cupyx handles and `array_api_compat.cupy`
-  (not yet run on a GPU). `TorchOps.xp` is a per-instance cached property.
-- A broken optional backend (any import error, not only `ImportError`) warns and is
-  skipped instead of breaking `import spacecore`.
-- `TreeSpace` and `StackedSpace` build their capability subclasses from one list of
-  capability sets; the classes keep their names (`TreeInnerProductSpace` is an alias
-  of `_TreeInnerProductSpace`), and `_*EuclideanJordanStarSpace` no longer subclasses
-  `_*EuclideanJordanAlgebraSpace`. Every stacked capability subclass checks its base.
-- Every linalg solver returns one `LinalgResult(x, converged, num_iters, residual_norm,
-  eigenvalue=None, normal_residual_norm=None)`, replacing `CGResult`, `LSQRResult`,
-  `PowerIterationResult`, `LanczosResult` and `ExpmMultiplyResult`. Renamed fields:
-  `eigenvector` and `result` are `x`, `krylov_dim` is `num_iters`, and
-  `residual_estimate` is `residual_norm`.
+### Upgrading from 0.4.3 (breaking changes)
+
+**Writing your own spaces, operators and functionals**
+
+- Implement the cores, not the public methods: `_add_core`, `_scale_core` and
+  `_inner_core` for a space, `_apply_core` and `_rapply_core` for an operator,
+  `_value_core` and `_grad_core` for a functional, and likewise for the other
+  operations (`_flatten_core`, `_star_core`, the Jordan cores, ...). The public
+  `add`, `apply`, `value`, `grad`, ... run the checks and then call your core.
+  Overriding a public method still works: it becomes your class's core.
+- A custom `InnerProduct` must supply its Riesz maps, and they must broadcast over
+  leading batch axes. A missing map raises `CapabilityError`; only
+  `EuclideanInnerProduct` provides identity maps by default.
+- Classes declare their constructor fields once (`_fields`, with `_dynamic` naming
+  the pytree children). Pytree flattening, `convert` and `==` are derived from that
+  declaration, so the pytree `aux` of these classes changed shape, and coordinate
+  functionals now compare by their fields instead of by identity.
+
+**Behaviour**
+
+- Functionals are strictly real-valued. Their codomain is always `RealField`, even
+  on complex domains, and the `cod` and `real_linear` arguments and the functional
+  `scalar_field` property are gone. With checks on, complex outputs, coefficients
+  and offsets raise `TypeError`.
+- Real spaces reject a non-real multiplier in `scale`, `axpy` and `scale_batch`
+  (`SpaceValidationError`); before, only `HermitianSpace` did.
+- Spaces reject integer and Boolean dtypes, and complex coefficients over real
+  storage, at construction. Use a floating dtype.
+- Every linalg solver returns one `LinalgResult(x, converged, num_iters,
+  residual_norm, eigenvalue=None, normal_residual_norm=None)`. Renamed fields:
+  `eigenvector` and `result` → `x`, `krylov_dim` → `num_iters`, `residual_estimate`
+  → `residual_norm`.
+- `lanczos_smallest` with a zero initial element raises; under JAX tracing it
+  returns a NaN eigenvalue and `converged=False`.
+- A one-column or one-row `BlockMatrixLinOp` has a plain space as that endpoint,
+  not a one-leaf `TreeSpace`.
+
+**Moved to `spacecore-optimize`** (`import spacecore_optimize as spo`)
+
+- `minimize_scipy`, `line_search_scipy`, `minimize_optax`, `OptaxResult` (and the
+  `optax` install extra).
+- `least_squares`, `NegativeEntropyFunctional`, `KLDivergenceFunctional`,
+  `HuberFunctional`, `SpectralFunctional`, `spectralize`, `eigenvalue_space`,
+  `NuclearNormFunctional`, `generalized_shrinkage`, `prox_l1`, `prox_l2sq`,
+  `project_nonneg`, `RealifiedFunctional`, `realify`. SpaceCore keeps
+  `SquaredL2NormFunctional`, `LpNormFunctional` and `L1NormFunctional`.
+
+**Removed**
+
+| Removed | Use instead |
+|---|---|
+| `StackedLinOp`, `SumToSingleLinOp` | `BlockMatrixLinOp.stack((A1, A2))`, `BlockMatrixLinOp.from_operators((A1, A2))` |
+| `BlockDiagonalLinOp(dom, cod, parts, ctx)` | `BlockDiagonalLinOp(blocks, ctx)` |
+| `ShiftedFunctional` | `F + c` |
+| `spacecore.opfamily`; `Functional * LinOp` now raises `TypeError` | `F(x) * A` for a frozen value |
+| `enable_checks=True/False` | `check_level="standard"/"none"` |
+| `checked_method(arg_pos=...)` | `arg_positions=` |
+| `enforce_convert_policy` | `obj.convert(ctx)` |
+| entry-point backend discovery (`discover_entry_point_ops`) | `register_ops` |
+| `power_iteration(check_every=...)` | nothing; it was ignored |
+| the `spacecore.kernels` package and its dispatch API (`set_dispatch_mode`, `KernelSpec`, ...) | nothing; it was off by default and slower |
+| `BackendOps.free_memory_bytes` and the `psutil` dependency | — |
+| the `examples` install extra; notebooks, examples and benchmarks in the repository | the rendered tutorials in the docs |
 
 ### Added
 
-- Spaces, operators and functionals are hashable, consistently with `==`: the hash
-  covers type, backend family, dtype and shape (spaces) or endpoint spaces
-  (mappings), never array values. `_repr_html_` renders the text repr in notebooks.
-- `set_traced_check_level` / `get_traced_check_level`: a process-wide cap on check
-  levels while a backend traces (`jax.jit`, `jax.vmap`, `torch.compile`), default
-  `"none"`, so objects built at any level compile. `"cheap"` keeps shape and dtype
-  checks, which run once at trace time. Backends report tracing through the new
-  `BackendOps.is_tracing()`.
-- `cg(..., preconditioner=K)`: preconditioned CG with an operator `K` on `A.domain`.
-- `InnerProductSpace.dual_norm(xi)`, the norm of a covector.
-- The metric-free pairing layer: `CoordinateSpace.pair(xi, x)` and `vpair(xi, xs)`
-  pair a coordinate covector with elements without any inner product;
-  `Functional.differential(x)` returns the covector of the derivative (natively for
-  coordinate functionals).
+- `Element`, a checked member of a space with arithmetic that stays in the space:
+  `DenseElement`, and the low-rank Hermitian `LowRankElement`. `A @ x` applies an
+  operator to an element.
+- `Mapping`, the common parent of `LinOp` and `Functional`; `F @ A` composes a
+  functional with an operator, and `A + 0` returns `A`.
+- Proximal operators: `Functional.prox` and `conjugate_prox`, with rules for the
+  squared norm, the L1 norm in diagonal geometry and indicators. `Set`,
+  `NonnegativeOrthant` and `IndicatorFunctional` connect membership, metric
+  projection and indicator values. Unsupported cases raise `CapabilityError`.
 - `OperatorInnerProduct(M, M_inverse=None)`: a metric given by a self-adjoint
-  positive-definite operator on the Euclidean coordinates, with `M` as the Riesz
-  map and an optional, possibly inexact, inverse. Block, Kronecker and matrix-free
-  metrics work with the existing metric adjoints, and CG in such a space is
-  preconditioned CG.
-- Optional `Functional.prox` rules in the existing mapping table, Hilbert-space
-  `conjugate_prox` via Moreau, positive scaling, and finite constant shifts.
-  Rules cover the squared space norm, coordinate L1 in diagonal geometry, and
-  indicators. Unsupported sums, products, pullbacks, and geometries raise
-  `CapabilityError`; no optimization loop or dense fallback is introduced.
-- `Set`, `NonnegativeOrthant`, and `IndicatorFunctional` connect membership,
-  metric projection, and extended-real indicator values. Custom sets explicitly
-  declare convexity before supplying an indicator.
-- Acceptance tests run unchanged proximal gradient and PDHG across two metrics
-  and two representations, including JAX compilation with dynamic steps, and
-  check independent KKT conditions.
+  positive-definite operator. CG in such a space is preconditioned CG.
+- `cg(..., preconditioner=K)`.
+- Covectors: `CoordinateSpace.pair` / `vpair`, `Functional.differential`,
+  `InnerProductSpace.dual_norm`, and `InnerProductSpace.real_inner`.
+- `set_traced_check_level` / `get_traced_check_level`: under `jax.jit`, `jax.vmap`
+  or `torch.compile`, checks run at most at this level (default `"none"`), so objects
+  built at any check level compile.
+- Spaces, operators and functionals are hashable, consistently with `==`, and render
+  in notebooks (`_repr_html_`).
+- `RealField` (the scalar space of functional values) and `CapabilityError` are
+  exported.
+- Type information: native result types for NumPy, JAX and Torch, and a `py.typed`
+  marker in the wheel.
+
+### Changed
+
+- Checks follow the check level throughout. `WeightedInnerProduct` reads its weights
+  only from `"standard"` upward, so traced weights work under `jit`; weights may be
+  any shape that broadcasts to the space, and equal weightings compare equal. Solvers
+  probe self-adjointness only from `"standard"` upward.
+- New `"standard"` checks: `unflatten` checks its output, `riesz`, `riesz_inverse`
+  and `norm` check their input, and `star` and the Jordan operations check inputs and
+  outputs. Composites (sums, products, compositions) check once at their own boundary.
+- `is_hermitian()` is decided structurally where possible (`R.H @ R`, `L.H @ V @ L`,
+  symmetric block matrices, diagonal operators on a weighted space).
+  `MatrixFreeLinOp(..., hermitian=True)` declares it.
+- `LinOp` endpoints need only a `VectorSpace`. Operations that need more
+  (materialization, batching, the metric adjoint) raise `CapabilityError` naming the
+  missing capability instead of an `AttributeError`.
+- `lanczos_smallest` and `expm_multiply` work on custom (non-coordinate) spaces
+  through space algebra.
+- `checked_method` also checks an argument passed by keyword.
+- Scalar results of backend operations are 0-d arrays on every backend.
+- A broken optional backend warns and is skipped instead of breaking
+  `import spacecore`. `CuPyOps` was rebuilt on `NumpyOps` (not yet run on a GPU).
 
 ### Fixed
 
-- Pickling a `TreeSpace` or `StackedSpace` (their `__new__` dispatches on arguments).
-- `power_iteration` on a complex Hermitian operator under `jax.jit`/`lax.while_loop`:
-  the eigenvalue carry is real, as the Rayleigh quotient is; `cg`'s breakdown
-  tolerance is real too (ADR-015's real solver diagnostics).
-- `StackedSpace` of a complex `ElementwiseJordanSpace` in a real context: the guard
-  now checks the converted base.
-- `torch.compile` with the traced check level at `"cheap"`: space check caches are
-  not filled while tracing.
-- The documentation build imports `spacecore` with `torch` mocked.
-- `InnerProductSpace.geometry` is never `None`: it defaults to Euclidean, and a native
-  space states a non-Euclidean metric as its own `InnerProduct` (inner product and Riesz
-  maps on its native elements). `MatrixFreeLinOp` no longer warns about coordinate
-  adjoints on such a space. `least_squares` keeps native members native.
-- `Element` builds no dense form at `check_level="none"`, and `densify` is an
-  optional capability: without it, fallback arithmetic raises `CapabilityError`
-  instead of failing obscurely.
-- Proximal helpers accept dynamic scalar steps at `check_level="none"` and use
-  real thresholds for complex diagonal geometry. Thresholding works on Torch
-  without passing Python scalars to its tensor-only `maximum` primitive.
-- Default Krylov initialization uses native `ones()` when available and asks
-  for an explicit initial element otherwise. Non-coordinate spaces require an
-  explicit iteration budget, rather than failing with a missing `shape`.
-- **Custom `InnerProduct` implementations must supply Riesz maps** (breaking).
-  Missing maps raise `CapabilityError`; only `EuclideanInnerProduct` supplies
-  identity maps by default, preventing silent misuse of a non-Euclidean metric.
-
-- Backend array typing: native dense results for NumPy, JAX, and Torch operations
-  and explicit contexts; portable protocols accept native positional operators;
-  optional backend exports and forwarded operations are visible to editors.
-  Validation decorators preserve callable signatures. Wheels include `py.typed`.
-- Scalar results from elementwise backend operations, contractions, and
-  NumPy/CuPy `logsumexp` are promoted to zero-dimensional arrays, matching the
-  existing array-result contract.
-
-### Changed
-
-- **Space cores** (breaking for custom spaces): a vector space implements `_add_core` and
-  `_scale_core`, and an inner-product space `_inner_core`, instead of the public `add`,
-  `scale` and `inner`, which the base classes now own and check. The name-based core
-  lookups in operator algebra, functionals and solvers are gone.
-
-### Removed
-
-- `spacecore.linalg._utils.SpaceCoreOps`, `resolve_core`, `resolve_apply` and
-  `resolve_rapply`: solvers call the operators' and spaces' cores directly, and an
-  overridden public method is already the core. `HermitianSpace.scale` and
-  `scale_batch` (the base wrappers now carry the real-scalar guard).
-- The batched-Riesz `vmap` fallbacks in `metric_rvapply` and `StackedSpace`: Riesz maps
-  must broadcast over leading batch axes, as all built-in geometries do.
-- **`ComplexField`, the `Field` base class and `Space.scalars`** (breaking). Nothing
-  used them once functionals became real-valued; `RealField` is the one scalar
-  field and absorbs `Field`'s behaviour. A space's `scalar_field` still declares
-  real or complex coefficients.
-- **`StackedLinOp` and `SumToSingleLinOp`** (breaking). `BlockMatrixLinOp` covers
-  both: a side given as a plain one-element list or tuple is a single space, not a
-  one-leaf tree, and the containers of rows and of each row are the codomain and
-  domain trees (a NamedTuple of rows gives NamedTuple elements). Write
-  `BlockMatrixLinOp.stack((A1, A2))` for `x -> (A1 x, A2 x)` and
-  `BlockMatrixLinOp.from_operators((A1, A2))` for `(x1, x2) -> A1 x1 + A2 x2`; the
-  adjoint of each is the other. A one-column or one-row `BlockMatrixLinOp` now has a
-  plain endpoint where it used to have a one-leaf `TreeSpace`. The flat dense fast
-  paths of the two classes went with them: they did the same matrix products as
-  `DenseLinOp`'s core and saved only per-block call overhead.
-- **Legacy `BlockDiagonalLinOp(dom, cod, parts, ctx)` construction** (breaking).
-  `BlockDiagonalLinOp(blocks, ctx)` takes the block tree only; its tree is the element
-  structure, so a NamedTuple of blocks gives NamedTuple elements. The tree operators'
-  `_*_unchecked` methods are now the standard `_*_core` cores, and the
-  `_apply_unchecked` fallback in `TreeLinOp` is gone.
-- **`spacecore.optimize`** (breaking): `minimize_scipy`, `line_search_scipy`,
-  `minimize_optax` and `OptaxResult` moved to the separate
-  [`spacecore-optimize`](https://github.com/Pavlo3P/spacecore-optimize) package
-  (`import spacecore_optimize as spo`), which depends on SpaceCore. The `optax`
-  install extra, `docs/source/api/optimize.rst` and `tests/optimize/` go with
-  them. SpaceCore keeps the geometry handoff they use (`Functional.grad`,
-  `X.riesz`) and no optimization loops.
-- **Functional catalogue** (breaking): `least_squares`, `NegativeEntropyFunctional`,
-  `KLDivergenceFunctional`, `HuberFunctional`, `SpectralFunctional`, `spectralize`,
-  `eigenvalue_space`, `NuclearNormFunctional`, `generalized_shrinkage`, `prox_l1`,
-  `prox_l2sq`, `project_nonneg`, `RealifiedFunctional` and `realify` moved to
-  `spacecore-optimize` (`spo.<Name>`).
-  SpaceCore keeps the norms used by the prox rules (`LpNormFunctional`,
-  `SquaredL2NormFunctional`, with the `L1NormFunctional` wrapper), the
-  prox/conjugate machinery, indicators and sets, and the coordinate-gradient base
-  `_CoordinateFunctional`.
-- Notebooks, examples and the benchmark suite (`tutorials/`, `notebooks/`,
-  `examples/`, `bench/`) move out of the package repository; the docs keep
-  their tutorials pages (`docs/source/tutorials/`), and the
-  `examples` install extra is gone.
-- **The ADR-016 benchmarked-spec dispatch layer** (breaking): `spacecore.kernels.specs`,
-  `dispatch`, `dispatch_mode`, `set_dispatch_mode`, `get_dispatch_mode`,
-  `should_consult_dispatch`, `KernelSpec`, `KernelCost`, `KernelRegistry`, `registry`,
-  the dispatch errors and the memory-budget knobs, together with the ADR-022
-  `CachedStackParts` cache. Dispatch was off by default; its batched specs applied only
-  to eager NumPy, where they ran mostly slower than the plain per-block loops, and
-  never under `jax.jit`. The bench harness now runs the
-  `baseline` regime only, and tutorial 09 covers fusion alone.
-- **The `spacecore.kernels` package.** Each check-free core (`_apply_core`,
-  `_rapply_core`, `_value_core`, ...) is now a method on the class it served, so the
-  duck-typed free functions, their binding lines and the lazy imports that broke
-  the `linop` ↔ `kernels` cycle are gone. The fast paths are unchanged.
-- **`spacecore.opfamily`** (breaking): `OperatorFamily`, `FunctionalScaledOperator`
-  and `make_functional_scaled_operator` are gone, and `Functional * LinOp` raises
-  `TypeError`. Nothing used the functional-weighted map; write `F(x) * A` for a
-  frozen member.
-- **The `enable_checks` boolean shim** (breaking): `check_level` accepts only
-  `"none"`/`"cheap"`/`"standard"`/`"strict"` or `None`, and the
-  `normalize_check_level(enable_checks=...)`, `level_to_enabled`,
-  `enabled_to_level` and `ContextBound._enable_checks` bridges are gone.
-- **`checked_method(arg_pos=...)`** (breaking); use `arg_positions`.
-- **`enforce_convert_policy`** (breaking); `ContextBound.convert` normalizes the
-  target context itself.
-- **Entry-point backend discovery** (breaking): `discover_entry_point_ops` and the
-  `spacecore.backends` entry-point group. `available_ops` lists NumPy and the
-  importable built-in backends.
-- **`minimize_optax(progress_callback=...)`** (breaking). It only replayed the
-  recorded history after the loop; read `result.history` instead.
-- **`power_iteration(check_every=...)`** (breaking); it was already ignored.
-- **`ShiftedFunctional`** (breaking). `F + c` is now the sum of `F` and a
-  `ConstantFunctional`; a sum skips its constant terms' zero gradients, so the
-  shift costs no extra gradient add.
-- **`BackendOps.free_memory_bytes`** (breaking) and the `psutil` dependency. Only
-  the removed dispatcher read the memory budget.
-- **The core-kernel registry** (breaking): `CoreKernelSet`, `core_kernels`,
-  `register_core_kernels`, `get_core_kernels` and `core_kernel_names`. Operator
-  classes bind their cores as class attributes (`_apply_core = dense_apply_core`).
-
-### Changed
-
-- **Checks follow the check level throughout geometry and solvers.** `WeightedInnerProduct`
-  reads weight values (real, finite, positive) only from `standard` upward, so building a
-  space costs nothing at `none` and traced weights work under `jit`; weights may be any
-  shape that broadcasts to the space (a 0-d array scales the Euclidean metric), and two
-  weightings of one metric compare equal. `cg`, `lanczos_smallest`, `expm_multiply` and
-  `power_iteration` probe self-adjointness only from `standard` upward.
-- **Self-adjointness is decided structurally where possible.** Adjoint-palindromic
-  compositions (`R.H @ R`, `L.H @ V @ L` with `V` self-adjoint), square block matrices with
-  `A_ij# == A_ji` and self-adjoint diagonal blocks, and diagonal operators on a weighted
-  space answer `is_hermitian()` without probes. `MatrixFreeLinOp(..., hermitian=True)`
-  declares it, probed once at `strict`.
-- **`OperatorInnerProduct`.** Without `M_inverse` it reports no Riesz maps, so matrix-backed
-  operators refuse the space at construction instead of failing at `rapply`. At `strict`,
-  positivity is relative (smallest eigenvalue estimate above `1e-12` times the largest) and a
-  supplied `M_inverse` must invert `M` on a probe vector to `1e-6`.
-- **Functionals are strictly real-valued** (breaking). Their codomain is always
-  `RealField`, even on complex domains; the `cod` and `real_linear` arguments and the
-  functional `scalar_field` property are gone. With checks on (`cheap` and above),
-  complex outputs, coefficients and offsets raise `TypeError` through `RealField`
-  membership, including in batched and fused evaluations and subclass overrides.
-  Functionals pair through the new `InnerProductSpace.real_inner`
-  (`Re<x, y>`), which the space norm and the solvers also use; no functional
-  applies a real part of its own.
-
-- **`LinOp` and `Functional` own their checked public methods.** `apply`, `rapply`,
-  `vapply`, `rvapply`, `value` and `vvalue` validate on the base class and call the
-  check-free cores (`_apply_core`, `_value_core`, ...), with the vmap fallback in the
-  default batched cores. A subclass implements the cores; overriding a public method
-  still works. See the new "Extending SpaceCore" design note.
-- The map algebra moved from `spacecore/mapping.py` into the `spacecore.mapping`
-  package; `from spacecore.mapping import ...` is unchanged.
-- **Field declarations replace hand-written pytree, convert and equality hooks.** A
-  class lists its constructor fields once (`_fields`, with `_dynamic` naming the
-  children); `PyTreeNode` derives `tree_flatten`/`tree_unflatten`, `ContextBound`
-  derives `_convert`, and `Mapping` derives `__eq__`. Coordinate functionals that
-  compared by identity (`SquaredL2NormFunctional`, `LpNormFunctional`, `HuberFunctional`,
-  the entropy functionals, `IndicatorFunctional`) now compare by their fields. A
-  `PyTreeNode` that neither declares fields nor flattens itself refuses construction.
-  The pytree `aux` of these classes is now a tuple of `(field, value)` pairs.
-- Lanczos and `expm_multiply` now retain native elements through a private basis
-  adapter and space algebra, with dense fast paths and fixed-shape JAX pytree
-  support. No coordinate conversion is required for custom spaces.
-  **Lanczos zero-start behavior changed**: a zero initial element raises eagerly;
-  under JAX tracing it returns a NaN eigenvalue and `converged=False` instead of
-  inventing a coordinate vector. The exponential action of zero returns zero.
-
-- The `Scaled`/`Sum`/`Zero` lazy nodes and the `make_sum`/`make_scaled` factories are
-  written once in `spacecore.mapping` and mixed into the `LinOp` and `Functional` node
-  classes, which keep only evaluation. A functional sum now also requires its terms to
-  share a codomain field, as an operator sum already did.
-- Functionals now expose a `Field` codomain, defaulting to `domain.scalars`,
-  and validate scalar output through ordinary space membership. Explicit field
-  codomains can differ from the domain's coefficient field; exact batched
-  scalar checks remain unchanged.
-- `LinOp` rejects a `Field` codomain at construction, preserving the separate
-  functional and Riesz-gradient contract from ADR-010.
-- **Spaces reject integer/Boolean storage and complex coefficients over real
-  storage at construction** (breaking). The guard lives on `Space.__init__`, so
-  it applies to every space rather than only the field-backed numerical ones. A
-  space over an integer or Boolean dtype now raises; represent such data in a
-  floating dtype, or model it outside the vector-space hierarchy.
-
-- **`LinOp` endpoints are bound to `VectorSpace`** rather than `CoordinateSpace`.
-  A linear operator needs only `zeros`/`add`/`scale` from its endpoints;
-  coordinates are a representation, not part of the contract. Operators can now
-  be defined over any vector space, including one with no `shape`, `size`,
-  `flatten` or `stacked`. Concrete operators are unaffected — `SparseLinOp` and
-  `DiagonalLinOp` declare `LinOp[CoordinateSpace, CoordinateSpace]` themselves.
-
-  `VectorSpace` and not `InnerProductSpace`: the two are siblings, so binding to
-  the latter would have *narrowed* the accepted set and dropped bare `TreeSpace`
-  and `StackedSpace`.
-
-- **Operations that need more than a vector space now say so.** Materialization
-  (`to_dense`, `to_matrix`, `fuse`, basis probes) requires coordinates, batching
-  (`vapply`, `rvapply`) requires the batched coordinate surface, and `rapply`
-  requires an inner product for its metric-adjoint contract. Each raises
-  `CapabilityError` naming the operation and the missing capability, where
-  previously an unsupported endpoint surfaced as an `AttributeError`.
-
-- `MatrixFreeLinOp`'s strict adjoint-consistency probe no longer requires
-  coordinates. It builds its probe element from the space's own `ones` when one
-  exists, so a non-coordinate space is checked too, and is skipped only when no
-  non-zero element can be built at all.
-
-- Operator endpoint compatibility no longer compares `shape`. Type identity,
-  context agreement and convert-equality already decide it, and
-  `CoordinateSpace` equality compares shape.
-
-### Added
-
-- `Element`, a formal member of a space: context-bound, a pytree, checked
-  against its space once at construction, with arithmetic that stays in the
-  space. Representations are subclasses — `DenseElement` and the factored
-  Hermitian `LowRankElement` — and a pair without its own rule densifies. `A @ x`
-  applies an operator to an element.
-- `Mapping`, the common parent of `LinOp` and `Functional`. It owns the operator
-  overloads: each family registers `add`, `mul` and `matmul` rules, and
-  subtraction, negation and `sum()` are derived. `F @ A` now composes a
-  functional with an operator, and `A + 0` returns `A`.
-- Public `Field`, `RealField`, and `ComplexField` scalar spaces with Euclidean
-  geometry, and `Space.scalars` for accessing the coefficient field on the
-  same backend. Real coefficients over complex storage use the corresponding
-  real dtype without changing the owning space's context.
-
-- `CapabilityError`, exported from `spacecore` and `spacecore.space`, raised when
-  a space lacks a capability the requested operation needs.
+- Pickling a `TreeSpace` or a `StackedSpace`.
+- `power_iteration` on a complex Hermitian operator under `jax.jit`; `cg`'s breakdown
+  tolerance is real.
+- `StackedSpace` of a complex `ElementwiseJordanSpace` in a real context.
+- `torch.compile` with the traced check level at `"cheap"`.
+- `InnerProductSpace.geometry` is never `None`; it defaults to Euclidean.
+- `Element` builds no dense form at `check_level="none"`; without `densify`, fallback
+  arithmetic raises `CapabilityError`.
+- Proximal helpers accept traced step sizes at `check_level="none"` and use real
+  thresholds in complex diagonal geometry; thresholding works on Torch.
+- Krylov solvers use a space's `ones()` for the default start and ask for an explicit
+  start (and iteration budget) on non-coordinate spaces instead of failing on `shape`.
 
 ## [0.4.3] — 2026-09-12
 
