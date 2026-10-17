@@ -24,30 +24,27 @@ Accepted deviations
      - Backend(s)
      - NumPy behavior
      - Backend behavior
-     - Workaround / test
+     - Workaround
    * - ``asarray`` default dtype
      - JAX (default)
      - Python floats → ``float64``.
      - Python floats → ``float32`` when ``jax_enable_x64`` is unset
        (JAX's documented default).
      - Set ``jax_enable_x64=True`` for ``float64`` parity, or pass
-       ``dtype=...`` explicitly. Pinned in
-       ``test_backend_dtype_promotion.py``.
+       ``dtype=...`` explicitly.
    * - ``asarray`` default dtype
      - Torch
      - Python floats → ``float64``.
      - Python floats → ``torch.get_default_dtype()`` (``float32`` by
        default).
      - Call ``torch.set_default_dtype(torch.float64)`` for parity, or pass
-       ``dtype=...``. Pinned in
-       ``test_backend_dtype_promotion.py``.
+       ``dtype=...``.
    * - ``matmul`` promotion (``float32 @ float64``)
      - JAX (default)
      - NEP 50: promote to ``float64``.
      - Keep ``float32`` in default mode (JAX weak-type promotion).
      - Pre-promote operands with ``ops.astype(..., float64)`` if you
-       want NumPy-style promotion. Pinned in
-       ``test_backend_dtype_promotion.py``.
+       want NumPy-style promotion.
    * - ``matmul`` (real × complex)
      - Torch
      - Auto-promotes the real operand to complex; produces a complex
@@ -56,59 +53,32 @@ Accepted deviations
        dtype") rather than promoting.
      - Pre-promote the real operand with
        ``ops.astype(x, complex_dtype)`` before calling ``matmul``.
-       Pinned in ``test_backend_dtype_promotion.py``.
    * - ``imag`` on a real tensor
      - Torch
      - Returns a zero array of the matching real dtype.
      - Raises ``RuntimeError`` ("imag is not implemented for tensors
        with non-complex dtypes").
      - Guard with ``ops.is_complex_dtype(ops.get_dtype(x))`` or convert
-       to complex before calling ``imag``. Pinned in
-       ``test_backend_field_consistency.py``.
-   * - ``eigh`` eigenvalue order
-     - All backends (within tolerance)
-     - Ascending by eigenvalue.
-     - Ascending by eigenvalue across NumPy/JAX/Torch/CuPy, but
-       eigenvector signs and complex phases differ.
-     - Tests compare via the eigenvalue identity ``A v = λ v`` rather
-       than direct vector equality. Pinned in
-       ``test_conformance_numpy.py`` and
-       ``test_conformance_cross_backend.py``.
-   * - ``sqrt`` complex branch
-     - All backends (within tolerance)
-     - Principal branch.
-     - Same principal branch; output may differ by ULPs near the
-       branch cut.
-     - Per-op tolerance loosened to ``rtol=1e-5, atol=1e-6`` for
-       complex ``sqrt``. Pinned in ``test_conformance_numpy.py``.
+       to complex before calling ``imag``.
    * - ``logsumexp`` (float32)
      - JAX, Torch
      - SciPy ``logsumexp`` in ``float32``.
      - Numerically valid result; small drift near extreme dynamic
        ranges.
      - Per-op tolerance ``rtol=1e-4, atol=1e-5`` for float32
-       ``logsumexp``. Pinned in ``test_conformance_numpy.py``.
-   * - ``sparse_matmul`` / ``assparse``
-     - JAX, Torch
-     - SciPy CSR/CSC/COO; full support.
-     - Best-effort or unsupported; ``BackendOps.allow_sparse`` reports
-       ``False`` and the op raises ``NotImplementedError``.
-     - Convert to a dense path or do sparse work in NumPy. Pinned in
-       ``test_backend_conversion.py``.
+       ``logsumexp``.
    * - ``vmap``
-     - NumPy, Torch, CuPy
+     - NumPy, CuPy
      - n/a (not native).
      - Fallback Python loop; semantics match JAX's ``vmap``.
-     - Parity vs JAX's native ``vmap`` is pinned in
-       ``test_backend_vmap.py``. The fallback respects
-       ``in_axes=None`` and structured outputs.
+     - None needed; the fallback respects ``in_axes=None`` and structured
+       outputs. JAX and Torch use their native ``vmap``.
    * - ``jit``
      - NumPy, Torch, CuPy
      - n/a.
      - ``BackendOps`` does not expose a JIT — ``jax.jit`` over a
        ``NumpyOps`` callable raises ``TracerArrayConversionError``.
-     - Use ``JaxOps`` for JIT-compiled paths. Pinned in
-       ``test_backend_jit.py``.
+     - Use ``JaxOps`` for JIT-compiled paths.
 
 Closed deviations
 -----------------
