@@ -282,6 +282,41 @@ to single precision, and the unchanged ``largest_eigenvalue`` reproduces
 :math:`\lambda_{\max}` to four digits. A float64 NumPy array is not a member
 of the float32 space, so the converted operator rejects it at ``standard``.
 
+7 · Set defaults once for the whole program
+--------------------------------------------
+
+Every object so far received ``ctx`` and ``check_level`` explicitly. You can
+instead set both once, at the top of a script; every space, operator and
+functional built without them picks up the defaults.
+
+* ``sc.set_context("jax", dtype="float32")`` — default backend and dtype.
+* ``sc.set_check_level("cheap")`` — default validation level.
+* ``sc.set_traced_check_level("cheap")`` — the cap while ``jax.jit`` /
+  ``torch.compile`` trace (default ``"none"``: no checks in compiled code).
+
+``with sc.use_context(...)`` and ``with sc.use_check_level(...)`` change the
+defaults only inside a block, for the current thread or task. An explicit
+argument always wins over a default.
+
+.. code:: python
+
+    sc.set_context("numpy", dtype="float32")
+    sc.set_check_level("cheap")
+
+    W = sc.DenseCoordinateSpace((3,))                 # no ctx, no check_level
+    assert W.dtype == np.float32 and W.check_level == "cheap"
+
+    with sc.use_check_level("strict"):
+        assert sc.DenseCoordinateSpace((3,)).check_level == "strict"
+    assert sc.DenseCoordinateSpace((3,), check_level="none").check_level == "none"
+
+    sc.set_context("numpy", dtype="float64")          # back to the built-in defaults
+    sc.set_check_level(None)
+    assert sc.get_check_level() == "standard"
+
+Defaults are read when an object is constructed. Changing them later does not
+touch objects that already exist: ``W`` stays ``float32`` and ``"cheap"``.
+
 Check your understanding
 ------------------------
 

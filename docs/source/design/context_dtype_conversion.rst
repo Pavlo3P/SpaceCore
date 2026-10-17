@@ -26,6 +26,31 @@ A constructor with several context-bearing inputs uses an explicit ``ctx=`` when
 given. Otherwise the inputs must share one backend family (else ``ValueError``)
 and their dtypes are promoted by that backend's ``result_type``.
 
+Process-wide defaults
+---------------------
+
+**Set the backend, dtype and check levels once; objects built without them use
+the defaults.** An explicit ``ctx`` or ``check_level`` argument always wins.
+
+=============================================  =========================================  ====================================
+Default                                        Set for the process                        Set inside a ``with`` block
+=============================================  =========================================  ====================================
+context (backend + dtype)                      ``set_context(ctx, dtype=None)``           ``use_context(ctx, dtype=None)``
+check level of new objects                     ``set_check_level(level)``                 ``use_check_level(level)``
+check cap while tracing (``"none"``)           ``set_traced_check_level(level)``          —
+=============================================  =========================================  ====================================
+
+* Read them back with ``get_context()``, ``get_check_level()``,
+  ``get_traced_check_level()``.
+* ``use_*`` overrides are scoped to the current thread or async task;
+  ``set_*`` is visible to every thread, but a ``use_*`` block in progress keeps
+  winning until it exits.
+* Defaults are read at construction: changing them does not modify existing
+  objects. Move an existing object with ``convert``.
+* ``None`` restores the built-in default for both check-level setters
+  (``"standard"`` and ``"none"``). ``set_context(None)`` keeps the current
+  context; restore the built-in one with ``set_context("numpy", dtype="float64")``.
+
 Dtype and scalar field
 ----------------------
 
