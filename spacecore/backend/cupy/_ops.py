@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import Any, Callable, Literal, Sequence, cast
 
 from .._family import BackendFamily
 from ..numpy import NumpyOps
-from ...types import SparseArray
+from ...types import DType, SparseArray
 
 
 class CuPyOps(NumpyOps):
@@ -49,3 +49,26 @@ class CuPyOps(NumpyOps):
         return bool(
             self.cp.asnumpy(self.cp.allclose(cast(Any, a).toarray(), cast(Any, b).toarray(), rtol=rtol, atol=atol))
         )
+
+    def assparse(
+        self, x: Any, *, format: Literal["csr", "csc", "coo"] = "csr", dtype: DType | None = None
+    ) -> SparseArray:
+        """Convert to a 2-D ``cupyx.scipy.sparse`` matrix; host SciPy sparse input is copied to the device."""
+        # cupy.asarray cannot densify a SciPy sparse matrix, so move it to the device as CSR first.
+        import scipy.sparse as sps
+
+        if sps.issparse(x):
+            x = self.sp.sparse.csr_matrix(sps.csr_matrix(x))
+        return super().assparse(x, format=format, dtype=dtype)
+
+    def vectorize(
+        self,
+        pyfunc: Callable,
+        *,
+        excluded: Sequence[int] | None = None,
+        signature: str | None = None,
+    ) -> Callable:
+        """Like :meth:`NumpyOps.vectorize`; ``excluded`` uses the portable loop (``cupy.vectorize`` lacks it)."""
+        if excluded:
+            return self._vectorize_loop(pyfunc, excluded=excluded, signature=signature)
+        return super().vectorize(pyfunc, excluded=excluded, signature=signature)

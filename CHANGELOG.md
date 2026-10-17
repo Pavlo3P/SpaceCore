@@ -5,6 +5,15 @@ All notable changes to SpaceCore are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- CuPy: `assparse` accepts SciPy sparse input; it is copied to the device as a
+  `cupyx.scipy.sparse` matrix instead of failing in `cupy.asarray`.
+- CuPy: `vectorize(..., excluded=...)` uses the portable loop, since
+  `cupy.vectorize` does not support `excluded`.
+
 ## [0.5.0] — 2026-10-17
 
 SpaceCore is now a toolbox for first-order optimization: spaces with geometry,
