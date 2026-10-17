@@ -446,7 +446,5 @@ Cross-references
 
 * :doc:`backend_deviations` — user-facing list of accepted differences.
 * :doc:`batching_test_policy` — what is and isn't tested for batched paths.
-* :doc:`dtype_policy` and :doc:`conversion_policy` — dtype/scalar-field
+* :doc:`context_dtype_conversion` — dtype/scalar-field
   contract underlying the conformance promises.
-* ``docs/dev/0.4.0-phase-a-inventory.md`` section A6 — the gap inventory
-  that seeded this matrix.

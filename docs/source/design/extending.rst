@@ -131,4 +131,4 @@ Example
 
 Both classes work under ``jax.jit`` as pytrees without further code.
 
-Related: :doc:`conversion_policy`, :doc:`checking_policy`, :doc:`jax_integration`.
+Related: :doc:`context_dtype_conversion`, :doc:`checking_policy`, :doc:`jax_integration`.

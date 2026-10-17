@@ -8,9 +8,7 @@ Rules for geometry, validation, batching, conversion, and backend behavior.
 
    extending
    proximal_contract
-   context_ownership
-   conversion_policy
-   dtype_policy
+   context_dtype_conversion
    batching
    batching_test_policy
    capability_dispatch

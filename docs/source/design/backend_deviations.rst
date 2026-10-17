@@ -131,8 +131,4 @@ Cross-references
 
 * :doc:`backend_conformance` — the normative matrix every deviation
   refers back to.
-* :doc:`dtype_policy` — dtype promotion contract.
-* :doc:`conversion_policy` — cross-backend conversion rules and the
-  complex-to-real refusal.
-* ``docs/dev/0.4.0-phase-a-inventory.md`` section A6 — the gap inventory
-  this page closes.
+* :doc:`context_dtype_conversion` — dtype promotion and cross-backend conversion.
