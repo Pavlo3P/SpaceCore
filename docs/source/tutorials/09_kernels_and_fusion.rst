@@ -3,19 +3,13 @@
 
 The first eight tutorials are about *expressing* mathematics. This one
 is about making operator expressions run fast **without changing how you
-write them**: lazy operator algebra and fusion
-(`ADR-021 <../../docs/dev/adr/021_lazy_operator_algebra_and_simplification.md>`__).
+write them**: lazy operator algebra and fusion (design record ADR-021,
+``docs/dev/adr/021_lazy_operator_algebra_and_simplification.md`` in the repository).
 Cheap rewrites happen automatically at construction; materializing
 fusions, such as collapsing ``A @ B @ C`` of dense operators into one
 matrix, are an **explicit** ``fuse()`` call. Neither touches the
 matrix-free contract: a matrix-free operator is never silently turned
 into a dense one.
-
-Earlier releases also shipped an optimized-kernel dispatch layer
-(ADR-016) and a cache for its stacked blocks (ADR-022). Both were
-removed in 0.5.0a: the fast paths applied only to eager NumPy, where
-they measured mostly slower than the plain loops, and never under
-``jax.jit``, where the compiler already fuses the work.
 
 .. code:: python
 

@@ -12,7 +12,7 @@ SpaceCore implements several LinOp storage and composition families. Contributor
 
 Matrix-backed operators include `DenseLinOp`, `SparseLinOp`, and `DiagonalLinOp`. They own dense tensors, sparse coordinate matrices, or diagonal arrays and implement coordinate forward actions plus metric-aware adjoints. `DenseLinOp` stores shape `cod.shape + dom.shape`; `SparseLinOp` stores a 2D sparse matrix and is limited to coordinate spaces; `DiagonalLinOp` stores one diagonal element per space coordinate.
 
-Matrix-free operators include `MatrixFreeLinOp`, which trusts user-supplied callables. `IdentityLinOp` and `ZeroLinOp` are structural operators with no matrix storage. Lazy algebraic operators include `ComposedLinOp`, `SumLinOp`, and `ScaledLinOp`. Tree-structured operators include `TreeLinOp`, `BlockDiagonalLinOp`, `StackedLinOp`, and `SumToSingleLinOp`.
+Matrix-free operators include `MatrixFreeLinOp`, which trusts user-supplied callables. `IdentityLinOp` and `ZeroLinOp` are structural operators with no matrix storage. Lazy algebraic operators include `ComposedLinOp`, `SumLinOp`, and `ScaledLinOp`. Tree-structured operators include `TreeLinOp`, `BlockDiagonalLinOp`, and `BlockMatrixLinOp`, whose one-column and one-row cases replaced `StackedLinOp` and `SumToSingleLinOp` in 0.5.0a.
 
 ## Decision
 

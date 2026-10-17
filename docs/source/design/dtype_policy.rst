@@ -79,7 +79,6 @@ Example
    import numpy as np
    import spacecore as sc
 
-   ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="standard")
    try:
        sc.EuclideanElementwiseJordanSpace((2,), sc.Context(sc.NumpyOps(), dtype=np.complex128))
    except ValueError as exc:

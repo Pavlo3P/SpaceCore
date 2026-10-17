@@ -1,14 +1,15 @@
 Context Ownership and Normalization
 ===================================
 
-A ``Context`` owns three pieces of execution policy:
+A ``Context`` owns two pieces of execution policy:
 
 * ``ops`` - a ``BackendOps`` instance such as ``NumpyOps``;
-* ``dtype`` - the backend-normalized default representation dtype;
-* ``check_level`` - the ordered runtime-validation policy.
+* ``dtype`` - the backend-normalized default representation dtype.
 
 It does not own array memory, devices, gradient state, or sparse storage. Those
-belong to the backend arrays themselves.
+belong to the backend arrays themselves. It does not own the validation level
+either: ``check_level`` is a property of each space, operator and functional,
+set at construction or taken from the ambient level (:doc:`checking_policy`).
 
 Normalization
 -------------
@@ -30,7 +31,7 @@ Accepted as-is versus converted
 -------------------------------
 
 User arrays passed to operations such as ``space.add`` or ``A.apply`` are not
-silently converted. The context's check level selects backend, shape, dtype,
+silently converted. The object's check level selects backend, shape, dtype,
 recursive membership, and strict numerical validation. Under ``"none"``, user
 values are forwarded and backend errors may surface later.
 
@@ -56,7 +57,7 @@ Example
    import numpy as np
    import spacecore as sc
 
-   ctx = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="standard")
-   X = sc.DenseCoordinateSpace((2,), ctx)
+   ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+   X = sc.DenseCoordinateSpace((2,), ctx, check_level="standard")
    x = ctx.asarray([1.0, 2.0])
    X.check_member(x)

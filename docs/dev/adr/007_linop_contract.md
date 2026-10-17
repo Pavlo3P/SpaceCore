@@ -12,7 +12,7 @@ Linear operators are the central abstraction connecting spaces, geometry, batchi
 
 `LinOp` owns a domain space, codomain space, and context. Construction resolves one context and converts both endpoint spaces to it. Subclasses implement `apply(x)` and `rapply(y)`. `rapply` is the Hermitian adjoint with respect to the declared space geometries. `.H` returns a cached adjoint view. Algebraic operations build lazy sums, scalar multiples, differences, and compositions. `to_dense` and `to_matrix` are explicit materialization helpers for small problems and tests.
 
-Validation uses `checked_method` and endpoint membership checks when `ctx.enable_checks` is true. Conversion rebuilds spaces and owned data or operands in a target context.
+Validation uses `checked_method` and endpoint membership checks at the operator's `check_level` (ADR-014). Conversion rebuilds spaces and owned data or operands in a target context.
 
 ## Decision
 

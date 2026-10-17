@@ -15,12 +15,11 @@ SpaceCore pulls those decisions into one place, the **``Context``**:
 
 -  a **``BackendOps``** — the numerical contract (``matmul``,
    ``einsum``, ``eigh``, …) implemented by NumPy, JAX, Torch, or CuPy;
--  a **default ``dtype``** for the arrays you create;
--  a **checking policy** (``check_level``) that decides how much runtime
-   validation happens.
+-  a **default ``dtype``** for the arrays you create.
 
 Every space, operator, and functional you will meet in the next
-tutorials carries a context. This first notebook is about that
+tutorials carries a context, and its own **checking policy**
+(``check_level``) that decides how much runtime validation it does. This first notebook is about that
 foundation: what a context *is*, how to write code that runs unchanged
 on two backends, and how to dial validation up or down.
 
@@ -121,7 +120,6 @@ only when their optional dependency is installed.
     
     print("backend family :", ctx.ops.family)
     print("default dtype  :", ctx.dtype)
-    print("check level    :", ctx.check_level)   # direct construction defaults to "standard"
     
     # `asarray` materialises data on this backend at this dtype:
     x = ctx.asarray([1.0, 2.0, 3.0])
@@ -132,12 +130,11 @@ only when their optional dependency is installed.
 
     backend family : numpy
     default dtype  : float64
-    check level    : standard
     asarray dtype  : float64 -> [1. 2. 3.]
 
 
 The context never *owns* arrays; it is a small, immutable description of
-*how* to make and check them. ``ctx.asarray`` is the canonical way to
+*how* to make them. ``ctx.asarray`` is the canonical way to
 bring Python/NumPy data onto the context’s backend and dtype.
 
 3 · ``BackendOps``: one function, two backends
@@ -234,8 +231,11 @@ the math once, choose the engine later.**
 4 · ``check_level``: how loud should bugs be?
 ---------------------------------------------
 
-A context also carries a validation policy. There are four levels,
-cheapest to strictest:
+Each space, operator and functional carries a validation policy, set
+with ``check_level=`` when it is built; without it, the object takes the
+ambient level (``sc.get_check_level()``, ``"standard"`` by default;
+change it with ``sc.set_check_level`` or a ``with sc.use_check_level(...)``
+block). There are four levels, cheapest to strictest:
 
 ============ ==============================================
 level        meaning
@@ -251,11 +251,8 @@ The same wrong input is caught at ``standard`` but silently accepted at
 
 .. code:: python
 
-    ctx_checked = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="standard")
-    ctx_silent  = sc.Context(sc.NumpyOps(), dtype=np.float64, check_level="none")
-    
-    X_checked = sc.DenseVectorSpace((3,), ctx_checked)
-    X_silent  = sc.DenseVectorSpace((3,), ctx_silent)
+    X_checked = sc.DenseVectorSpace((3,), ctx, check_level="standard")
+    X_silent  = sc.DenseVectorSpace((3,), ctx, check_level="none")
     
     wrong = np.zeros(4)   # 4 entries for a 3-dimensional space
     
@@ -335,8 +332,8 @@ operator, functional) supports ``.convert(...)``, which accepts a
 Recap
 -----
 
--  A **``Context``** = backend ops + default dtype + checking policy. It
-   is immutable and owns no data.
+-  A **``Context``** = backend ops + default dtype. It is immutable and
+   owns no data; the checking policy belongs to each object built on it.
 -  Writing code against **``ctx.ops``** (not ``numpy``) makes it
    backend-portable — we ran one routine on NumPy and JAX with identical
    results.

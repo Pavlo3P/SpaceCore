@@ -6,19 +6,19 @@ Accepted and implemented for 0.4.0 Phase B.
 
 ## Context
 
-Current validation is controlled by boolean `Context.enable_checks`. That is useful but too coarse for 0.4.0 test generation, where cheap shape checks, standard membership checks, and strict expensive mathematical checks need distinct expectations.
+Before 0.4.0, validation was controlled by boolean `Context.enable_checks`. That was useful but too coarse for 0.4.0 test generation, where cheap shape checks, standard membership checks, and strict expensive mathematical checks need distinct expectations.
 
 ## Current design
 
-Spaces attach `SpaceCheck` objects such as backend, shape, dtype, square-matrix, Hermitian, product-structure, and product-component checks. `checked_method` runs input and output membership checks when `_enable_checks` is true. Batched checks allow leading axes while enforcing trailing element shape. Context inference combines boolean check flags with logical `and`.
+Spaces attach `SpaceCheck` objects (backend, shape, dtype, square-matrix, Hermitian, tree-structure and leaf checks), each with a `minimum_level`. Every public element operation is a `checked_method` wrapper over a check-free `_<op>_core`; the wrapper runs the input and output membership checks the object's `check_level` includes. Batched checks allow leading axes while enforcing trailing element shape. While a backend traces (`jax.jit`, `jax.vmap`, `torch.compile`), the level is capped by `set_traced_check_level`, default `"none"`.
 
 ## Decision
 
-The public API is ``Context.check_level`` with the exported
-``CheckLevel = Literal["none", "cheap", "standard", "strict"]`` type. This
-keeps the existing context-first constructor architecture intact: spaces,
-LinOps, and functionals continue to receive a context rather than duplicating
-policy keywords on every constructor.
+The level is ``CheckLevel = Literal["none", "cheap", "standard", "strict"]``.
+It was first a field of ``Context``; since 0.4.3 it is a property of each
+space, operator and functional (``check_level=`` at construction), seeded from
+the ambient level (``get_check_level`` / ``set_check_level`` /
+``use_check_level``). A container combines its operands' levels by the minimum.
 
 The intended policy levels are:
 
@@ -41,13 +41,12 @@ Keeping only `enable_checks` was rejected because it cannot express strict confo
 
 ## Consequences
 
-0.4.0 work should introduce a check-level representation and classify existing checks. Tests should assert which invariants belong to which level for spaces, LinOps, functionals, batching, context conversion, and dtype/field behavior. Until implemented, code remains boolean-gated.
+Every check is classified by level, and tests assert which invariants belong to which level for spaces, LinOps, functionals, batching, context conversion, and dtype/field behavior.
 
 ## Contributor invariants
 
-- Do not add expensive numerical checks to the current hot-path boolean gate without an explicit level decision.
+- Do not add an expensive numerical check below `strict` without an explicit level decision.
 - Cheap checks must be deterministic and local.
-- Standard checks should match current `enable_checks=True` expectations unless documented otherwise.
 - Strict checks belong in conformance/test helpers or explicit APIs, not implicit inner loops.
 
 ### Functional real-output invariant (0.5.0a)
