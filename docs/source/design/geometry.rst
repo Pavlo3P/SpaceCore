@@ -117,6 +117,8 @@ space's public ``inner``/``riesz``/``riesz_inverse`` are the checked wrappers.
   ``(N,) + space.shape``, ``riesz(ops, x)`` returns ``N`` covectors.
 * ``is_euclidean`` defaults to ``False``; set it ``True`` only for the coordinate
   inner product.
+* Define ``__eq__``: equal spaces need equal geometries, and the default is
+  identity.
 * ``convert(ctx)`` returns ``self`` by default; override it when the geometry
   stores arrays. ``validate_for(space)`` is an optional hook that raises when the
   geometry does not fit ``space``.
@@ -143,3 +145,6 @@ space's public ``inner``/``riesz``/``riesz_inverse`` are the checked wrappers.
    S = sc.DenseCoordinateSpace((3,), ctx, geometry=Scaled(4.0))
    A = sc.DenseLinOp(ctx.asarray(np.arange(9.0).reshape(3, 3)), S, S, ctx)
    print(np.isclose(S.inner(A.apply(x), y), S.inner(x, A.H.apply(y))))
+
+A geometry that stores weights, with equality, conversion and ``validate_for``, on a
+custom space with its own membership check: :doc:`extending`.

@@ -6,9 +6,9 @@ direct product :math:`X = \prod_{\ell} X_\ell` of coordinate spaces; an element
 is a Python tree with one array per leaf. Coordinates of different leaves are
 concatenated, not multiplied: this is not a tensor or Kronecker product.
 
-* ``treedef`` is an ``optree.PyTreeSpec`` or an example tree (its leaf values are
-  ignored). Leaves follow optree order, so dictionary keys are sorted. ``optree``
-  is a required dependency.
+* ``treedef`` is an ``optree.PyTreeSpec`` or an example element (see below).
+  Leaves follow optree order, so dictionary keys are sorted. ``optree`` is a
+  required dependency.
 * ``leaf_spaces`` must be coordinate spaces (``TypeError``), one per leaf
   (``ValueError``).
 * ``TreeSpace.from_leaf_spaces((X, S), ctx)`` builds the flat tuple case.
@@ -40,6 +40,56 @@ concatenated, not multiplied: this is not a tensor or Kronecker product.
 
    pair = sc.TreeSpace.from_leaf_spaces((X, S), ctx)
    pair.check_member((ctx.asarray([1.0, 2.0]), ctx.asarray([3.0])))
+
+The template is an example element
+----------------------------------
+
+An element of a tree space is a plain Python container — tuple, dict,
+``NamedTuple``, or any nesting of them — with one array per leaf. You describe the
+space by handing it one such container, ``TreeSpace.from_template(UV(0, 0), (U, V))``
+or ``TreeSpace(UV(0, 0), (U, V))``. SpaceCore reads only its structure; the leaf
+values are placeholders and are discarded.
+
+The leaf spaces already fix each leaf's shape, dtype and geometry. The template
+supplies the one thing they cannot: the container.
+
+* **Results keep the type.** ``zeros``, ``add``, ``scale``, gradients and operator
+  outputs come back as ``UV``, so code reads ``z.u`` and ``z.v`` instead of
+  ``z[0]`` and ``z[1]``.
+* **Leaves pair with leaf spaces in order.** The k-th leaf of the template, in
+  optree order, is an element of ``leaf_spaces[k]``; ``T.leaf_paths`` lists the
+  order.
+* **Membership checks the container first.** At ``"cheap"`` and above, a value
+  with another structure is rejected before any leaf is looked at: a plain tuple
+  is not a member of a ``UV`` space, even with the right arrays.
+
+``T.element(value)`` wraps a tree as a ``TreeElement`` bound to ``T``, and
+``.value`` returns the plain tree. It has no arithmetic; plain trees are the
+normal representation, and the template is how the space knows what they look
+like.
+
+.. code-block:: python
+
+   from typing import NamedTuple
+
+   class UV(NamedTuple):
+       u: object
+       v: object
+
+   U = sc.DenseCoordinateSpace((2,), ctx)
+   V = sc.DenseCoordinateSpace((3,), ctx)
+   P = sc.TreeSpace.from_template(UV(0, 0), (U, V), ctx=ctx)
+
+   z = P.zeros()
+   assert isinstance(z, UV) and z.u.shape == (2,) and z.v.shape == (3,)
+   print(P.leaf_paths)                            # ((0,), (1,)): u, then v
+
+   for wrong in [(z.u, z.v),                      # right arrays, wrong container
+                 UV(z.v, z.u)]:                   # right container, swapped leaves
+       try:
+           P.check_member(wrong)
+       except sc.SpaceValidationError as err:
+           print(err)
 
 Block operators
 ---------------

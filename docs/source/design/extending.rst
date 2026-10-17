@@ -97,8 +97,125 @@ the fields cannot express the object:
 * **a structure that is not a constructor argument** — ``BlockMatrixLinOp`` and
   ``BlockDiagonalLinOp`` flatten their blocks and keep the tree definitions as aux.
 
-Example
--------
+Custom space, checks and geometry
+---------------------------------
+
+A space is the minimum a value must satisfy, so custom validation lives in the
+space as ``SpaceCheck`` objects; the geometry is a separate ``InnerProduct``.
+
+* **A check** subclasses the frozen dataclass ``sc.SpaceCheck``: ``is_valid(space, x)``
+  returns a bool, ``error_message(space, x)`` the diagnostic, and the class attribute
+  ``minimum_level`` (``"cheap"``, ``"standard"`` or ``"strict"``) picks the levels it
+  runs at. Every checked public method of the space (``add``, ``inner``, ``riesz``,
+  ...) and every operator or functional on it runs the check on its inputs.
+* **A space** attaches checks with a class attribute ``checks = (...)`` or, when they
+  depend on instance state, a ``_local_checks(self)`` method. Each class in the MRO
+  contributes its own, so a subclass adds to its parent's checks rather than
+  replacing them. List the constructor keywords in ``_fields`` and extend
+  ``_eq_algebra`` when a new field changes the space.
+* **A geometry** subclasses ``sc.InnerProduct`` and implements ``inner``, ``riesz``
+  (vector to covector) and ``riesz_inverse``, all taking ``ops`` first and
+  broadcasting over leading batch axes. It is not a checked object: the space's
+  public methods check, then call it. Give it ``__eq__`` (spaces compare their
+  geometries), ``convert`` when it stores arrays, and optionally
+  ``validate_for(space)``. See :doc:`geometry`.
+
+The example below is the subspace of zero-mean vectors in R^3 with a weighted
+inner product.
+
+.. code-block:: python
+
+   from dataclasses import dataclass
+   import numpy as np
+   import spacecore as sc
+
+
+   @dataclass(frozen=True)
+   class ZeroMeanCheck(sc.SpaceCheck):
+       """Membership: the entries sum to zero within atol."""
+
+       name: str = "zero-mean"
+       atol: float = 1e-12
+       minimum_level = "standard"          # runs at "standard" and "strict"
+
+       def is_valid(self, space, x):
+           return bool(abs(space.ops.sum(x)) <= self.atol)
+
+       def error_message(self, space, x):
+           return f"entries must sum to 0 (|sum| <= {self.atol})"
+
+
+   class ZeroMeanSpace(sc.DenseCoordinateSpace):
+       """Vectors in R^n whose entries sum to zero: a subspace, so add/scale stay inside."""
+
+       _fields = ("shape", "atol", "ctx", "geometry")
+
+       def __init__(self, shape, ctx=None, geometry=None, atol=1e-12, check_level=None):
+           self.atol = atol                 # before super(): checks may be built during init
+           super().__init__(shape, ctx, geometry=geometry, check_level=check_level)
+
+       def _local_checks(self):             # added to DenseCoordinateSpace's shape/dtype checks
+           return (ZeroMeanCheck(atol=self.atol),)
+
+       def _eq_algebra(self, other):        # equal spaces: equal shape, geometry and atol
+           return super()._eq_algebra(other) and self.atol == other.atol
+
+
+   class Weighted(sc.InnerProduct):
+       """<x, y> = sum_i w_i x_i y_i with positive weights w."""
+
+       def __init__(self, w):
+           self.w = w
+
+       def inner(self, ops, x, y):
+           return ops.sum(self.w * x * y)
+
+       def riesz(self, ops, x):             # vector -> covector; broadcasts over batch axes
+           return self.w * x
+
+       def riesz_inverse(self, ops, x):     # covector -> vector
+           return x / self.w
+
+       def validate_for(self, space):
+           if tuple(np.shape(self.w)) != space.shape:
+               raise ValueError("weights must have the space's shape")
+
+       def __eq__(self, other):             # spaces compare their geometries
+           return isinstance(other, Weighted) and np.allclose(self.w, other.w)
+
+       __hash__ = None
+
+       def convert(self, ctx):              # move the stored array with the space
+           return Weighted(ctx.asarray(self.w))
+
+
+   ctx = sc.Context(sc.NumpyOps(), dtype=np.float64)
+   w = ctx.asarray([1.0, 2.0, 4.0])
+   Z = ZeroMeanSpace((3,), ctx, geometry=Weighted(w), check_level="standard")
+
+   x = ctx.asarray([1.0, -2.0, 1.0])
+   Z.check_member(x)                                 # passes
+   try:
+       Z.add(x, ctx.asarray([1.0, 0.0, 0.0]))        # second argument is not zero-mean
+   except sc.SpaceValidationError as err:
+       print(err)
+
+   cheap = ZeroMeanSpace((3,), ctx, check_level="cheap")
+   cheap.check_member(ctx.asarray([1.0, 0.0, 0.0]))  # "cheap" skips the standard-level check
+
+   print(Z.inner(x, x), Z.riesz(x))                  # 1 + 8 + 4 = 13, w * x
+   g = sc.SquaredL2NormFunctional(Z).grad(x)         # Riesz gradient in Z's geometry
+   Z2 = Z.convert(sc.Context(sc.NumpyOps(), dtype=np.float32))
+   assert isinstance(Z2, ZeroMeanSpace) and Z2.atol == Z.atol
+   assert Z == ZeroMeanSpace((3,), ctx, geometry=Weighted(w))
+   assert Z != ZeroMeanSpace((3,), ctx, geometry=Weighted(w), atol=1e-6)
+
+The check runs at ``"standard"`` and above, after ``DenseCoordinateSpace``'s
+backend, shape, field and dtype checks. ``SquaredL2NormFunctional(Z).grad`` and
+``DenseLinOp`` adjoints on ``Z`` use ``Weighted`` without further code.
+
+Example: operator and functional
+--------------------------------
 
 .. code-block:: python
 
