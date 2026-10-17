@@ -37,7 +37,7 @@ def import_backend(module: str, dep: str):
     # Dependency absent: silently None. Installed but broken: warn, then None.
     try:
         return importlib.import_module(module, package=__package__)
-    except ImportError as exc:
+    except Exception as exc:  # noqa: BLE001 - a broken optional backend must not break import
         if isinstance(exc, ModuleNotFoundError) and exc.name == dep:
             return None
         warnings.warn(

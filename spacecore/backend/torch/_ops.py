@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Callable, Literal, Sequence, Tuple, Type, cast
 
+import functools
+
 import numpy as np
 
 from .._eager import EagerControlFlowMixin
@@ -27,12 +29,18 @@ class TorchOps(EagerControlFlowMixin, BackendOps[NativeArray]):
     """
 
     import torch as _torch
-    import array_api_compat.torch as xp
 
     # Concrete library handle exposed as ``Any`` so the portable protocols
     # (DenseArray/SparseArray) can be passed to typed PyTorch calls without a
     # cast at every boundary; mirrors the base ``xp: ClassVar[Any]`` design.
     torch: Any = _torch
+
+    @functools.cached_property
+    def xp(self) -> Any:
+        """``array_api_compat.torch``, imported on first use (it fails on a mocked torch, e.g. in docs)."""
+        import array_api_compat.torch as xp
+
+        return xp
 
     _family = BackendFamily.torch.value
     _allow_sparse = True

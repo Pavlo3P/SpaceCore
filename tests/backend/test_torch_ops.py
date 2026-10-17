@@ -54,7 +54,7 @@ def test_torch_ops_has_native_vmap_is_true(ops):
 def test_torch_ops_xp_is_array_api_compat_torch():
     import spacecore as sc
 
-    assert sc.TorchOps.xp.__name__ == "array_api_compat.torch"
+    assert sc.TorchOps().xp.__name__ == "array_api_compat.torch"
 
 
 # ---------------------------------------------------------------------------
